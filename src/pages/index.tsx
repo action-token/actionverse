@@ -316,8 +316,8 @@ const HomePage = () => {
             </div>
 
             {/* Product details card */}
-            <div className="hidden w-full xl:flex ">
-              <Card className="min-w-[350px] space-y-6 border-none bg-white/40 p-6 shadow-sm shadow-black backdrop-blur-md">
+            <div className="hidden w-full xl:flex drop-shadow-lg ">
+              <Card className="min-w-[350px] space-y-6 border-none bg-white/40 p-6 drop-shadow-2xl  shadow-secondary shadow-md ">
                 <div className="space-y-1 rounded-md border-2 p-2 ">
                   <h2 className="text-lg font-bold uppercase">
                     {currentAsset?.asset?.name}
@@ -347,6 +347,7 @@ const HomePage = () => {
 
                 <div className="flex">
                   <Button
+                    variant='destructive'
                     onClick={() => {
                       setCurrentIndex(
                         (prevIndex) =>
@@ -436,7 +437,7 @@ const FilterTabs = () => {
   };
   return (
     <Card >
-      <CardHeader className="w-full rounded-md bg-primary p-2 md:p-4">
+      <CardHeader className="w-full rounded-md bg-secondary p-2 md:p-4">
         <CardTitle className="flex w-full gap-2 p-0 md:w-[50vw] md:gap-4 ">
           {TABS.map((tab) => (
             <Button
@@ -445,8 +446,8 @@ const FilterTabs = () => {
               className={cn(
                 "flex  w-1/2 px-2 text-sm shadow-sm shadow-black transition-all duration-300 ease-in-out lg:px-10",
                 activeTab === tab
-                  ? "w-full border-2 font-bold text-[#dbdd2c]"
-                  : " ",
+                  ? "w-full border-2 hover:bg-white font-bold text-destructive border-destructive bg-white"
+                  : "",
               )}
             >
               {tab}

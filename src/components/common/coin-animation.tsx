@@ -19,7 +19,7 @@ export default function CoinAnimation() {
     return (
         <motion.div className="perspective-1000" variants={coinVariants} animate="flip">
             <Image
-                className="h-20 w-20 rounded-full shadow-lg"
+                className="h-20 w-28 rounded-full shadow-lg"
                 height={200}
                 width={200}
                 src="/images/logo.png"

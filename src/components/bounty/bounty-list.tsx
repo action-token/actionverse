@@ -61,7 +61,7 @@ export default function BountyList({
             {bounties.map((bounty) => (
                 <Card
                     key={bounty.id}
-                    className="flex h-full flex-col transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-pointer  bg-primary  overflow-hidden justify-between"
+                    className="flex h-full flex-col transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-pointer    overflow-hidden justify-between"
 
                 >
                     <CardHeader className="relative p-0">
@@ -98,7 +98,7 @@ export default function BountyList({
                             </div>
                         </div>
                     </CardContent>
-                    <CardFooter className="bg-primary p-4 flex flex-col items-center ">
+                    <CardFooter className="bg-secondary p-4 flex flex-col items-center ">
                         <div className="flex items-center justify-between w-full mb-2">
                             <div className="flex items-center text-sm">
                                 <Award className="mr-1 inline-block h-4 w-4" />
@@ -115,14 +115,15 @@ export default function BountyList({
                         </div>
                         {bounty.isJoined || bounty.isOwner ? (
                             <Button
+
                                 onClick={() => {
                                     router.push(`/bounty/${bounty.id}`)
                                 }}
-                                variant="secondary" className="w-full mt-2">
+                                variant="default" className="w-full mt-2">
                                 View
                             </Button>
                         ) : (
-                            <Button variant="secondary"
+                            <Button variant="default"
 
                                 onClick={(e) => {
                                     e.stopPropagation()

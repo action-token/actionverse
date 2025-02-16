@@ -20,7 +20,11 @@ const PopupImports = dynamic(
         await import("package/connect_wallet/src/components/popup_imports"),
 );
 
-const inner = Titillium_Web({ subsets: ["latin"], weight: "400" });
+const inner = Titillium_Web({
+    subsets: ["latin"],
+    weight: ["400", "600", "700"],
+
+});
 
 const MyApp: AppType<{ session: Session | null }> = ({
     Component,

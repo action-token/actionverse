@@ -39,7 +39,7 @@ export default function Layout({
 
 
         >
-            <div className=" h-screen w-full scrollbar-hide ">
+            <div className={clsx("flex flex-col w-full h-screen", className)}>
                 <Header />
                 <div className="flex w-full scrollbar-hide ">
                     <div className="relative  z-50">

@@ -18,7 +18,7 @@ const Marketplace = () => {
     console.log("activeTab", activeTab);
     return (
         <Card className="">
-            <CardHeader className="w-full bg-primary border-b-2 p-2 md:p-4 flex items-center justify-center">
+            <CardHeader className="w-full bg-secondary border-b-2 p-2 md:p-4 flex items-center justify-center">
                 <CardTitle className="flex md:w-1/2 items-center justify-center  p-0  gap-2 md:gap-4">
                     {TABS.map((tab) => (
                         <Button
@@ -27,7 +27,7 @@ const Marketplace = () => {
                             className={cn(
                                 "flex  text-xs md:text-sm shadow-sm shadow-black transition-all duration-300 ease-in-out ",
                                 activeTab === tab
-                                    ? "w-full px-10  border-2 font-bold text-[#dbdd2c]"
+                                    ? "w-full px-10  border-2 font-bold text-destructive border-destructive bg-background hover:bg-background"
                                     : " ",
                             )}
                         >
@@ -38,7 +38,7 @@ const Marketplace = () => {
             </CardHeader>
             <CardContent className="h-[calc(100vh-20vh)] overflow-y-auto p-0 scrollbar-hide ">
                 <div>
-                    {activeTab === "Bandcoin Curated" && (
+                    {activeTab === "Action Curated" && (
                         <div>
                             <CuratedItems />
                         </div>

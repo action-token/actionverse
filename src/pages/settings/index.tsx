@@ -229,7 +229,7 @@ const AboutUser = ({ user }: { user: UserSettingsType }) => {
 
                             <div className="mt-2 space-y-1 text-md  ">
                                 <span className=" font-bold"> PUB KEY:</span>
-                                <span className="text-muted-foreground bg-primary"> {addrShort(user.id, 7)}</span>
+                                <span className="text-muted-foreground bg-secondary"> {addrShort(user.id, 7)}</span>
                                 <span className="mr-1">  <CopyToClip text={user.id} collapse={7} /></span>
 
                             </div>

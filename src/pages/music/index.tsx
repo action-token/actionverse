@@ -44,7 +44,7 @@ const Music = () => {
     const songs = api.music.song.getUserBuyedSongs.useQuery();
 
     return (
-        <div className="flex h-[calc(100vh-10.8vh)] w-full grid-cols-1 gap-2 lg:grid lg:grid-cols-[1fr_300px] relative">
+        <div className="flex h-[calc(100vh-11.8vh)] w-full grid-cols-1 gap-2 lg:grid lg:grid-cols-[1fr_300px] relative">
             {/* Left Section (Scrollable) */}
             <div className="col-span-1 w-full overflow-y-auto scrollbar-hide ">
                 <div className="flex w-full flex-col gap-4 ">
@@ -134,7 +134,7 @@ const MusicTabs = () => {
     const { seletedTab, setSelectedTab } = useMusicTabStore();
     return (
         <Card>
-            <CardHeader className="w-full rounded-md bg-primary p-2 md:p-4">
+            <CardHeader className="w-full rounded-md bg-secondary p-2 md:p-4">
                 <CardTitle className="flex w-full gap-2 p-0 md:gap-4">
                     {TABS.map((tab) => (
                         <Button
@@ -143,7 +143,7 @@ const MusicTabs = () => {
                             className={cn(
                                 "md:text-md flex w-1/2 px-2 text-xs shadow-sm shadow-black transition-all duration-300 ease-in-out lg:px-10",
                                 seletedTab === tab
-                                    ? "w-full border-2 font-bold text-[#dbdd2c]"
+                                    ? "w-full border-2 font-bold text-destructive border-destructive bg-background hover:bg-background"
                                     : " ",
                             )}
                         >
@@ -182,12 +182,12 @@ const RightSideItem = () => {
     if (songs.isLoading) return <RightSideItemSkeleton />;
 
     return (
-        <div className="flex h-full flex-col gap-2 overflow-y-auto">
-            <Card className="flex-grow ">
+        <div className="flex h-[calc(100vh-12vh)] flex-col gap-2 overflow-y-auto">
+            <Card className=" ">
                 <CardHeader className="rounded-sm bg-primary p-4 shadow-sm shadow-slate-300">
-                    <h1 className="text-center text-2xl font-bold ">PLAYABLE SONG</h1>
+                    <h1 className="text-center text-2xl font-bold  text-background">PLAYABLE SONG</h1>
                 </CardHeader>
-                <CardContent className="h-[calc(100vh-41vh)] overflow-y-auto p-0 scrollbar-hide ">
+                <CardContent className="h-[calc(100vh-45vh)] overflow-y-auto p-0 scrollbar-hide ">
                     {
                         songs.data?.length === 0 && (
                             <div className="flex items-center justify-center h-full w-full">
@@ -232,9 +232,9 @@ const RightSideItem = () => {
                     ))}
                 </CardContent>
             </Card>
-            <Card className="h-1/4 ">
+            <Card className=" ">
                 <CardHeader className="rounded-sm bg-primary p-4 shadow-sm shadow-slate-300">
-                    <h1 className="text-center text-2xl font-bold">NOW PLAYTING</h1>
+                    <h1 className="text-center text-2xl font-bold  text-background">NOW PLAYTING</h1>
                 </CardHeader>
                 <CardContent className=" mt-2 ">
                     {selectedSong ? (
@@ -399,6 +399,7 @@ function MusicCarousel() {
                         </p>
                         <Button
                             size="sm"
+                            variant="destructive"
                             className="w-full shadow-sm shadow-black "
                             onClick={() => {
                                 setData(RecentAddedSong.data[currentSlide] as SongItemType);
@@ -467,7 +468,7 @@ function MusicCarousel() {
                         })}
                     </div>
 
-                    <div className="absolute bottom-14 left-1/2 z-40 flex -translate-x-1/2 gap-3 md:bottom-6">
+                    <div className="absolute bottom-14 left-1/2 z-40 flex -translate-x-1/2 gap-3 md:bottom-8">
                         {RecentAddedSong.data.map((_, index) => (
                             <button
                                 key={index}

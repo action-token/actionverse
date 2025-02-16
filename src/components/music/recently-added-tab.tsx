@@ -63,7 +63,7 @@ const RecentAddedSongsTab = () => {
                                 className="ml-2  h-16 w-16 rounded-sm object-cover flex items-center justify-center "
                             />
                         </div>
-                        <div className="flex w-full flex-col items-start gap-4 rounded-lg  bg-primary p-4 md:flex-row md:items-center md:justify-between">
+                        <div className="flex w-full flex-col items-start gap-4 rounded-lg  bg-secondary p-4 md:flex-row md:items-center md:justify-between">
                             <div className="flex items-center gap-4">
                                 <div>
                                     <h3 className="text-lg font-semibold">{song.asset.name}</h3>
@@ -94,7 +94,8 @@ const RecentAddedSongsTab = () => {
                                         setIsOpen(true)
                                     }}
 
-                                    className="rounded-md bg-white px-6 py-2 font-medium shadow-sm shadow-black transition-colors hover:bg-gray-100">
+                                    className="shadow-sm relative shadow-black px-6 py-2 gap-1 flex items-center justify-center"
+                                >
                                     BUY NOW
                                 </Button>
                             </div>

@@ -8,6 +8,8 @@ import { useSidebar } from "~/hooks/use-sidebar";
 import { DashboardNav } from "./dashboard-nav";
 import { ConnectWalletButton } from "package/connect_wallet";
 import { Facebook, Instagram } from "lucide-react";
+import { FaXTwitter } from "react-icons/fa6";
+import { TbBrandFacebook } from "react-icons/tb";
 
 import Link from "next/link";
 import { HomeIcon } from "lucide-react";
@@ -18,13 +20,14 @@ import { env } from "~/env";
 import { NavItem } from "~/types/icon-types";
 import { Button } from "~/components/shadcn/ui/button";
 import { signOut, useSession } from "next-auth/react";
+import { FaInstagram } from "react-icons/fa";
 
 export const LeftNavigation: NavItem[] = [
   { href: "/", icon: "dashboard", title: "HOMEPAGE" },
 
   { href: "/my-collection", icon: "collection", title: "MY COLLECTION" },
   // Search: { path: "/search", icon: Search, text: "Search" },
-  { href: "/music", icon: "music", title: "MUSIC" },
+  // { href: "/music", icon: "music", title: "MUSIC" },
   { href: "/marketplace", icon: "store", title: "MARKETPLACE" },
   { href: "/bounty", icon: "bounty", title: "BOUNTY" },
   { href: "/artist/home", icon: "creator", title: "ARTISTS" },
@@ -99,32 +102,31 @@ export function LeftBottom() {
       <div className="flex  items-center justify-between  gap-4 ">
         <Link
           href={"https://facebook.com/bandcoinio"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-primary justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 shadow-sm shadow-black flex-col bg-transparent justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
-          <Facebook size={26} />
+          <TbBrandFacebook size={26} className="text-destructive" />
 
         </Link>
         <Link
           href={"https://x.com/bandcoinio"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-primary justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 shadow-sm shadow-black flex-col bg-transparent justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
-          <Image src="/images/icons/x.svg" alt="X" height={18} width={18}
-            className="w-5 h-5"
-          />
+
+          <FaXTwitter className="text-destructive" size={26} />
 
         </Link>
         <Link
           href={"https://www.instagram.com/bandcoin"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-primary justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 shadow-sm shadow-black flex-col bg-transparent justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
-          <Instagram size={26} />
+          <FaInstagram className="text-destructive" size={26} />
         </Link>
       </div>
       <div className="flex w-full flex-col text-center text-xs text-base-content">
-        <p>© 2024 {env.NEXT_PUBLIC_HOME_DOMAIN}</p>
+        <p>© 2024 Actionverse</p>
         <div className="flex w-full justify-center gap-2 ">
           <Link className="link-hover link" href="/about">
             About

@@ -29,10 +29,10 @@ function CopyToClip({ text, collapse }: CopyToClipProps) {
     <Button
       size="sm"
       variant="outline"
-      className="border-[#dbdd2c] border-2 p-2 hover:bg-[#dbdd2c]/10"
+      className="border-destructive border-2 p-2 hover:bg-[#dbdd2c]/10"
       onClick={handleCopy}
     >
-      {isCopied ? <Check className="text-[#dbdd2c]" size={12} /> : <Copy size={12} />}
+      {isCopied ? <Check className="text-destructive" size={12} /> : <Copy size={12} />}
     </Button>
   )
 }

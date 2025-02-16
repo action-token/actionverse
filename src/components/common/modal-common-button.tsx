@@ -145,7 +145,9 @@ export function DeleteAssetByAdmin({
             <>
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                     <DialogTrigger asChild>
-                        <Button variant={"destructive"} className="w-full shadow-sm shadow-foreground "
+                        <Button variant={"destructive"}
+                            size={"sm"}
+                            className="w-full shadow-sm shadow-foreground "
                         >
                             {del.isLoading && <span className="loading loading-spinner" />}
                             Remove from market

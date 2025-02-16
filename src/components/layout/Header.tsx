@@ -33,7 +33,7 @@ function Header() {
                     priority
                 />
                 <div className="relative z-10 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-0">
                         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
                             <SheetTrigger asChild>
                                 <Button
@@ -45,19 +45,19 @@ function Header() {
                             </SheetTrigger>
 
                             <SheetContent side="left" className="w-72 p-0">
-                                <SheetHeader className="flex items-center justify-between bg-primary p-2 rounded-md shadow-md">
+                                <SheetHeader className="flex items-start justify-between bg-primary p-2 rounded-md shadow-md">
 
-                                    <div className="flex items-center gap-1 ">
+                                    <div className="flex items-center gap-0  ">
                                         <Image
                                             alt="logo"
                                             objectFit="cover"
                                             src="/images/logo.png"
                                             height={200}
                                             width={200}
-                                            className=" h-10 w-10"
+                                            className=" h-10 w-20"
                                         />
                                         <h1 className="relative text-xl font-bold capitalize text-black md:text-4xl ">
-                                            <p className="">{PLATFORM_ASSET.code.toLocaleUpperCase()}</p>
+                                            <p className="">ACTIONVERSE</p>
                                             <p className="absolute  right-0 top-0 -mr-4 -mt-1  text-xs">TM</p>
                                         </h1>
 
@@ -73,16 +73,19 @@ function Header() {
                                 </div>
                             </SheetContent>
                         </Sheet>
-                        <div className="relative ml-2 hidden h-14 w-14 md:block">
+                        <div className="relative ml-2 hidden h-14 w-24 md:block">
                             <Image
-                                fill
+
                                 alt="logo"
                                 src="/images/logo.png"
-                                sizes="56px"
+
+                                height={200}
+                                width={200}
+                                className=" h-14 w-24"
                             />
                         </div>
                         <h1 className="relative text-xl font-bold capitalize text-white md:text-4xl">
-                            {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                            ACTIONVERSE
                             <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
                         </h1>
                     </div>
@@ -139,7 +142,7 @@ const HeaderButtons = () => {
     return (
         <div className=" flex items-center justify-center gap-1 ">
             <Link href="/wallet-balance" className="">
-                <Button className="" variant='default'>
+                <Button className="" variant='destructive'>
                     <span className="hidden md:flex">
                         {PLATFORM_ASSET.code.toUpperCase()}
                     </span>
@@ -158,13 +161,14 @@ const HeaderButtons = () => {
             )}
             <Button
                 className=" relative "
+                variant="destructive"
                 onClick={async () => {
                     await router.push("/notification");
                     updateNotification();
                 }}
             >
                 {notificationCount > 0 && (
-                    <div className="absolute -top-2 left-0 h-4 w-4  rounded-full bg-red-500"></div>
+                    <div className="absolute -top-2 left-0 h-4 w-4  rounded-full bg-primary"></div>
                 )}
                 <Bell />
             </Button>

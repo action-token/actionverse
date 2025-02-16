@@ -44,9 +44,9 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
                   <Link href={item.disabled ? "/" : item.href} >
                     <Button
                       className={cn(
-                        "  flex    w-full items-center shadow-sm  justify-start   gap-2 overflow-hidden rounded-md text-sm font-medium hover:text-[#dbdd2c]",
+                        " flex    w-full items-center shadow-sm  justify-start   gap-2 overflow-hidden rounded-md text-sm font-medium ",
                         path === item.href
-                          ? "border-[#dbdd2c] border-2 text-[#dbdd2c] font-bold "
+                          ? "border-destructive border-2 text-destructive font-bol bg-white hover:bg-white"
                           : "transparent shadow-black ",
                         item.disabled && "cursor-not-allowed opacity-80",
                       )}
@@ -83,6 +83,6 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
           );
         })}
       </TooltipProvider>
-    </nav>
+    </nav >
   );
 }
