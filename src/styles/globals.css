@@ -1,0 +1,314 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light mode colors */
+    --background: 60 33% 98%; /* Light background */
+    --foreground: 60 10% 10%; /* Dark text */
+    --card: 60 40% 98%; /* Light card background */
+    --card-foreground: 60 10% 10%; /* Dark card text */
+    --popover: 60 33% 98%; /* Light popover */
+    --popover-foreground: 60 10% 10%; /* Dark popover text */
+    --primary: 62 50% 95%; /* Primary color (soft green) */
+    --primary-foreground: 60 10% 10%; /* Dark text on primary color */
+    --secondary: 60 14% 88%; /* Secondary color (light pastel) */
+    --secondary-foreground: 60 10% 10%; /* Dark text on secondary */
+    --muted: 60 14% 88%; /* Muted color (light gray) */
+    --muted-foreground: 60 5% 40%; /* Muted text (darker gray) */
+    --accent: 60 72% 52%; /* Accent color (same as primary) */
+    --accent-foreground: 60 10% 10%; /* Dark text on accent color */
+    --destructive: 0 84.2% 60.2%; /* Red (for destructive actions) */
+    --destructive-foreground: 60 33% 98%; /* Light text on destructive elements */
+    --border: 60 40% 80%; /* Light border color */
+    --input: 60 60% 88%; /* Light input background */
+    --ring: 60 72% 52%; /* Focus ring (same as primary) */
+    --radius: 0.75rem;
+
+    /* Chart colors with yellowish tint */
+    --chart-1: 60 72% 52%;
+    --chart-2: 45 84% 56%;
+    --chart-3: 30 84% 56%;
+    --chart-4: 15 84% 56%;
+    --chart-5: 75 84% 56%;
+
+    /* Sidebar colors with yellowish tint */
+    --sidebar-background: 60 33% 96%; /* Lighter sidebar background */
+    --sidebar-foreground: 60 10% 10%; /* Dark sidebar text */
+    --sidebar-primary: 60 72% 52%; /* Sidebar primary color */
+    --sidebar-primary-foreground: 60 10% 10%; /* Dark sidebar primary text */
+    --sidebar-accent: 45 84% 56%; /* Sidebar accent color */
+    --sidebar-accent-foreground: 60 10% 10%; /* Dark sidebar accent text */
+    --sidebar-border: 60 14% 88%; /* Sidebar border */
+    --sidebar-ring: 60 72% 52%; /* Sidebar focus ring */
+  }
+
+  .dark {
+  /* Base Dark Mode Colors */
+  --background: 220 15% 8%; /* Deep black-gray */
+  --foreground: 220 20% 94%; /* Soft white text */
+  --card: 220 18% 10%; /* Darker card background */
+  --card-foreground: 220 25% 95%; /* Light card text */
+  --popover: 220 15% 9%; /* Dark popover */
+  --popover-foreground: 220 20% 94%; /* Light popover text */
+  
+  /* Primary & Secondary */
+  --primary: 195 80% 45%; /* Vibrant teal-blue */
+  --primary-foreground: 220 20% 8%; /* Dark text on primary */
+  --secondary: 220 18% 15%; /* Dark gray-blue */
+  --secondary-foreground: 220 25% 95%; /* Light text */
+  
+  /* Muted & Accent */
+  --muted: 220 12% 14%; /* Dark muted gray */
+  --muted-foreground: 220 10% 60%; /* Muted text */
+  --accent: 35 90% 55%; /* Warm orange accent */
+  --accent-foreground: 220 20% 8%; /* Dark text on accent */
+  
+  /* Destructive */
+  --destructive: 0 70% 40%; /* Strong red */
+  --destructive-foreground: 220 25% 95%; /* Light text on destructive */
+
+  /* Borders, Inputs, and Rings */
+  --border: 220 12% 16%; /* Subtle dark gray border */
+  --input: 220 12% 16%; /* Dark input field */
+  --ring: 195 80% 45%; /* Teal-blue focus ring */
+
+  /* Dark Mode Chart Colors */
+  --chart-1: 195 80% 45%; /* Teal */
+  --chart-2: 200 85% 50%; /* Cyan */
+  --chart-3: 220 75% 50%; /* Bright blue */
+  --chart-4: 35 85% 55%; /* Warm orange */
+  --chart-5: 340 85% 55%; /* Magenta */
+
+  /* Sidebar Colors */
+  --sidebar-background: 220 15% 9%; /* Slightly lighter than background */
+  --sidebar-foreground: 220 25% 95%; /* Light sidebar text */
+  --sidebar-primary: 195 80% 45%; /* Teal sidebar primary */
+  --sidebar-primary-foreground: 220 20% 8%; /* Dark sidebar primary text */
+  --sidebar-accent: 35 90% 55%; /* Warm orange sidebar accent */
+  --sidebar-accent-foreground: 220 20% 8%; /* Dark sidebar accent text */
+  --sidebar-border: 220 25% 20%; /* Soft border */
+  --sidebar-ring: 195 80% 45%; /* Sidebar focus ring */
+}.dark {
+  /* Base Dark Mode Colors */
+  --background: 45 15% 10%; /* Deep warm gray */
+  --foreground: 45 10% 90%; /* Soft warm white text */
+  --card: 45 15% 12%; /* Slightly lighter card background */
+  --card-foreground: 45 10% 90%; /* Soft warm white card text */
+  --popover: 45 15% 10%; /* Dark warm popover */
+  --popover-foreground: 45 10% 90%; /* Soft warm white popover text */
+  
+  /* Primary & Secondary */
+  --primary: 45 70% 50%; /* Warm golden primary */
+  --primary-foreground: 45 15% 10%; /* Dark text on primary */
+  --secondary: 45 20% 20%; /* Dark warm gray */
+  --secondary-foreground: 45 10% 90%; /* Soft warm white text */
+  
+  /* Muted & Accent */
+  --muted: 45 10% 20%; /* Muted warm gray */
+  --muted-foreground: 45 5% 65%; /* Muted warm text */
+  --accent: 30 80% 50%; /* Warm orange accent */
+  --accent-foreground: 45 15% 10%; /* Dark text on accent */
+  
+  /* Destructive */
+  --destructive: 0 70% 50%; /* Warm red */
+  --destructive-foreground: 45 10% 90%; /* Soft warm white text on destructive */
+
+  /* Borders, Inputs, and Rings */
+  --border: 45 15% 25%; /* Subtle warm gray border */
+  --input: 45 15% 15%; /* Dark warm input field */
+  --ring: 45 70% 50%; /* Golden focus ring */
+
+  /* Dark Mode Chart Colors */
+  --chart-1: 45 70% 50%; /* Golden */
+  --chart-2: 30 80% 50%; /* Warm orange */
+  --chart-3: 15 75% 50%; /* Warm red-orange */
+  --chart-4: 60 70% 50%; /* Warm yellow-green */
+  --chart-5: 75 65% 50%; /* Olive green */
+
+  /* Sidebar Colors */
+  --sidebar-background: 45 15% 12%; /* Slightly lighter than main background */
+  --sidebar-foreground: 45 10% 90%; /* Soft warm white sidebar text */
+  --sidebar-primary: 45 70% 50%; /* Golden sidebar primary */
+  --sidebar-primary-foreground: 45 15% 10%; /* Dark sidebar primary text */
+  --sidebar-accent: 30 80% 50%; /* Warm orange sidebar accent */
+  --sidebar-accent-foreground: 45 15% 10%; /* Dark sidebar accent text */
+  --sidebar-border: 45 15% 25%; /* Subtle warm gray border */
+  --sidebar-ring: 45 70% 50%; /* Golden sidebar focus ring */
+}.dark {
+  /* Base Dark Mode Colors */
+  --background: 200 30% 10%; /* Deep teal-blue */
+  --foreground: 45 20% 90%; /* Warm off-white text */
+  --card: 200 30% 12%; /* Slightly lighter card background */
+  --card-foreground: 45 20% 90%; /* Warm off-white card text */
+  --popover: 200 30% 10%; /* Deep teal-blue popover */
+  --popover-foreground: 45 20% 90%; /* Warm off-white popover text */
+  
+  /* Primary & Secondary */
+  --primary: 45 80% 50%; /* Rich golden primary */
+  --primary-foreground: 200 30% 10%; /* Dark text on primary */
+  --secondary: 200 25% 20%; /* Muted teal-blue */
+  --secondary-foreground: 45 20% 90%; /* Warm off-white text */
+  
+  /* Muted & Accent */
+  --muted: 200 20% 20%; /* Muted teal-blue */
+  --muted-foreground: 200 10% 60%; /* Muted text */
+  --accent: 25 90% 50%; /* Warm orange accent */
+  --accent-foreground: 200 30% 10%; /* Dark text on accent */
+  
+  /* Destructive */
+  --destructive: 0 75% 50%; /* Vibrant red */
+  --destructive-foreground: 45 20% 90%; /* Warm off-white text on destructive */
+
+  /* Borders, Inputs, and Rings */
+  --border: 200 25% 18%; /* Subtle teal-blue border */
+  --input: 200 25% 16%; /* Dark teal-blue input field */
+  --ring: 45 80% 50%; /* Golden focus ring */
+
+  /* Dark Mode Chart Colors */
+  --chart-1: 45 80% 50%; /* Rich gold */
+  --chart-2: 25 90% 50%; /* Warm orange */
+  --chart-3: 180 70% 40%; /* Teal */
+  --chart-4: 140 60% 40%; /* Sea green */
+  --chart-5: 210 70% 50%; /* Azure blue */
+
+  /* Sidebar Colors */
+  --sidebar-background: 200 30% 12%; /* Slightly lighter than main background */
+  --sidebar-foreground: 45 20% 90%; /* Warm off-white sidebar text */
+  --sidebar-primary: 45 80% 50%; /* Rich golden sidebar primary */
+  --sidebar-primary-foreground: 200 30% 10%; /* Dark sidebar primary text */
+  --sidebar-accent: 25 90% 50%; /* Warm orange sidebar accent */
+  --sidebar-accent-foreground: 200 30% 10%; /* Dark sidebar accent text */
+  --sidebar-border: 200 25% 18%; /* Subtle teal-blue border */
+  --sidebar-ring: 45 80% 50%; /* Golden sidebar focus ring */
+}.dark {
+  /* Base Dark Mode Colors */
+  --background: 230 35% 8%;
+  /* Deep midnight blue */
+  --foreground: 260 20% 88%;
+  /* Soft lavender text */
+  --card: 230 30% 10%;
+  /* Slightly lighter deep blue */
+  --card-foreground: 260 20% 88%;
+  /* Soft lavender card text */
+  --popover: 230 35% 9%;
+  /* Dark blue popover */
+  --popover-foreground: 260 20% 88%;
+  /* Soft lavender popover text */
+
+  /* Primary & Secondary */
+  --primary: 180 90% 45%;
+  /* Bright cyan primary */
+  --primary-foreground: 230 35% 8%;
+  /* Dark text on primary */
+  --secondary: 230 25% 20%;
+  /* Muted navy blue */
+  --secondary-foreground: 260 20% 88%;
+  /* Soft lavender text */
+
+  /* Muted & Accent */
+  --muted: 230 20% 16%;
+  /* Muted deep navy */
+  --muted-foreground: 230 10% 55%;
+  /* Muted gray-blue text */
+  --accent: 270 80% 60%;
+  /* Vibrant purple accent */
+  --accent-foreground: 230 35% 8%;
+  /* Dark text on accent */
+
+  /* Destructive */
+  --destructive: 0 75% 50%;
+  /* Strong red */
+  --destructive-foreground: 260 20% 88%;
+  /* Soft lavender text on destructive */
+
+  /* Borders, Inputs, and Rings */
+  --border: 230 25% 18%;
+  /* Subtle navy blue border */
+  --input: 230 25% 16%;
+  /* Dark navy blue input */
+  --ring: 180 90% 45%;
+  /* Cyan focus ring */
+
+  /* Dark Mode Chart Colors */
+  --chart-1: 180 90% 45%;
+  /* Bright cyan */
+  --chart-2: 270 80% 60%;
+  /* Vibrant purple */
+  --chart-3: 140 75% 45%;
+  /* Neon green */
+  --chart-4: 50 90% 50%;
+  /* Warm golden yellow */
+  --chart-5: 210 85% 55%;
+  /* Electric blue */
+
+  /* Sidebar Colors */
+  --sidebar-background: 230 35% 10%;
+  /* Slightly lighter than main background */
+  --sidebar-foreground: 260 20% 88%;
+  /* Soft lavender sidebar text */
+  --sidebar-primary: 180 90% 45%;
+  /* Bright cyan sidebar primary */
+  --sidebar-primary-foreground: 230 35% 8%;
+  /* Dark sidebar primary text */
+  --sidebar-accent: 270 80% 60%;
+  /* Vibrant purple sidebar accent */
+  --sidebar-accent-foreground: 230 35% 8%;
+  /* Dark sidebar accent text */
+  --sidebar-border: 230 25% 18%;
+  /* Subtle navy blue border */
+  --sidebar-ring: 180 90% 45%;
+  /* Cyan sidebar focus ring */
+}
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    
+    
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+  }
+}
+::-webkit-scrollbar {
+  width: 7px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background: #f8f9ec;
+  border-radius: 5px;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #f8f9ec;
+}
+@layer utilities {
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        /* For Internet Explorer and Edge */
+        scrollbar-width: none;
+        /* For Firefox */
+      }
+        .hexagon-mask {
+          clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+        }
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+        /* For Chrome, Safari, and Opera */
+      }
+      
+}
