@@ -18,6 +18,7 @@ import { useSidebar } from "~/hooks/use-sidebar";
 import { DashboardNav } from "./Left-sidebar/dashboard-nav";
 import { LeftBottom, LeftNavigation } from "./Left-sidebar/sidebar";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
+import { SheetFooter } from "package/connect_wallet/src/components/ui/sheet";
 
 function Header() {
     const { isSheetOpen, setIsSheetOpen } = useSidebar();
@@ -44,7 +45,7 @@ function Header() {
                                 </Button>
                             </SheetTrigger>
 
-                            <SheetContent side="left" className="w-72 p-0">
+                            <SheetContent side="left" className="w-72 p-0 h-full">
                                 <SheetHeader className="flex items-start justify-between bg-primary p-2 rounded-md shadow-md">
 
                                     <div className="flex items-center gap-0  ">
@@ -63,15 +64,19 @@ function Header() {
 
                                     </div>
                                 </SheetHeader>
-                                <div className="flex h-full w-full flex-col items-center justify-between p-2 no-scrollbar">
-                                    <div className="flex w-full overflow-x-hidden flex-col py-2">
+                                <div className="flex h-full w-full flex-col items-center justify-between p-2 no-scrollbar overflow-y-auto">
+                                    <div className="flex h-full   w-full overflow-x-hidden flex-col py-2">
                                         <DashboardNav items={LeftNavigation} />
                                     </div>
-                                    <div className="flex w-full flex-col items-center">
+                                    <div className="flex h-full w-full flex-col items-center">
                                         <LeftBottom />
                                     </div>
                                 </div>
+
+
+
                             </SheetContent>
+
                         </Sheet>
                         <div className="relative ml-2 hidden h-14 w-24 md:block">
                             <Image
@@ -84,7 +89,7 @@ function Header() {
                                 className=" h-14 w-24"
                             />
                         </div>
-                        <h1 className="relative text-xl font-bold capitalize text-white md:text-4xl">
+                        <h1 className="hidden md:block relative text-xl font-bold capitalize text-white  md:text-4xl">
                             ACTIONVERSE
                             <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
                         </h1>
@@ -154,7 +159,7 @@ const HeaderButtons = () => {
             </Link>
             {isFBorGoogle && (
                 <Link className=" " href={"/recharge"}>
-                    <Button className="">
+                    <Button className="" variant='destructive'>
                         <ShoppingCart />
                     </Button>
                 </Link>

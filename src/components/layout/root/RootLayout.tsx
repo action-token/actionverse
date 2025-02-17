@@ -33,11 +33,9 @@ export default function Layout({
     return (
         <ThemeProvider
             attribute="class"
-            defaultTheme="system"
+            defaultTheme="light"
             enableSystem
             disableTransitionOnChange
-
-
         >
             <div className={clsx("flex flex-col w-full h-screen", className)}>
                 <Header />

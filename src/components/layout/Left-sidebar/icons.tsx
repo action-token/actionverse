@@ -81,6 +81,27 @@ export const Icons = {
   users: User2Icon,
   bounty: Trophy,
   music: Music,
+  artist: ({ ...props }: LucideProps) => (
+    <svg width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g clip-path="url(#clip0_86_1027)">
+        <mask id="mask0_86_1027" maskUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+          <path d="M16 0H0V16H16V0Z" fill="currentColor" />
+        </mask>
+        <g >
+          <path d="M8 6.66675C9.10457 6.66675 10 5.77132 10 4.66675C10 3.56218 9.10457 2.66675 8 2.66675C6.89543 2.66675 6 3.56218 6 4.66675C6 5.77132 6.89543 6.66675 8 6.66675Z" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M12.0001 13.3334C12.7365 13.3334 13.3334 12.7365 13.3334 12.0001C13.3334 11.2637 12.7365 10.6667 12.0001 10.6667C11.2637 10.6667 10.6667 11.2637 10.6667 12.0001C10.6667 12.7365 11.2637 13.3334 12.0001 13.3334Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M8.22768 13.3335H4.00008C3.2637 13.3335 2.66675 12.7366 2.66675 12.0002C2.66675 10.5274 3.86065 9.3335 5.33341 9.3335H9.01861" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M13.3335 12.0002V7.3335L14.6668 8.66683" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+      </g>
+      <defs>
+        <clipPath id="clip0_86_1027">
+          <rect width="16" height="16" fill="currentColor" />
+        </clipPath>
+      </defs>
+    </svg>
+
+  ),
 
 
 };

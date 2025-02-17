@@ -246,7 +246,7 @@ const AboutUser = ({ user }: { user: UserSettingsType }) => {
                             </div>
                         </div>
                         <div>
-                            <Textarea className="w-full  lg:w-[calc(100vw-50vw)] h-56 border-[2px] bg-gray-100  " disabled
+                            <Textarea className="w-full  lg:w-[calc(100vw-50vw)] h-56 border-[2px]   " disabled
 
 
 

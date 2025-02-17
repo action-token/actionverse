@@ -1,6 +1,8 @@
 "use client";
 import React, { useState } from "react";
 
+import { motion } from "framer-motion"
+import { Sun, Moon, Cloud, Star } from "lucide-react"
 import { ChevronLeft, LogOut } from "lucide-react";
 
 import { useSidebar } from "~/hooks/use-sidebar";
@@ -21,6 +23,7 @@ import { NavItem } from "~/types/icon-types";
 import { Button } from "~/components/shadcn/ui/button";
 import { signOut, useSession } from "next-auth/react";
 import { FaInstagram } from "react-icons/fa";
+import { useTheme } from "next-themes";
 
 export const LeftNavigation: NavItem[] = [
   { href: "/", icon: "dashboard", title: "HOMEPAGE" },
@@ -28,9 +31,9 @@ export const LeftNavigation: NavItem[] = [
   { href: "/my-collection", icon: "collection", title: "MY COLLECTION" },
   // Search: { path: "/search", icon: Search, text: "Search" },
   // { href: "/music", icon: "music", title: "MUSIC" },
-  { href: "/marketplace", icon: "store", title: "MARKETPLACE" },
-  { href: "/bounty", icon: "bounty", title: "BOUNTY" },
-  { href: "/artist/home", icon: "creator", title: "ARTISTS" },
+  // { href: "/marketplace", icon: "store", title: "MARKETPLACE" },
+  // { href: "/bounty", icon: "bounty", title: "BOUNTY" },
+  { href: "/artist/home", icon: "artist", title: "ARTISTS" },
   { href: "/settings", icon: "setting", title: "SETTINGS" },
 ];
 
@@ -56,11 +59,11 @@ export default function Sidebar({ className }: SidebarProps) {
     >
 
       <div className=" flex  h-full   w-full  flex-col items-center justify-between   py-2   no-scrollbar  ">
-        <div className="flex  w-full overflow-x-hidden   flex-col  ">
+        <div className="flex   w-full overflow-x-hidden   flex-col  ">
           <DashboardNav items={LeftNavigation} />
         </div>
         <div
-          className={`${isMinimized ? "hidden" : "flex"} w-full flex-col items-center`}
+          className={`${isMinimized ? "hidden" : "flex"} w-full flex-col items-center `}
         >
           <LeftBottom />
         </div>
@@ -91,10 +94,67 @@ function LogOutButon() {
 }
 
 export function LeftBottom() {
+  const { setTheme, theme } = useTheme()
+
+  const tougleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }
+
   return (
-    <div className="flex w-full flex-col justify-center gap-4 p-1">
+    <div className="flex w-full  flex-col   gap-4 p-1">
+      <div className="flex  items-center justify-center">
+        <button
+          onClick={() => tougleTheme()}
+          className="relative h-14 w-36  rounded-full transition-shadow duration-300 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:focus:ring-purple-400"
+          style={{
+            boxShadow: theme === "dark"
+              ? "inset 0 0 15px rgba(255, 255, 255, 0.2), 0 0 20px rgba(138, 43, 226, 0.4)"
+              : "inset 0 0 15px rgba(0, 0, 0, 0.1), 0 0 20px rgba(59, 130, 246, 0.4)",
+          }}
+        >
+          <motion.div
+            className="absolute top-1 left-1 right-1 bottom-1 rounded-full bg-gradient-to-br"
+            animate={{
+              background: theme === "dark"
+                ? "linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%)"
+                : "linear-gradient(135deg, #60a5fa 0%, #e0f2fe 100%)",
+            }}
+            transition={{ duration: 0.5 }}
+          />
+          <motion.div
+            className="absolute   h-12 w-12 top-1 rounded-full "
+            animate={{
+              x: theme === 'dark' ? 92 : 5,
+              background: theme === 'dark' ? "#f1c40f" : "#ffffff",
+            }}
+            transition={{
+              type: "spring",
+              stiffness: 700,
+              damping: 30,
+            }}
+          />
+          <div className="relative flex h-full items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+              <Sun className="h-8 w-8 text-yellow-400" />
+              <Cloud className="h-6 w-6 text-gray-200" />
+            </div>
+            <div className="flex items-center gap-2">
 
-
+              <Star className="h-4 w-4 text-yellow-200" />
+              <Moon className="h-8 w-8 text-indigo-200" />
+            </div>
+          </div>
+          <motion.div
+            className="absolute inset-0 rounded-full"
+            animate={{
+              boxShadow: theme === 'dark'
+                ? "inset 4px 4px 8px rgba(0, 0, 0, 0.3), inset -4px -4px 8px rgba(255, 255, 255, 0.1)"
+                : "inset 4px 4px 8px rgba(0, 0, 0, 0.1), inset -4px -4px 8px rgba(255, 255, 255, 0.5)",
+            }}
+            transition={{ duration: 0.5 }}
+          />
+        </button>
+      </div>
       <div className="w-full flex items-center justify-center ">
         <ConnectWalletButton />
       </div>
@@ -138,7 +198,7 @@ export function LeftBottom() {
             Support
           </Link>
         </div>
-        <p>v{1.1}</p>
+        <p>v 1.0.0</p>
       </div>
     </div>
   );
