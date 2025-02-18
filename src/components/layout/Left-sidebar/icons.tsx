@@ -83,7 +83,7 @@ export const Icons = {
   music: Music,
   artist: ({ ...props }: LucideProps) => (
     <svg width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <g clip-path="url(#clip0_86_1027)">
+      <g clipPath="url(#clip0_86_1027)">
         <mask id="mask0_86_1027" maskUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
           <path d="M16 0H0V16H16V0Z" fill="currentColor" />
         </mask>

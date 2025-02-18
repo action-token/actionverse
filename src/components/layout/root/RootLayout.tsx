@@ -1,17 +1,15 @@
 "use client";
 import clsx from "clsx";
 import { useSession } from "next-auth/react";
-import dynamic from "next/dynamic";
-import { useRouter } from "next/router";
+
 import React from "react";
 import { ChevronLeft } from "lucide-react";
 
 import { ThemeProvider } from "../../providers/theme-provider";
 import { ConnectWalletButton } from "package/connect_wallet";
-import { ScrollArea } from "~/components/shadcn/ui/scroll-area";
 
 import Header from "../Header";
-import Sidebar, { LeftNavigation } from "../Left-sidebar/sidebar";
+import Sidebar from "../Left-sidebar/sidebar";
 import { cn } from "~/lib/utils";
 import { useSidebar } from "~/hooks/use-sidebar";
 import ModalProvider from "~/components/providers/modal-provider";
@@ -40,7 +38,7 @@ export default function Layout({
             <div className={clsx("flex flex-col w-full h-screen", className)}>
                 <Header />
                 <div className="flex w-full scrollbar-hide ">
-                    <div className="relative  z-50">
+                    <div className="relative z-50 bg-secondary shadow-sm shadow-primary">
                         <Sidebar />
                         <ChevronLeft
                             className={cn(
@@ -52,8 +50,9 @@ export default function Layout({
 
                     </div>
 
+
                     {session.status === "authenticated" ? (
-                        <div className="w-full  overflow-y-auto p-2  lg:px-4 scrollbar-hide">
+                        <div className="w-full  overflow-y-auto p-2   lg:px-4 scrollbar-hide">
                             {children}
                             <ModalProvider />
                             <Toaster />
@@ -65,6 +64,7 @@ export default function Layout({
                             <ConnectWalletButton />
                         </div>
                     )}
+
                 </div>
             </div>
         </ThemeProvider>

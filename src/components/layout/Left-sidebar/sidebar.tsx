@@ -1,23 +1,20 @@
 "use client";
-import React, { useState } from "react";
+import React from "react";
 
 import { motion } from "framer-motion"
 import { Sun, Moon, Cloud, Star } from "lucide-react"
-import { ChevronLeft, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 
 import { useSidebar } from "~/hooks/use-sidebar";
 
 import { DashboardNav } from "./dashboard-nav";
 import { ConnectWalletButton } from "package/connect_wallet";
-import { Facebook, Instagram } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import { TbBrandFacebook } from "react-icons/tb";
 
 import Link from "next/link";
 import { HomeIcon } from "lucide-react";
-import Image from "next/image";
 import { cn } from "~/utils/utils";
-import { env } from "~/env";
 
 import { NavItem } from "~/types/icon-types";
 import { Button } from "~/components/shadcn/ui/button";
