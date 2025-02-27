@@ -38,7 +38,7 @@ export default function Layout({
             <div className={clsx("flex flex-col w-full h-screen", className)}>
                 <Header />
                 <div className="flex w-full scrollbar-hide ">
-                    <div className="relative z-50 bg-secondary shadow-sm shadow-primary">
+                    <div className="relative  bg-secondary shadow-sm shadow-primary">
                         <Sidebar />
                         <ChevronLeft
                             className={cn(
