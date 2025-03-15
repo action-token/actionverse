@@ -1,9 +1,11 @@
 import { NotificationType } from "@prisma/client";
 import { z } from "zod";
+import { CreatorPageAssetSchema } from "~/components/fan/creator/page_asset/new";
 import { AccountSchema } from "~/lib/stellar/fan/utils";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { BADWORDS } from "~/utils/banned-word";
+
 export const EditTierSchema = z.object({
   name: z
     .string()
@@ -77,35 +79,8 @@ export const CreatorAboutShema = z.object({
     .max(98, { message: "Name must be between 3 to 98 characters" }),
   profileUrl: z.string().nullable().optional(),
 });
-export const MAX_ASSET_LIMIT = Number("922337203685");
 
-export const CreatorPageAssetSchema = z.object({
-  code: z
-    .string()
-    .min(2, { message: "Must be a minimum of 2 characters" })
-    .max(12, { message: "Must be a maximum of 12 characters" })
-    .refine(
-      (value) => {
-        // Check if the input is a single word
-        return /^\w+$/.test(value);
-      },
-      {
-        message: "Input must be a single word",
-      },
-    ),
-  limit: z
-    .number({
-      required_error: "Limit must be entered as a number",
-      invalid_type_error: "Limit must be entered as a number",
-    })
-    .min(1, { message: "Limit must be greater than 0" })
-    .max(MAX_ASSET_LIMIT, {
-      message: `Limit must be less than ${MAX_ASSET_LIMIT} `,
-    })
-    .nonnegative()
-    .default(10),
-  thumbnail: z.string(),
-});
+export const MAX_ASSET_LIMIT = Number("922337203685");
 
 const selectedColumn = {
   name: true,
@@ -120,8 +95,8 @@ const selectedColumn = {
           code: true,
         },
       },
-    }
-  }
+    },
+  },
 };
 
 export const membershipRouter = createTRPCRouter({
@@ -231,81 +206,12 @@ export const membershipRouter = createTRPCRouter({
       });
     }),
 
-  // aCraatorSubscribedToken: protectedProcedure
-  //   .input(z.object({ creatorId: z.string() }))
-  //   .query(async ({ ctx, input }) => {
-  //     return await ctx.db.user_Subscription.findFirst({
-  //       where: {
-  //         userId: ctx.session.user.id,
-  //         subscription: {
-  //           creatorId: input.creatorId,
-  //         },
-  //       },
-  //       include: { subscription: true },
-  //     });
-  //   }),
   getAllMembership: protectedProcedure.query(async ({ ctx }) => {
     return await ctx.db.subscription.findMany({
       where: { creatorId: ctx.session.user.id },
       select: selectedColumn,
     });
   }),
-
-  // getUserSubcribed: protectedProcedure.query(async ({ ctx }) => {
-  //   return await ctx.db.user_Subscription.findMany({
-  //     where: {
-  //       AND: [
-  //         { userId: ctx.session.user.id },
-  //         // here i have to check not expired highest subscriptin.
-  //         { subcriptionEndDate: { gte: new Date() } },
-  //       ],
-  //     },
-  //     include: {
-  //       subscription: {
-  //         include: {
-  //           creator: true,
-  //         },
-  //       },
-  //     },
-  //   });
-  // }),
-
-  // subscribe: protectedProcedure
-  //   .input(
-  //     z.object({
-  //       subscriptionId: z.number(),
-  //       creatorId: z.string(),
-  //       days: z.number(),
-  //     }),
-  //   )
-  //   .mutation(async ({ ctx, input }) => {
-  //     const currentDate = new Date();
-  //     // Add 10 days to the current date
-  //     currentDate.setDate(currentDate.getDate() + input.days);
-  //     const subscription = await ctx.db.user_Subscription.create({
-  //       data: {
-  //         userId: ctx.session.user.id,
-  //         subscriptionId: input.subscriptionId,
-  //         subcriptionEndDate: currentDate,
-  //       },
-  //     });
-  //     await ctx.db.notificationObject.create({
-  //       data: {
-  //         actorId: ctx.session.user.id,
-  //         entityType: NotificationType.SUBSCRIPTION,
-  //         entityId: input.subscriptionId,
-  //         Notification: { create: [{ notifierId: input.creatorId }] },
-  //       },
-  //     });
-  //     return subscription;
-  //   }),
-
-  // userSubscriptions: protectedProcedure.query(async ({ ctx, input }) => {
-  //   const subscriptiosn = await ctx.db.user_Subscription.findMany({
-  //     where: { userId: ctx.session.user.id },
-  //   });
-  //   return subscriptiosn;
-  // }),
 
   isFollower: protectedProcedure
     .input(z.object({ creatorId: z.string() }))

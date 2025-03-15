@@ -1,8 +1,8 @@
 "use client";
 import React from "react";
 
-import { motion } from "framer-motion"
-import { Sun, Moon, Cloud, Star } from "lucide-react"
+import { motion } from "framer-motion";
+import { Sun, Moon, Cloud, Star } from "lucide-react";
 import { LogOut } from "lucide-react";
 
 import { useSidebar } from "~/hooks/use-sidebar";
@@ -45,18 +45,17 @@ type SidebarProps = {
 export default function Sidebar({ className }: SidebarProps) {
   const { isMinimized, toggle } = useSidebar();
 
-  const session = useSession()
+  const session = useSession();
   return (
     <div
       className={cn(
-        ` h-[calc(100vh-10.8vh)] sticky top-[5.8rem] p-1 w-full overflow-hidden border-r  hidden transition-[width] duration-500 md:block`,
+        ` sticky top-[5.8rem] hidden h-[calc(100vh-10.8vh)] w-full overflow-hidden border-r  p-1 transition-[width] duration-500 md:block`,
         !isMinimized ? "w-[280px]" : "w-[78px]",
         className,
       )}
     >
-
-      <div className=" flex  h-full   w-full  flex-col items-center justify-between   py-2   no-scrollbar  ">
-        <div className="flex   w-full overflow-x-hidden   flex-col  ">
+      <div className=" no-scrollbar  flex   h-full  w-full flex-col items-center   justify-between   py-2  ">
+        <div className="flex   w-full flex-col   overflow-x-hidden  ">
           <DashboardNav items={LeftNavigation} />
         </div>
         <div
@@ -64,16 +63,13 @@ export default function Sidebar({ className }: SidebarProps) {
         >
           <LeftBottom />
         </div>
-        {session.status == "authenticated" && isMinimized &&
-
+        {session.status == "authenticated" && isMinimized && (
           <div className="">
             <LogOutButon />
           </div>
-
-        }
+        )}
       </div>
     </div>
-
   );
 }
 function LogOutButon() {
@@ -83,19 +79,25 @@ function LogOutButon() {
     });
   }
   return (
-    <Button className="flex flex-col p-3 shadow-sm shadow-black" onClick={disconnectWallet}>
-      <span> <LogOut /></span>
+    <Button
+      className="flex flex-col p-3 shadow-sm shadow-black"
+      onClick={disconnectWallet}
+    >
+      <span>
+        {" "}
+        <LogOut />
+      </span>
       <span className="text-xs">Logout</span>
     </Button>
   );
 }
 
 export function LeftBottom() {
-  const { setTheme, theme } = useTheme()
+  const { setTheme, theme } = useTheme();
 
   const tougleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark")
-  }
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
 
   return (
     <div className="flex w-full  flex-col   gap-4 p-1">
@@ -104,25 +106,27 @@ export function LeftBottom() {
           onClick={() => tougleTheme()}
           className="relative h-14 w-36  rounded-full transition-shadow duration-300 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:focus:ring-purple-400"
           style={{
-            boxShadow: theme === "dark"
-              ? "inset 0 0 15px rgba(255, 255, 255, 0.2), 0 0 20px rgba(138, 43, 226, 0.4)"
-              : "inset 0 0 15px rgba(0, 0, 0, 0.1), 0 0 20px rgba(59, 130, 246, 0.4)",
+            boxShadow:
+              theme === "dark"
+                ? "inset 0 0 15px rgba(255, 255, 255, 0.2), 0 0 20px rgba(138, 43, 226, 0.4)"
+                : "inset 0 0 15px rgba(0, 0, 0, 0.1), 0 0 20px rgba(59, 130, 246, 0.4)",
           }}
         >
           <motion.div
-            className="absolute top-1 left-1 right-1 bottom-1 rounded-full bg-gradient-to-br"
+            className="absolute bottom-1 left-1 right-1 top-1 rounded-full bg-gradient-to-br"
             animate={{
-              background: theme === "dark"
-                ? "linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%)"
-                : "linear-gradient(135deg, #60a5fa 0%, #e0f2fe 100%)",
+              background:
+                theme === "dark"
+                  ? "linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%)"
+                  : "linear-gradient(135deg, #60a5fa 0%, #e0f2fe 100%)",
             }}
             transition={{ duration: 0.5 }}
           />
           <motion.div
-            className="absolute   h-12 w-12 top-1 rounded-full "
+            className="absolute   top-1 h-12 w-12 rounded-full "
             animate={{
-              x: theme === 'dark' ? 92 : 5,
-              background: theme === 'dark' ? "#f1c40f" : "#ffffff",
+              x: theme === "dark" ? 92 : 5,
+              background: theme === "dark" ? "#f1c40f" : "#ffffff",
             }}
             transition={{
               type: "spring",
@@ -136,7 +140,6 @@ export function LeftBottom() {
               <Cloud className="h-6 w-6 text-gray-200" />
             </div>
             <div className="flex items-center gap-2">
-
               <Star className="h-4 w-4 text-yellow-200" />
               <Moon className="h-8 w-8 text-indigo-200" />
             </div>
@@ -144,45 +147,43 @@ export function LeftBottom() {
           <motion.div
             className="absolute inset-0 rounded-full"
             animate={{
-              boxShadow: theme === 'dark'
-                ? "inset 4px 4px 8px rgba(0, 0, 0, 0.3), inset -4px -4px 8px rgba(255, 255, 255, 0.1)"
-                : "inset 4px 4px 8px rgba(0, 0, 0, 0.1), inset -4px -4px 8px rgba(255, 255, 255, 0.5)",
+              boxShadow:
+                theme === "dark"
+                  ? "inset 4px 4px 8px rgba(0, 0, 0, 0.3), inset -4px -4px 8px rgba(255, 255, 255, 0.1)"
+                  : "inset 4px 4px 8px rgba(0, 0, 0, 0.1), inset -4px -4px 8px rgba(255, 255, 255, 0.5)",
             }}
             transition={{ duration: 0.5 }}
           />
         </button>
       </div>
-      <div className="w-full flex items-center justify-center ">
+      <div className="flex w-full items-center justify-center ">
         <ConnectWalletButton />
       </div>
 
       <div className="flex  items-center justify-between  gap-4 ">
         <Link
           href={"https://facebook.com/bandcoinio"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-transparent justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 w-full flex-col items-center justify-center rounded-lg  bg-transparent text-xs  normal-case shadow-sm shadow-black"
           target="_blank"
         >
           <TbBrandFacebook size={26} className="text-destructive" />
-
         </Link>
         <Link
           href={"https://x.com/bandcoinio"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-transparent justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 w-full flex-col items-center justify-center rounded-lg  bg-transparent text-xs  normal-case shadow-sm shadow-black"
           target="_blank"
         >
-
           <FaXTwitter className="text-destructive" size={26} />
-
         </Link>
         <Link
           href={"https://www.instagram.com/bandcoin"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-transparent justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 w-full flex-col items-center justify-center rounded-lg  bg-transparent text-xs  normal-case shadow-sm shadow-black"
           target="_blank"
         >
           <FaInstagram className="text-destructive" size={26} />
         </Link>
       </div>
-      <div className="flex w-full flex-col text-center text-xs text-base-content">
+      <div className="text-base-content flex w-full flex-col text-center text-xs">
         <p>© 2024 Actionverse</p>
         <div className="flex w-full justify-center gap-2 ">
           <Link className="link-hover link" href="/about">
