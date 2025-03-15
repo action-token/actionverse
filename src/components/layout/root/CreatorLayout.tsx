@@ -279,7 +279,7 @@ export default function CreatorLayout({
           </>
         )}
       </div>
-      <div className="fixed bottom-2 right-4 z-50 w-32">
+      <div className="fixed bottom-2 right-4 z-50">
         <ModeSwitch />
         {/* <p>vong cong tong long pong</p> */}
       </div>
