@@ -166,6 +166,8 @@ model CreatorPageAsset {
     issuer        String
     issuerPrivate String?
     thumbnail     String?
+    priceUSD      Float   @default(1)
+    price         Float   @default(2)
 
     limit Int
 
@@ -187,12 +189,13 @@ model Creator {
     storagePub    String
     storageSecret String
 
-    approved Boolean? // if undefined than it is sended for aproval, false means banned, true means aproved
+    aprovalSend Boolean
+    approved    Boolean? // if undefined than it is sended for aproval, false means banned, true means aproved
 
     // pageAsset
     pageAssetId Int?
 
-    customPageAssetCodeIssuer String? // CODE-ISSUER
+    customPageAssetCodeIssuer String? // CODE-ISSUER-ASSET-USD
 
     user               User                @relation(fields: [id], references: [id], onDelete: Cascade)
     posts              Post[]
