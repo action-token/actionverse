@@ -1,20 +1,12 @@
 import { NotificationType } from "@prisma/client";
 import { z } from "zod";
 import { StellarAccount } from "~/lib/stellar/marketplace/test/Account";
-import {
-  createTRPCRouter,
-  protectedProcedure,
-  publicProcedure,
-} from "~/server/api/trpc";
-import { MediaInfo } from "../bounty/bounty";
-
 export const PostSchema = z.object({
   heading: z.string().min(1, { message: "Required" }),
   content: z.string().min(2, { message: "Minimum 2 characters required." }),
   subscription: z.string().optional(),
   medias: z.array(MediaInfo).optional(),
 });
-
 export const CommentSchema = z.object({
   postId: z.number(),
   parentId: z.number().optional(),
@@ -23,6 +15,12 @@ export const CommentSchema = z.object({
     .min(1, { message: "Minimum 5 character is required!" })
     .trim(),
 });
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "~/server/api/trpc";
+import { MediaInfo } from "../bounty/bounty";
 
 export const postRouter = createTRPCRouter({
   create: protectedProcedure
@@ -42,10 +40,10 @@ export const postRouter = createTRPCRouter({
             : null,
           medias: input.medias
             ? {
-                createMany: {
-                  data: input.medias,
-                },
-              }
+              createMany: {
+                data: input.medias,
+              },
+            }
             : undefined,
         },
       });
@@ -115,13 +113,7 @@ export const postRouter = createTRPCRouter({
           medias: true,
           subscription: true,
           creator: {
-            select: {
-              name: true,
-              id: true,
-              profileUrl: true,
-              pageAsset: true,
-              customPageAssetCodeIssuer: true,
-            },
+            select: { name: true, id: true, profileUrl: true, pageAsset: true, customPageAssetCodeIssuer: true },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -211,6 +203,11 @@ export const postRouter = createTRPCRouter({
           medias: true,
         },
       });
+
+
+
+
+
 
       if (post) {
         if (post.subscription) {

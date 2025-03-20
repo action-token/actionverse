@@ -1,5 +1,6 @@
 import { ItemPrivacy } from "@prisma/client";
 import { z } from "zod";
+import { createAdminPinFormSchema } from "~/components/modal/admin-create-pin-modal";
 
 
 import {
@@ -183,6 +184,76 @@ export const pinRouter = createTRPCRouter({
         }) ?? [],
     };
   }),
+  createForAdminPin: adminProcedure
+    .input(createAdminPinFormSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { pinNumber, pinCollectionLimit, token, tier, multiPin, creatorId } = input;
+      console.log(creatorId)
+      const creator = await ctx.db.creator.findUnique({
+        where: { id: creatorId },
+      });
+      console.log(creator)
+      if (!creator || !creatorId) throw new Error("Creator not found");
+
+      let tierId: number | undefined;
+      let privacy: ItemPrivacy = ItemPrivacy.PUBLIC;
+
+      if (!tier) {
+        privacy = ItemPrivacy.PUBLIC;
+      } else if (tier == "public") {
+        privacy = ItemPrivacy.PUBLIC;
+      } else if (tier == "private") {
+        privacy = ItemPrivacy.PRIVATE;
+      } else {
+        tierId = Number(tier);
+        privacy = ItemPrivacy.TIER;
+      }
+
+      let assetId = token;
+      let pageAsset = false;
+
+      if (token == PAGE_ASSET_NUM) {
+        assetId = undefined;
+        pageAsset = true;
+      }
+
+      const locations = Array.from({ length: pinNumber }).map(() => {
+        const randomLocatin = getLocationInLatLngRad(
+          input.lat,
+          input.lng,
+          input.radius,
+        );
+        return {
+          autoCollect: input.autoCollect,
+          latitude: randomLocatin.latitude,
+          longitude: randomLocatin.longitude,
+        };
+      });
+
+      await ctx.db.locationGroup.create({
+        data: {
+          creatorId: creatorId,
+          endDate: input.endDate,
+          startDate: input.startDate,
+          title: input.title,
+          description: input.description,
+          assetId: assetId,
+          pageAsset: pageAsset,
+          limit: pinCollectionLimit,
+          image: input.image,
+          link: input.url,
+          locations: {
+            createMany: {
+              data: locations,
+            },
+          },
+          subscriptionId: tierId,
+          privacy: privacy,
+          remaining: pinCollectionLimit,
+          multiPin: multiPin,
+        },
+      });
+    }),
 
   getPinM: creatorProcedure
     .input(z.string())
@@ -391,6 +462,54 @@ export const pinRouter = createTRPCRouter({
 
     return pins;
   }),
+  getCreatorPins: adminProcedure.input(z.object({
+    creator_id: z.string(),
+  })).query(async ({ ctx, input }) => {
+    const pins = await ctx.db.location.findMany({
+      where: {
+        locationGroup: {
+          creatorId: input.creator_id,
+          endDate: { gte: new Date() },
+          approved: { equals: true },
+        },
+      },
+      include: {
+        _count: { select: { consumers: true } },
+        locationGroup: {
+          include: {
+            creator: { select: { profileUrl: true } },
+            locations: {
+              select: {
+                locationGroup: {
+                  select: {
+                    endDate: true,
+                    startDate: true,
+                    limit: true,
+                    image: true,
+                    description: true,
+                    title: true,
+                    link: true,
+                    multiPin: true,
+                    subscriptionId: true,
+                    pageAsset: true,
+                    privacy: true,
+                    remaining: true,
+                    assetId: true,
+                  },
+                },
+                latitude: true,
+                longitude: true,
+                id: true,
+                autoCollect: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return pins;
+  }),
   getRangePins: creatorProcedure
     .input(
       z.object({
@@ -437,7 +556,7 @@ export const pinRouter = createTRPCRouter({
   getLocationGroups: adminProcedure.query(async ({ ctx, input }) => {
     const locationGroups = await ctx.db.locationGroup.findMany({
       where: { approved: { equals: null }, endDate: { gte: new Date() } },
-      include: { creator: { select: { name: true } }, locations: true },
+      include: { creator: { select: { name: true, id: true } }, locations: true },
       orderBy: { createdAt: "desc" },
     });
 
@@ -801,6 +920,7 @@ export const pinRouter = createTRPCRouter({
   toggleAutoCollect: protectedProcedure
     .input(z.object({ id: z.string(), isAutoCollect: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
+      console.log(input);
       await ctx.db.location.update({
         where: { id: input.id },
         data: { autoCollect: input.isAutoCollect },

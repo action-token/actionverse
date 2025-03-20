@@ -1,6 +1,11 @@
 import { z } from "zod";
+import { Input } from "~/components/shadcn/ui/input";
 
-import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "~/server/api/trpc";
 
 export const notificationRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
@@ -70,7 +75,7 @@ export const notificationRouter = createTRPCRouter({
         limit: z.number(),
         cursor: z.number().nullish(),
         skip: z.number().optional(),
-      }),
+      })
     )
     .query(async ({ input, ctx }) => {
       const { limit, skip, cursor } = input;
@@ -120,37 +125,40 @@ export const notificationRouter = createTRPCRouter({
       };
     }),
 
-  getUnseenNotificationCount: protectedProcedure.query(
-    async ({ input, ctx }) => {
-      const count = await ctx.db.notification.count({
-        where: {
-          AND: [
-            {
-              notifierId: ctx.session.user.id,
-            },
-            { seen: null },
-          ],
-        },
-      });
-
-      return count ?? 0;
-    },
-  ),
-
-  updateNotification: protectedProcedure.mutation(async ({ input, ctx }) => {
-    const updatedNotifications = await ctx.db.notification.updateMany({
+  getUnseenNotificationCount: protectedProcedure.query(async ({ input, ctx }) => {
+    const count = await ctx.db.notification.count({
       where: {
         AND: [
           {
             notifierId: ctx.session.user.id,
           },
+          { seen: null },
+
         ],
-      },
-      data: {
-        seen: new Date(),
       },
     });
 
-    return updatedNotifications;
+    return count ?? 0;
   }),
+
+  updateNotification: protectedProcedure
+    .mutation(async ({ input, ctx }) => {
+      const updatedNotifications = await ctx.db.notification.updateMany({
+        where: {
+          AND: [
+            {
+              notifierId: ctx.session.user.id,
+            },
+
+          ],
+        },
+        data: {
+          seen: new Date(),
+        },
+      });
+
+      return updatedNotifications;
+    }),
+
+
 });

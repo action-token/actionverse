@@ -11,15 +11,18 @@ import { ToggleButton } from "~/components/common/toggle-button-admin";
 import { api } from "~/utils/api";
 import { usePathname, useRouter } from "next/navigation";
 import { useCreatorSidebar } from "~/hooks/use-creator-sidebar";
+import { Mode, useModeStore } from "~/components/store/mode-store";
+
 import { ModeSwitch } from "~/components/common/mode-switch";
 import Link from "next/link";
 import { Icons } from "../Left-sidebar/icons";
-import { SkeletonEffect } from "~/components/loading/skeleton-effect";
 import { useToast } from "~/components/shadcn/ui/use-toast";
 import TrendingSidebar from "~/components/post/trending-sidebar";
 import CreatorSidebar from "~/components/post/followed-creator";
 import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card";
-import { Mode, useModeStore } from "~/components/store/mode-store";
+import JoinArtistPage from "~/components/creator/join-artist";
+import JoinArtistPageLoading from "~/components/loading/join-artist-loading";
+import PendingArtistPage from "~/components/creator/pending-artist";
 
 export default function CreatorLayout({
   children,
@@ -42,10 +45,17 @@ export default function CreatorLayout({
   };
 
   const { isMinimized, toggle } = useCreatorSidebar();
-  const { selectedMode, toggleSelectedMode } = useModeStore();
+  const {
+    selectedMode,
+    toggleSelectedMode,
+    isTransitioning,
+    startTransition,
+    endTransition,
+  } = useModeStore();
   const creator = api.fan.creator.meCreator.useQuery(undefined, {
     refetchOnWindowFocus: false,
   });
+  console.log(creator.data);
 
   // Animation variants for sidebar
   const sidebarVariants = {
@@ -125,8 +135,9 @@ export default function CreatorLayout({
           description: "You are now in creator mode",
           variant: "destructive",
         });
+
       }
-    });
+    })
   }, [creator.data?.id]);
 
   return (
@@ -176,26 +187,29 @@ export default function CreatorLayout({
                 style={{ perspective: "1000px" }}
               >
                 <motion.div
-                  className="no-scrollbar  flex h-full w-full flex-col items-center justify-start gap-4 py-2"
+                  className="no-scrollbar  flex gap-4 h-full w-full flex-col items-center justify-start py-2"
                   initial={false}
                   animate={isMinimized ? "collapsed" : "expanded"}
                   variants={contentVariants}
                 >
                   <Card className="flex min-h-[72%]    w-full flex-col gap-2 overflow-x-hidden scrollbar-hide">
-                    <CardHeader className="sticky top-0 z-10 bg-primary p-2">
-                      <h3 className="text-center   font-medium ">
-                        Trending Creators
-                      </h3>
+                    <CardHeader className="sticky top-0 bg-primary z-10 p-2">
+                      <h3 className="font-medium   text-center ">Trending Creators</h3>
+
                     </CardHeader>
                     <CardContent className="p-1 ">
+
                       <TrendingSidebar />
+
                     </CardContent>
+
+
                   </Card>
                   <Card className="flex h-full  w-full flex-col gap-2 overflow-x-hidden  scrollbar-hide">
-                    <CardHeader className="sticky top-0 z-10 bg-primary p-2">
-                      <h3 className="sticky  top-0 mb-3 text-center font-medium">
-                        Followed Creators
-                      </h3>
+
+                    <CardHeader className="sticky top-0 bg-primary z-10 p-2">
+                      <h3 className="font-medium  mb-3 text-center sticky top-0">Followed Creators</h3>
+
                     </CardHeader>
                     <CardContent>
                       <div className=" overflow-y-auto">
@@ -217,21 +231,24 @@ export default function CreatorLayout({
             >
               {creator.isLoading && selectedMode === Mode.Creator ? (
                 <div className="flex h-full w-full items-center justify-center">
-                  <div className="w-full max-w-4xl space-y-4 px-4">
-                    <SkeletonEffect variant="card" count={3} />
-                  </div>
+                  <JoinArtistPageLoading />
                 </div>
-              ) : creator.data?.id && selectedMode === Mode.Creator ? (
+              ) : creator.data?.id && creator.data?.approved === true && selectedMode === Mode.Creator ? (
                 <div className="flex h-screen w-full flex-col">{children}</div>
-              ) : (
-                !creator.data && (
+              ) :
+                creator.data?.aprovalSend && creator.data?.approved === null ? (
                   <div className="flex h-full w-full items-center justify-center">
-                    <h1 className="text-3xl font-bold">
-                      You are not authorized to view this page
-                    </h1>
+                    <PendingArtistPage createdAt={creator.data?.createdAt} />
                   </div>
-                )
-              )}
+                ) :
+
+                  (
+                    !creator.data && (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <JoinArtistPage />
+                      </div>
+                    )
+                  )}
             </motion.div>
 
             <div
@@ -239,8 +256,85 @@ export default function CreatorLayout({
             >
               <div className="relative">
                 {/* Expanded Items */}
-                <ExpandedItem isExpanded={isExpanded} />
-                {/* Toggle Button */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <div className="absolute -left-4 bottom-12 -translate-x-1/2 md:bottom-10">
+                      {CreatorNavigation.map((item, index) => {
+                        const Icon = Icons[item.icon as keyof typeof Icons];
+
+                        return (
+                          <Link
+                            key={index}
+                            href={item.disabled ? "/artist/wallet" : item.href}
+                          >
+                            <motion.div
+                              initial={{
+                                y: 0,
+                                x: 0,
+                                scale: 0.5,
+                                opacity: 0,
+                              }}
+                              animate={{
+                                y: -60 * (index + 1),
+                                x: -Math.sin((index + 1) * 0.4) * 25, // Create a small natural curve
+                                scale: 1,
+                                opacity: 1,
+                              }}
+                              exit={{
+                                y: 0,
+                                x: Math.sin((index + 1) * 0.5) * 5, // Maintain curve during exit
+                                scale: 0.5,
+                                opacity: 0,
+                                transition: {
+                                  duration: 0.2,
+                                  delay: (LeftNavigation.length - index) * 0.05,
+                                },
+                              }}
+                              transition={{
+                                duration: 0.3,
+                                delay: index * 0.05,
+                                type: "spring",
+                                stiffness: 260,
+                                damping: 20,
+                              }}
+                              className="absolute left-1/2 -translate-x-1/2"
+                            >
+                              <Button
+                                size="icon"
+                                className={cn(
+                                  "hover:scale-109 h-12 w-12 shadow-lg transition-transform hover:bg-foreground hover:text-primary",
+                                  item.color,
+                                  "text-white",
+                                  path === item.href ? "bg-foreground " : "",
+                                )}
+                                onClick={() =>
+                                  console.log(`Clicked ${item.label}`)
+                                }
+                              >
+                                <Icon />
+                                <span className="sr-only">{item.label}</span>
+                              </Button>
+                              <motion.span
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 20 }}
+                                transition={{ delay: index * 0.05 + 0.2 }}
+                                className={cn(
+                                  "absolute left-full top-2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-md bg-background px-2 py-1 text-sm font-medium shadow-sm hover:bg-foreground hover:text-primary",
+                                  path === item.href
+                                    ? "bg-foreground text-primary"
+                                    : "",
+                                )}
+                              >
+                                {item.label}
+                              </motion.span>
+                            </motion.div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </AnimatePresence>
 
                 <motion.div
                   whileHover={{ scale: 1.05 }}
@@ -250,7 +344,7 @@ export default function CreatorLayout({
                 >
                   <Button
                     size="icon"
-                    variant="destructive"
+                    variant='destructive'
                     onClick={toggleExpand}
                     className="h-10 w-10 rounded-sm border-2 border-[#dbdd2c] font-bold"
                   >
@@ -281,90 +375,9 @@ export default function CreatorLayout({
       </div>
       <div className="fixed bottom-2 right-4 z-50">
         <ModeSwitch />
-        {/* <p>vong cong tong long pong</p> */}
       </div>
     </div>
   );
-}
-
-function ExpandedItem({ isExpanded }: { isExpanded: boolean }) {
-  const path = usePathname();
-  if (isExpanded)
-    return (
-      //   <AnimatePresence>
-      <div className="absolute -left-4 bottom-12 -translate-x-1/2 md:bottom-10">
-        {CreatorNavigation.map((item, index) => {
-          const Icon = Icons[item.icon as keyof typeof Icons];
-
-          return (
-            <Link
-              key={index}
-              href={item.disabled ? "/artist/wallet" : item.href}
-            >
-              <motion.div
-                initial={{
-                  y: 0,
-                  x: 0,
-                  scale: 0.5,
-                  opacity: 0,
-                }}
-                animate={{
-                  y: -60 * (index + 1),
-                  x: -Math.sin((index + 1) * 0.4) * 25, // Create a small natural curve
-                  scale: 1,
-                  opacity: 1,
-                }}
-                exit={{
-                  y: 0,
-                  x: Math.sin((index + 1) * 0.5) * 5, // Maintain curve during exit
-                  scale: 0.5,
-                  opacity: 0,
-                  transition: {
-                    duration: 0.2,
-                    delay: (LeftNavigation.length - index) * 0.05,
-                  },
-                }}
-                transition={{
-                  duration: 0.3,
-                  delay: index * 0.05,
-                  type: "spring",
-                  stiffness: 260,
-                  damping: 20,
-                }}
-                className="absolute left-1/2 -translate-x-1/2"
-              >
-                <Button
-                  size="icon"
-                  className={cn(
-                    "hover:scale-109 h-12 w-12 shadow-lg transition-transform hover:bg-foreground hover:text-primary",
-                    item.color,
-                    "text-white",
-                    path === item.href ? "bg-foreground " : "",
-                  )}
-                  onClick={() => console.log(`Clicked ${item.label}`)}
-                >
-                  {Icon && <Icon />}
-                  <span className="sr-only">{item.label}</span>
-                </Button>
-                <motion.span
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: index * 0.05 + 0.2 }}
-                  className={cn(
-                    "absolute left-full top-2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-md bg-background px-2 py-1 text-sm font-medium shadow-sm hover:bg-foreground hover:text-primary",
-                    path === item.href ? "bg-foreground text-primary" : "",
-                  )}
-                >
-                  {item.label}
-                </motion.span>
-              </motion.div>
-            </Link>
-          );
-        })}
-      </div>
-      //   </AnimatePresence>
-    );
 }
 
 export const LeftNavigation: NavItem[] = [
@@ -387,13 +400,13 @@ type DockerItem = {
 
 const CreatorNavigation: DockerItem[] = [
   {
-    href: "/artist",
+    href: "/artist/profile",
     icon: "wallet",
     label: "PROFILE",
     color: "bg-blue-500",
   },
   {
-    href: "/artist/posts",
+    href: "/artist/post",
     icon: "admin",
     label: "POST",
     color: "bg-purple-500",

@@ -30,6 +30,7 @@ export async function createUniAsset({
   homeDomain,
   storageSecret,
   ipfsHash,
+  actionAmount,
 }: {
   pubkey: string;
   code: string;
@@ -42,6 +43,12 @@ export async function createUniAsset({
 }) {
   const server = new Horizon.Server(STELLAR_URL);
 
+  const extractHash = ipfsHash.split("/").pop();
+
+  if (!extractHash) {
+    throw new Error("Invalid ipfsHash");
+  }
+
   // accounts
   const issuerAcc = Keypair.random();
   const assetStorage = Keypair.fromSecret(storageSecret);
@@ -49,18 +56,15 @@ export async function createUniAsset({
 
   const asset = new Asset(code, issuerAcc.publicKey());
 
-  // get total platform token
   const requiredAsset2refundXlm = await getplatformAssetNumberForXLM(2);
   const total =
     requiredAsset2refundXlm +
     Number(PLATFORM_FEE) +
     Number(TrxBaseFeeInPlatformAsset);
 
-  // here pubkey should be change for admin
   const transactionInitializer = await server.loadAccount(
     PLATFORM_MOTHER_ACC.publicKey(),
   );
-
   const Tx1 = new TransactionBuilder(transactionInitializer, {
     fee: TrxBaseFee,
     networkPassphrase,
@@ -126,7 +130,7 @@ export async function createUniAsset({
     .addOperation(
       Operation.manageData({
         name: "ipfshash",
-        value: ipfsHash,
+        value: extractHash,
         source: issuerAcc.publicKey(),
       }),
     )

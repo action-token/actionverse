@@ -37,6 +37,8 @@ import {
   Music,
   Store,
   Trophy,
+  MapPinned,
+
 } from "lucide-react";
 import { RiAdminFill } from "react-icons/ri";
 import { FaWallet } from "react-icons/fa";
@@ -81,6 +83,7 @@ export const Icons = {
   users: User2Icon,
   bounty: Trophy,
   music: Music,
+  map: MapPinned,
   artist: ({ ...props }: LucideProps) => (
     <svg width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <g clipPath="url(#clip0_86_1027)">
@@ -102,6 +105,5 @@ export const Icons = {
     </svg>
 
   ),
-
 
 };

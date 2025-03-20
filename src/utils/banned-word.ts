@@ -1,8 +1,5 @@
 export const BADWORDS = [
   "Bandcoin",
-  "actionverse",
-  "Actionverse",
-  "ACTIONVERSE",
   "WWW",
   "XLM",
   "Stellar",

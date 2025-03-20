@@ -129,7 +129,7 @@ const HeaderButtons = () => {
         api.fan.notification.getUnseenNotificationCount.useQuery(
             undefined,
             {
-                enabled: session.data?.user?.id !== undefined,
+                enabled: session.data?.user?.id !== undefined
             }
         );
 
@@ -180,4 +180,3 @@ const HeaderButtons = () => {
         </div>
     );
 };
-

@@ -8,7 +8,7 @@ import { api } from "~/utils/api";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { Roboto, Lobster, Roboto_Slab, Rowdies } from "next/font/google";
+import { Titillium_Web } from "next/font/google";
 import "~/styles/globals.css";
 import Layout from "~/components/layout/root/RootLayout";
 import { Toaster } from "~/components/shadcn/ui/toaster";
@@ -16,29 +16,30 @@ import { Toaster } from "~/components/shadcn/ui/toaster";
 const queryClient = new QueryClient();
 
 const PopupImports = dynamic(
-  async () =>
-    await import("package/connect_wallet/src/components/popup_imports"),
+    async () =>
+        await import("package/connect_wallet/src/components/popup_imports"),
 );
 
-const inner = Roboto_Slab({
-  subsets: ["latin"],
-  weight: ["300", "400", "700"],
-});
+const inner = Titillium_Web({ subsets: ["latin"], weight: "400" });
 
 const MyApp: AppType<{ session: Session | null }> = ({
-  Component,
-  pageProps: { session, ...pageProps },
+    Component,
+    pageProps: { session, ...pageProps },
 }) => {
-  return (
-    <SessionProvider session={session}>
-      <QueryClientProvider client={queryClient}>
-        <Layout className={inner.className}>
-          <Component {...pageProps} />
-        </Layout>
-        <PopupImports className={inner.className} />
-      </QueryClientProvider>
-    </SessionProvider>
-  );
+    return (
+        <SessionProvider session={session}>
+            <QueryClientProvider client={queryClient}>
+
+                <Layout className={inner.className}>
+                    <Component {...pageProps} />
+                    <Toaster />
+
+                </Layout>
+                <PopupImports className={inner.className} />
+
+            </QueryClientProvider>
+        </SessionProvider>
+    );
 };
 
 export default api.withTRPC(MyApp);

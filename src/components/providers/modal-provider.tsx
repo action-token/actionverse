@@ -8,6 +8,15 @@ import MusicBuyModal from "../modal/music-buy-modal";
 import EditBountyModal from "../modal/edit-bounty-modal";
 import BountyFileUploadModal from "../modal/bounty-submission-modal";
 import ViewBountyAttachmentModal from "../modal/view-bounty-attachment-modal";
+import CreateBountyModal from "../modal/create-bounty-modal";
+import CreatorCreatePinModal from "../modal/creator-create-pin-modal";
+import MapOptionModal from "../modal/map-options-modal";
+import CreateAlbumModal from "../modal/create-album-modal";
+import NftCreateModal from "../modal/nft-create-modal";
+import CreatorStoredAssetModal from "../modal/creator-stored-asset-modal";
+import CreateSongModal from "../modal/create-song-modal";
+import ShareModal from "../modal/share-post-modal";
+import CreateLocationBasedBountyModal from "../modal/create-locationbased-bounty";
 
 const ModalProvider = () => {
   const [isMounted, setIsMounted] = useState(false);
@@ -28,6 +37,15 @@ const ModalProvider = () => {
       <EditBountyModal />
       <BountyFileUploadModal />
       <ViewBountyAttachmentModal />
+      <CreateBountyModal />
+      <MapOptionModal />
+      <CreatorCreatePinModal />
+      <CreateAlbumModal />
+      <NftCreateModal />
+      <CreatorStoredAssetModal />
+      <CreateSongModal />
+      <ShareModal />
+      <CreateLocationBasedBountyModal />
 
     </>
   );

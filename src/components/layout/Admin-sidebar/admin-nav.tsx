@@ -42,9 +42,9 @@ export function AdminNav({ items, setOpen, setCursorVariant }: AdminNavProps) {
                     <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.95 }}>
                       <Button
                         className={cn(
-                          "flex    w-full items-center shadow-sm  justify-start   gap-2 overflow-hidden rounded-md text-sm font-medium ",
+                          "flex w-full items-center shadow-sm justify-center gap-2 overflow-hidden rounded-md text-sm font-medium hover:text-[#dbdd2c]",
                           path === item.href
-                            ? "border-destructive border-2 text-destructive font-bol bg-white hover:bg-white"
+                            ? "border-[#dbdd2c] border-2 text-[#dbdd2c] font-bold"
                             : "transparent shadow-black",
                           item.disabled && "cursor-not-allowed opacity-80",
                         )}

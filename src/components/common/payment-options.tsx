@@ -17,6 +17,7 @@ import { PLATFORM_ASSET } from "~/lib/stellar/constant";
 import { create } from "zustand";
 import { env } from "~/env";
 import { PaymentMethod, PaymentMethodEnum } from "../payment/payment-process";
+import Image from "next/image";
 
 interface PaymentMethodStore {
     paymentMethod: PaymentMethod;
@@ -95,13 +96,19 @@ export function PaymentChoose({
                             <RadioGroupItem
                                 value={PaymentMethodEnum.enum.asset}
                                 id={PaymentMethodEnum.enum.asset}
-                                className="border-primary"
+                                className=""
                             />
                             <Label
                                 htmlFor={PaymentMethodEnum.enum.asset}
                                 className="flex flex-1 cursor-pointer items-center"
                             >
-                                <Coins className="mr-3 h-6 w-6 text-primary" />
+                                {
+                                    PLATFORM_ASSET.code.toLocaleLowerCase() === "bandcoin" ? <Image
+                                        alt="bandcoin"
+                                        height={24}
+                                        width={24}
+                                        src={"https://bandcoin.io/images/logo.png"} className="mr-3 h-6 w-6" /> : <Coins className="mr-3 h-6 w-6" />
+                                }
                                 <div className="flex-grow">
                                     <div className="font-medium">
                                         Pay with {PLATFORM_ASSET.code}
@@ -119,13 +126,13 @@ export function PaymentChoose({
                             <RadioGroupItem
                                 value={PaymentMethodEnum.enum.xlm}
                                 id={PaymentMethodEnum.enum.xlm}
-                                className="border-primary"
+                                className=""
                             />
                             <Label
                                 htmlFor={PaymentMethodEnum.enum.xlm}
                                 className="flex flex-1 cursor-pointer items-center"
                             >
-                                <DollarSign className="mr-3 h-6 w-6 text-primary" />
+                                <DollarSign className="mr-3 h-6 w-6" />
                                 <div className="flex-grow">
                                     <div className="font-medium">Pay with XLM</div>
                                     <div className="text-sm text-gray-500">
@@ -163,15 +170,15 @@ export function PaymentChoose({
                         : `${XLM_EQUIVALENT} XLM`}{" "}
                     to perform this action.
                 </div>
-                <DialogFooter className="mt-6">
+                <DialogFooter className=" flex flex-row items-center justify-between gap-2">
                     <Button
                         variant="outline"
                         onClick={() => setIsOpen(false)}
-                        className="mb-2 w-full"
+                        className=" w-full"
                     >
                         Cancel
                     </Button>
-                    <Button onClick={handleConfirm} disabled={loading} className="w-full">
+                    <Button onClick={handleConfirm} disabled={loading} className="w-full  shadow-sm shadow-foreground">
                         {loading && <Loader2 className="mr-2 animate-spin" />}
                         Confirm Payment
                     </Button>

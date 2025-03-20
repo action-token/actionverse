@@ -73,17 +73,17 @@ export default function BountyList({
                             className="h-48 w-full object-cover"
                         />
                         <div className="absolute top-0 right-0 m-4">
-                            <Badge variant="secondary" className="bg-primary text-black">
+                            <Badge variant="secondary" className="bg-primary ">
                                 ${bounty.priceInUSD}
                             </Badge>
                         </div>
                     </CardHeader>
                     <CardContent className="flex flex-col p-6">
-                        <CardTitle className="mb-3 text-xl font-bold text-black">{bounty.title}</CardTitle>
-                        <div className="mb-4 text-sm text-gray-600 min-h-[100px] max-h-[100px] dark:text-gray-300 line-clamp-3 overflow-y-auto scrollbar-hide">
+                        <CardTitle className="mb-3 text-xl font-bold">{bounty.title}</CardTitle>
+                        <div className="mb-4  min-h-[100px] max-h-[100px] line-clamp-3 overflow-y-auto scrollbar-hide">
                             <SafeHTML html={bounty.description} />
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center gap-4 text-sm ">
                             <div className="flex items-center">
                                 <Users className="mr-1 h-4 w-4" />
                                 <span>{bounty._count.participants} participants</span>
@@ -119,7 +119,7 @@ export default function BountyList({
                                 onClick={() => {
                                     router.push(`/bounty/${bounty.id}`)
                                 }}
-                                variant="default" className="w-full mt-2">
+                                variant="default" className="w-full mt-2 shadow-sm shadow-foreground">
                                 View
                             </Button>
                         ) : (
@@ -129,7 +129,7 @@ export default function BountyList({
                                     e.stopPropagation()
                                     handleJoinBounty(bounty.id)
                                 }}
-                                className="w-full mt-2" disabled={!isEligible(bounty)}>
+                                className="w-full mt-2 shadow-sm shadow-foreground" disabled={!isEligible(bounty)}>
                                 {joinBountyMutation.isLoading
                                     && bounty.id === joinBountyMutation.variables?.BountyId
                                     ? <span className="flex items-center justify-center gap-2">
@@ -140,7 +140,7 @@ export default function BountyList({
                         )}
                         {!isEligible(bounty) ? (
                             <p className="text-xs text-red-500 mt-2">
-                                {bounty.currentWinnerCount >= bounty.totalWinner ? "No spots left" : "Insufficient balance to join"}
+                                {bounty.currentWinnerCount >= bounty.totalWinner ? "No spots left" : `${bounty.requiredBalance.toFixed(1)} ${PLATFORM_ASSET.code.toLocaleUpperCase()} required`}
                             </p>
                         ) :
                             <p className="text-xs text-green-500 mt-2">
