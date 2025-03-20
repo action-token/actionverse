@@ -328,7 +328,7 @@ const ChatItem = ({ item }: { item: BountyDoubtListItem }) => {
             <CardFooter className="">
                 <form onSubmit={handleSubmit} className="flex w-full items-center gap-1 space-x-2 ">
                     <MultiUploadS3Button
-                        varient="input"
+                        variant="input"
                         className="w-10 sahd"
                         endpoint="multiBlobUploader"
                         onUploadProgress={(progress) => setProgress(progress)}

@@ -31,7 +31,7 @@ export const ToggleButton: React.FC<ToggleButtonProps> = ({ isActive, onToggle, 
 
     return (
         <motion.button
-            className="relative w-10 h-10 bg-primary shadow-sm shadow-foreground rounded-full overflow-hidden flex items-center justify-center"
+            className="relative w-10 h-10 bg-primary shadow-sm shadow-foreground rounded-full overflow-hidden flex items-center justify-center "
             onClick={handleClick}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
@@ -40,7 +40,7 @@ export const ToggleButton: React.FC<ToggleButtonProps> = ({ isActive, onToggle, 
             aria-label={isActive ? "Collapse sidebar" : "Expand sidebar"}
         >
             <motion.div initial={false}>
-                {isActive ? <ChevronsLeft className="w-6 h-6" /> : <ChevronsRight className="w-6 h-6" />}
+                {isActive ? <ChevronsLeft className="w-6 h-6 animate-pulse " /> : <ChevronsRight className="w-6 h-6 animate-pulse" />}
             </motion.div>
         </motion.button>
     )

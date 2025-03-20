@@ -133,8 +133,8 @@ export default Music;
 const MusicTabs = () => {
     const { seletedTab, setSelectedTab } = useMusicTabStore();
     return (
-        <Card>
-            <CardHeader className="w-full rounded-md bg-secondary p-2 md:p-4">
+        <Card className="w-full rounded-none">
+            <CardHeader className="w-full  bg-primary p-2 md:p-4">
                 <CardTitle className="flex w-full gap-2 p-0 md:gap-4">
                     {TABS.map((tab) => (
                         <Button
@@ -143,7 +143,7 @@ const MusicTabs = () => {
                             className={cn(
                                 "md:text-md flex w-1/2 px-2 text-xs shadow-sm shadow-black transition-all duration-300 ease-in-out lg:px-10",
                                 seletedTab === tab
-                                    ? "w-full border-2 font-bold text-destructive border-destructive bg-background hover:bg-background"
+                                    ? "w-full border-2 font-bold text-[#dbdd2c]"
                                     : " ",
                             )}
                         >
@@ -302,7 +302,7 @@ function MusicCarousel() {
 
     if (RecentAddedSong.isLoading) {
         return (
-            <div className="relative h-[calc(100vh-55vh)] w-full overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-4 shadow-lg sm:h-[calc(100vh-60vh)] md:h-[42vh]">
+            <div className="relative h-[calc(100vh-55vh)] w-full overflow-hidden rounded-b-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-4 shadow-lg sm:h-[calc(100vh-60vh)] md:h-[42vh]">
                 {/* Background skeleton */}
                 <div className="absolute inset-0 z-0 animate-pulse rounded-md bg-gray-800" />
 
@@ -364,7 +364,7 @@ function MusicCarousel() {
     if (!RecentAddedSong.data) return null;
     return (
         <>
-            <div className="relative h-[calc(100vh-55vh)] w-full overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-4 shadow-lg sm:h-[calc(100vh-60vh)] md:h-[42vh]">
+            <div className="relative h-[calc(100vh-55vh)] w-full overflow-hidden rounded-b-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-4 shadow-lg sm:h-[calc(100vh-60vh)] md:h-[42vh]">
                 <div className="absolute inset-0 z-0 rounded-md">
                     <Image
                         src={

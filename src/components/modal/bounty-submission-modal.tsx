@@ -263,7 +263,7 @@ const BountyFileUploadModal = () => {
                                 </span>
                                 <MultiUploadS3Button
                                     endpoint="multiBlobUploader"
-                                    varient="button"
+                                    variant="button"
                                     onUploadProgress={(progressValue) => {
                                         setProgress((prevProgress) => {
                                             // Assuming progress for the first file in the uploadingFiles list is updated

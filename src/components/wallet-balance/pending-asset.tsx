@@ -117,7 +117,7 @@ const PendingAssetList = ({
           });
       },
 
-      onError(error) {
+      onError() {
         toast.error("Decline Claim Balance failed");
         setLoading(false);
       },

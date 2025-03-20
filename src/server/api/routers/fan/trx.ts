@@ -17,7 +17,6 @@ import { Keypair } from "@stellar/stellar-sdk";
 
 import { env } from "~/env";
 import {
-  PLATFORM_ASSET,
   PLATFORM_FEE,
   TrxBaseFeeInPlatformAsset,
 } from "~/lib/stellar/constant";
@@ -33,19 +32,29 @@ import {
   createUniAsset,
   createUniAssetWithXLM,
 } from "~/lib/stellar/uni_create_asset";
-import { FanGitFormSchema } from "~/pages/artist/gift";
 import {
   createTRPCRouter,
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
 import { db } from "~/server/db";
-import { PaymentMethodEnum } from "~/components/payment/payment-process";
 enum assetType {
   PAGEASSET = "PAGEASSET",
   PLATFORMASSET = "PLATFORMASSET",
-  SHOPASSET = "SHOPASSET",
+  SHOPASSET = "SHOPASSET"
 }
+const HIGHEST_LIMIT = "922337203685.4775807";
+export const PaymentMethodEnum = z.enum(["asset", "xlm", "card"]);
+export type PaymentMethod = z.infer<typeof PaymentMethodEnum>;
+export const FanGitFormSchema = z.object({
+  pubkey: z.string().length(56),
+  amount: z.number({
+    required_error: "Amount is required",
+    invalid_type_error: "Amount must be a number",
+    message: "Amount must be a number",
+  }).min(1),
+});
+
 export const trxRouter = createTRPCRouter({
   createCreatorPageAsset: protectedProcedure
     .input(
@@ -71,7 +80,7 @@ export const trxRouter = createTRPCRouter({
       if (input.method && input.method === "xlm") {
         return await creatorPageAccCreateWithXLM({
           ipfs: input.ipfs,
-          limit: limit.toString(),
+          limit: HIGHEST_LIMIT,
           storageSecret: creatorStorageSec,
           pubkey: creatorId,
           assetCode: code,
@@ -80,7 +89,7 @@ export const trxRouter = createTRPCRouter({
       } else {
         return await creatorPageAccCreate({
           ipfs: input.ipfs,
-          limit: limit.toString(),
+          limit: HIGHEST_LIMIT,
           storageSecret: creatorStorageSec,
           pubkey: creatorId,
           assetCode: code,
@@ -304,28 +313,22 @@ export const trxRouter = createTRPCRouter({
         throw new Error("creator has no page asset");
       }
     }),
-
   giftFollowerXDR: protectedProcedure // only logged creator can do that
-    .input(
-      z.object({
-        pubkey: z.string().length(56),
-        amount: z
-          .number({
-            required_error: "Amount is required",
-            invalid_type_error: "Amount must be a number",
-            message: "Amount must be a number",
-          })
-          .int()
-          .positive(),
-        assetCode: z.string().nonempty(),
-        assetIssuer: z.string().nonempty(),
-        assetType: z.nativeEnum(assetType),
-        signWith: SignUser,
-      }),
-    )
+    .input(z.object({
+      pubkey: z.string().length(56),
+      amount: z.number({
+        required_error: "Amount is required",
+        invalid_type_error: "Amount must be a number",
+        message: "Amount must be a number",
+      }).int().positive(),
+      assetCode: z.string().nonempty(),
+      assetIssuer: z.string().nonempty(),
+      assetType: z.nativeEnum(assetType),
+      signWith: SignUser,
+    }))
     .mutation(async ({ input, ctx }) => {
       const creatorId = ctx.session.user.id;
-      const { pubkey, amount, assetCode, assetIssuer } = input;
+      const { pubkey, amount, assetCode, assetIssuer } = input
 
       const isFollower = await ctx.db.follow.findUnique({
         where: {
@@ -346,7 +349,7 @@ export const trxRouter = createTRPCRouter({
       if (input.assetType === assetType.PAGEASSET) {
         if (creator.pageAsset) {
           const { code, issuer } = creator.pageAsset;
-          console.log(code, issuer);
+          console.log(code, issuer)
           // send email
 
           return await sendGift({
@@ -373,10 +376,12 @@ export const trxRouter = createTRPCRouter({
           } else {
             throw new Error("Issuer is invalid");
           }
-        } else {
+        }
+        else {
           throw new Error("creator has no page asset");
         }
-      } else if (input.assetType === assetType.PLATFORMASSET) {
+      }
+      else if (input.assetType === assetType.PLATFORMASSET) {
         return await sendGitfAsPlatformAsset({
           reciver: pubkey,
           creatorId: creatorId,
@@ -384,8 +389,9 @@ export const trxRouter = createTRPCRouter({
           assetCode: assetCode,
           assetIssuer: assetIssuer,
           signWith: input.signWith,
-        });
-      } else if (input.assetType === assetType.SHOPASSET) {
+        })
+      }
+      else if (input.assetType === assetType.SHOPASSET) {
         return await sendGift({
           customerPubkey: pubkey,
           creatorPageAsset: { code: assetCode, issuer: assetIssuer },
@@ -395,6 +401,9 @@ export const trxRouter = createTRPCRouter({
           signWith: input.signWith,
         });
       }
+
+
+
     }),
 
   getRequiredPlatformAsset: publicProcedure
@@ -431,12 +440,7 @@ export const trxRouter = createTRPCRouter({
       });
 
       const requiredPlatformAsset = await getplatformAssetNumberForXLM(0.5);
-      const creatorAcc = await StellarAccount.create(creator.storagePub);
-      const hasTrust = creatorAcc.hasTrustline(code, issuer);
 
-      if (hasTrust) {
-        return true;
-      }
       return await trustCustomPageAsset({
         signWith,
         code,

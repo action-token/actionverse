@@ -21,7 +21,7 @@ import { MyCollectionMenu, useMyCollectionTabs } from "~/components/store/tabs/m
 const MyCollecton = () => {
     const { selectedMenu, setSelectedMenu } = useMyCollectionTabs();
     return (
-        <Card className="">
+        <Card className="rounded-none">
             <CardHeader className="w-full bg-secondary border-b-2 p-2 md:p-4 flex items-center justify-center">
                 <CardTitle className="flex md:w-1/2 items-center justify-center  p-0  gap-2 md:gap-4">
                     {Object.values(MyCollectionMenu).map((tab) => (
@@ -29,10 +29,10 @@ const MyCollecton = () => {
                             key={tab}
                             onClick={() => setSelectedMenu(tab)}
                             className={cn(
-                                "flex  text-xs md:text-sm shadow-sm shadow-black transition-all duration-300 ease-in-out ",
+                                "flex  w-1/2 px-2 text-sm shadow-sm shadow-black transition-all duration-300 ease-in-out lg:px-10",
                                 selectedMenu === tab
-                                    ? "w-full px-10  border-2 font-bold text-destructive border-destructive bg-background hover:bg-background"
-                                    : " ",
+                                    ? "w-full border-2  font-bold text-destructive border-destructive bg-background hover:bg-background"
+                                    : "",
                             )}
                         >
                             {tab.toLocaleUpperCase()}
@@ -94,7 +94,7 @@ const MyCollection = () => {
 
     if (acc.data ?? data) {
         return (
-            <div className="flex h-[calc(100vh-20vh)] flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">
+            <div className="flex h-[calc(100vh-20vh)] overflow-y-auto flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">
 
                 {
                     (acc.data?.dbAssets.length === 0 && data?.pages[0]?.items.length === 0) && (
@@ -118,6 +118,8 @@ const MyCollection = () => {
                                     code={asset.name}
                                     thumbnail={asset.thumbnail}
                                     isNFT={true}
+                                    creatorId={asset.creatorId}
+                                    mediaType={asset.mediaType}
                                 />
                             </div>
                         ))}
@@ -141,6 +143,7 @@ const MyCollection = () => {
                                                 "https://bandcoin.io/images/loading.png"
                                             }
                                             isPinned={true}
+                                            creatorId={item.location.locationGroup?.creatorId}
                                         />
                                     </div>
                                 ))}
@@ -169,13 +172,13 @@ const SecondaryStorage = () => {
 
 
     return (
-        <div className="flex h-[calc(100vh-20vh)] flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">
+        <div className="flex h-[calc(100vh-20vh)] overflow-y-auto flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">
             {acc.isLoading && (
                 <MoreAssetsSkeleton className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-4  xl:grid-cols-5" />
             )}
             {
                 acc.data === undefined && !acc.isLoading && (
-                    <div className="flex h-[calc(100vh-20vh)] flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">
+                    <div className="flex h-[calc(100vh-20vh)]  flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">
 
                         <div className="flex items-center justify-center h-full flex-col gap-2">
                             <h1 className="text-lg font-bold ">You don{"'t"} have storage account. please create one.</h1>
@@ -210,6 +213,8 @@ const SecondaryStorage = () => {
                                 code={asset.name}
                                 thumbnail={asset.thumbnail}
                                 isNFT={true}
+                                creatorId={asset.creatorId}
+                                mediaType={asset.mediaType}
                             />
                         </div>
                     );

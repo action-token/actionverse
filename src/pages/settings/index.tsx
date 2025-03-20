@@ -63,7 +63,7 @@ export default function AboutUserData() {
     }
     if (user.isLoading) {
         return (
-            <div className="min-h-screen">
+            <div className="h-[calc(100vh-10.8vh)]">
                 {/* Cover Image Skeleton */}
                 <div className="relative h-[240px] w-full">
                     <Skeleton className="h-full w-full" />
@@ -173,7 +173,7 @@ const AboutUser = ({ user }: { user: UserSettingsType }) => {
         });
 
     return (
-        <div className="min-h-screen bg-background">
+        <div className="h-[calc(100vh-10.8vh)] bg-background">
             {/* Cover Image */}
             <div className="relative h-[240px] w-full bg-[#1a1a1a] rounded-t-lg">
                 {/* <Image src={user.image || "/images/logo.png"} alt="Cover" fill className="object-cover rounded-t-lg" priority /> */}
@@ -229,7 +229,7 @@ const AboutUser = ({ user }: { user: UserSettingsType }) => {
 
                             <div className="mt-2 space-y-1 text-md  ">
                                 <span className=" font-bold"> PUB KEY:</span>
-                                <span className="text-muted-foreground bg-secondary"> {addrShort(user.id, 7)}</span>
+                                <span className="text-muted-foreground bg-primary"> {addrShort(user.id, 7)}</span>
                                 <span className="mr-1">  <CopyToClip text={user.id} collapse={7} /></span>
 
                             </div>
@@ -246,7 +246,7 @@ const AboutUser = ({ user }: { user: UserSettingsType }) => {
                             </div>
                         </div>
                         <div>
-                            <Textarea className="w-full  lg:w-[calc(100vw-50vw)] h-56 border-[2px]   " disabled
+                            <Textarea className="w-full  lg:w-[calc(100vw-50vw)] h-56 border-[2px] bg-gray-100  " disabled
 
 
 

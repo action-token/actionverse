@@ -551,7 +551,6 @@ export const marketRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { limit, cursor, skip } = input;
       const creatorId = ctx.session.user.id;
-
       const items = await ctx.db.marketAsset.findMany({
         take: limit + 1,
         skip: skip,
@@ -561,7 +560,7 @@ export const marketRouter = createTRPCRouter({
             select: AssetSelectAllProperty,
           },
         },
-        where: { asset: { creatorId: creatorId, song: null } },
+        where: { asset: { creatorId: creatorId } },
       });
 
       let nextCursor: typeof cursor | undefined = undefined;
@@ -569,7 +568,7 @@ export const marketRouter = createTRPCRouter({
         const nextItem = items.pop(); // return the last item from the array
         nextCursor = nextItem?.id;
       }
-
+      console.log("items......", items);
       return {
         nfts: items,
         nextCursor,

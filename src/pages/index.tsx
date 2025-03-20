@@ -24,7 +24,7 @@ import { MoreAssetsSkeleton } from "~/components/common/grid-loading";
 import { useBuyModalStore } from "~/components/store/buy-modal-store";
 
 // Global Variables
-const TABS = ["ALL", "ACTION", "ARTISTS", "ARTIST TOKENS"];
+const TABS = ["ALL", "BANDCOIN", "ARTISTS", "ARTIST TOKENS"];
 
 const HomePage = () => {
   // Variables Declaration
@@ -107,7 +107,7 @@ const HomePage = () => {
   if (fanAssets.isLoading ?? RecentlyAddedMarketAssets.length === 0) {
     return (
       <div className="h-[calc(100vh-10vh)]">
-        <div className="relative h-[56vh] overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-4 md:h-[42vh]">
+        <div className="relative h-[56vh] overflow-hidden rounded-b-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-4 md:h-[42vh]">
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-black/60 via-black/40 to-black/90 backdrop-blur-md" />
           <div className="relative z-10 flex h-full flex-col rounded-md">
             <div className="mb-4 flex items-center justify-between">
@@ -146,8 +146,8 @@ const HomePage = () => {
   const currentAsset = RecentlyAddedMarketAssets[currentIndex];
 
   return (
-    <div className="relative  flex h-full flex-col gap-4 overflow-y-auto scrollbar-hide">
-      <div className="relative h-[40vh] overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-4 shadow-lg md:h-[42vh]">
+    <div className="relative  flex h-[calc(100vh-10.8vh)] flex-col gap-4 overflow-y-auto scrollbar-hide">
+      <div className="relative min-h-[40vh] overflow-hidden rounded-b-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-4 shadow-lg md:min-h-[42vh]">
         {/* Background with gradient overlay */}
         <motion.div
           key={currentIndex}
@@ -162,7 +162,7 @@ const HomePage = () => {
             backgroundPosition: "center",
           }}
         >
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/20 via-white/20 to-white/10 backdrop-blur-md" />
+          <div className="absolute inset-0 rounded-b-2xl bg-gradient-to-b from-white/20 via-white/20 to-white/10 backdrop-blur-md" />
         </motion.div>
 
         {/* Main content */}
@@ -316,8 +316,8 @@ const HomePage = () => {
             </div>
 
             {/* Product details card */}
-            <div className="hidden w-full xl:flex drop-shadow-lg ">
-              <Card className="min-w-[350px] space-y-6 border-none bg-white/40 p-6 drop-shadow-2xl  shadow-secondary shadow-md ">
+            <div className="hidden w-full xl:flex ">
+              <Card className="min-w-[350px] space-y-6 border-none bg-white/40 p-6 shadow-sm shadow-black backdrop-blur-md">
                 <div className="space-y-1 rounded-md border-2 p-2 ">
                   <h2 className="text-lg font-bold uppercase">
                     {currentAsset?.asset?.name}
@@ -347,7 +347,6 @@ const HomePage = () => {
 
                 <div className="flex">
                   <Button
-                    variant='destructive'
                     onClick={() => {
                       setCurrentIndex(
                         (prevIndex) =>
@@ -436,8 +435,8 @@ const FilterTabs = () => {
     if (artistAssets.hasNextPage) artistAssets.fetchNextPage();
   };
   return (
-    <Card >
-      <CardHeader className="w-full rounded-md bg-secondary p-2 md:p-4">
+    <Card className="rounded-none" >
+      <CardHeader className="w-full rounded-none  bg-secondary p-2 md:p-4">
         <CardTitle className="flex w-full gap-2 p-0 md:w-[50vw] md:gap-4 ">
           {TABS.map((tab) => (
             <Button
@@ -471,7 +470,7 @@ const FilterTabs = () => {
               />
             </div>
           )}
-          {activeTab === "ACTION" && (
+          {activeTab === "BANDCOIN" && (
             <div className="">
               <AdminAsset
                 adminAssets={adminAssets}

@@ -209,6 +209,7 @@ model Creator {
     vanitySubscription VanitySubscription?
     Album              Album[]
     Song               Song[]
+    createdAt          DateTime            @default(now())
 
     @@index([bio, name])
 }
@@ -562,6 +563,8 @@ model Bounty {
     id                 Int                 @id @default(autoincrement())
     title              String
     description        String
+    Latitude           Float?
+    Longitude          Float?
     priceInUSD         Float
     priceInBand        Float
     totalWinner        Int

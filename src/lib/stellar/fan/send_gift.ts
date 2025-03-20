@@ -7,13 +7,7 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { env } from "~/env";
-import {
-  PLATFORM_ASSET,
-  STELLAR_URL,
-  TrxBaseFee,
-  TrxBaseFeeInPlatformAsset,
-  networkPassphrase,
-} from "../constant";
+import { PLATFORM_ASSET, STELLAR_URL, TrxBaseFee, TrxBaseFeeInPlatformAsset, networkPassphrase } from "../constant";
 import { MyAssetType } from "./utils";
 import { SignUserType, WithSing } from "../utils";
 import { StellarAccount } from "../marketplace/test/Account";
@@ -41,18 +35,14 @@ export async function sendGift({
   const motherAccount = Keypair.fromSecret(env.MOTHER_SECRET);
   const assetStorage = Keypair.fromSecret(creatorStorageSec);
 
-  const transactionInializer = await server.loadAccount(
-    motherAccount.publicKey(),
-  );
-  console.log("Secrate", creatorStorageSec);
-  console.log("Storage", assetStorage);
-  const tokens = (
-    await StellarAccount.create(assetStorage.publicKey())
-  ).getTokenBalance(creatorPageAsset.code, creatorPageAsset.issuer);
+  const transactionInializer = await server.loadAccount(motherAccount.publicKey());
+  console.log("Secrate", creatorStorageSec)
+  console.log("Storage", assetStorage)
+  const tokens = (await StellarAccount.create(assetStorage.publicKey())).getTokenBalance(creatorPageAsset.code, creatorPageAsset.issuer);
   const accountDetails = await server.loadAccount(assetStorage.publicKey());
   console.log("Balances:", accountDetails.balances);
 
-  console.log("Tokens", tokens, price);
+  console.log("Tokens", tokens, price)
   if (!tokens) {
     throw new Error("Asset not found");
   }
@@ -62,13 +52,12 @@ export async function sendGift({
 
   const extraCost = await getplatformAssetNumberForXLM(1);
 
-  const transactionFee =
-    Number(TrxBaseFee) + Number(TrxBaseFeeInPlatformAsset) + extraCost;
+  const transactionFee = Number(TrxBaseFee) + Number(TrxBaseFeeInPlatformAsset) + extraCost;
 
   const Tx1 = new TransactionBuilder(transactionInializer, {
     fee: "200",
     networkPassphrase,
-  });
+  })
   Tx1.addOperation(
     Operation.payment({
       asset: PLATFORM_ASSET,
@@ -76,17 +65,13 @@ export async function sendGift({
       source: creatorPub,
       destination: motherAccount.publicKey(),
     }),
-  );
-  if (
-    creatorPageAsset.code !== PLATFORM_ASSET.code &&
-    creatorPageAsset.issuer !== PLATFORM_ASSET.issuer
-  ) {
-    const checkReciverHasTrust = (
-      await StellarAccount.create(customerPubkey)
-    ).hasTrustline(creatorPageAsset.code, creatorPageAsset.issuer);
+  )
+  if (creatorPageAsset.code !== PLATFORM_ASSET.code && creatorPageAsset.issuer !== PLATFORM_ASSET.issuer) {
+    const checkReciverHasTrust = (await StellarAccount.create(customerPubkey)).hasTrustline(creatorPageAsset.code, creatorPageAsset.issuer);
     if (!checkReciverHasTrust) {
       const claimants: Claimant[] = [
-        new Claimant(customerPubkey, Claimant.predicateUnconditional()),
+        new Claimant(customerPubkey, Claimant.predicateUnconditional(),
+        ),
       ];
 
       Tx1.addOperation(
@@ -95,7 +80,7 @@ export async function sendGift({
           amount: "1",
           destination: assetStorage.publicKey(),
           source: motherAccount.publicKey(),
-        }),
+        })
       );
       Tx1.addOperation(
         Operation.createClaimableBalance({
@@ -103,8 +88,8 @@ export async function sendGift({
           asset,
           source: assetStorage.publicKey(),
           claimants: claimants,
-        }),
-      );
+        })
+      )
 
       Tx1.setTimeout(0);
       const buildTrx = Tx1.build();
@@ -112,7 +97,8 @@ export async function sendGift({
       const xdr = buildTrx.toXDR();
       const singedXdr = WithSing({ xdr, signWith });
       return singedXdr;
-    } else {
+    }
+    else {
       Tx1.addOperation(
         Operation.payment({
           asset,
@@ -120,7 +106,7 @@ export async function sendGift({
           source: assetStorage.publicKey(),
           destination: customerPubkey,
         }),
-      );
+      )
     }
     Tx1.setTimeout(0);
     const buildTrx = Tx1.build();
@@ -129,7 +115,11 @@ export async function sendGift({
     const singedXdr = WithSing({ xdr, signWith });
     return singedXdr;
   }
+
+
+
 }
+
 
 export const sendGitfAsPlatformAsset = async ({
   reciver,
@@ -139,12 +129,12 @@ export const sendGitfAsPlatformAsset = async ({
   assetIssuer,
   signWith,
 }: {
-  reciver: string;
-  creatorId: string;
-  amount: number;
-  assetCode: string;
-  assetIssuer: string;
-  signWith: SignUserType;
+  reciver: string,
+  creatorId: string,
+  amount: number,
+  assetCode: string,
+  assetIssuer: string,
+  signWith: SignUserType,
 }) => {
   const server = new Horizon.Server(STELLAR_URL);
   const asset = new Asset(assetCode, assetIssuer);
@@ -162,9 +152,9 @@ export const sendGitfAsPlatformAsset = async ({
   const Tx1 = new TransactionBuilder(transactionInializer, {
     fee: "200",
     networkPassphrase,
-  });
+  })
   if (!hasReciverTrust) {
-    throw new Error("Reciver has no trustline");
+    throw new Error("Reciver has no trustline")
   }
   Tx1.addOperation(
     Operation.payment({
@@ -173,11 +163,12 @@ export const sendGitfAsPlatformAsset = async ({
       source: creatorId,
       destination: reciver,
     }),
-  );
+  )
   Tx1.setTimeout(0);
   const buildTrx = Tx1.build();
   buildTrx.sign();
   const xdr = buildTrx.toXDR();
   const singedXdr = WithSing({ xdr, signWith });
   return singedXdr;
-};
+
+}

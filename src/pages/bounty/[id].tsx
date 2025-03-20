@@ -20,8 +20,6 @@ import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/ste
 import { MutableRefObject, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
-import { useModal } from "~/lib/state/play/use-modal-store";
-
 import {
     Avatar,
     AvatarFallback,

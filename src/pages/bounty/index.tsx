@@ -38,8 +38,8 @@ const Bounty = () => {
 
     return (
         <div className="
-            min-h-screen  w-full">
-            <div className="sticky top-0 ">
+           relative  flex h-[calc(100vh-10.8vh)] flex-col gap-4 overflow-y-auto scrollbar-hide w-full">
+            <div className="sticky top-0 z-10">
                 <SearchAndSort
                     searchTerm={searchTerm}
                     setSearchTerm={setSearchTerm}
@@ -50,7 +50,7 @@ const Bounty = () => {
                 />
             </div>
 
-            <div className="my-4 flex min-h-[calc(100vh-20vh)]  flex-col gap-4 ">
+            <div className="my-4 flex h-[calc(100vh-20vh)]  flex-col gap-4 ">
 
                 <div className="">
                     {
