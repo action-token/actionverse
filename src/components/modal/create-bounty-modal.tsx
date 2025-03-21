@@ -2,23 +2,37 @@
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { MediaType } from "@prisma/client"
-import { Camera, Coins, DollarSign, Trophy, Users, X } from "lucide-react"
+import {
+    Camera,
+    Coins,
+    DollarSign,
+    Trophy,
+    Users,
+    X,
+    ChevronLeft,
+    ChevronRight,
+    FileText,
+    Check,
+    Loader2,
+    Sparkles,
+} from "lucide-react"
 import { useSession } from "next-auth/react"
 import Image from "next/image"
 import { clientsign } from "package/connect_wallet"
-import { useState } from "react"
-import { type SubmitHandler, useForm } from "react-hook-form"
+import { useState, useEffect } from "react"
+import { FormProvider, useForm, useFormContext, type SubmitHandler } from "react-hook-form"
 import toast from "react-hot-toast"
 import { z } from "zod"
+import { motion, AnimatePresence } from "framer-motion"
 
 import { Button } from "~/components/shadcn/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
 import { Input } from "~/components/shadcn/ui/input"
-import { Alert, AlertDescription } from "~/components/shadcn/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Separator } from "~/components/shadcn/ui/separator"
+import { Label } from "~/components/shadcn/ui/label"
+import { Progress } from "~/components/shadcn/ui/progress"
 
 import useNeedSign from "~/lib/hook"
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
@@ -29,7 +43,7 @@ import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
 import { UploadS3Button } from "../common/upload-button"
 import { Editor } from "../common/quill-editor"
 import { useCreateBountyStore } from "../store/create-bounty-store"
-import { RiGalleryFill } from "react-icons/ri"
+import { cn } from "~/lib/utils"
 
 // Schema definitions
 const MediaInfo = z.object({
@@ -75,14 +89,19 @@ const BountySchema = z.object({
     medias: z.array(MediaInfo).optional(),
 })
 
+// Define the steps
+type FormStep = "details" | "media" | "review"
+const FORM_STEPS: FormStep[] = ["details", "media", "review"]
+
 const CreateBountyModal = () => {
     // State management
     const [media, setMedia] = useState<MediaInfoType[]>([])
     const [wantMediaType, setWantMedia] = useState<MediaType>()
     const [loading, setLoading] = useState(false)
     const [prizeInAsset, setPrizeInAsset] = useState<number>(0)
-    const [activeTab, setActiveTab] = useState("details")
-
+    const [activeStep, setActiveStep] = useState<FormStep>("details")
+    const [formProgress, setFormProgress] = useState(33)
+    const [showConfetti, setShowConfetti] = useState(false)
     // Hooks
     const { needSign } = useNeedSign()
     const session = useSession()
@@ -95,6 +114,19 @@ const CreateBountyModal = () => {
     const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
 
     // Form setup
+    const methods = useForm<z.infer<typeof BountySchema>>({
+        resolver: zodResolver(BountySchema),
+        mode: "onChange",
+        defaultValues: {
+            content: "",
+            title: "",
+            totalWinner: 1,
+            prizeInUSD: 0,
+            prize: 0,
+            requiredBalance: 0,
+        },
+    })
+
     const {
         register,
         handleSubmit,
@@ -104,32 +136,69 @@ const CreateBountyModal = () => {
         trigger,
         watch,
         formState: { errors, isValid },
-    } = useForm<z.infer<typeof BountySchema>>({
-        resolver: zodResolver(BountySchema),
-        mode: "onChange",
-        defaultValues: {
-            content: "",
-            title: "",
-            totalWinner: 1,
-            requiredBalance: 0,
-        },
-    })
+    } = methods
 
-    // Watch values for preview
-    const watchedTitle = watch("title")
-    const watchedPrize = watch("prizeInUSD")
-    const watchedWinners = watch("totalWinner")
-    const watchedRequiredBalance = watch("requiredBalance")
+    // Update progress based on active step
+    useEffect(() => {
+        const stepIndex = FORM_STEPS.indexOf(activeStep)
+        setFormProgress((stepIndex + 1) * (100 / FORM_STEPS.length))
+    }, [activeStep])
+
+    // Navigation functions
+    const goToNextStep = () => {
+        const currentIndex = FORM_STEPS.indexOf(activeStep)
+        if (currentIndex < FORM_STEPS.length - 1) {
+            const nextStep = FORM_STEPS[currentIndex + 1]
+            if (nextStep) {
+                setActiveStep(nextStep)
+            }
+        }
+    }
+
+    const goToPreviousStep = () => {
+        const currentIndex = FORM_STEPS.indexOf(activeStep)
+        if (currentIndex > 0) {
+            const previousStep = FORM_STEPS[currentIndex - 1]
+            if (previousStep) {
+                setActiveStep(previousStep)
+            }
+        }
+    }
+
+    // Check if current step is valid before allowing to proceed
+    const canProceed = async () => {
+        // Define fields to validate for each step
+        const fieldsToValidate: Record<FormStep, (keyof z.infer<typeof BountySchema>)[]> = {
+            details: ["title", "content", "prizeInUSD", "prize", "totalWinner"],
+            media: [],
+            review: [],
+        }
+
+        // Trigger validation for the current step's fields
+        return await trigger(fieldsToValidate[activeStep])
+    }
+
+    const handleNext = async () => {
+        const isValid = await canProceed()
+        if (isValid) {
+            goToNextStep()
+        }
+    }
 
     // API mutations
     const CreateBountyMutation = api.bounty.Bounty.createBounty.useMutation({
         onSuccess: async (data) => {
             toast.success("Bounty Created Successfully! 🎉")
-            handleClose()
-            setPrizeInAsset(0)
+            setShowConfetti(true)
             utils.bounty.Bounty.getAllBounties.refetch().catch((error) => {
                 console.error("Error refetching bounties", error)
             })
+            setTimeout(() => {
+                handleClose()
+
+
+            }, 2000)
+
         },
     })
 
@@ -185,7 +254,7 @@ const CreateBountyModal = () => {
     })
 
     // Queries
-    const { data: prize } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
+    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
 
     // Handlers
     const onSubmit: SubmitHandler<z.infer<typeof BountySchema>> = (data) => {
@@ -198,9 +267,6 @@ const CreateBountyModal = () => {
         })
     }
 
-    const handleEditorChange = (value: string): void => {
-        setValue("content", value)
-    }
 
     const addMediaItem = (url: string, type: MediaType) => {
         setMedia((prevMedia) => [...prevMedia, { url, type }])
@@ -214,413 +280,631 @@ const CreateBountyModal = () => {
         setIsDialogOpen(false)
         reset()
         setMedia([])
-        setActiveTab("details")
+        setActiveStep("details")
     }
 
-    const handlePrizeChange = (value: string) => {
-        const prizeUSD = Number(value)
-        setValue("prizeInUSD", prizeUSD)
-
-        // Make sure prize is a valid number before dividing
-        if (prize && Number(prize) > 0) {
-            const prizeValue = prizeUSD / Number(prize)
-            setValue("prize", prizeValue)
-            setPrizeInAsset(prizeValue)
-        } else {
-            setValue("prize", 0)
-            setPrizeInAsset(0)
-        }
-    }
-
-    const goToNextTab = () => {
-        if (activeTab === "details") {
-            setActiveTab("media")
-        } else if (activeTab === "media") {
-            setActiveTab("review")
-        }
-    }
-
-    const goToPreviousTab = () => {
-        if (activeTab === "media") {
-            setActiveTab("details")
-        } else if (activeTab === "review") {
-            setActiveTab("media")
-        }
-    }
+    // Watch values for preview
+    const watchedTitle = watch("title")
+    const watchedPrizeUSD = watch("prizeInUSD")
+    const watchedPrizeAsset = watch("prize")
+    const watchedWinners = watch("totalWinner")
+    const watchedRequiredBalance = watch("requiredBalance")
 
     return (
         <Dialog open={isDialogOpen} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden rounded-xl">
-                <DialogHeader className="bg-gradient-to-r from-primary/10 to-primary/5 p-6">
-                    <DialogTitle className="text-2xl font-bold">Create New Bounty</DialogTitle>
-                </DialogHeader>
-
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <div className="px-6 pt-4">
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger
-                                value="details"
-                                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            <DialogContent
+                onInteractOutside={(e) => {
+                    e.preventDefault()
+                }}
+                className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-2"
+            >
+                {showConfetti && (
+                    <div className="fixed inset-0 pointer-events-none z-50">
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1, opacity: [0, 1, 0] }}
+                                transition={{ duration: 2 }}
+                                className="text-4xl"
                             >
-                                Details
-                            </TabsTrigger>
-                            <TabsTrigger
-                                value="media"
-                                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                            >
-                                Media
-                            </TabsTrigger>
-                            <TabsTrigger
-                                value="review"
-                                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                            >
-                                Review
-                            </TabsTrigger>
-                        </TabsList>
+                                <div className="flex items-center justify-center gap-2 text-primary">
+                                    <Sparkles className="h-8 w-8" />
+                                    <span className="font-bold">Bounty created successfully!</span>
+                                    <Sparkles className="h-8 w-8" />
+                                </div>
+                            </motion.div>
+                        </div>
+                        {Array.from({ length: 100 }).map((_, i) => (
+                            <motion.div
+                                key={i}
+                                className="absolute w-2 h-2 rounded-full"
+                                initial={{
+                                    top: "50%",
+                                    left: "50%",
+                                    scale: 0,
+                                    backgroundColor: ["#FF5733", "#33FF57", "#3357FF", "#F3FF33", "#FF33F3"][Math.floor(Math.random() * 5)],
+                                }}
+                                animate={{
+                                    top: `${Math.random() * 100}%`,
+                                    left: `${Math.random() * 100}%`,
+                                    scale: [0, 1, 0],
+                                    opacity: [0, 1, 0],
+                                }}
+                                transition={{
+                                    duration: 2 + Math.random() * 2,
+                                    delay: Math.random() * 0.5,
+                                    ease: "easeOut",
+                                }}
+                            />
+                        ))}
                     </div>
-
-                    <form onSubmit={handleSubmit(onSubmit)}>
-                        <TabsContent value="details" className="p-6 space-y-6">
-                            {/* Title Input */}
-                            <div className="space-y-2">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-medium">Bounty Title</span>
-                                    <Badge variant="outline" className="text-xs font-normal">
-                                        Required
-                                    </Badge>
-                                </div>
-                                <Input
-                                    maxLength={65}
-                                    readOnly={loading}
-                                    type="text"
-                                    placeholder="Enter an engaging title for your bounty..."
-                                    {...register("title")}
-                                    className="w-full text-lg"
-                                />
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                    <span>{errors.title && <span className="text-destructive">{errors.title.message}</span>}</span>
-                                    <span>{getValues("title").length}/65</span>
-                                </div>
+                )}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex flex-col h-full"
+                >
+                    <DialogHeader className="px-2 md:px-4 py-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Coins className="h-5 w-5" />
+                                <DialogTitle className="text-xl font-bold">Create New Bounty</DialogTitle>
                             </div>
+                        </div>
+                        <DialogDescription>Create a bounty for users to complete and earn rewards</DialogDescription>
 
-                            {/* Description Editor */}
-                            <div className="space-y-2">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-medium">Description</span>
-                                    <Badge variant="outline" className="text-xs font-normal">
-                                        Required
-                                    </Badge>
-                                </div>
-                                <Editor
-                                    value={getValues("content")}
-                                    onChange={handleEditorChange}
-                                    placeholder="Describe your bounty in detail. What are you looking for? What are the requirements?"
-                                    className="min-h-[180px] w-full border rounded-md"
-                                />
-                                {errors.content && <p className="text-xs text-destructive">{errors.content.message}</p>}
-                            </div>
+                        <Progress value={formProgress} className="mt-2 h-2" />
 
-                            {/* Prize Inputs */}
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-medium">Reward Details</span>
-                                    <Badge variant="outline" className="text-xs font-normal">
-                                        Required
-                                    </Badge>
-                                </div>
-
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <div className="relative">
-                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                            <Input
-                                                step={0.00001}
-                                                readOnly={loading}
-                                                onChange={(e) => handlePrizeChange(e.target.value)}
-                                                className="w-full pl-10"
-                                                type="number"
-                                                placeholder="Prize in USD"
-                                            />
+                        <div className="w-full px-2 md:px-4">
+                            <div className="flex items-center justify-between">
+                                {FORM_STEPS.map((step, index) => (
+                                    <div key={step} className="flex flex-col items-center">
+                                        <div
+                                            className={cn(
+                                                "w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm mb-1",
+                                                activeStep === step
+                                                    ? "bg-primary text-primary-foreground shadow-sm shadow-foreground"
+                                                    : "bg-muted text-muted-foreground",
+                                            )}
+                                        >
+                                            {index + 1}
                                         </div>
-                                        {errors.prizeInUSD && <p className="text-xs text-destructive">{errors.prizeInUSD.message}</p>}
+                                        <span className={cn("text-xs", activeStep === step ? "font-medium" : "text-muted-foreground")}>
+                                            {step === "details" ? "Details" : step === "media" ? "Media" : "Review"}
+                                        </span>
                                     </div>
-                                    <div className="space-y-2">
-                                        <div className="relative">
-                                            <Coins className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                            <Input
-                                                readOnly
-                                                type="number"
-                                                {...register("prize")}
-                                                className="w-full pl-10"
-                                                placeholder={`Prize in ${PLATFORM_ASSET.code}`}
-                                            />
-                                        </div>
-                                        {errors.prize && <p className="text-xs text-destructive">{errors.prize.message}</p>}
-                                    </div>
-                                </div>
+                                ))}
                             </div>
+                        </div>
+                    </DialogHeader>
 
-                            {/* Additional Details */}
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="font-medium">Number of Winners</span>
-                                        <Badge variant="outline" className="text-xs font-normal">
-                                            Required
-                                        </Badge>
-                                    </div>
-                                    <div className="relative">
-                                        <Trophy className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                        <Input
-                                            readOnly={loading}
-                                            type="number"
-                                            step={1}
-                                            min={1}
-                                            {...register("totalWinner", {
-                                                valueAsNumber: true,
-                                            })}
-                                            className="w-full pl-10"
-                                            placeholder="How many winners?"
+                    <FormProvider {...methods}>
+                        <form>
+                            <div className="p-2 md:p-4">
+                                <AnimatePresence mode="wait">
+                                    {activeStep === "details" && <DetailsStep key="details" />}
+                                    {activeStep === "media" && (
+                                        <MediaStep
+                                            key="media"
+                                            media={media}
+                                            removeMediaItem={removeMediaItem}
+                                            addMediaItem={addMediaItem}
+                                            loading={loading}
                                         />
-                                    </div>
-                                    {errors.totalWinner && <p className="text-xs text-destructive">{errors.totalWinner.message}</p>}
-                                </div>
-
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="font-medium">Required Balance</span>
-                                        <Badge variant="outline" className="text-xs font-normal">
-                                            Optional
-                                        </Badge>
-                                    </div>
-                                    <div className="relative">
-                                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                        <Input
-                                            readOnly={loading}
-                                            type="number"
-                                            step={0.00001}
-                                            min={0}
-                                            {...register("requiredBalance", {
-                                                valueAsNumber: true,
-                                            })}
-                                            className="w-full pl-10"
-                                            placeholder={`Min balance in ${PLATFORM_ASSET.code}`}
-                                        />
-                                    </div>
-                                    {errors.requiredBalance && (
-                                        <p className="text-xs text-destructive">{errors.requiredBalance.message}</p>
                                     )}
-                                </div>
+                                    {activeStep === "review" && (
+                                        <ReviewStep
+                                            key="review"
+                                            media={media}
+                                            title={watchedTitle}
+                                            prizeUSD={watchedPrizeUSD}
+                                            prizeAsset={watchedPrizeAsset}
+                                            winners={watchedWinners}
+                                            requiredBalance={watchedRequiredBalance}
+                                        />
+                                    )}
+                                </AnimatePresence>
                             </div>
 
-                            <div className="pt-4 flex justify-end">
+                            <div className="flex justify-between border-t p-6">
                                 <Button
                                     type="button"
-                                    onClick={goToNextTab}
-                                    disabled={!getValues("title") || !getValues("content") || !getValues("prizeInUSD")}
+                                    variant="outline"
+                                    onClick={goToPreviousStep}
+                                    disabled={activeStep === "details" || loading}
                                 >
-                                    Continue to Media
+                                    <ChevronLeft className="mr-2 h-4 w-4" />
+                                    Back
                                 </Button>
-                            </div>
-                        </TabsContent>
 
-                        <TabsContent value="media" className="p-6 space-y-6">
-                            <div className="space-y-2">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-medium">Bounty Thumbnails</span>
-                                    <Badge variant="outline" className="text-xs font-normal">
-                                        Optional
-                                    </Badge>
-                                </div>
-                                <p className="text-sm text-muted-foreground">
-                                    Add up to 4 images to showcase your bounty. The first image will be used as the main thumbnail.
-                                </p>
-                            </div>
-
-                            {/* Media Upload */}
-                            <div className="space-y-4">
-                                {media.length > 0 ? (
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                        {media.map((item, index) => (
-                                            <div key={index} className="relative aspect-square rounded-md overflow-hidden border">
-                                                <Image
-                                                    src={item.url || "/placeholder.svg"}
-                                                    alt={`Uploaded media ${index + 1}`}
-                                                    fill
-                                                    className="object-cover"
-                                                />
-                                                <Button
-                                                    size="icon"
-                                                    variant="destructive"
-                                                    className="absolute top-1 right-1 h-6 w-6 rounded-full"
-                                                    onClick={() => removeMediaItem(index)}
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </Button>
-                                                {index === 0 && <Badge className="absolute bottom-1 left-1 bg-primary/80">Main</Badge>}
-                                            </div>
-                                        ))}
-                                    </div>
+                                {activeStep !== "review" ? (
+                                    <Button type="button" onClick={handleNext} className="shadow-sm shadow-foreground">
+                                        Next
+                                        <ChevronRight className="ml-2 h-4 w-4" />
+                                    </Button>
                                 ) : (
-                                    <div className="border border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center">
-                                        <RiGalleryFill className="h-10 w-10 text-muted-foreground mb-2" />
-                                        <p className="text-muted-foreground">No images uploaded yet</p>
-                                    </div>
-                                )}
-
-                                {media.length < 4 && (
-                                    <UploadS3Button
-                                        variant="button"
-                                        className="w-full"
-                                        label={media.length === 0 ? "Upload Thumbnail Images" : "Add More Images"}
-                                        disabled={media.length >= 4 || loading}
-                                        endpoint="imageUploader"
-                                        onClientUploadComplete={(res) => {
-                                            const data = res
-                                            if (data?.url) {
-                                                addMediaItem(data.url, MediaType.IMAGE)
-                                                trigger().catch((e) => console.log(e))
-                                                setWantMedia(undefined)
-                                            }
-                                        }}
-                                        onUploadError={(error: Error) => {
-                                            toast.error(`Upload Error: ${error.message}`)
-                                        }}
-                                    />
-                                )}
-
-                                {media.length >= 4 && <p className="text-xs text-amber-600">Maximum number of uploads reached (4/4)</p>}
-                            </div>
-
-                            <div className="pt-4 flex justify-between">
-                                <Button type="button" variant="outline" onClick={goToPreviousTab}>
-                                    Back to Details
-                                </Button>
-                                <Button type="button" onClick={goToNextTab}>
-                                    Continue to Review
-                                </Button>
-                            </div>
-                        </TabsContent>
-
-                        <TabsContent value="review" className="p-6 space-y-6">
-                            <div className="space-y-2">
-                                <h3 className="text-lg font-medium">Review Your Bounty</h3>
-                                <p className="text-sm text-muted-foreground">Please review your bounty details before submitting.</p>
-                            </div>
-
-                            <Card>
-                                <CardContent className="p-4 space-y-4">
-                                    <div>
-                                        <h4 className="text-sm font-medium text-muted-foreground">Title</h4>
-                                        <p className="font-medium">{watchedTitle || "No title provided"}</p>
-                                    </div>
-
-                                    <Separator />
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <h4 className="text-sm font-medium text-muted-foreground">Prize</h4>
-                                            <p className="font-medium">${watchedPrize || 0}</p>
-                                        </div>
-                                        <div>
-                                            <h4 className="text-sm font-medium text-muted-foreground">Winners</h4>
-                                            <p className="font-medium">{watchedWinners || 1}</p>
-                                        </div>
-                                    </div>
-
-                                    <Separator />
-
-                                    <div>
-                                        <h4 className="text-sm font-medium text-muted-foreground">Required Balance</h4>
-                                        <p className="font-medium">
-                                            {watchedRequiredBalance ? `${watchedRequiredBalance} ${PLATFORM_ASSET.code}` : "None"}
-                                        </p>
-                                    </div>
-
-                                    <Separator />
-
-                                    <div>
-                                        <h4 className="text-sm font-medium text-muted-foreground">Media</h4>
-                                        {media.length > 0 ? (
-                                            <div className="flex gap-2 mt-2 overflow-x-auto pb-2">
-                                                {media.map((item, index) => (
-                                                    <div key={index} className="relative w-16 h-16 flex-shrink-0">
-                                                        <Image
-                                                            src={item.url || "/placeholder.svg"}
-                                                            alt={`Thumbnail ${index + 1}`}
-                                                            fill
-                                                            className="object-cover rounded-md"
-                                                        />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm text-muted-foreground">No images uploaded</p>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <DialogFooter className="pt-4">
-                                {platformAssetBalance < prizeInAsset + totalFees ? (
-                                    <Alert variant="destructive">
-                                        <AlertDescription className="text-center">
-                                            {`Insufficient balance. You need at least ${(prizeInAsset + totalFees).toFixed(5)} ${PLATFORM_ASSET.code} to create this bounty.`}
-                                        </AlertDescription>
-                                    </Alert>
-                                ) : (
-                                    <div className="flex w-full flex-col gap-4">
-                                        <PaymentChoose
-                                            costBreakdown={[
-                                                {
-                                                    label: "Bounty Prize",
-                                                    amount: paymentMethod === "asset" ? prizeInAsset : prizeInAsset * 0.7,
-                                                    highlighted: true,
-                                                    type: "cost",
-                                                },
-                                                {
-                                                    label: "Platform Fee",
-                                                    amount: paymentMethod === "asset" ? totalFees : 2 + 1,
-                                                    highlighted: false,
-                                                    type: "fee",
-                                                },
-                                                {
-                                                    label: "Total Cost",
-                                                    amount: paymentMethod === "asset" ? prizeInAsset + totalFees : prizeInAsset * 0.7 + 2 + 1,
-                                                    highlighted: false,
-                                                    type: "total",
-                                                },
-                                            ]}
-                                            XLM_EQUIVALENT={prizeInAsset * 0.7 + 2 + 1}
-                                            handleConfirm={handleSubmit(onSubmit)}
-                                            loading={loading}
-                                            requiredToken={prizeInAsset + totalFees}
-                                            trigger={
-                                                <Button disabled={loading || !isValid} className="w-full shadow-sm shadow-foreground" size="lg">
-                                                    {loading ? "Creating Bounty..." : "Create Bounty"}
-                                                </Button>
-                                            }
-                                        />
-
-                                        <Alert>
-                                            <AlertDescription className="text-center text-sm">
-                                                {`You will be charged ${(prizeInAsset + totalFees).toFixed(5)} ${PLATFORM_ASSET.code} to create this bounty`}
-                                            </AlertDescription>
-                                        </Alert>
-
-                                        <div className="flex justify-start">
-                                            <Button type="button" variant="outline" onClick={goToPreviousTab}>
-                                                Back to Media
+                                    <>
+                                        {platformAssetBalance < getValues("prize") + totalFees ? (
+                                            <Button disabled className="shadow-sm shadow-foreground">
+                                                Insufficient Balance
                                             </Button>
-                                        </div>
-                                    </div>
+                                        ) : (
+                                            <PaymentChoose
+                                                costBreakdown={[
+                                                    {
+                                                        label: "Bounty Prize",
+                                                        amount: paymentMethod === "asset" ? Number(getValues("prize")) : Number(getValues("prize")) * 0.7,
+                                                        highlighted: true,
+                                                        type: "cost",
+                                                    },
+                                                    {
+                                                        label: "Platform Fee",
+                                                        amount: paymentMethod === "asset" ? totalFees : 2 + 1,
+                                                        highlighted: false,
+                                                        type: "fee",
+                                                    },
+                                                    {
+                                                        label: "Total Cost",
+                                                        amount: paymentMethod === "asset" ? Number(getValues("prize")) + totalFees : Number(getValues("prize")) * 0.7 + 2 + 1,
+                                                        highlighted: false,
+                                                        type: "total",
+                                                    },
+                                                ]}
+                                                XLM_EQUIVALENT={Number(getValues("prize")) * 0.7 + 2 + 1}
+                                                handleConfirm={handleSubmit(onSubmit)}
+                                                loading={loading}
+                                                requiredToken={Number(getValues("prize")) + totalFees}
+                                                trigger={
+                                                    <Button disabled={loading || !isValid} className="shadow-sm shadow-foreground">
+                                                        {loading ? (
+                                                            <>
+                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                Creating Bounty...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Coins className="mr-2 h-4 w-4" />
+                                                                Create Bounty
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                }
+                                            />
+                                        )}
+                                    </>
                                 )}
-                            </DialogFooter>
-                        </TabsContent>
-                    </form>
-                </Tabs>
+                            </div>
+                        </form>
+                    </FormProvider>
+                </motion.div>
             </DialogContent>
         </Dialog>
+    )
+}
+
+function DetailsStep() {
+    const {
+        register,
+        getValues,
+        setValue,
+        watch,
+        formState: { errors },
+    } = useFormContext<z.infer<typeof BountySchema>>()
+
+    const title = watch("title", "")
+    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
+
+    const handlePrizeChange = (value: string) => {
+        const prizeUSD = Number(value) || 0
+        setValue("prizeInUSD", prizeUSD)
+
+        // Make sure prize is a valid number before dividing
+        if (prizeRate && Number(prizeRate) > 0) {
+            const prizeValue = prizeUSD / Number(prizeRate)
+            setValue("prize", prizeValue)
+        } else {
+            setValue("prize", 0)
+        }
+    }
+
+    const handleEditorChange = (value: string): void => {
+        setValue("content", value)
+    }
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+        >
+            <div className="space-y-1">
+                <h2 className="text-xl font-semibold">Basic Information</h2>
+                <p className="text-sm text-muted-foreground">Enter the basic details about your bounty</p>
+            </div>
+
+            <div className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="title" className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Bounty Title
+                    </Label>
+                    <div className="relative">
+                        <Input
+                            id="title"
+                            {...register("title")}
+                            placeholder="Enter a catchy title"
+                            maxLength={65}
+                            className="transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                        />
+                        <div className="absolute right-2 bottom-2 text-xs text-muted-foreground">
+                            {65 - (title?.length || 0)} characters left
+                        </div>
+                    </div>
+                    {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="description" className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Description
+                    </Label>
+                    <Editor
+                        value={getValues("content")}
+                        onChange={handleEditorChange}
+                        placeholder="Describe what users need to do to claim this bounty"
+                        className="min-h-24 resize-none transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                    />
+                    {errors.content && <p className="text-sm text-destructive">{errors.content.message}</p>}
+                </div>
+            </div>
+
+            <Card className="bg-amber-50 border-amber-200">
+                <CardContent className="p-4">
+                    <h3 className="text-base font-medium text-amber-800">Bounty Rewards</h3>
+                    <p className="text-sm text-amber-700 mb-4">Specify reward amounts and winner details</p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* USD Prize */}
+                        <div className="space-y-2">
+                            <Label htmlFor="prizeInUSD" className="flex items-center gap-2">
+                                <DollarSign className="h-4 w-4 text-amber-600" />
+                                USD Amount
+                            </Label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                    <DollarSign className="h-4 w-4 text-amber-500" />
+                                </div>
+                                <Input
+                                    id="prizeInUSD"
+                                    onChange={(e) => handlePrizeChange(e.target.value)}
+                                    value={watch("prizeInUSD") || ""}
+                                    className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                                    type="number"
+                                    step={0.00001}
+                                    min={0.00001}
+                                    placeholder="Enter USD amount"
+                                />
+                            </div>
+                            {errors.prizeInUSD && <p className="text-sm text-destructive">{errors.prizeInUSD.message}</p>}
+                        </div>
+
+                        {/* Platform asset amount */}
+                        <div className="space-y-2">
+                            <Label htmlFor="prize" className="flex items-center gap-2">
+                                <Coins className="h-4 w-4 text-amber-600" />
+                                {PLATFORM_ASSET.code.toLocaleUpperCase()} Amount
+                            </Label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                    <Coins className="h-4 w-4 text-amber-500" />
+                                </div>
+                                <Input
+                                    id="prize"
+                                    value={watch("prize") ? watch("prize").toFixed(5) : ""}
+                                    readOnly
+                                    className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                                    placeholder={`${PLATFORM_ASSET.code.toLocaleUpperCase()} equivalent`}
+                                />
+                            </div>
+                            {errors.prize && <p className="text-sm text-destructive">{errors.prize.message}</p>}
+                        </div>
+                    </div>
+
+                    {/* Add a summary section to show the conversion */}
+                    {watch("prizeInUSD") > 0 && watch("prize") > 0 && (
+                        <div className="mt-4 p-3 bg-amber-100 rounded-md">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-amber-800">Total Reward:</span>
+                                <span className="font-medium text-amber-900">
+                                    ${watch("prizeInUSD")} = {watch("prize").toFixed(5)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                </span>
+                            </div>
+                            {watch("totalWinner") > 1 && (
+                                <div className="flex justify-between text-sm mt-1">
+                                    <span className="text-amber-800">Per Winner:</span>
+                                    <span className="font-medium text-amber-900">
+                                        ${(watch("prizeInUSD") / watch("totalWinner")).toFixed(2)} ={" "}
+                                        {(watch("prize") / watch("totalWinner")).toFixed(5)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="totalWinner" className="flex items-center gap-2">
+                        <Trophy className="h-4 w-4" />
+                        Number of Winners
+                    </Label>
+                    <div className="relative">
+                        <Trophy className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            id="totalWinner"
+                            type="number"
+                            step={1}
+                            min={1}
+                            {...register("totalWinner", {
+                                valueAsNumber: true,
+                            })}
+                            className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                            placeholder="How many winners?"
+                        />
+                    </div>
+                    {errors.totalWinner && <p className="text-sm text-destructive">{errors.totalWinner.message}</p>}
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="requiredBalance" className="flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Required Balance
+                    </Label>
+                    <div className="relative">
+                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            id="requiredBalance"
+                            type="number"
+                            step={0.00001}
+                            min={0}
+                            {...register("requiredBalance", {
+                                valueAsNumber: true,
+                            })}
+                            className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                            placeholder={`Min balance in ${PLATFORM_ASSET.code}`}
+                        />
+                    </div>
+                    {errors.requiredBalance && <p className="text-sm text-destructive">{errors.requiredBalance.message}</p>}
+                    <p className="text-xs text-muted-foreground">Minimum balance users need to claim this bounty (optional)</p>
+                </div>
+            </div>
+        </motion.div>
+    )
+}
+
+function MediaStep({
+    media,
+    removeMediaItem,
+    addMediaItem,
+    loading,
+}: {
+    media: MediaInfoType[]
+    removeMediaItem: (index: number) => void
+    addMediaItem: (url: string, type: MediaType) => void
+    loading: boolean
+}) {
+    const { trigger } = useFormContext<z.infer<typeof BountySchema>>()
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+        >
+            <div className="space-y-1">
+                <h2 className="text-xl font-semibold">Bounty Media</h2>
+                <p className="text-sm text-muted-foreground">Add images to make your bounty more engaging</p>
+            </div>
+
+            <Card className="bg-amber-50 border-amber-200">
+                <CardContent className="p-4">
+                    <div className="flex items-start gap-2 text-amber-800">
+                        <Camera className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm">
+                            Upload up to 4 images to showcase your bounty. The first image will be used as the main thumbnail.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Media Upload */}
+            <div className="space-y-4">
+                {media.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {media.map((item, index) => (
+                            <div key={index} className="relative aspect-square rounded-md overflow-hidden border">
+                                <Image
+                                    src={item.url || "/placeholder.svg"}
+                                    alt={`Uploaded media ${index + 1}`}
+                                    fill
+                                    className="object-cover"
+                                />
+                                <Button
+                                    size="icon"
+                                    variant="destructive"
+                                    className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                                    onClick={() => removeMediaItem(index)}
+                                >
+                                    <X className="h-3 w-3" />
+                                </Button>
+                                {index === 0 && <Badge className="absolute bottom-1 left-1 bg-primary/80">Main</Badge>}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="border border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center">
+                        <Camera className="h-10 w-10 text-muted-foreground mb-2" />
+                        <p className="text-muted-foreground">No images uploaded yet</p>
+                        <p className="text-xs text-muted-foreground mt-1">Upload images to increase user engagement</p>
+                    </div>
+                )}
+
+                {media.length < 4 && (
+                    <UploadS3Button
+                        variant="button"
+                        className="w-full"
+                        label={media.length === 0 ? "Upload Thumbnail Images" : "Add More Images"}
+                        disabled={media.length >= 4 || loading}
+                        endpoint="imageUploader"
+                        onClientUploadComplete={(res) => {
+                            const data = res
+                            if (data?.url) {
+                                addMediaItem(data.url, MediaType.IMAGE)
+                                trigger().catch((e) => console.log(e))
+                            }
+                        }}
+                        onUploadError={(error: Error) => {
+                            toast.error(`Upload Error: ${error.message}`)
+                        }}
+                    />
+                )}
+
+                {media.length >= 4 && <p className="text-xs text-amber-600">Maximum number of uploads reached (4/4)</p>}
+            </div>
+
+            <Card className="bg-gray-50 border-gray-200">
+                <CardContent className="p-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Tips for great bounty images:</h4>
+                    <ul className="text-xs text-gray-600 list-disc pl-4 space-y-1">
+                        <li>Use high-quality, relevant images</li>
+                        <li>Include a clear main thumbnail</li>
+                        <li>Show examples of what you{"'re"} looking for</li>
+                        <li>Avoid text-heavy images; put details in the description</li>
+                    </ul>
+                </CardContent>
+            </Card>
+        </motion.div>
+    )
+}
+
+function ReviewStep({
+    media,
+    title,
+    prizeUSD,
+    prizeAsset,
+    winners,
+    requiredBalance,
+}: {
+    media: MediaInfoType[]
+    title: string
+    prizeUSD: number
+    prizeAsset: number
+    winners: number
+    requiredBalance?: number
+}) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+        >
+            <div className="space-y-1">
+                <h2 className="text-xl font-semibold">Review Your Bounty</h2>
+                <p className="text-sm text-muted-foreground">Please review all information before submitting</p>
+            </div>
+
+            <Card className="border-amber-200">
+                <CardContent className="p-4 space-y-4">
+                    <div>
+                        <h3 className="text-lg font-semibold">{title || "Untitled Bounty"}</h3>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">Reward Details</p>
+                        <div className="flex flex-col gap-1">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Prize Amount (USD):</span>
+                                <span className="font-medium">${prizeUSD || 0}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Prize Amount ({PLATFORM_ASSET.code.toLocaleUpperCase()}):</span>
+                                <span className="font-medium">
+                                    {(prizeAsset || 0).toFixed(5)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Number of Winners:</span>
+                                <span className="font-medium">{winners || 1}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Prize per Winner (USD):</span>
+                                <span className="font-medium">${((prizeUSD || 0) / (winners || 1)).toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">
+                                    Prize per Winner ({PLATFORM_ASSET.code.toLocaleUpperCase()}):
+                                </span>
+                                <span className="font-medium">
+                                    {((prizeAsset || 0) / (winners || 1)).toFixed(5)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div>
+                        <p className="text-sm font-medium">Required Balance</p>
+                        <p className="text-sm">
+                            {requiredBalance ? `${requiredBalance} ${PLATFORM_ASSET.code}` : "No minimum balance required"}
+                        </p>
+                    </div>
+
+                    <Separator />
+
+                    <div>
+                        <p className="text-sm font-medium">Media</p>
+                        {media.length > 0 ? (
+                            <div className="grid grid-cols-4 gap-2 mt-2">
+                                {media.map((item, index) => (
+                                    <div key={index} className="relative aspect-square rounded-md overflow-hidden border">
+                                        <Image
+                                            src={item.url || "/placeholder.svg"}
+                                            alt={`Thumbnail ${index + 1}`}
+                                            fill
+                                            className="object-cover"
+                                        />
+                                        {index === 0 && <Badge className="absolute bottom-1 left-1 bg-primary/80">Main</Badge>}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">No images uploaded</p>
+                        )}
+                    </div>
+
+                    <Card className="bg-amber-50 border-amber-200">
+                        <CardContent className="p-3 flex items-center gap-2">
+                            <Check className="h-5 w-5 text-green-500" />
+                            <p className="text-sm text-amber-800">
+                                Your bounty is ready to be created. Click the button below to finalize.
+                            </p>
+                        </CardContent>
+                    </Card>
+                </CardContent>
+            </Card>
+        </motion.div>
     )
 }
 

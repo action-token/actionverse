@@ -2,8 +2,8 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 export enum Mode {
-    User = "User",
-    Creator = "Creator",
+    USER = "USER",
+    ORG = "ORG",
 }
 
 interface ModeState {
@@ -18,12 +18,12 @@ interface ModeState {
 export const useModeStore = create<ModeState>()(
     persist(
         (set) => ({
-            selectedMode: Mode.User,
+            selectedMode: Mode.USER,
             isTransitioning: false,
             setSelectedMode: (mode) => set({ selectedMode: mode }),
             toggleSelectedMode: () =>
                 set((state) => ({
-                    selectedMode: state.selectedMode === Mode.User ? Mode.Creator : Mode.User,
+                    selectedMode: state.selectedMode === Mode.USER ? Mode.ORG : Mode.USER,
                 })),
             startTransition: () => set({ isTransitioning: true }),
             endTransition: () => set({ isTransitioning: false }),

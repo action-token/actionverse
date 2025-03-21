@@ -9,7 +9,7 @@ import { useSession } from "next-auth/react"
 import { clientSelect } from "~/lib/stellar/fan/utils"
 import useNeedSign from "~/lib/hook"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
-import { Loader2, UserRoundPlus } from "lucide-react"
+import { Edit, Loader2, UserRoundPlus } from "lucide-react"
 
 export default function TrendingSidebar() {
     const session = useSession()
@@ -121,7 +121,7 @@ export default function TrendingSidebar() {
             {creators.map((creator) => (
                 <Card key={creator.id} className="rounded-lg p-3 shadow-sm">
                     <CardContent className="p-0">
-                        <div className="mb-2 flex items-center gap-3">
+                        <div className="mb-2 flex items-center  gap-3">
                             <CustomAvatar url={creator.profileUrl} />
                             <div className="flex items-center justify-between gap-2 w-full">
                                 <div>
@@ -129,8 +129,8 @@ export default function TrendingSidebar() {
                                     <p className="text-xs text-gray-500">{creator._count.followers} followers</p>
                                 </div>
                                 {creator.isCurrentUser ? (
-                                    <Button variant="ghost" size="sm" className="w-full">
-                                        Edit Profile
+                                    <Button variant="ghost" size="sm" className="">
+                                        <Edit />
                                     </Button>
                                 ) : (
                                     <Button

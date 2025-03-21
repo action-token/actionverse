@@ -35,6 +35,7 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 import { BountySchema } from "~/components/modal/edit-bounty-modal";
+import { BountyFormSchema } from "~/components/modal/create-locationbased-bounty";
 
 export const PaymentMethodEnum = z.enum(["asset", "xlm", "card"]);
 export type PaymentMethod = z.infer<typeof PaymentMethodEnum>;
@@ -145,6 +146,56 @@ export const BountyRoute = createTRPCRouter({
           totalWinner: input.totalWinner,
           requiredBalance: input.requiredBalance,
           imageUrls: input.medias ? input.medias.map((media) => media.url) : [],
+        },
+      });
+      const followers = await ctx.db.follow.findMany({
+        where: { creatorId: ctx.session.user.id },
+        select: { userId: true },
+      });
+
+      const followerIds = followers.map((follower) => follower.userId);
+
+      const createNotification = async (notifierId: string) => {
+        await ctx.db.notificationObject.create({
+          data: {
+            actorId: ctx.session.user.id,
+            entityType: NotificationType.BOUNTY,
+            entityId: bounty.id,
+            isUser: true,
+            Notification: {
+              create: [
+                {
+                  notifierId,
+                  isCreator: false,
+                },
+              ],
+            },
+          },
+        });
+      };
+
+      for (const followerId of followerIds) {
+        await createNotification(followerId);
+      }
+    }),
+
+  createLocationBounty: protectedProcedure
+    .input(
+      BountyFormSchema
+    )
+    .mutation(async ({ input, ctx }) => {
+
+      const bounty = await ctx.db.bounty.create({
+        data: {
+          title: input.title,
+          description: input.description,
+          priceInUSD: input.usdtAmount,
+          priceInBand: input.brandAmount,
+          creatorId: ctx.session.user.id,
+          totalWinner: input.winners,
+          requiredBalance: input.requiredBalance,
+          Latitude: Number(input.latitude),
+          Longitude: Number(input.longitude),
         },
       });
       const followers = await ctx.db.follow.findMany({

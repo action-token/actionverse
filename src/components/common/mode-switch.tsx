@@ -11,7 +11,7 @@ export function ModeSwitch() {
     const { selectedMode, toggleSelectedMode } = useModeStore()
     const [isHovering, setIsHovering] = useState(false)
 
-    const isCreator = selectedMode === Mode.Creator
+    const isCreator = selectedMode === Mode.ORG
     const router = useRouter()
     return (
         <TooltipProvider>
@@ -23,7 +23,7 @@ export function ModeSwitch() {
                             onClick={() => {
                                 if (isCreator) {
                                     toggleSelectedMode()
-                                    router.push("/artist/home")
+                                    router.push("/organization/home")
                                 }
                             }}
                             className={cn(
@@ -46,7 +46,7 @@ export function ModeSwitch() {
                                 />
                             )}
                             <User className="relative w-4 h-4" />
-                            <span className="relative text-[10px] font-medium hidden md:inline">User</span>
+                            <span className="relative text-[10px] font-medium hidden md:inline">USER</span>
                         </button>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="font-medium" sideOffset={8}>
@@ -61,7 +61,7 @@ export function ModeSwitch() {
                             onClick={() => {
                                 if (!isCreator) {
                                     toggleSelectedMode()
-                                    router.push("/artist/profile")
+                                    router.push("/organization/profile")
                                 }
                             }}
                             className={cn(
@@ -84,11 +84,11 @@ export function ModeSwitch() {
                                 />
                             )}
                             <Paintbrush className="relative w-4 h-4" />
-                            <span className="relative text-[10px] font-medium hidden md:inline">Creator</span>
+                            <span className="relative text-[10px] font-medium hidden md:inline">ORG.</span>
                         </button>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="font-medium" sideOffset={8}>
-                        {isCreator ? "Creator Mode" : "Switch to Creator Mode"}
+                        {isCreator ? "Organization Mode" : "Switch to Organization Mode"}
                     </TooltipContent>
                 </Tooltip>
             </div>

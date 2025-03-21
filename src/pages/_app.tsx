@@ -8,7 +8,7 @@ import { api } from "~/utils/api";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { Titillium_Web } from "next/font/google";
+import { Roboto, Lobster, Roboto_Slab, Rowdies } from "next/font/google";
 import "~/styles/globals.css";
 import Layout from "~/components/layout/root/RootLayout";
 import { Toaster } from "~/components/shadcn/ui/toaster";
@@ -20,7 +20,10 @@ const PopupImports = dynamic(
         await import("package/connect_wallet/src/components/popup_imports"),
 );
 
-const inner = Titillium_Web({ subsets: ["latin"], weight: "400" });
+const inner = Roboto_Slab({
+    subsets: ["latin"],
+    weight: ["300", "400", "700"],
+});
 
 const MyApp: AppType<{ session: Session | null }> = ({
     Component,
@@ -29,14 +32,10 @@ const MyApp: AppType<{ session: Session | null }> = ({
     return (
         <SessionProvider session={session}>
             <QueryClientProvider client={queryClient}>
-
                 <Layout className={inner.className}>
                     <Component {...pageProps} />
-                    <Toaster />
-
                 </Layout>
                 <PopupImports className={inner.className} />
-
             </QueryClientProvider>
         </SessionProvider>
     );

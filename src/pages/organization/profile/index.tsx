@@ -2,9 +2,9 @@ import CreatorLayout from "~/components/layout/root/CreatorLayout";
 
 const Profile = () => {
     return (
-        <CreatorLayout>
-            <h1>Artist Profile</h1>
-        </CreatorLayout>
+
+        <h1>Artist Profile</h1>
+
     );
 }
 export default Profile;
