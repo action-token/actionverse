@@ -49,7 +49,7 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
                     <Button
                       className={cn(
                         " flex    w-full items-center shadow-sm  justify-start   gap-2 overflow-hidden rounded-md text-sm font-medium ",
-                        path === item.href || (item.href === "/organization/home" && path.startsWith("/organization/"))
+                        path === item.href
                           ? "text-destructive border-2 border-destructive bg-background hover:bg-background font-bold"
                           : "transparent shadow-black ",
                         item.disabled && "cursor-not-allowed opacity-80",
