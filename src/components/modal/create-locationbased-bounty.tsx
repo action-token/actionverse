@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useForm, FormProvider, useFormContext } from "react-hook-form"
+import { useForm, FormProvider, useFormContext, type SubmitHandler } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { motion, AnimatePresence } from "framer-motion"
 import { z } from "zod"
+// Add the missing Users icon import
 import {
     Coins,
     MapPin,
@@ -16,13 +17,13 @@ import {
     Trophy,
     Check,
     Loader2,
-    ArrowRight,
+    Users,
+    Sparkles,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
 import { Label } from "~/components/shadcn/ui/label"
-import { Textarea } from "~/components/shadcn/ui/textarea"
 import { Progress } from "~/components/shadcn/ui/progress"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Separator } from "~/components/shadcn/ui/separator"
@@ -30,7 +31,17 @@ import { Badge } from "~/components/shadcn/ui/badge"
 import { cn } from "~/lib/utils"
 import { useCreatorMapModalStore } from "../store/creator-map-modal-store"
 import { useCreateLocationBasedBountyStore } from "../store/create-locationbased-bounty-store"
-import { PLATFORM_ASSET } from "~/lib/stellar/constant"
+import { PLATFORM_ASSET, PLATFORM_FEE, TrxBaseFeeInPlatformAsset } from "~/lib/stellar/constant"
+import { api } from "~/utils/api"
+import { Editor } from "../common/quill-editor"
+import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
+import { clientsign } from "package/connect_wallet"
+import useNeedSign from "~/lib/hook"
+import { useSession } from "next-auth/react"
+import toast from "react-hot-toast"
+import { clientSelect } from "~/lib/stellar/fan/utils"
+
 
 // Define the schema for the bounty form
 export const BountyFormSchema = z
@@ -54,36 +65,52 @@ export const BountyFormSchema = z
                 },
             ),
         radius: z.number().min(10, "Radius must be at least 10 meters").max(1000, "Radius cannot exceed 1000 meters"),
-        actionAmount: z
-            .string()
-            .optional()
-            .refine((val) => !val || Number.parseFloat(val) > 0, {
-                message: `${PLATFORM_ASSET.code.toLocaleUpperCase()} amount must be a positive number`,
-            }),
+        brandAmount: z
+            .number({
+                required_error: "Prize must be a number",
+                invalid_type_error: "Prize must be a number",
+            })
+            .min(0.00001, { message: "Prize can't be less than 0.00001" }),
         usdtAmount: z
-            .string()
-            .optional()
-            .refine((val) => !val || Number.parseFloat(val) > 0, {
-                message: "USDT amount must be a positive number",
-            }),
+            .number({
+                required_error: "Prize must be a number",
+                invalid_type_error: "Prize must be a number",
+            })
+            .min(0.00001, { message: "Prize can't be less than 0.00001" }),
         winners: z.number().int().min(1, "Must have at least 1 winner").max(100, "Cannot have more than 100 winners"),
+        requiredBalance: z
+            .number({
+                required_error: "Required Balance must be a number",
+                invalid_type_error: "Required Balance must be a number",
+            })
+            .nonnegative({ message: "Required Balance can't be less than 0" })
+
     })
-    .refine((data) => data.actionAmount ?? data.usdtAmount, {
+    .refine((data) => data.brandAmount ?? data.usdtAmount, {
         message: "You must specify at least one currency amount",
-        path: ["actionAmount"],
+        path: ["brandAmount"],
     })
 
 type BountyFormType = z.infer<typeof BountyFormSchema>
+
 
 // Define the steps
 type FormStep = "details" | "location" | "reward" | "review"
 const FORM_STEPS: FormStep[] = ["details", "location", "reward", "review"]
 
-export default function CreateBountyModal() {
+export default function CreateLocationBasedBountyModal() {
     const [activeStep, setActiveStep] = useState<FormStep>("details")
     const [formProgress, setFormProgress] = useState(25)
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const { setIsOpen, data, isOpen } = useCreateLocationBasedBountyStore()
+    const { setIsOpen: SetIsBountyOpen, data, isOpen: isBountyOpen } = useCreateLocationBasedBountyStore()
+    const { isOpen, setIsOpen, paymentMethod } = usePaymentMethodStore()
+    const { platformAssetBalance } = useUserStellarAcc()
+    const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
+    const utils = api.useUtils()
+    const { needSign } = useNeedSign()
+    const session = useSession()
+    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
+    const [showConfetti, setShowConfetti] = useState(false)
 
     const methods = useForm<BountyFormType>({
         mode: "onChange",
@@ -94,16 +121,28 @@ export default function CreateBountyModal() {
             latitude: "",
             longitude: "",
             radius: 100,
-            actionAmount: "",
-            usdtAmount: "",
+            brandAmount: 0,
+            usdtAmount: 0,
             winners: 1,
+            requiredBalance: 0,
         },
     })
 
+    const {
+        register,
+        handleSubmit,
+        setValue,
+        getValues,
+        reset,
+        trigger,
+        watch,
+        formState: { errors, isValid },
+    } = methods
+
     useEffect(() => {
         if (data) {
-            methods.setValue("latitude", data.lat.toString())
-            methods.setValue("longitude", data.lng.toString())
+            setValue("latitude", data.lat.toString())
+            setValue("longitude", data.lng.toString())
         }
     }, [data, methods])
 
@@ -142,7 +181,7 @@ export default function CreateBountyModal() {
         const fieldsToValidate: Record<FormStep, (keyof BountyFormType)[]> = {
             details: ["title", "description"],
             location: ["latitude", "longitude", "radius"],
-            reward: ["actionAmount", "usdtAmount", "winners"],
+            reward: ["brandAmount", "usdtAmount", "winners"],
             review: [],
         }
 
@@ -156,43 +195,144 @@ export default function CreateBountyModal() {
             goToNextStep()
         }
     }
+    const CreateBountyMutation = api.bounty.Bounty.createLocationBounty.useMutation({
+        onSuccess: async (data) => {
+            toast.success("Bounty Created Successfully! 🎉")
+            setShowConfetti(true)
+            utils.bounty.Bounty.getAllBounties.refetch().catch((error) => {
+                console.error("Error refetching bounties", error)
+            })
+            setTimeout(() => {
+                handleClose()
 
-    const handleSubmit = async () => {
-        const isValid = await methods.trigger()
+
+            }, 2000)
+        },
+    })
+
+    const SendBalanceToBountyMother = api.bounty.Bounty.sendBountyBalanceToMotherAcc.useMutation({
+        onSuccess: async (data, { method }) => {
+            if (data) {
+                try {
+                    setIsSubmitting(true)
+                    const clientResponse = await clientsign({
+                        presignedxdr: data.xdr,
+                        walletType: session.data?.user?.walletType,
+                        pubkey: data.pubKey,
+                        test: clientSelect(),
+                    })
+
+                    if (clientResponse) {
+                        CreateBountyMutation.mutate({
+                            title: getValues("title"),
+                            description: getValues("description"),
+                            latitude: getValues("latitude"),
+                            longitude: getValues("longitude"),
+                            radius: getValues("radius"),
+                            brandAmount: getValues("brandAmount"),
+                            usdtAmount: getValues("usdtAmount"),
+                            winners: getValues("winners"),
+                            requiredBalance: getValues("requiredBalance"),
+                        })
+                        setIsSubmitting(false)
+                        reset()
+                    } else {
+                        setIsSubmitting(false)
+                        reset()
+                        toast.error("Error in signing transaction")
+                    }
+                    setIsOpen(false)
+                } catch (error) {
+                    setIsSubmitting(false)
+                    console.error("Error sending balance to bounty mother", error)
+                    reset()
+                }
+            }
+        },
+        onError: (error) => {
+            console.error("Error creating bounty", error)
+            toast.error(error.message)
+            reset()
+            setIsSubmitting(false)
+            setIsOpen(false)
+        },
+    })
+
+    const onSubmit: SubmitHandler<z.infer<typeof BountyFormSchema>> = async () => {
+        const isValid = await trigger()
         if (isValid) {
             setIsSubmitting(true)
-
-            // Simulate API call
-            setTimeout(() => {
-                console.log("Form data:", methods.getValues())
-                setIsSubmitting(false)
-                setIsOpen(false)
-                alert("Bounty created successfully!")
-                methods.reset()
-                setActiveStep("details")
-            }, 1500)
+            console.log("Submitting form", getValues())
+            // Get the prize amount from brandAmount
+            const prizeAmount = Number(getValues("brandAmount") || 0)
+            console.log("Prize amount", prizeAmount)
+            SendBalanceToBountyMother.mutate({
+                signWith: needSign(),
+                prize: prizeAmount,
+                method: paymentMethod,
+            })
         }
     }
 
+
     const handleClose = () => {
-        setIsOpen(false)
+        SetIsBountyOpen(false)
         setActiveStep("details")
-        methods.reset()
+        reset()
     }
 
 
 
     return (
         <>
-
-
-            <Dialog open={isOpen} onOpenChange={handleClose}>
+            <Dialog open={isBountyOpen} onOpenChange={handleClose}>
                 <DialogContent
                     onInteractOutside={(e) => {
                         e.preventDefault()
                     }}
                     className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-2"
                 >
+                    {showConfetti && (
+                        <div className="fixed inset-0 pointer-events-none z-50">
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1, opacity: [0, 1, 0] }}
+                                    transition={{ duration: 2 }}
+                                    className="text-4xl"
+                                >
+                                    <div className="flex items-center justify-center gap-2 text-primary">
+                                        <Sparkles className="h-8 w-8" />
+                                        <span className="font-bold">Bounty created successfully!</span>
+                                        <Sparkles className="h-8 w-8" />
+                                    </div>
+                                </motion.div>
+                            </div>
+                            {Array.from({ length: 100 }).map((_, i) => (
+                                <motion.div
+                                    key={i}
+                                    className="absolute w-2 h-2 rounded-full"
+                                    initial={{
+                                        top: "50%",
+                                        left: "50%",
+                                        scale: 0,
+                                        backgroundColor: ["#FF5733", "#33FF57", "#3357FF", "#F3FF33", "#FF33F3"][Math.floor(Math.random() * 5)],
+                                    }}
+                                    animate={{
+                                        top: `${Math.random() * 100}%`,
+                                        left: `${Math.random() * 100}%`,
+                                        scale: [0, 1, 0],
+                                        opacity: [0, 1, 0],
+                                    }}
+                                    transition={{
+                                        duration: 2 + Math.random() * 2,
+                                        delay: Math.random() * 0.5,
+                                        ease: "easeOut",
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    )}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -262,34 +402,62 @@ export default function CreateBountyModal() {
                                     </Button>
 
                                     {activeStep !== "review" ? (
-                                        <Button
-                                            type="button"
-                                            onClick={handleNext}
-                                            className="shadow-sm shadow-foreground"
-                                        >
+                                        <Button type="button" onClick={handleNext} className="shadow-sm shadow-foreground">
                                             Next
                                             <ChevronRight className="ml-2 h-4 w-4" />
                                         </Button>
                                     ) : (
-                                        <Button
-                                            type="button"
-                                            onClick={handleSubmit}
-                                            disabled={isSubmitting}
-                                            className="shadow-sm shadow-foreground"
-                                        >
-                                            {isSubmitting ? (
-                                                <>
-                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    Creating Bounty...
-                                                </>
+                                        <>
+                                            {platformAssetBalance < getValues("brandAmount") + totalFees ? (
+                                                <Button disabled className="shadow-sm shadow-foreground">
+                                                    Insufficient Balance
+                                                </Button>
                                             ) : (
-                                                <>
-                                                    <Coins className="mr-2 h-4 w-4" />
-                                                    Create Bounty
-                                                </>
+                                                <PaymentChoose
+                                                    costBreakdown={[
+                                                        {
+                                                            label: "Bounty Prize",
+                                                            amount: paymentMethod === "asset" ? getValues('brandAmount') : getValues('brandAmount') * 0.7,
+                                                            highlighted: true,
+                                                            type: "cost",
+                                                        },
+                                                        {
+                                                            label: "Platform Fee",
+                                                            amount: paymentMethod === "asset" ? totalFees : 2 + 1,
+                                                            highlighted: false,
+                                                            type: "fee",
+                                                        },
+                                                        {
+                                                            label: "Total Cost",
+                                                            amount: paymentMethod === "asset" ? getValues('brandAmount') + totalFees : getValues('brandAmount') * 0.7 + 2 + 1,
+                                                            highlighted: false,
+                                                            type: "total",
+                                                        },
+                                                    ]}
+                                                    XLM_EQUIVALENT={getValues('brandAmount') * 0.7 + 2 + 1}
+                                                    handleConfirm={methods.handleSubmit(onSubmit)}
+                                                    loading={isSubmitting}
+                                                    requiredToken={getValues('brandAmount') + totalFees}
+                                                    trigger={
+                                                        <Button disabled={isSubmitting || !isValid} className="shadow-sm shadow-foreground">
+                                                            {isSubmitting ? (
+                                                                <>
+                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                    Creating Bounty...
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Coins className="mr-2 h-4 w-4" />
+                                                                    Create Bounty
+                                                                </>
+                                                            )}
+                                                        </Button>
+                                                    }
+                                                />
                                             )}
-                                        </Button>
+                                        </>
                                     )}
+
                                 </div>
                             </form>
                         </FormProvider>
@@ -304,10 +472,15 @@ function DetailsStep() {
     const {
         register,
         watch,
+        getValues,
+        setValue,
         formState: { errors },
     } = useFormContext<BountyFormType>()
 
     const title = watch("title")
+    const handleEditorChange = (value: string): void => {
+        setValue("description", value)
+    }
 
     return (
         <motion.div
@@ -348,14 +521,15 @@ function DetailsStep() {
                         <FileText className="h-4 w-4" />
                         Description
                     </Label>
-                    <Textarea
-                        id="description"
-                        {...register("description")}
+                    <Editor
+                        value={getValues("description")}
+                        onChange={handleEditorChange}
                         placeholder="Describe what users need to do to claim this bounty"
                         className="min-h-24 resize-none transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
                     />
                     {errors.description && <p className="text-sm text-destructive">{errors.description.message}</p>}
                 </div>
+
             </div>
         </motion.div>
     )
@@ -489,10 +663,23 @@ function RewardStep() {
         setValue,
         formState: { errors },
     } = useFormContext<BountyFormType>()
+    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
 
     const winners = watch("winners")
-    const actionAmount = watch("actionAmount")
+    const brandAmount = watch("brandAmount")
     const usdtAmount = watch("usdtAmount")
+    const handlePrizeChange = (value: string) => {
+        const prizeUSD = Number(value) || 0
+        setValue("usdtAmount", prizeUSD)
+
+        // Make sure prize is a valid number before dividing
+        if (prizeRate && Number(prizeRate) > 0) {
+            const prizeValue = prizeUSD / Number(prizeRate)
+            setValue("brandAmount", prizeValue)
+        } else {
+            setValue("brandAmount", 0)
+        }
+    }
 
     return (
         <motion.div
@@ -511,11 +698,34 @@ function RewardStep() {
                 <CardContent className="p-0 md:p-4 space-y-4">
                     <h3 className="text-base font-medium text-amber-800">Bounty Rewards</h3>
                     <p className="text-sm text-amber-700">Specify reward amounts in one or both currencies</p>
-
-                    <div className="space-y-4">
-                        {/* Action input */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* USD Prize */}
                         <div className="space-y-2">
-                            <Label htmlFor="actionAmount" className="flex items-center gap-2">
+                            <Label htmlFor="usdtAmount" className="flex items-center gap-2">
+                                <DollarSign className="h-4 w-4 text-amber-600" />
+                                USD Amount
+                            </Label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                    <DollarSign className="h-4 w-4 text-amber-500" />
+                                </div>
+                                <Input
+                                    id="usdtAmount"
+                                    onChange={(e) => handlePrizeChange(e.target.value)}
+                                    value={watch("usdtAmount") || ""}
+                                    className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                                    type="number"
+                                    step={0.00001}
+                                    min={0.00001}
+                                    placeholder="Enter USD amount"
+                                />
+                            </div>
+                            {errors.usdtAmount && <p className="text-sm text-destructive">{errors.usdtAmount.message}</p>}
+                        </div>
+
+                        {/* Platform asset amount */}
+                        <div className="space-y-2">
+                            <Label htmlFor="prize" className="flex items-center gap-2">
                                 <Coins className="h-4 w-4 text-amber-600" />
                                 {PLATFORM_ASSET.code.toLocaleUpperCase()} Amount
                             </Label>
@@ -524,33 +734,14 @@ function RewardStep() {
                                     <Coins className="h-4 w-4 text-amber-500" />
                                 </div>
                                 <Input
-                                    id="actionAmount"
-                                    {...register("actionAmount")}
-                                    placeholder={`Enter ${PLATFORM_ASSET.code.toLocaleUpperCase()} amount`}
+                                    id="prize"
+                                    value={watch("brandAmount") ? watch("brandAmount").toFixed(5) : ""}
+                                    readOnly
                                     className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                                    placeholder={`${PLATFORM_ASSET.code.toLocaleUpperCase()} equivalent`}
                                 />
                             </div>
-                            {errors.actionAmount && <p className="text-sm text-destructive">{errors.actionAmount.message}</p>}
-                        </div>
-
-                        {/* USDT input */}
-                        <div className="space-y-2">
-                            <Label htmlFor="usdtAmount" className="flex items-center gap-2">
-                                <DollarSign className="h-4 w-4 text-green-600" />
-                                USDT Amount
-                            </Label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <DollarSign className="h-4 w-4 text-green-500" />
-                                </div>
-                                <Input
-                                    id="usdtAmount"
-                                    {...register("usdtAmount")}
-                                    placeholder="Enter USDT amount"
-                                    className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                                />
-                            </div>
-                            {errors.usdtAmount && <p className="text-sm text-destructive">{errors.usdtAmount.message}</p>}
+                            {errors.brandAmount && <p className="text-sm text-destructive">{errors.brandAmount.message}</p>}
                         </div>
                     </div>
                 </CardContent>
@@ -578,29 +769,50 @@ function RewardStep() {
                 />
                 <p className="text-xs text-muted-foreground">The reward will be split equally among all winners</p>
             </div>
-
-            {(actionAmount ?? usdtAmount) && (
+            <div className="space-y-2">
+                <Label htmlFor="requiredBalance" className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Required Balance
+                </Label>
+                <div className="relative">
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        id="requiredBalance"
+                        type="number"
+                        step={0.00001}
+                        min={0}
+                        {...register("requiredBalance", {
+                            valueAsNumber: true,
+                        })}
+                        className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
+                        placeholder={`Min balance in ${PLATFORM_ASSET.code}`}
+                    />
+                </div>
+                {errors.requiredBalance && <p className="text-sm text-destructive">{errors.requiredBalance.message}</p>}
+                <p className="text-xs text-muted-foreground">Minimum balance users need to claim this bounty (optional)</p>
+            </div>
+            {(brandAmount ?? usdtAmount) && (
                 <Card className="bg-amber-50 border-amber-200">
                     <CardContent className="p-4">
                         <h3 className="font-medium text-amber-800 mb-2">Reward Summary</h3>
                         <div className="space-y-3">
-                            {actionAmount && (
+                            {brandAmount && (
                                 <div className="grid grid-cols-2 gap-2 text-sm">
                                     <div className="text-gray-600">Total {PLATFORM_ASSET.code.toLocaleUpperCase()}:</div>
-                                    <div className="font-medium">{actionAmount} {PLATFORM_ASSET.code.toLocaleUpperCase()}</div>
+                                    <div className="font-medium">{brandAmount} {PLATFORM_ASSET.code.toLocaleUpperCase()}</div>
                                     <div className="text-gray-600">Per Winner:</div>
-                                    <div className="font-medium">{(Number.parseFloat(actionAmount) / winners).toFixed(2)} {PLATFORM_ASSET.code.toLocaleUpperCase()}</div>
+                                    <div className="font-medium">{(Number(brandAmount) / winners).toFixed(2)} {PLATFORM_ASSET.code.toLocaleUpperCase()}</div>
                                 </div>
                             )}
 
                             {usdtAmount && (
                                 <div
-                                    className={`grid grid-cols-2 gap-2 text-sm ${actionAmount ? "mt-3 pt-3 border-t border-amber-200" : ""}`}
+                                    className={`grid grid-cols-2 gap-2 text-sm ${brandAmount ? "mt-3 pt-3 border-t border-amber-200" : ""}`}
                                 >
                                     <div className="text-gray-600">Total USDT:</div>
                                     <div className="font-medium">{usdtAmount} USDT</div>
                                     <div className="text-gray-600">Per Winner:</div>
-                                    <div className="font-medium">{(Number.parseFloat(usdtAmount) / winners).toFixed(2)} USDT</div>
+                                    <div className="font-medium">{(Number.parseFloat(usdtAmount.toString()) / winners).toFixed(2)} USDT</div>
                                 </div>
                             )}
                         </div>
@@ -620,19 +832,12 @@ function ReviewStep() {
     const latitude = watch("latitude")
     const longitude = watch("longitude")
     const radius = watch("radius")
-    const actionAmount = watch("actionAmount")
+    const brandAmount = watch("brandAmount")
     const usdtAmount = watch("usdtAmount")
     const winners = watch("winners")
+    const requiredBalance = watch("requiredBalance")
 
-    const handleViewOnMap = () => {
-        if (latitude && longitude) {
-            setPosition({
-                lat: Number.parseFloat(latitude),
-                lng: Number.parseFloat(longitude),
-            })
-            setMapModalOpen(true)
-        }
-    }
+
 
     return (
         <motion.div
@@ -655,7 +860,7 @@ function ReviewStep() {
 
                     <div className="space-y-1">
                         <p className="text-sm font-medium">Description</p>
-                        <p className="text-sm text-muted-foreground">{description}</p>
+                        <div className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: description }} />
                     </div>
 
                     <Separator />
@@ -663,6 +868,7 @@ function ReviewStep() {
                     <div>
                         <div className="flex items-center justify-between mb-2">
                             <p className="text-sm font-medium">Location</p>
+
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
@@ -684,16 +890,30 @@ function ReviewStep() {
                     <div>
                         <p className="text-sm font-medium">Rewards</p>
                         <div className="mt-2 space-y-2">
-                            {actionAmount && (
+                            {brandAmount && (
                                 <div className="flex justify-between text-sm">
                                     <span>{PLATFORM_ASSET.code.toLocaleUpperCase()}:</span>
-                                    <span className="font-medium">{actionAmount} {PLATFORM_ASSET.code.toLocaleUpperCase()}</span>
+                                    <span className="font-medium">
+                                        {brandAmount} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                    </span>
                                 </div>
                             )}
                             {usdtAmount && (
                                 <div className="flex justify-between text-sm">
                                     <span>USDT:</span>
                                     <span className="font-medium">{usdtAmount} USDT</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-sm">
+                                <span>Per Winner ({PLATFORM_ASSET.code.toLocaleUpperCase()}):</span>
+                                <span className="font-medium">
+                                    {(Number(brandAmount) / Number(winners)).toFixed(5)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                </span>
+                            </div>
+                            {usdtAmount && (
+                                <div className="flex justify-between text-sm">
+                                    <span>Per Winner (USDT):</span>
+                                    <span className="font-medium">{(Number(usdtAmount) / Number(winners)).toFixed(2)} USDT</span>
                                 </div>
                             )}
                         </div>
@@ -703,6 +923,13 @@ function ReviewStep() {
                         <p className="text-sm font-medium">Winners</p>
                         <p className="text-sm text-muted-foreground">
                             {winners} {winners === 1 ? "winner" : "winners"}
+                        </p>
+                    </div>
+
+                    <div>
+                        <p className="text-sm font-medium">Required Balance</p>
+                        <p className="text-sm text-muted-foreground">
+                            {requiredBalance ? `${requiredBalance} ${PLATFORM_ASSET.code}` : "No minimum balance required"}
                         </p>
                     </div>
 
@@ -719,4 +946,3 @@ function ReviewStep() {
         </motion.div>
     )
 }
-

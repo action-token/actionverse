@@ -16,7 +16,6 @@ import { api } from "~/utils/api"
 import { motion, AnimatePresence } from "framer-motion"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
 import { CustomMapControl } from "~/components/map/custom-control"
-import CreatorLayout from "~/components/layout/root/CreatorLayout"
 import { useNearbyPinsStore } from "~/components/store/nearby-pin-store"
 import { useCreatorMapModalStore } from "~/components/store/creator-map-modal-store"
 import { useMapOptionsModalStore } from "~/components/store/map-options-modal-store"
@@ -30,9 +29,9 @@ type UserLocationType = {
 
 function CreatorMap() {
   return (
-    <CreatorLayout>
-      <MapSection />
-    </CreatorLayout>
+
+    <MapSection />
+
   )
 }
 
@@ -489,7 +488,7 @@ function ManualPinButton({ handleClick }: { handleClick: () => void }) {
 function ReportCollection() {
   return (
     <Button variant="chart1" asChild className="flex items-center gap-2  shadow-md">
-      <Link href="/artist/map/collection-report">
+      <Link href="/organization/map/collection-report">
         <ClipboardList className="h-4 w-4" />
         <span className="hidden md:block">Collection Report</span>
       </Link>

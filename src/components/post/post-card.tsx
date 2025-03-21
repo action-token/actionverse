@@ -64,7 +64,7 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
     const [expanded, setExpanded] = useState(false)
     const [showAllMedia, setShowAllMedia] = useState(false)
     const [showComments, setShowComments] = useState(false)
-    const postUrl = `/artist/${creator.id}/${post.id}`;
+    const postUrl = `/organization/${creator.id}/${post.id}`;
     const { data: liked } = api.fan.post.isLiked.useQuery(post.id);
 
     const { setIsOpen: setShareModalOpen, setData } = useShareModalStore()

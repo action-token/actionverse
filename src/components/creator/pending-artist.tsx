@@ -55,7 +55,7 @@ export default function PendingPage({ createdAt }: {
 
                         <div className="bg-muted/30 rounded-lg p-4 text-sm">
                             <p>
-                                Thank you for your artist application. Our team is currently reviewing your submission. This process
+                                Thank you for your organization application. Our team is currently reviewing your submission. This process
                                 typically takes 2-3 business days.
                             </p>
                             <p className="mt-2">You{"'ll"} receive an email notification once a decision has been made.</p>
@@ -73,7 +73,7 @@ export default function PendingPage({ createdAt }: {
                                 toggleSelectedMode();
                             }}
                         >
-                            <Link href="/artist/home" className="gap-2">
+                            <Link href="/organization/home" className="gap-2">
                                 Return Home <ArrowRight className="h-4 w-4" />
                             </Link>
                         </Button>

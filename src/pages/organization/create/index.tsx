@@ -208,7 +208,9 @@ export default function ArtistOnboarding() {
             console.log("Brand creation request submitted:", data)
             toast.success("Brand creation request submitted successfully")
             setShowConfetti(true)
-            router.push("/artist/home");
+            setTimeout(() => {
+                router.push("/organization/home");
+            }, 2000)
         },
         onError: (error) => {
             console.error("Failed to submit brand creation request:", error)
@@ -551,7 +553,7 @@ export default function ArtistOnboarding() {
                         >
                             <div className="flex items-center justify-center gap-2 text-primary">
                                 <Sparkles className="h-8 w-8" />
-                                <span className="font-bold">Artist Profile Created!</span>
+                                <span className="font-bold">Organization Profile Created!</span>
                                 <Sparkles className="h-8 w-8" />
                             </div>
                         </motion.div>
@@ -590,7 +592,7 @@ export default function ArtistOnboarding() {
                             <div className="p-2 rounded-full bg-primary/20">
                                 <ImageIcon className="h-6 w-6 text-primary" />
                             </div>
-                            <h1 className="text-2xl font-bold">Artist Onboarding</h1>
+                            <h1 className="text-2xl font-bold">Organization Onboarding</h1>
                         </div>
 
                         <div className="space-y-2">
@@ -634,13 +636,13 @@ export default function ArtistOnboarding() {
                                         >
                                             {index === 0 && "Benefits"}
                                             {index === 1 && "Profile Pictures"}
-                                            {index === 2 && "Artist Details"}
+                                            {index === 2 && "Organization Details"}
                                             {index === 3 && "Asset Creation"}
                                             {index === 4 && "Vanity URL"}
                                             {index === 5 && "Overview"}
                                         </span>
                                         <span className="text-xs text-muted-foreground">
-                                            {index === 0 && "Why become an artist"}
+                                            {index === 0 && "Why become an Organization"}
                                             {index === 1 && "Upload your images"}
                                             {index === 2 && "Name and bio"}
                                             {index === 3 && "Create your assets"}
@@ -682,7 +684,7 @@ export default function ArtistOnboarding() {
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
-                                                        <h2 className="text-3xl font-bold">Benefits of Becoming an Artist</h2>
+                                                        <h2 className="text-3xl font-bold">Benefits of Becoming an Organization</h2>
                                                         <p className="text-muted-foreground">
                                                             Join our platform and unlock these exclusive benefits for artists.
                                                         </p>
@@ -699,7 +701,7 @@ export default function ArtistOnboarding() {
                                                             {
                                                                 icon: <User className="h-5 w-5" />,
                                                                 title: "Build Your Brand",
-                                                                description: "Establish your unique identity with a personalized artist page.",
+                                                                description: "Establish your unique identity with a personalized organization page.",
                                                             },
                                                             {
                                                                 icon: <LinkIcon className="h-5 w-5" />,
@@ -1012,7 +1014,7 @@ export default function ArtistOnboarding() {
                                                                             <div>
                                                                                 <h3 className="font-medium">Create an immersive experience</h3>
                                                                                 <p className="text-sm text-muted-foreground mt-1">
-                                                                                    Your cover image sets the tone for your artist page. Choose an image that
+                                                                                    Your cover image sets the tone for your organization page. Choose an image that
                                                                                     showcases your artistic style and creates a compelling visual experience.
                                                                                 </p>
                                                                             </div>
@@ -1026,12 +1028,12 @@ export default function ArtistOnboarding() {
                                             </div>
                                         )}
 
-                                        {/* Step 3: Artist Name and Bio */}
+                                        {/* Step 3: Organization Name and Bio */}
                                         {currentStep === 3 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
-                                                        <h2 className="text-3xl font-bold">Artist Details</h2>
+                                                        <h2 className="text-3xl font-bold">Organization Details</h2>
                                                         <p className="text-muted-foreground">
                                                             Tell us more about yourself and your artistic journey.
                                                         </p>
@@ -1088,7 +1090,7 @@ export default function ArtistOnboarding() {
                                                                 <div>
                                                                     <div className="flex justify-between">
                                                                         <Label htmlFor="displayName" className="text-base font-medium">
-                                                                            Artist Name
+                                                                            Organization Name
                                                                         </Label>
                                                                         <span className="text-xs text-muted-foreground">
                                                                             {formData.displayName.length}/99 characters
@@ -1099,7 +1101,7 @@ export default function ArtistOnboarding() {
                                                                         name="displayName"
                                                                         value={formData.displayName}
                                                                         onChange={handleInputChange}
-                                                                        placeholder="Enter your artist name"
+                                                                        placeholder="Enter your organization name"
                                                                         required
                                                                         className="mt-1"
                                                                         maxLength={99}
@@ -1617,7 +1619,7 @@ export default function ArtistOnboarding() {
                                                             />
                                                         </div>
                                                         <p className="text-xs text-muted-foreground">
-                                                            Choose a unique, memorable URL for your artist page.
+                                                            Choose a unique, memorable URL for your organization page.
                                                         </p>
 
                                                         {formData.vanityUrl && (
@@ -1698,7 +1700,7 @@ export default function ArtistOnboarding() {
                                                     </div>
 
                                                     <div className="grid gap-6 md:grid-cols-2">
-                                                        {/* Artist Details Section */}
+                                                        {/* Organization Details Section */}
                                                         <motion.div
                                                             initial={{ opacity: 0, y: 20 }}
                                                             animate={{ opacity: 1, y: 0 }}
@@ -1708,7 +1710,7 @@ export default function ArtistOnboarding() {
                                                             <div className="flex items-center justify-between">
                                                                 <h3 className="font-medium text-lg flex items-center gap-2">
                                                                     <User className="h-5 w-5 text-primary" />
-                                                                    Artist Details
+                                                                    Organization Details
                                                                 </h3>
                                                                 <Button
                                                                     variant="ghost"
@@ -1737,9 +1739,9 @@ export default function ArtistOnboarding() {
                                                                 )}
 
                                                                 <div>
-                                                                    <h4 className="font-medium">{formData.displayName || "Artist Name"}</h4>
+                                                                    <h4 className="font-medium">{formData.displayName || "Organization Name"}</h4>
                                                                     <Badge variant="outline" className="mt-1">
-                                                                        Artist
+                                                                        Organization
                                                                     </Badge>
                                                                 </div>
                                                             </div>
@@ -1879,7 +1881,7 @@ export default function ArtistOnboarding() {
                                                             <div>
                                                                 <h3 className="font-medium">Ready to Complete</h3>
                                                                 <p className="text-sm text-muted-foreground mt-1">
-                                                                    By clicking Complete below, you{"'ll"} finalize your artist profile creation. You can
+                                                                    By clicking Complete below, you{"'ll"} finalize your organization profile creation. You can
                                                                     always edit your profile details later from your dashboard.
                                                                 </p>
                                                             </div>
@@ -1909,7 +1911,7 @@ export default function ArtistOnboarding() {
                                             <Button
                                                 type="button"
                                                 onClick={handleNext}
-                                                disabled={isNextDisabled()}
+                                                disabled={isNextDisabled() || RequestForBrandCreation.isLoading}
                                                 className="gap-2"
                                                 variant={currentStep === totalSteps ? "default" : "default"}
                                             >

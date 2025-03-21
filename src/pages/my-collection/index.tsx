@@ -182,7 +182,7 @@ const SecondaryStorage = () => {
 
                         <div className="flex items-center justify-center h-full flex-col gap-2">
                             <h1 className="text-lg font-bold ">You don{"'t"} have storage account. please create one.</h1>
-                            <Link href="/artist/home">
+                            <Link href="/organization/home">
                                 <Button className="flex items-center justify-center shadow-sm shadow-black">
                                     Create Storage
                                 </Button>

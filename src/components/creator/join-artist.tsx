@@ -25,7 +25,7 @@ export default function JoinArtistPage() {
                             transition={{ duration: 0.5, delay: 0.3 }}
                             className="text-center mb-12"
                         >
-                            <h2 className="text-3xl font-bold">Why Join as an Artist?</h2>
+                            <h2 className="text-3xl font-bold">Why Join as an Organization?</h2>
                             <p className="text-muted-foreground mt-2 max-w-2xl mx-auto">
                                 Our platform offers everything you need to showcase your talent and grow your audience.
                             </p>
@@ -40,13 +40,13 @@ export default function JoinArtistPage() {
                                 },
                                 {
                                     icon: <Award className="h-10 w-10" />,
-                                    title: "Artist Recognition",
+                                    title: "Organization Recognition",
                                     description: "Get verified status and build credibility",
                                 },
                                 {
                                     icon: <Zap className="h-10 w-10" />,
                                     title: "Powerful Tools",
-                                    description: "Access exclusive artist features and analytics",
+                                    description: "Access exclusive organization features and analytics",
                                 },
                                 {
                                     icon: <Palette className="h-10 w-10" />,
@@ -84,8 +84,8 @@ export default function JoinArtistPage() {
                             Join our growing community of artists and start sharing your creative work today.
                         </p>
                         <Button size="lg" asChild className="rounded-full px-8">
-                            <Link href="/artist/create" className="gap-2">
-                                Join as Artist <ArrowRight className="h-4 w-4" />
+                            <Link href="/organization/create" className="gap-2">
+                                Join as Organization <ArrowRight className="h-4 w-4" />
                             </Link>
                         </Button>
                     </motion.div>

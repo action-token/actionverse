@@ -36,7 +36,6 @@ import { type CreatorConsumedPin, useModal } from "~/lib/state/play/use-modal-st
 import { addrShort } from "~/utils/utils"
 import { cn } from "~/lib/utils"
 import toast from "react-hot-toast"
-import CreatorLayout from "~/components/layout/root/CreatorLayout"
 
 type ConsumerType = {
     user: {
@@ -122,84 +121,84 @@ const CreatorCollectionReport = () => {
     }
 
     return (
-        <CreatorLayout>
-            <div className="px-4 py-12">
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-                    <div className="mb-8 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <h2 className="text-3xl font-bold tracking-tight">Collection Reports</h2>
-                            <p className="text-muted-foreground">Track and analyze all pin collections by your users.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
-                                <RefreshCw className={cn("mr-2 h-4 w-4", isRefreshing && "animate-spin")} />
-                                Refresh
-                            </Button>
-                            <ReportDownloadMenu />
-                        </div>
+
+        <div className="px-4 py-12">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+                <div className="mb-8 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h2 className="text-3xl font-bold tracking-tight">Collection Reports</h2>
+                        <p className="text-muted-foreground">Track and analyze all pin collections by your users.</p>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+                            <RefreshCw className={cn("mr-2 h-4 w-4", isRefreshing && "animate-spin")} />
+                            Refresh
+                        </Button>
+                        <ReportDownloadMenu />
+                    </div>
+                </div>
 
-                    <Tabs defaultValue="table" className="w-full">
-                        <TabsList className="mb-4 grid w-full grid-cols-2 md:w-[400px]">
-                            <TabsTrigger value="table">
-                                <FileText className="mr-2 h-4 w-4" />
-                                Table View
-                            </TabsTrigger>
-                            <TabsTrigger value="summary">
-                                <Info className="mr-2 h-4 w-4" />
-                                Summary
-                            </TabsTrigger>
-                        </TabsList>
+                <Tabs defaultValue="table" className="w-full">
+                    <TabsList className="mb-4 grid w-full grid-cols-2 md:w-[400px]">
+                        <TabsTrigger value="table">
+                            <FileText className="mr-2 h-4 w-4" />
+                            Table View
+                        </TabsTrigger>
+                        <TabsTrigger value="summary">
+                            <Info className="mr-2 h-4 w-4" />
+                            Summary
+                        </TabsTrigger>
+                    </TabsList>
 
-                        <TabsContent value="table" className="mt-0">
-                            <Card>
-                                <CardHeader className="pb-0">
-                                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                                        <div className="relative w-full max-w-sm">
-                                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                            <Input
-                                                placeholder="Search by title, location or email..."
-                                                className="pl-8"
-                                                value={searchTerm}
-                                                onChange={(e) => {
-                                                    setSearchTerm(e.target.value)
-                                                    setCurrentPage(1) // Reset to first page on search
-                                                }}
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Badge variant="outline" className="text-xs">
-                                                {pins.data.reduce(
-                                                    (acc, pin) => acc + pin.locations.reduce((locAcc, loc) => locAcc + loc.consumers.length, 0),
-                                                    0,
-                                                )}{" "}
-                                                Total Collections
-                                            </Badge>
-                                            <Badge variant="outline" className="text-xs">
-                                                {pins.data.length} Pins
-                                            </Badge>
-                                        </div>
+                    <TabsContent value="table" className="mt-0">
+                        <Card>
+                            <CardHeader className="pb-0">
+                                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                    <div className="relative w-full max-w-sm">
+                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search by title, location or email..."
+                                            className="pl-8"
+                                            value={searchTerm}
+                                            onChange={(e) => {
+                                                setSearchTerm(e.target.value)
+                                                setCurrentPage(1) // Reset to first page on search
+                                            }}
+                                        />
                                     </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <TableData
-                                        pins={pins.data}
-                                        searchTerm={searchTerm}
-                                        currentPage={currentPage}
-                                        itemsPerPage={ITEMS_PER_PAGE}
-                                        onPageChange={setCurrentPage}
-                                    />
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-xs">
+                                            {pins.data.reduce(
+                                                (acc, pin) => acc + pin.locations.reduce((locAcc, loc) => locAcc + loc.consumers.length, 0),
+                                                0,
+                                            )}{" "}
+                                            Total Collections
+                                        </Badge>
+                                        <Badge variant="outline" className="text-xs">
+                                            {pins.data.length} Pins
+                                        </Badge>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <TableData
+                                    pins={pins.data}
+                                    searchTerm={searchTerm}
+                                    currentPage={currentPage}
+                                    itemsPerPage={ITEMS_PER_PAGE}
+                                    onPageChange={setCurrentPage}
+                                />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
 
-                        <TabsContent value="summary">
-                            <SummaryView pins={pins.data} />
-                        </TabsContent>
-                    </Tabs>
-                </motion.div>
-            </div>
-        </CreatorLayout>
+                    <TabsContent value="summary">
+                        <SummaryView pins={pins.data} />
+                    </TabsContent>
+                </Tabs>
+            </motion.div>
+        </div>
+
     )
 }
 

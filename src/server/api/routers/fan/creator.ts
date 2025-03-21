@@ -16,7 +16,7 @@ import { getAssetBalance } from "~/lib/stellar/marketplace/test/acc";
 import { StellarAccount } from "~/lib/stellar/marketplace/test/Account";
 import { SignUser } from "~/lib/stellar/utils";
 import { BLANK_KEYWORD } from "~/lib/utils";
-import { RequestBrandCreateFormSchema } from "~/pages/artist/create";
+import { RequestBrandCreateFormSchema } from "~/pages/organization/create";
 
 import {
   createTRPCRouter,
@@ -80,7 +80,6 @@ export const creatorRouter = createTRPCRouter({
             storageSecret: BLANK_KEYWORD,
             name: input.displayName,
             aprovalSend: true,
-            approved: false,
             pageAsset: {
               create: {
                 code: input.assetName,

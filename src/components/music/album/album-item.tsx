@@ -34,7 +34,7 @@ export default function AlbumView({ name, creatorId, coverImgUrl, albumId, isAlb
         >
             <Card
                 onClick={() =>
-                    router.push(creatorView ? `/artist/music/album/${albumId}` : `/album/${albumId}`)
+                    router.push(creatorView ? `/organization/music/album/${albumId}` : `/album/${albumId}`)
                 }
                 className="group relative overflow-hidden rounded-xl transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
             >
