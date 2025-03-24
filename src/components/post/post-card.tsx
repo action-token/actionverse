@@ -5,14 +5,7 @@ import { motion } from "framer-motion"
 import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "~/components/shadcn/ui/card"
 import { Badge } from "~/components/shadcn/ui/badge"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "~/components/shadcn/ui/dropdown-menu"
-import { Heart, MessageCircle, Share2, MoreHorizontal, Lock, Globe, Bookmark, Flag, ChevronDown, ChevronUp, CreditCard, Loader2, LockOpen } from 'lucide-react'
+import { Heart, MessageCircle, Share2, Lock, Globe, Bookmark, Flag, ChevronDown, ChevronUp, CreditCard, Loader2, LockOpen } from 'lucide-react'
 import { cn } from "~/lib/utils"
 import MediaGallery from "./media-gallary"
 import type { Media, Post } from "@prisma/client"
@@ -21,6 +14,7 @@ import CustomAvatar from "../common/custom-avatar"
 import { useShareModalStore } from "../store/share-modal-store"
 import { CommentSection } from "./comment/post-comment-section"
 import { Preview } from "../common/quill-preview"
+import { PostContextMenu } from "../common/post-context-menu"
 
 
 interface PostCardProps {
@@ -64,6 +58,7 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
     const [expanded, setExpanded] = useState(false)
     const [showAllMedia, setShowAllMedia] = useState(false)
     const [showComments, setShowComments] = useState(false)
+    const [deletePostId, setDeletePostId] = useState<number | null>(null)
     const postUrl = `/organization/${creator.id}/${post.id}`;
     const { data: liked } = api.fan.post.isLiked.useQuery(post.id);
 
@@ -123,8 +118,9 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
 
+
         >
-            <Card className="overflow-hidden border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow">
+            <Card className={cn("overflow-hidden  border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow", deletePostId === post.id && "animate-pulse border-red-300")}>
                 <CardHeader className="p-4 pb-0">
                     <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
@@ -140,12 +136,14 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
                                 <p className="text-xs ">{formatDate(post.createdAt.toString())}</p>
                             </div>
                         </div>
-
+                        <PostContextMenu creatorId={creator.id} postId={post.id}
+                            setDeletePostId={setDeletePostId}
+                        />
 
                     </div>
                 </CardHeader>
 
-                <CardContent className="p-4">
+                <CardContent className="p-1 md:p-4 ">
                     <div className="space-y-4">
                         {!show ? (
                             <LockedContent
@@ -175,7 +173,7 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
                                 </div>
 
                                 {media && media.length > 0 && (
-                                    <div className="space-y-2">
+                                    <div className="space-y-2   min-h-[300px] ">
                                         <MediaGallery
                                             media={displayMedia}
 

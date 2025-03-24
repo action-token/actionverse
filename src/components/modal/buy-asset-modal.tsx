@@ -136,7 +136,7 @@ export default function BuyModal() {
                         <div className="grid grid-cols-1 md:grid-cols-7">
                             {/* Left Column - Product Image */}
                             <Card className="overflow-y-hidden max-h-[770px] min-h-[770px] scrollbar-hide   md:col-span-3 ">
-                                <CardContent className="p-0 bg-primary rounded-sm flex flex-col justify-between h-full">
+                                <CardContent className="p-0  rounded-sm flex flex-col justify-between h-full">
                                     {/* Image Container */}
                                     <div className="flex flex-col h-full">
 

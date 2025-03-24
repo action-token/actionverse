@@ -81,8 +81,8 @@ import Loading from "~/components/common/loading";
 import { Alert } from "~/components/shadcn/ui/alert";
 import CustomAvatar from "~/components/common/custom-avatar";
 import Chat from "~/components/chat/chat";
-import ViewBountyComment from "~/components/commnet/View-Bounty-Comment";
-import { AddBountyComment } from "~/components/commnet/Add-Bounty-Comment";
+import ViewBountyComment from "~/components/comment/View-Bounty-Comment";
+import { AddBountyComment } from "~/components/comment/Add-Bounty-Comment";
 import DOMPurify from "isomorphic-dompurify"
 import { useEditBuyModalStore } from "~/components/store/edit-bounty-modal-store";
 import { useBountySubmissionModalStore } from "~/components/store/bounty-submission-store";

@@ -125,19 +125,7 @@ const selectedColumn = {
 };
 
 export const membershipRouter = createTRPCRouter({
-  createMembership: protectedProcedure
-    .input(TierSchema)
-    .mutation(async ({ ctx, input }) => {
-      const { featureDescription, name, price } = input;
-      await ctx.db.subscription.create({
-        data: {
-          creatorId: ctx.session.user.id,
-          name,
-          features: featureDescription,
-          price,
-        },
-      });
-    }),
+
 
   createCreatePageAsset: protectedProcedure
     .input(CreatorPageAssetSchema.extend({ issuer: AccountSchema }))
@@ -185,20 +173,7 @@ export const membershipRouter = createTRPCRouter({
       return creator;
     }),
 
-  editTierModal: protectedProcedure
-    .input(EditTierSchema)
-    .mutation(async ({ ctx, input }) => {
-      await ctx.db.subscription.update({
-        data: {
-          features: input.featureDescription,
-          name: input.name,
-          price: input.price,
-        },
-        where: {
-          id: input.id,
-        },
-      });
-    }),
+
 
   deleteTier: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -310,6 +285,7 @@ export const membershipRouter = createTRPCRouter({
   isFollower: protectedProcedure
     .input(z.object({ creatorId: z.string() }))
     .query(async ({ ctx, input }) => {
+
       const isFollower = await ctx.db.follow.findUnique({
         where: {
           userId_creatorId: {
@@ -318,8 +294,18 @@ export const membershipRouter = createTRPCRouter({
           },
         },
       });
-      if (isFollower) return true;
-      else false;
+      const isOwner = await ctx.db.creator.findUnique({
+        where: { id: input.creatorId },
+      });
+      console.log({
+        isFollower,
+        isOwner: isOwner?.id === ctx.session.user.id,
+      })
+      return {
+        isFollower
+          : isFollower ? true : false
+        , isOwner: isOwner?.id === ctx.session.user.id
+      };
     }),
 
   followCreator: protectedProcedure

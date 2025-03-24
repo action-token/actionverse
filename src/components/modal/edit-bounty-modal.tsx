@@ -220,7 +220,7 @@ const EditBountyModal = () => {
                         </div>
                         <UploadS3Button
                             endpoint="imageUploader"
-                            varient="button"
+                            variant="button"
                             className=""
                             onClientUploadComplete={(res) => {
                                 const data = res

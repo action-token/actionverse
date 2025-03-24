@@ -91,10 +91,12 @@ export const authOptions: NextAuthOptions = {
       credentials: {},
       async authorize(credentials): Promise<User | null> {
         const cred = credentials as AuthCredentialType;
-
+        console.log("cred", cred);
         // email pass login
         if (cred.walletType == WalletType.emailPass) {
+
           const { email, password, fromAppSign } = cred;
+          console.log("calling", cred)
           const userCredential = await signInWithEmailAndPassword(
             auth,
             email,
@@ -108,6 +110,7 @@ export const authOptions: NextAuthOptions = {
           }
           const data = await getUserPublicKey({ email: email, uid: user.uid });
           const sessionUser = await dbUser(data.publicKey, fromAppSign);
+          console.log("sessionUser", sessionUser);
           return {
             ...sessionUser,
             walletType: WalletType.emailPass,
@@ -205,34 +208,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
-  cookies: {
-    sessionToken: {
-      name: "next-auth.session-token",
-      options: {
-        httpOnly: true,
-        sameSite: "none",
-        path: "/",
-        secure: true,
-      },
-    },
-    callbackUrl: {
-      name: "next-auth.callback-url",
-      options: {
-        sameSite: "none",
-        path: "/",
-        secure: true,
-      },
-    },
-    csrfToken: {
-      name: "next-auth.csrf-token",
-      options: {
-        httpOnly: true,
-        sameSite: "none",
-        path: "/",
-        secure: true,
-      },
-    },
-  },
+
 };
 
 /**
@@ -249,6 +225,7 @@ export const getServerAuthSession = (ctx: {
 
 async function dbUser(pubkey: string, fromAppSign?: string) {
   const user = await db.user.findUnique({ where: { id: pubkey } });
+  console.log("user", user);
   if (user) {
     return user;
   } else {

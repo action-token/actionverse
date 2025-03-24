@@ -1,34 +1,20 @@
 import { NotificationType } from "@prisma/client";
 import { z } from "zod";
 import { StellarAccount } from "~/lib/stellar/marketplace/test/Account";
-export const PostSchema = z.object({
-  heading: z.string().min(1, { message: "Required" }),
-  content: z.string().min(2, { message: "Minimum 2 characters required." }),
-  subscription: z.string().optional(),
-  medias: z.array(MediaInfo).optional(),
-});
-export const CommentSchema = z.object({
-  postId: z.number(),
-  parentId: z.number().optional(),
-  content: z
-    .string()
-    .min(1, { message: "Minimum 5 character is required!" })
-    .trim(),
-});
+
 import {
   createTRPCRouter,
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
 import { MediaInfo } from "../bounty/bounty";
+import { PostSchema } from "~/components/modal/create-post-modal";
+import { CommentSchema } from "~/components/post/comment/add-post-comment";
 
 export const postRouter = createTRPCRouter({
   create: protectedProcedure
     .input(PostSchema)
     .mutation(async ({ ctx, input }) => {
-      // simulate a slow db call
-
-      // console.log("media", input.medias);
 
       const post = await ctx.db.post.create({
         data: {
