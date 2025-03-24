@@ -78,15 +78,16 @@ model NotificationObject {
 
 // ------------------------FAN SCHEMA-------------------------
 model Subscription {
-    id Int @id @default(autoincrement())
-
-    name     String
-    features String
-    price    Float // here price is the copy of creator page asset
-
-    creatorId String
-    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-
+    id            Int             @id @default(autoincrement())
+    name          String
+    description   String
+    features      String[] // Stored as JSON array
+    color         String          @default("bg-blue-500")
+    popular       Boolean         @default(false)
+    isActive      Boolean         @default(true)
+    price         Float // here price is the copy of creator page asset
+    creatorId     String
+    creator       Creator         @relation(fields: [creatorId], references: [id], onDelete: Cascade)
     posts         Post[]
     assets        Asset[]
     LocationGroup LocationGroup[]
@@ -151,12 +152,16 @@ model Follow {
 }
 
 model Media {
-    id   Int       @id @default(autoincrement())
-    url  String
-    type MediaType
-
-    postId Int
-    post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+    id        Int       @id @default(autoincrement())
+    url       String
+    type      MediaType
+    title     String?
+    artist    String?
+    album     String?
+    thumbnail String?
+    duration  Int?
+    postId    Int
+    post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
 }
 
 model CreatorPageAsset {
@@ -196,6 +201,10 @@ model Creator {
     pageAssetId Int?
 
     customPageAssetCodeIssuer String? // CODE-ISSUER-ASSET-USD
+    //handle
+    website                   String?
+    twitter                   String?
+    instagram                 String?
 
     user               User                @relation(fields: [id], references: [id], onDelete: Cascade)
     posts              Post[]

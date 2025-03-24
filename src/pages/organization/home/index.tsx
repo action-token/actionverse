@@ -8,11 +8,14 @@ import { Lock, Globe, ChevronUp, ChevronDown, Users, Bell, Bookmark, Home, Searc
 import { api } from "~/utils/api"
 import { getAssetBalanceFromBalance } from "~/lib/stellar/marketplace/test/acc"
 
+import { Skeleton } from "~/components/shadcn/ui/skeleton"
+
 import { useMediaQuery } from "~/hooks/use-media-query"
 import PostCard from "~/components/post/post-card"
 import TrendingSidebar from "~/components/post/trending-sidebar"
 import CreatorSidebar from "~/components/post/followed-creator"
 import { useSession } from "next-auth/react"
+import LoadingPostCard from "~/components/post/post-card-loading"
 
 enum TabEnum {
     All = "all",
@@ -73,12 +76,12 @@ export default function UserNewsFeedContent() {
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.5, delay: 0.4 }}
                     className={`sticky ${isScrolled
-                        ? "top-0 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 py-3 shadow-sm"
-                        : "top-0 z-10 py-1"
-                        } transition-all duration-300`}
+                        ? "top-0  z-20 py-3"
+                        : "top-0 z-10 "
+                        } transition-all duration-300 `}
                 >
-                    <Tabs defaultValue="all" className="w-full" onValueChange={(value) => setActiveTab(value as TabEnum)}>
-                        <TabsList className="grid grid-cols-3 w-full">
+                    <Tabs defaultValue="all" className="w-full " onValueChange={(value) => setActiveTab(value as TabEnum)}>
+                        <TabsList className={`${isScrolled ? "grid grid-cols-3 w-full gap-2" : "flex gap-2"} `}>
                             <TabsTrigger value="all">All Posts</TabsTrigger>
                             <TabsTrigger value="public" className="flex items-center gap-1">
                                 <Globe className="w-4 h-4" /> Public
@@ -105,6 +108,23 @@ export default function UserNewsFeedContent() {
                         }}
                         className="space-y-6 mt-6"
                     >
+                        {
+                            posts.isLoading && (
+
+                                <div className="space-y-6 mt-6">
+                                    {Array.from({ length: 5 }).map((_, index) => (
+                                        <motion.div
+                                            key={index}
+                                            initial={{ opacity: 0, y: 20 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ duration: 0.3, delay: index * 0.1 }}
+                                        >
+                                            <LoadingPostCard />
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            )
+                        }
                         {posts.data?.pages.map((page, pageIndex) => (
                             <div key={`page-${pageIndex}`} className="space-y-6">
                                 {page.posts.length === 0 && <p className="text-center py-8 ">There are no posts yet</p>}

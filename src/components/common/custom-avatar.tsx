@@ -14,7 +14,7 @@ interface HexagonAvatarProps {
 export default function CustomAvatar({
   url,
 
-  size = 40,
+  size = 200,
   className,
   winnerCount,
 }: HexagonAvatarProps) {

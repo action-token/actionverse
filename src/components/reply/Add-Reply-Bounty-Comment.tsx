@@ -3,7 +3,7 @@ import { Send } from "lucide-react";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { z } from "zod";
 import { api } from "~/utils/api";
-import { BountyCommentSchema } from "../commnet/Add-Bounty-Comment";
+import { BountyCommentSchema } from "../comment/Add-Bounty-Comment";
 import { Button } from "../shadcn/ui/button";
 import { Textarea } from "../shadcn/ui/textarea";
 

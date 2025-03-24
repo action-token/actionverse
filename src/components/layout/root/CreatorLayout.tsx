@@ -136,7 +136,7 @@ export default function CreatorLayout({
   }, [path, selectedMode, router])
 
   return (
-    <div className="relative overflow-hidden">
+    <div className="relative overflow-hidden h-[calc(100vh-10.8vh)]">
       <div className="flex h-[calc(100vh-10.8vh)] gap-4 overflow-hidden">
         {selectedMode === Mode.USER ? (
           <>
@@ -171,7 +171,7 @@ export default function CreatorLayout({
                 />
               </motion.div>
             </AnimatePresence>
-            <div className="hidden h-[calc(100vh-21vh)]  bg-background md:block">
+            <div className="hidden h-[calc(100vh-10vh)]  bg-background md:block">
               <motion.div
                 className="sticky top-0 hidden h-full overflow-y-auto p-1 md:block"
                 initial={false}
@@ -210,7 +210,7 @@ export default function CreatorLayout({
         ) : (
           <>
             <motion.div
-              className="flex-grow overflow-y-auto scrollbar-hide"
+              className="flex w-full overflow-hidden scrollbar-hide "
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
@@ -223,7 +223,7 @@ export default function CreatorLayout({
                   <JoinArtistPageLoading />
                 </div>
               ) : creator.data?.id && creator.data?.approved === true && selectedMode === Mode.ORG ? (
-                <div className="flex h-screen w-full flex-col">{children}</div>
+                <div className="flex  w-full flex-col ">{children}</div>
               ) : creator.data?.aprovalSend && creator.data?.approved === null ? (
                 <div className="flex h-full w-full items-center justify-center">
                   <PendingArtistPage createdAt={creator.data?.createdAt} />
@@ -384,12 +384,7 @@ const CreatorNavigation: DockerItem[] = [
     label: "PROFILE",
     color: "bg-blue-500",
   },
-  {
-    href: "/organization/post",
-    icon: "admin",
-    label: "POST",
-    color: "bg-purple-500",
-  },
+
   { href: "/organization/store", icon: "pins", label: "STORE", color: "bg-pink-500" },
   {
     href: "/organization/gift",
