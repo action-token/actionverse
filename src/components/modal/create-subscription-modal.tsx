@@ -240,7 +240,7 @@ const SubscriptionModal = () => {
                                                 <FormControl>
                                                     <div className="flex">
                                                         <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-input bg-muted text-muted-foreground text-sm">
-                                                            {data?.customPageAsset ? data.customPageAsset : data?.pageAsset}
+                                                            {data?.customPageAsset ? data.customPageAsset.split("-")[0] : data?.pageAsset?.code}
                                                         </span>
                                                         <Input
                                                             type="number"
@@ -401,7 +401,7 @@ const SubscriptionModal = () => {
                                                 <CardTitle>{watchedValues.name ?? "Package Name"}</CardTitle>
                                                 <div className="flex items-baseline mt-2">
                                                     <span className="text-3xl font-bold">${watchedValues.price ?? 0}</span>
-                                                    <span className="text-muted-foreground ml-1">/{data?.pageAsset ?? "USD"}</span>
+                                                    <span className="text-muted-foreground ml-1">/{data?.pageAsset?.code}</span>
                                                 </div>
                                             </div>
                                         </div>

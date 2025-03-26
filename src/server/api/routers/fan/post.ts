@@ -137,7 +137,16 @@ export const postRouter = createTRPCRouter({
 
         orderBy: { createdAt: "desc" },
         include: {
-          subscription: true,
+          subscription: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              description: true,
+              creatorId: true,
+
+            }
+          },
           _count: {
             select: { likes: true, comments: true },
           },
@@ -175,59 +184,35 @@ export const postRouter = createTRPCRouter({
       const post = await ctx.db.post.findUnique({
         where: { id: input },
         include: {
-          _count: { select: { likes: true, comments: true } },
+          subscription: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              description: true,
+              creatorId: true,
+
+            }
+          },
+          _count: {
+            select: { likes: true, comments: true },
+          },
+
           creator: {
             select: {
               name: true,
               id: true,
+              pageAsset: { select: { code: true, issuer: true } },
               profileUrl: true,
-              pageAsset: true,
               customPageAssetCodeIssuer: true,
             },
           },
-          subscription: { select: { price: true } },
           medias: true,
         },
       });
 
+      return post;
 
-
-
-
-
-      if (post) {
-        if (post.subscription) {
-          let pageAssetCode: string | undefined;
-          let pageAssetIssuer: string | undefined;
-
-          const pageAsset = post.creator.pageAsset;
-          if (pageAsset) {
-            pageAssetCode = pageAsset.code;
-            pageAssetIssuer = pageAsset.issuer;
-          } else {
-            const customPageAssetCodeIssuer =
-              post.creator.customPageAssetCodeIssuer;
-            if (customPageAssetCodeIssuer) {
-              const [code, issuer] = customPageAssetCodeIssuer.split("-");
-              pageAssetCode = code;
-              pageAssetIssuer = issuer;
-            }
-          }
-
-          const acc = await StellarAccount.create(userId);
-
-          if (
-            acc.getTokenBalance(pageAssetCode ?? "", pageAssetIssuer ?? "") >=
-            post.subscription.price
-          ) {
-            return post;
-          } else {
-            return false;
-          }
-        }
-
-        if (!post.subscription) return post;
-      }
     }),
 
   deletePost: protectedProcedure

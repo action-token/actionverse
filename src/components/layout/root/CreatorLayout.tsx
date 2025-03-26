@@ -146,7 +146,7 @@ export default function CreatorLayout({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <div className="flex h-[calc(100vh-10.8vh)] w-full flex-col">{children}</div>
+              <div className="flex overflow-y-auto w-full flex-col">{children}</div>
             </motion.div>
             <AnimatePresence>
               <motion.div
@@ -210,20 +210,20 @@ export default function CreatorLayout({
         ) : (
           <>
             <motion.div
-              className="flex w-full overflow-y-auto scrollbar-hide "
+              className="flex w-full overflow-y-auto  scrollbar-hide "
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
               {/* Special case for the create page */}
               {path === "/organization/create" ? (
-                <div className="flex h-screen w-full flex-col">{children}</div>
+                <div className="flex h-screen overflow-y-auto w-full flex-col">{children}</div>
               ) : creator.isLoading && selectedMode === Mode.ORG ? (
                 <div className="flex h-full w-full items-center justify-center">
                   <JoinArtistPageLoading />
                 </div>
               ) : creator.data?.id && creator.data?.approved === true && selectedMode === Mode.ORG ? (
-                <div className="flex  w-full flex-col ">{children}</div>
+                <div className="flex overflow-y-hidden  w-full flex-col ">{children}</div>
               ) : creator.data?.aprovalSend && creator.data?.approved === null ? (
                 <div className="flex h-full w-full items-center justify-center">
                   <PendingArtistPage createdAt={creator.data?.createdAt} />

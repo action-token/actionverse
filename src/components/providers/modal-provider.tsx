@@ -18,7 +18,7 @@ import CreateSongModal from "../modal/create-song-modal";
 import ShareModal from "../modal/share-post-modal";
 import CreateLocationBasedBountyModal from "../modal/create-locationbased-bounty";
 import { CreatePostModal } from "../modal/create-post-modal";
-import AddSubscriptionModal from "../modal/add-subscription-modal";
+import AddSubscriptionModal from "../modal/create-subscription-modal";
 
 const ModalProvider = () => {
   const [isMounted, setIsMounted] = useState(false);

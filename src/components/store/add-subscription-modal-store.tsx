@@ -1,12 +1,12 @@
-import { Subscription } from '@prisma/client'
+import { CreatorPageAsset, Subscription } from '@prisma/client'
 import { create } from 'zustand'
 
 
 
 // Define the data type
 type SubscriptionData = {
-    customPageAsset?: string
-    pageAsset?: string
+    customPageAsset?: string | null
+    pageAsset?: CreatorPageAsset | null
 }
 
 // Define the store type
