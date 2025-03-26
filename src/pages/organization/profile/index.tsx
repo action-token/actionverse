@@ -48,6 +48,7 @@ import { MoreAssetsSkeleton } from "~/components/common/grid-loading"
 import MarketAssetComponent from "~/components/common/market-asset"
 import { useNFTCreateModalStore } from "~/components/store/nft-create-modal-store"
 import { Badge } from "~/components/shadcn/ui/badge"
+import { SubscriptionContextMenu } from "~/components/common/subscripton-context"
 
 const isValidUrl = (string: string) => {
     try {
@@ -69,7 +70,7 @@ export default function ArtistDashboard() {
     const [isScrolled, setIsScrolled] = useState(false)
     const [scrollProgress, setScrollProgress] = useState(0)
     const { setIsOpen: setIsPostModalOpen } = useCreatePostModalStore()
-    const { setIsOpen: setIsSubsModalOpen, openForCreate, openForEdit } = useAddSubsciptionModalStore()
+    const { openForCreate, openForEdit } = useAddSubsciptionModalStore()
     const { setIsOpen: setIsNFTModalOpen } = useNFTCreateModalStore()
 
     const contentRef = useRef<HTMLDivElement>(null)
@@ -105,15 +106,7 @@ export default function ArtistDashboard() {
             getNextPageParam: (lastPage) => lastPage.nextCursor,
         },
     )
-    const deleteSubscription = api.fan.creator.deleteCreatorSubscription.useMutation({
-        onSuccess: () => {
-            toast.success("Subscription package deleted successfully")
-            subscriptionPackages.refetch()
-        },
-        onError: (error) => {
-            toast.error(`Error deleting package: ${error.message}`)
-        },
-    })
+
 
     // Profile editing state
     const [editedProfile, setEditedProfile] = useState({
@@ -367,7 +360,7 @@ export default function ArtistDashboard() {
                 {/* Left Sidebar - Fixed on desktop, slide-in on mobile */}
                 <div
                     className={cn(
-                        "w-[300px] shrink-0 border-r bg-card h-full absolute md:relative transition-transform duration-300 z-40",
+                        "w-[300px] shrink-0 border-r bg-card h-full absolute md:relative transition-transform duration-500 z-40",
                         isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
                     )}
                 >
@@ -748,98 +741,130 @@ export default function ArtistDashboard() {
                                 </Card>
                             </div>
                             {/* Subscription Packages Section */}
-                            {subscriptionPackages.data && subscriptionPackages.data.length > 0 && (
-                                <div className="mb-8">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h2 className="text-xl font-bold">Subscription Packages</h2>
-                                        <Button size="sm" onClick={() => setIsSubsModalOpen(true)}>
-                                            <Plus className="h-4 w-4 mr-2" />
-                                            Create New Package
-                                        </Button>
-                                    </div>
+                            <div className="mb-8">
+                                {
+                                    subscriptionPackages.data && subscriptionPackages.data?.length > 0 && (
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h2 className="text-xl font-bold">Subscription Packages</h2>
+                                            <Button size="sm" onClick={() => openForCreate({
+                                                customPageAsset: creator.data?.customPageAssetCodeIssuer,
+                                                pageAsset: creator.data?.pageAsset,
+                                            })}>
+                                                <Plus className="h-4 w-4 mr-2" />
+                                                Create New Package
+                                            </Button>
+                                        </div>
+                                    )
+                                }
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {subscriptionPackages.isLoading && <SubscriptionPackagesSkeleton />}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {subscriptionPackages.isLoading && <SubscriptionPackagesSkeleton />}
+                                    {
+                                        subscriptionPackages.data?.length === 0 && (
+                                            <div className="text-center py-12 bg-muted/30 rounded-lg">
+                                                <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                                                <h3 className="text-lg font-medium mb-2">No Subscription Packages Found</h3>
+                                                <p className="text-muted-foreground mb-4">Start creating subscription packages for your followers</p>
+                                                <Button onClick={() => openForCreate({
+                                                    customPageAsset: creator.data?.customPageAssetCodeIssuer,
+                                                    pageAsset: creator.data?.pageAsset,
+                                                })}>
+                                                    <Plus className="h-4 w-4 mr-2" />
+                                                    Create New Package
+                                                </Button>
+                                            </div>
+                                        )
+                                    }
+                                    {subscriptionPackages.data?.map((pkg) => (
+                                        <Card
+                                            key={pkg.id}
+                                            className={cn(
+                                                "relative overflow-hidden h-full border-2 hover:shadow-md transition-all duration-200",
+                                                pkg.popular ? "border-primary" : "border-border",
+                                                !pkg.isActive && "opacity-60",
+                                                expandedPackage === pkg.id && "ring-2 ring-primary",
+                                            )}
+                                        >
+                                            <div className={cn("h-2", pkg.color)} />
+                                            <CardHeader className="pb-2 w-full">
+                                                <div className="flex justify-between w-full">
+                                                    <div className="flex flex-col w-full">
+                                                        <CardTitle className="w-full">
+                                                            <div className="flex items-center gap-2 justify-between  w-full">
+                                                                <span>  {pkg.name}</span>
+                                                                <SubscriptionContextMenu
+                                                                    creatorId={pkg.creatorId}
+                                                                    subscription={pkg}
+                                                                    pageAsset={creator.data?.pageAsset}
+                                                                    customPageAsset={creator.data?.customPageAssetCodeIssuer}
 
-                                        {subscriptionPackages.data.map((pkg) => (
-                                            <Card
-                                                key={pkg.id}
-                                                className={cn(
-                                                    "relative overflow-hidden h-full border-2 hover:shadow-md transition-all duration-200",
-                                                    pkg.popular ? "border-primary" : "border-border",
-                                                    !pkg.isActive && "opacity-60",
-                                                    expandedPackage === pkg.id && "ring-2 ring-primary",
+                                                                />
+                                                            </div>
+
+                                                        </CardTitle>
+                                                        <div className="flex items-baseline mt-2">
+                                                            <span className="text-3xl font-bold">{pkg.price}</span>
+                                                            <span className="text-muted-foreground ml-1">
+                                                                {creator.data?.pageAsset
+                                                                    ? creator.data?.pageAsset.code
+                                                                    : creator.data?.customPageAssetCodeIssuer?.split("-")[0]}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {pkg.popular && (
+                                                    <div className="absolute top-0 right-0">
+                                                        <div className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-bl-lg">
+                                                            POPULAR
+                                                        </div>
+                                                    </div>
                                                 )}
-                                            >
-                                                <div className={cn("h-2", pkg.color)} />
-                                                <CardHeader className="pb-2">
-                                                    <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <CardTitle>{pkg.name}</CardTitle>
-                                                            <div className="flex items-baseline mt-2">
-                                                                <span className="text-3xl font-bold">{pkg.price}</span>
-                                                                <span className="text-muted-foreground ml-1">
-                                                                    {creator.data?.pageAsset
-                                                                        ? creator.data?.pageAsset.code
-                                                                        : creator.data?.customPageAssetCodeIssuer?.split("-")[0]}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    {pkg.popular && (
-                                                        <div className="absolute top-0 right-0">
-                                                            <div className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-bl-lg">
-                                                                POPULAR
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    <CardDescription className="mt-2">{pkg.description}</CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="space-y-4 pb-2">
-                                                    <ul className="space-y-2">
-                                                        {pkg.features
-                                                            .slice(0, expandedPackage === pkg.id ? pkg.features.length : 3)
-                                                            .map((feature, i) => (
-                                                                <li key={i} className="flex items-start gap-2">
-                                                                    <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                                                                    <span>{feature}</span>
-                                                                </li>
-                                                            ))}
-                                                    </ul>
+                                                <CardDescription className="mt-2">{pkg.description}</CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4 pb-2">
+                                                <ul className="space-y-2">
+                                                    {pkg.features
+                                                        .slice(0, expandedPackage === pkg.id ? pkg.features.length : 3)
+                                                        .map((feature, i) => (
+                                                            <li key={i} className="flex items-start gap-2">
+                                                                <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                                                                <span>{feature}</span>
+                                                            </li>
+                                                        ))}
+                                                </ul>
 
-                                                    {pkg.features.length > 3 && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="w-full text-xs"
-                                                            onClick={() => togglePackageExpansion(pkg.id)}
-                                                        >
-                                                            {expandedPackage === pkg.id ? (
-                                                                <>
-                                                                    <ChevronUp className="h-4 w-4 mr-1" />
-                                                                    Show Less
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <ChevronDown className="h-4 w-4 mr-1" />
-                                                                    Show All Features
-                                                                </>
-                                                            )}
-                                                        </Button>
-                                                    )}
-                                                </CardContent>
-                                                <CardFooter>
-                                                    <div className="flex items-center justify-between w-full">
-                                                        <Badge variant={pkg.isActive ? "default" : "outline"}>
-                                                            {pkg.isActive ? "Active" : "Inactive"}
-                                                        </Badge>
-                                                    </div>
-                                                </CardFooter>
-                                            </Card>
-                                        ))}
-                                    </div>
+                                                {pkg.features.length > 3 && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="w-full text-xs"
+                                                        onClick={() => togglePackageExpansion(pkg.id)}
+                                                    >
+                                                        {expandedPackage === pkg.id ? (
+                                                            <>
+                                                                <ChevronUp className="h-4 w-4 mr-1" />
+                                                                Show Less
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <ChevronDown className="h-4 w-4 mr-1" />
+                                                                Show All Features
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                )}
+                                            </CardContent>
+                                            <CardFooter>
+                                                <div className="flex items-center justify-between w-full">
+                                                    <Badge variant={pkg.isActive ? "default" : "outline"}>
+                                                        {pkg.isActive ? "Active" : "Inactive"}
+                                                    </Badge>
+                                                </div>
+                                            </CardFooter>
+                                        </Card>
+                                    ))}
                                 </div>
-                            )}
+                            </div>
 
                             {/* Content Tabs */}
                             <div>
@@ -856,7 +881,7 @@ export default function ArtistDashboard() {
                                     </TabsList>
 
                                     {/* Posts Tab */}
-                                    <TabsContent value="posts" className="space-y-6  mb-8 ">
+                                    <TabsContent value="posts" className="space-y-6  mb-16 ">
                                         <div className="flex justify-between items-center">
                                             <h2 className="text-xl font-bold">Your Posts</h2>
                                             <Button size="sm" onClick={() => setIsPostModalOpen(true)}>

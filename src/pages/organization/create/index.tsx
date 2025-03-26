@@ -541,7 +541,7 @@ export default function ArtistOnboarding() {
     }
 
     return (
-        <div className="h-[calc(100vh-10.8vh)] ">
+        <div className="h-screen  overflow-auto">
             {showConfetti && (
                 <div className="fixed inset-0 pointer-events-none z-50">
                     <div className="absolute inset-0 flex items-center justify-center">

@@ -48,7 +48,7 @@ export default function ArtistProfile() {
     // iwant to get the id
     // so i use useParams() to get the id
     const params = useParams()
-    const id = Array.isArray(params.id) ? params.id[0] : params.id
+    const id = Array.isArray(params?.id) ? params.id[0] : params?.id
     const router = useRouter()
     const session = useSession()
     const [activeTab, setActiveTab] = useState("posts")
@@ -158,6 +158,7 @@ export default function ArtistProfile() {
     }
     useEffect(() => {
         const handleScroll = () => {
+            console.log("calling")
             if (contentRef.current) {
                 const scrollPosition = contentRef.current.scrollTop
                 const scrollThreshold = 100
@@ -184,7 +185,7 @@ export default function ArtistProfile() {
                 currentContentRef.removeEventListener("scroll", handleScroll)
             }
         }
-    }, [])
+    }, [params.id, contentRef.current])
     // Handle share
     const handleShare = () => {
         if (navigator.share) {
@@ -214,7 +215,7 @@ export default function ArtistProfile() {
     }
 
     return (
-        <div className="flex flex-col min-h-screen bg-background">
+        <div className="flex flex-col h-screen   bg-background">
             {/* Header with Cover Image */}
             <div className="w-full relative transition-all duration-500"
                 style={{
@@ -266,7 +267,7 @@ export default function ArtistProfile() {
                     </div>
                     <header
                         className={cn(
-                            "absolute top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-primary/20 shadow-md h-14 transition-all duration-300 flex items-center justify-between px-4",
+                            "absolute top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-primary/20 shadow-md h-14 transition-all duration-500 flex items-center justify-between px-4",
                             isScrolled ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0",
                         )}
                         style={{
@@ -298,7 +299,7 @@ export default function ArtistProfile() {
                 {/* Left Sidebar - Fixed on desktop, slide-in on mobile */}
                 <div
                     className={cn(
-                        "w-[300px] shrink-0 border-r bg-card h-full absolute md:relative transition-transform duration-300 z-20",
+                        "w-[300px] shrink-0 border-r bg-card h-full absolute md:relative transition-transform duration-500 z-20",
                         isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
                     )}
                 >

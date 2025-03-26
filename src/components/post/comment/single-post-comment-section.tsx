@@ -9,89 +9,62 @@ import { useSession } from "next-auth/react"
 import { api } from "~/utils/api"
 import { cn } from "~/lib/utils"
 import Link from "next/link"
-import { ArrowRight, MessageCircle, Send, StickyNote } from 'lucide-react'
+import { MessageCircle, Send } from 'lucide-react'
 import CustomAvatar from "~/components/common/custom-avatar"
 import { AddReplyComment } from "../reply/add-post-reply"
 import ReplyCommentView from "../reply/post-reply-section"
 import { AddPostComment } from "./add-post-comment"
 import ContextMenu from "~/components/common/context-menu"
-import { Arrow } from "@radix-ui/react-select"
 
 interface CommentSectionProps {
     postId: number
     initialCommentCount: number
 }
 
-export function CommentSection({ postId, initialCommentCount }: CommentSectionProps) {
+export function SinglePostCommentSection({ postId, initialCommentCount }: CommentSectionProps) {
     const [isCommentsVisible, setIsCommentsVisible] = useState(true)
+
 
     const comments = api.fan.post.getComments.useQuery({
         postId: postId,
-        limit: 5,
-    }, {
-        enabled: isCommentsVisible
-    })
+    });
 
-    const toggleComments = () => {
-        setIsCommentsVisible(prev => !prev)
-    }
 
     return (
         <div className="mt-2 w-full">
-            <Button
-                variant="ghost"
-                size="sm"
-                className="flex items-center gap-2 mb-2 text-gray-600"
-                onClick={toggleComments}
-            >
-                <MessageCircle className="h-4 w-4" />
-                {isCommentsVisible ? "Hide comments" : `View comments (${initialCommentCount})`}
-            </Button>
-            <Link href={`/organization/post/${postId}`}>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex items-center gap-2 mb-2 text-gray-600 underline mt-2"
 
-                >
 
-                    View Post <ArrowRight className="h-4 w-4" />
-                </Button>
-            </Link>
             <AnimatePresence>
-                {isCommentsVisible && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="overflow-hidden"
-                    >
-                        {comments.isLoading ? (
-                            <div className="flex justify-center py-4">
-                                <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
-                            </div>
-                        ) : comments.data && comments.data.length > 0 ? (
-                            <div className="space-y-4 mt-2">
-                                {comments.data.map((comment) => (
-                                    <CommentView
-                                        key={comment.id}
-                                        comment={comment}
-                                        childrenComments={comment.childComments || []}
-                                    />
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-4 text-gray-500">
-                                No comments yet. Be the first to comment!
-                            </div>
-                        )}
 
-                        <div className="mt-4 p-2">
-                            <AddPostComment postId={postId} />
+                <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="overflow-hidden"
+                >
+                    {comments.isLoading ? (
+                        <div className="flex justify-center py-4">
+                            <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
                         </div>
-                    </motion.div>
-                )}
+                    ) : comments.data && comments.data.length > 0 ? (
+                        <div className="space-y-4 mt-2">
+                            {comments.data.map((comment) => (
+                                <CommentView
+                                    key={comment.id}
+                                    comment={comment}
+                                    childrenComments={comment.childComments || []}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-4 text-gray-500">
+                            No comments yet. Be the first to comment!
+                        </div>
+                    )}
+
+                </motion.div>
+
             </AnimatePresence>
         </div>
     )
