@@ -51,6 +51,7 @@ const ModalProvider = () => {
       <CreatePostModal />
       <AddSubscriptionModal />
 
+
     </>
   );
 };

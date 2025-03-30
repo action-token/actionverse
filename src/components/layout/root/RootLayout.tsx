@@ -19,6 +19,7 @@ import { useRouter } from "next/router";
 import { i } from "vitest/dist/reporters-w_64AS5f";
 import CreatorLayout from "./CreatorLayout";
 import { MiniPlayerProvider } from "~/components/player/mini-player-provider";
+import LoginRequiredModal from "~/components/modal/login-required-modal";
 
 export default function Layout({
     children,
@@ -33,6 +34,8 @@ export default function Layout({
     const router = useRouter();
 
     const isArtistRoutes = router.pathname.startsWith("/organization");
+    const publicRoutes = ["/about", "/privacy", "/support", "/"];
+    const isPublicRoute = publicRoutes.includes(router.pathname);
 
     const handleToggle = () => {
         toggle();
@@ -73,9 +76,15 @@ export default function Layout({
                                 <Toaster />
                             </div>
                         ) : (
-                            <div className="flex h-screen w-full items-center justify-center ">
-                                <ConnectWalletButton />
-                            </div>
+                            isPublicRoute ? (
+                                <div className="w-full   overflow-y-auto    scrollbar-hide lg:pl-6">
+                                    <>{children}</>
+                                    <LoginRequiredModal />
+                                </div>
+                            ) :
+                                (<div className="flex h-screen w-full items-center justify-center ">
+                                    <ConnectWalletButton />
+                                </div>)
                         )}
                     </div>
                 </div>

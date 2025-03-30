@@ -25,6 +25,9 @@ const config = {
       },
       { hostname: "app.wadzzo.com" },
       {
+        hostname:"wadzzo.s3.amazonaws.com"
+      },
+      {
         hostname: "firebasestorage.googleapis.com",
       },
       { hostname: "raw.githubusercontent.com" },

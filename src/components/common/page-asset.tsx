@@ -23,7 +23,7 @@ function PageAssetComponent({ item }: { item: CreatorPageAssetType }) {
     const router = useRouter();
     return (
         <div onClick={async () => {
-            await router.push(`/fans/creator/${item.id}`);
+            await router.push(`/organization/${item.id}`);
         }}>
 
             <AssetView

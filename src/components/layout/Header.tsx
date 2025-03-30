@@ -148,12 +148,13 @@ const HeaderButtons = () => {
         <div className=" flex items-center justify-center gap-1 ">
             <Link href="/wallet-balance" className="">
                 <Button className="" variant='destructive'>
+
+                    <span className="flex">
+
+                        {bal.data?.platformAssetBal.toFixed(0)}
+                    </span>
                     <span className="hidden md:flex">
                         {PLATFORM_ASSET.code.toUpperCase()}
-                    </span>
-                    <span className="flex">
-                        <span className="hidden md:flex">{" : "}</span>
-                        {bal.data?.platformAssetBal.toFixed(0)}
                     </span>
                 </Button>
             </Link>

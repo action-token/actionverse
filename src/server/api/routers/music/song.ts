@@ -302,7 +302,7 @@ export const songRouter = createTRPCRouter({
     return songs;
   }),
 
-  getAllSongMarketAssets: protectedProcedure
+  getAllSongMarketAssets: publicProcedure
     .input(
       z.object({
         limit: z.number(),
@@ -312,77 +312,124 @@ export const songRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { limit, cursor, skip } = input;
-      const currentUserId = ctx.session.user.id;
+      if (ctx.session?.user.id) {
+        const currentUserId = ctx.session.user.id;
 
-      const items = await ctx.db.marketAsset.findMany({
-        take: limit + 1,
-        skip: skip,
-        cursor: cursor ? { id: cursor } : undefined,
-        include: {
-          asset: {
-            select: {
-              ...AssetSelectAllProperty,
-              tier: {
-                select: {
-                  price: true,
+        const items = await ctx.db.marketAsset.findMany({
+          take: limit + 1,
+          skip: skip,
+          cursor: cursor ? { id: cursor } : undefined,
+          include: {
+            asset: {
+              select: {
+                ...AssetSelectAllProperty,
+                tier: {
+                  select: {
+                    price: true,
+                  },
                 },
-              },
-              creator: {
-                select: {
-                  pageAsset: {
-                    select: {
-                      code: true,
-                      issuer: true,
+                creator: {
+                  select: {
+                    pageAsset: {
+                      select: {
+                        code: true,
+                        issuer: true,
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
-        orderBy: { id: "desc" },
-        where: { type: { equals: "SONG" } },
-      });
+          orderBy: { id: "desc" },
+          where: { type: { equals: "SONG" } },
+        });
 
-      const stellarAcc = await StellarAccount.create(currentUserId);
+        const stellarAcc = await StellarAccount.create(currentUserId);
 
-      const array = items.filter((item) => {
-        const creatorPageAsset = item.asset.creator?.pageAsset;
+        const array = items.filter((item) => {
+          const creatorPageAsset = item.asset.creator?.pageAsset;
 
-        if (item.asset.privacy === ItemPrivacy.PUBLIC) {
-          return true;
+          if (item.asset.privacy === ItemPrivacy.PUBLIC) {
+            return true;
+          }
+
+          if (item.asset.creatorId !== item.placerId) {
+            return true;
+          }
+
+          if (item.asset.privacy === ItemPrivacy.PRIVATE) {
+            return creatorPageAsset && stellarAcc.hasTrustline(creatorPageAsset.code, creatorPageAsset.issuer);
+          }
+
+          if (item.asset.privacy === ItemPrivacy.TIER) {
+            return (
+              creatorPageAsset &&
+              item.asset.tier &&
+              item.asset.tier.price <= stellarAcc.getTokenBalance(creatorPageAsset.code, creatorPageAsset.issuer)
+            );
+          }
+
+          return false;
+        });
+
+        // Handle pagination
+        let nextCursor: typeof cursor | undefined = undefined;
+        if (array.length > limit) {
+          const nextItem = array.pop();
+          nextCursor = nextItem?.id;
         }
 
-        if (item.asset.creatorId !== item.placerId) {
-          return true;
-        }
-
-        if (item.asset.privacy === ItemPrivacy.PRIVATE) {
-          return creatorPageAsset && stellarAcc.hasTrustline(creatorPageAsset.code, creatorPageAsset.issuer);
-        }
-
-        if (item.asset.privacy === ItemPrivacy.TIER) {
-          return (
-            creatorPageAsset &&
-            item.asset.tier &&
-            item.asset.tier.price <= stellarAcc.getTokenBalance(creatorPageAsset.code, creatorPageAsset.issuer)
-          );
-        }
-
-        return false;
-      });
-
-      // Handle pagination
-      let nextCursor: typeof cursor | undefined = undefined;
-      if (array.length > limit) {
-        const nextItem = array.pop();
-        nextCursor = nextItem?.id;
+        return {
+          nfts: array,
+          nextCursor,
+        };
       }
+      else {
 
-      return {
-        nfts: array,
-        nextCursor,
-      };
+        const items = await ctx.db.marketAsset.findMany({
+          take: limit + 1,
+          skip: skip,
+          cursor: cursor ? { id: cursor } : undefined,
+          include: {
+            asset: {
+              select: {
+                ...AssetSelectAllProperty,
+                tier: {
+                  select: {
+                    price: true,
+                  },
+                },
+                creator: {
+                  select: {
+                    pageAsset: {
+                      select: {
+                        code: true,
+                        issuer: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { id: "desc" },
+          where: { type: { equals: "SONG" } },
+        });
+
+
+        // Handle pagination
+        let nextCursor: typeof cursor | undefined = undefined;
+        if (items.length > limit) {
+          const nextItem = items.pop();
+          nextCursor = nextItem?.id;
+        }
+
+        return {
+          nfts: items,
+          nextCursor,
+        };
+      }
     }),
 
 

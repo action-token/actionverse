@@ -572,8 +572,9 @@ model Bounty {
     id                 Int                 @id @default(autoincrement())
     title              String
     description        String
-    Latitude           Float?
-    Longitude          Float?
+    latitude           Float?
+    longitude          Float?
+    radius             Float?
     priceInUSD         Float
     priceInBand        Float
     totalWinner        Int

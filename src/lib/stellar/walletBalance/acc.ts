@@ -560,7 +560,7 @@ export async function PlatformAssetBalance({
       }
       return false;
     });
-    return findAsset ? findAsset.balance : 0;
+    return findAsset ? Number(findAsset.balance) : 0;
   } catch (e) {
     return -1
   }

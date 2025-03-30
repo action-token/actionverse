@@ -155,7 +155,7 @@ const PostViewCheck = ({ postId }: { postId: string }) => {
                             <h2 className="text-xl mb-2">Error 404: Post Not Found.</h2>
                             <p className="text-muted-foreground mb-8">We couldn{"'"}t find a Post with this URL.</p>
                             <div className="flex gap-4 justify-center">
-                                <Button variant="outline" onClick={() => router.push("/fans/home")}>
+                                <Button variant="outline" onClick={() => router.push("/organization/home")}>
                                     Go Feed
                                 </Button>
                             </div>
