@@ -367,7 +367,7 @@ const MapOptionModal = () => {
                                                         variant="outline"
                                                         className="flex items-center gap-2 h-auto py-3 justify-start"
                                                         onClick={() => {
-                                                            router.push(`maps/pins/${data.pinId}`).finally(() => handleClose())
+                                                            router.push(`/maps/pins/${data.pinId}`).finally(() => handleClose())
                                                         }}
                                                     >
                                                         <div className="bg-primary/10 p-2 rounded-full">

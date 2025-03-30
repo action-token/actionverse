@@ -194,8 +194,9 @@ export const BountyRoute = createTRPCRouter({
           creatorId: ctx.session.user.id,
           totalWinner: input.winners,
           requiredBalance: input.requiredBalance,
-          Latitude: Number(input.latitude),
-          Longitude: Number(input.longitude),
+          latitude: Number(input.latitude),
+          longitude: Number(input.longitude),
+          radius: Number(input.radius),
         },
       });
       const followers = await ctx.db.follow.findMany({

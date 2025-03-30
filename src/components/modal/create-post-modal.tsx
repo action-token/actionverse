@@ -112,7 +112,7 @@ export function CreatePostModal() {
             setMedia([])
             setTimeout(() => {
                 handleClose()
-                router.push(`/fans/posts/${data.id}`)
+                router.push(`/organization/post/${data.id}`)
             }, 2000)
         },
     })

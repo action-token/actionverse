@@ -68,7 +68,7 @@ const Chat = ({ bountyId }: { bountyId: number }) => {
     if (!listBountyDoubt) return null
     console.log(listBountyDoubt)
     return (
-        <div className="flex w-full flex-col lg:flex-row">
+        <div className="flex w-full flex-col lg:flex-row ">
             <Tabs className="flex h-full w-full flex-col lg:flex-row" defaultValue={selectedDoubt?.id.toString()}>
                 <div className="flex w-full flex-col border-r lg:w-80 ">
                     <div className="flex items-center justify-between p-4">
@@ -125,7 +125,7 @@ const Chat = ({ bountyId }: { bountyId: number }) => {
                             />
                         </div>
                     </div>
-                    <TabsList className="lg:flex h-[calc(100vh-12rem)]  hidden flex-col items-start justify-start gap-2 overflow-auto px-2">
+                    <TabsList className="lg:flex h-[calc(100vh-30vh)]  hidden flex-col items-start justify-start gap-2 overflow-auto px-2">
                         {filteredDoubts?.length === 0 ? (
                             <div className="flex h-full w-full items-center justify-center">
                                 <p className="text-center text-lg font-medium text-muted-foreground">No chats available</p>
@@ -258,7 +258,7 @@ const ChatItem = ({ item }: { item: BountyDoubtListItem }) => {
                 </div>
             </CardHeader>
             <CardContent className="flex-1 p-0">
-                <ScrollArea className="h-[calc(100vh-16rem)] relative">
+                <ScrollArea className="h-[calc(100vh-30vh)] relative">
                     <div className="flex flex-col gap-4 p-4 ">
                         {messages?.map((message, index) => (
                             <div

@@ -5,7 +5,7 @@ import React from "react";
 import { cn } from "~/lib/utils";
 
 interface HexagonAvatarProps {
-  url: string | null;
+  url?: string | null;
   size?: number;
   className?: string;
   winnerCount?: number;
