@@ -149,12 +149,12 @@ const HeaderButtons = () => {
             <Link href="/wallet-balance" className="">
                 <Button className="" variant='destructive'>
 
-                    <span className="flex">
+                    <span className="block md:hidden">
 
                         {bal.data?.platformAssetBal.toFixed(0)}
                     </span>
-                    <span className="hidden md:flex">
-                        {PLATFORM_ASSET.code.toUpperCase()}
+                    <span className="hidden md:block">
+                        {bal.data?.platformAssetBal.toFixed(0)}  {PLATFORM_ASSET.code.toUpperCase()}
                     </span>
                 </Button>
             </Link>
