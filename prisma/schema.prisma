@@ -219,8 +219,42 @@ model Creator {
     Album              Album[]
     Song               Song[]
     createdAt          DateTime            @default(now())
+    Appearance         Appearance[]
 
     @@index([bio, name])
+}
+
+model Appearance {
+    id        String   @id @default(cuid())
+    name      String
+    isDefault Boolean  @default(false)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    creatorId String? // Optional field to reference the creator
+    creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    widgets   Widget[]
+    theme     Json? // Store theme as JSON
+    isPublic  Boolean  @default(false)
+
+    @@index([creatorId])
+}
+
+model Widget {
+    id           String  @id @default(cuid())
+    widgetId     String // The type of widget (e.g., "stats", "profile", etc.)
+    size         String // "small", "medium", or "large"
+    order        Int
+    pinned       Boolean @default(false)
+    groupId      String? // For grouped widgets
+    customWidth  Float? // For custom width percentage in groups
+    appearanceId String
+    settings     Json? // Add this line
+
+    appearance Appearance @relation(fields: [appearanceId], references: [id], onDelete: Cascade)
+    createdAt  DateTime   @default(now())
+    updatedAt  DateTime   @updatedAt
+
+    @@index([appearanceId])
 }
 
 model VanitySubscription {

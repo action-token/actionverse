@@ -7,6 +7,7 @@ import { trxRouter } from "./trx";
 import { notificationRouter } from "./notification";
 import { userRouter } from "./user";
 import { musicRouter } from "./music";
+import { dashboardRouter } from "./dashboard";
 
 /**
  * This is the primary router for your server.
@@ -22,6 +23,7 @@ export const fanRouter = createTRPCRouter({
   notification: notificationRouter,
   user: userRouter,
   music: musicRouter,
+  dashboard: dashboardRouter,
 });
 
 // export type definition of API

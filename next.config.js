@@ -24,6 +24,7 @@ const config = {
         hostname: "utfs.io",
       },
       { hostname: "app.wadzzo.com" },
+      { hostname: "actionverse.s3.amazonaws.com" },
       {
         hostname:"wadzzo.s3.amazonaws.com"
       },
