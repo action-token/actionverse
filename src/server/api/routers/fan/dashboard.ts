@@ -1,11 +1,10 @@
 import { z } from "zod"
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "~/server/api/trpc"
-import { WidgetSettings } from "~/types/organization/dashboard"
 
-// Define the widget schema
+// Update the widget schema to handle the new size types
 const widgetSchema = z.object({
     id: z.string(),
-    size: z.enum(["small", "medium", "large"]),
+    size: z.string(), // Changed from enum to string to be more flexible
     order: z.number(),
     pinned: z.boolean().optional(),
     groupId: z.string().optional(),
@@ -165,7 +164,7 @@ export const dashboardRouter = createTRPCRouter({
                         create: widgets.map((widget) => {
                             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                             const settings = widget.settings ? JSON.parse(JSON.stringify(widget.settings)) : {}
-                            return ({
+                            return {
                                 widgetId: widget.id,
                                 size: widget.size,
                                 order: widget.order,
@@ -175,7 +174,6 @@ export const dashboardRouter = createTRPCRouter({
                                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                                 settings: settings,
                             }
-                            )
                         }),
                     },
                 },
@@ -195,7 +193,7 @@ export const dashboardRouter = createTRPCRouter({
                         create: widgets.map((widget) => {
                             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                             const settings = widget.settings ? JSON.parse(JSON.stringify(widget.settings)) : {}
-                            return ({
+                            return {
                                 widgetId: widget.id,
                                 size: widget.size,
                                 order: widget.order,
@@ -205,7 +203,6 @@ export const dashboardRouter = createTRPCRouter({
                                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                                 settings: settings,
                             }
-                            )
                         }),
                     },
                 },
