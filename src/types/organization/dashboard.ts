@@ -15,6 +15,8 @@ export interface CoverProfileSettings {
     coverTextSize: number
     heroProfileSize: number
     heroContentPosition: "over" | "below"
+    height?: "SS" | "S" | "M" | "L" | "XL" | "2XL" | "3XL" | "4XL"
+    width?: "SS" | "S" | "M" | "L" | "XL" | "2XL" | "3XL" | "4XL"
 }
 interface CoverProfileWidgetProps {
     editMode?: boolean
@@ -29,6 +31,7 @@ interface CoverProfileWidgetProps {
     settings?: Partial<CoverProfileSettings>
     onSettingsChange?: (settings: CoverProfileSettings) => void
     creatorData: CreatorWithPageAsset
+
 
 }
 // Update the WidgetSettings interface to match what the mutation expects
