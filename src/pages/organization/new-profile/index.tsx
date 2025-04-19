@@ -2,19 +2,12 @@
 
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
-import { Save, Plus, X, GripVertical, Link2, Unlink, Maximize2, Edit, Check, User, Trash2, Globe } from "lucide-react"
+import { Save, Plus, X, GripVertical, Link2, Edit, Check, User, Trash2 } from "lucide-react"
 
 import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { toast } from "~/components/shadcn/ui/use-toast"
-import {
-    Sheet,
-    SheetContent,
-    SheetDescription,
-    SheetHeader,
-    SheetTitle,
-    SheetTrigger,
-} from "~/components/shadcn/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "~/components/shadcn/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
 import { Input } from "~/components/shadcn/ui/input"
 import { Label } from "~/components/shadcn/ui/label"
@@ -51,6 +44,19 @@ import LyricsWidget from "~/components/widget/lyrics-widget"
 import FanCommunityWidget from "~/components/widget/fan-community-widget"
 import CoverProfileWidget from "~/components/widget/cover-profile-widget"
 
+// Import the new utility functions and components
+import {
+    getWidgetDimensions,
+    createDefaultWidgetSettings,
+    generateGroupId,
+    type WidgetHeight,
+    type WidgetWidth,
+    getGridSpan,
+} from "~/components/widget/utils/ widget-utils"
+import WidgetSizeSelector from "~/components/widget/utils/widget-size-selector"
+import WidgetResizeHandle from "~/components/widget/utils/widget-resize-handle"
+import WidgetGroupControls from "~/components/widget/utils/widget-group-controls"
+
 // Update imports at the top to include the new types
 import { api } from "~/utils/api" // Adjust this import based on your tRPC setup
 import type {
@@ -61,18 +67,39 @@ import type {
     WidgetItem,
     WidgetSettings,
 } from "~/types/organization/dashboard"
-
+import { cn } from "~/lib/utils"
+// Update the DEFAULT_LAYOUT to include default settings for each widget
 const DEFAULT_LAYOUT: WidgetItem[] = [
-    { id: "cover-profile", size: "large", order: 1, pinned: true },
+    {
+        id: "cover-profile",
+        size: "large",
+        order: 1,
 
-    { id: "membership-tiers", size: "large", order: 4 },
-    { id: "stats", size: "large", order: 5 },
-
-    { id: "nft-gallery", size: "large", order: 9 },
+        settings: createDefaultWidgetSettings("cover-profile"),
+    },
+    {
+        id: "membership-tiers",
+        size: "large",
+        order: 4,
+        settings: createDefaultWidgetSettings("membership-tiers"),
+    },
+    {
+        id: "stats",
+        size: "large",
+        order: 5,
+        settings: createDefaultWidgetSettings("stats"),
+    },
+    {
+        id: "nft-gallery",
+        size: "large",
+        order: 9,
+        settings: createDefaultWidgetSettings("nft-gallery"),
+    },
     {
         id: "recent-posts",
         size: "large",
         order: 10,
+        settings: createDefaultWidgetSettings("recent-posts"),
     },
 ]
 
@@ -100,7 +127,6 @@ const AVAILABLE_WIDGETS: WidgetDefinition[] = [
         component: StatsWidget,
         icon: "stats",
     },
-
     {
         id: "recent-posts",
         title: "Recent Posts",
@@ -208,6 +234,19 @@ const AVAILABLE_WIDGETS: WidgetDefinition[] = [
     },
 ]
 
+// Map height keys to pixel values
+const HEIGHT_MAP: Record<WidgetHeight, number> = {
+    SS: 100,
+    S: 200,
+    M: 300,
+    L: 450,
+    XL: 600,
+    "2XL": 800,
+    "3XL": 1000,
+    "4XL": 1200,
+
+}
+
 export default function DashboardBuilder() {
     // State variables
     const [widgets, setWidgets] = useState<WidgetItem[]>(DEFAULT_LAYOUT)
@@ -237,9 +276,6 @@ export default function DashboardBuilder() {
     const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
     const dashboardContainerRef = useRef<HTMLDivElement>(null)
 
-    // Remove theme state
-    // - const [theme, setTheme] = useState<Theme>(STYLE_PRESETS[0])
-
     // Group resizing state
     const [resizingGroup, setResizingGroup] = useState<GroupResizeState | null>(null)
 
@@ -263,7 +299,7 @@ export default function DashboardBuilder() {
 
                 // Transform the data to match the expected format
                 const transformLayout = (layout: (typeof data)[0] | undefined) => {
-                    if (!layout) return undefined;
+                    if (!layout) return undefined
 
                     return {
                         id: layout.id,
@@ -339,7 +375,7 @@ export default function DashboardBuilder() {
         },
     })
 
-    // Helper function to load a user layout
+    // Update the loadUserLayout function to ensure default sizes are applied when settings are missing
     const loadUserLayout = (
         dashboard:
             | {
@@ -384,13 +420,26 @@ export default function DashboardBuilder() {
                             processedSettings = JSON.parse(widget.settings) as WidgetSettings
                         } catch (e) {
                             console.error(`Error parsing settings for widget ${widget.widgetId}:`, e)
-                            processedSettings = {}
+                            processedSettings = createDefaultWidgetSettings(widget.widgetId)
                         }
                     }
                     // If settings is already an object, use it directly
                     else if (typeof widget.settings === "object") {
                         processedSettings = widget.settings as WidgetSettings
                     }
+                } else {
+                    // If no settings found, create default settings for this widget type
+                    processedSettings = createDefaultWidgetSettings(widget.widgetId)
+                }
+
+                if (!processedSettings?.height) {
+                    processedSettings = processedSettings ?? {};
+                    processedSettings.height = "L" as WidgetHeight;
+                }
+
+                if (!processedSettings?.width) {
+                    processedSettings = processedSettings ?? {};
+                    processedSettings.width = "L" as WidgetWidth;
                 }
 
                 console.log(`Processed settings for widget ${widget.widgetId}:`, processedSettings)
@@ -439,6 +488,24 @@ export default function DashboardBuilder() {
                 // Transform the data from Prisma format to our app format
                 const widgetsData: WidgetItem[] = dashboard.widgets.map((widget) => {
                     console.log(`Loading widget ${widget.widgetId} with settings:`, widget.settings)
+
+                    // Process settings, ensuring defaults are applied when missing
+                    let processedSettings: WidgetSettings | undefined = undefined
+
+                    if (widget.settings) {
+                        processedSettings = widget.settings as WidgetSettings
+                    } else {
+                        processedSettings = createDefaultWidgetSettings(widget.widgetId)
+                    }
+
+                    // Ensure height and width are set to defaults if missing
+                    if (!processedSettings.height) {
+                        processedSettings.height = "L" as WidgetHeight
+                    }
+                    if (!processedSettings.width) {
+                        processedSettings.width = "L" as WidgetWidth
+                    }
+
                     return {
                         id: widget.widgetId,
                         size: widget.size as "small" | "medium" | "large",
@@ -446,7 +513,7 @@ export default function DashboardBuilder() {
                         pinned: widget.pinned,
                         groupId: widget.groupId ?? undefined,
                         customWidth: widget.customWidth ?? undefined,
-                        settings: widget.settings as WidgetSettings | undefined,
+                        settings: processedSettings,
                     }
                 })
 
@@ -538,7 +605,7 @@ export default function DashboardBuilder() {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                 const settings = widget.settings ? JSON.parse(JSON.stringify(widget.settings)) : {}
 
-                return ({
+                return {
                     id: widget.id,
                     size: widget.size,
                     order: widget.order,
@@ -546,10 +613,9 @@ export default function DashboardBuilder() {
                     groupId: widget.groupId,
                     customWidth: widget.customWidth,
                     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-                    settings: settings
-                })
-            }
-            )
+                    settings: settings,
+                }
+            })
 
             const dashboardData = {
                 id: layoutId ?? undefined,
@@ -602,108 +668,122 @@ export default function DashboardBuilder() {
         }
     }
 
-    const handleResizeStart = (e: React.MouseEvent, widgetId: string) => {
-        if (!editMode) return
-        e.stopPropagation()
-        e.preventDefault()
+    // Handle widget resize
+    const handleWidgetResize = (widgetId: string, deltaX: number, deltaY: number) => {
+        const widget = widgets.find((w) => w.id === widgetId)
+        if (!widget) return
 
-        const widgetEl = widgetRefs.current[widgetId]
-        if (!widgetEl) return
-
-        setResizingWidget(widgetId)
-        setResizeStartX(e.clientX)
-        setResizeStartY(e.clientY)
-        setResizeStartWidth(widgetEl.offsetWidth)
-        setResizeStartHeight(widgetEl.offsetHeight)
-
-        document.addEventListener("mousemove", handleResizeMove)
-        document.addEventListener("mouseup", handleResizeEnd)
-    }
-
-    const handleResizeMove = (e: MouseEvent) => {
-        if (!resizingWidget) return
-
-        const widgetEl = widgetRefs.current[resizingWidget]
-        if (!widgetEl) return
-
-        const deltaX = e.clientX - resizeStartX
-        const deltaY = e.clientY - resizeStartY
-
-        const newWidth = Math.max(200, resizeStartWidth + deltaX)
-        const newHeight = Math.max(150, resizeStartHeight + deltaY)
-
-        // Apply the new dimensions directly to the widget element
-        widgetEl.style.width = `${newWidth}px`
-        widgetEl.style.height = `${newHeight}px`
-
-        // For widgets in a group, we need to adjust the proportions
-        const widget = widgets.find((w) => w.id === resizingWidget)
-        if (widget?.groupId) {
-            // Find all widgets in this group
+        // For widgets in a group, adjust proportions
+        if (widget.groupId) {
             const groupWidgets = widgets.filter((w) => w.groupId === widget.groupId)
-            const groupContainer = widgetEl.closest("[data-group-id]")
+            const groupContainer = document.querySelector(`[data-group-id="${widget.groupId}"]`)
 
             if (groupContainer) {
                 const containerWidth = groupContainer.clientWidth
-                // Account for gaps (8px per gap = 2 * 0.5rem)
-                const totalGapWidth = (groupWidgets.length - 1) * 8
-                const adjustedContainerWidth = containerWidth - totalGapWidth
-                const widthPercent = (newWidth / adjustedContainerWidth) * 100
+                const widgetEl = widgetRefs.current[widgetId]
 
-                // Calculate how much width to take from other widgets
-                const totalOtherWidgets = groupWidgets.length - 1
-                if (totalOtherWidgets > 0) {
-                    const otherWidgetsCurrentWidth = 100 - widthPercent
-                    const widthPerOtherWidget = otherWidgetsCurrentWidth / totalOtherWidgets
+                if (widgetEl) {
+                    // Calculate new width as percentage of container
+                    const currentWidth = widgetEl.offsetWidth
+                    const newWidth = Math.max(100, currentWidth + deltaX)
+                    const widthPercent = (newWidth / containerWidth) * 100
 
-                    // Update the DOM for smooth resizing
-                    groupWidgets.forEach((w) => {
-                        const el = document.querySelector(`[data-widget-id="${w.id}"]`)
-                        if (el) {
-                            if (w.id === resizingWidget) {
-                                (el as HTMLElement).style.width = `calc(${widthPercent}% - ${totalGapWidth / groupWidgets.length}px)`
-                            } else {
-                                (el as HTMLElement).style.width = `calc(${widthPerOtherWidget}% - ${totalGapWidth / groupWidgets.length}px)`
+                    // Update DOM for smooth resizing
+                    widgetEl.style.width = `${widthPercent}%`
+
+                    // Adjust other widgets in the group
+                    const totalOtherWidgets = groupWidgets.length - 1
+                    if (totalOtherWidgets > 0) {
+                        const otherWidgetsCurrentWidth = 100 - widthPercent
+                        const widthPerOtherWidget = otherWidgetsCurrentWidth / totalOtherWidgets
+
+                        groupWidgets.forEach((w) => {
+                            if (w.id !== widgetId) {
+                                const el = document.querySelector(`[data-widget-id="${w.id}"]`)
+                                if (el) {
+                                    ; (el as HTMLElement).style.width = `${widthPerOtherWidget}%`
+                                }
                             }
-                        }
-                    })
+                        })
+                    }
                 }
             }
-        } else {
-            // For widgets not in a group, we need to adjust the column span
-            const widgetWidth = newWidth
-            const containerWidth = widgetEl.parentElement?.offsetWidth ?? 1000
-            const widthRatio = widgetWidth / containerWidth
+        }
+        // For individual widgets, adjust height and width
+        else {
+            const widgetEl = widgetRefs.current[widgetId]
+            if (widgetEl) {
+                // Get current height and width from settings or default
+                const currentHeight = (widget.settings?.height as WidgetHeight) ?? "M"
+                const currentWidth = (widget.settings?.width as WidgetWidth) ?? "M"
 
-            if (widthRatio > 0.6) {
-                widgetEl.parentElement?.classList.remove("col-span-4", "col-span-6")
-                widgetEl.parentElement?.classList.add("col-span-12")
-            } else if (widthRatio > 0.3) {
-                widgetEl.parentElement?.classList.remove("col-span-4", "col-span-12")
-                widgetEl.parentElement?.classList.add("col-span-6")
-            } else {
-                widgetEl.parentElement?.classList.remove("col-span-6", "col-span-12")
-                widgetEl.parentElement?.classList.add("col-span-4")
+                // Calculate new height
+                const currentHeightPx = widgetEl.offsetHeight
+                const newHeight = Math.max(100, currentHeightPx + deltaY)
+
+                // Find closest height preset
+                let newHeightKey: WidgetHeight = "M"
+                if (newHeight < 150) newHeightKey = "SS"
+                else if (newHeight < 250) newHeightKey = "S"
+                else if (newHeight < 350) newHeightKey = "M"
+                else if (newHeight < 500) newHeightKey = "L"
+                else if (newHeight < 700) newHeightKey = "XL"
+                else if (newHeight < 900) newHeightKey = "2XL"
+                else if (newHeight < 1100) newHeightKey = "3XL"
+                else newHeightKey = "4XL"
+
+                // Calculate new width if deltaX is significant
+                let newWidthKey = currentWidth
+                if (Math.abs(deltaX) > 50) {
+                    const containerWidth = widgetEl.parentElement?.parentElement?.offsetWidth ?? 1200
+                    const currentWidthPx = widgetEl.offsetWidth
+                    const newWidth = Math.max(200, currentWidthPx + deltaX)
+                    const widthRatio = newWidth / containerWidth
+
+                    if (widthRatio <= 0.2) newWidthKey = "SS"
+                    else if (widthRatio <= 0.3) newWidthKey = "S"
+                    else if (widthRatio <= 0.4) newWidthKey = "M"
+                    else if (widthRatio <= 0.55) newWidthKey = "L"
+                    else if (widthRatio <= 0.7) newWidthKey = "XL"
+                    else if (widthRatio <= 0.8) newWidthKey = "2XL"
+                    else if (widthRatio <= 0.9) newWidthKey = "3XL"
+                    else newWidthKey = "4XL"
+                }
+
+                // Update widget element for smooth resizing
+                widgetEl.style.height = `${newHeight}px`
+
+                // Store the new height and width settings if they changed
+                if (currentHeight !== newHeightKey || currentWidth !== newWidthKey) {
+                    setWidgets(
+                        widgets.map((w) => {
+                            if (w.id === widgetId) {
+                                return {
+                                    ...w,
+                                    settings: {
+                                        ...w.settings,
+                                        height: newHeightKey,
+                                        width: newWidthKey,
+                                    },
+                                }
+                            }
+                            return w
+                        }),
+                    )
+                }
             }
         }
     }
 
-    const handleResizeEnd = () => {
-        if (!resizingWidget) return
+    // Handle widget resize end
+    const handleWidgetResizeEnd = (widgetId: string) => {
+        const widget = widgets.find((w) => w.id === widgetId)
+        if (!widget) return
 
-        const widgetEl = widgetRefs.current[resizingWidget]
-        if (!widgetEl) return
-
-        // Get the widget
-        const widget = widgets.find((w) => w.id === resizingWidget)
-
-        if (widget?.groupId) {
-            // For widgets in a group, save the new proportions
+        // For widgets in a group, save the new proportions
+        if (widget.groupId) {
             const groupWidgets = widgets.filter((w) => w.groupId === widget.groupId)
             const finalWidths: number[] = []
-
-            // Calculate total gap width
-            const totalGapWidth = (groupWidgets.length - 1) * 8
 
             groupWidgets.forEach((w) => {
                 const el = document.querySelector(`[data-widget-id="${w.id}"]`)
@@ -715,8 +795,8 @@ export default function DashboardBuilder() {
                     if (widthStr.endsWith("%")) {
                         width = Number.parseFloat(widthStr)
                     } else {
-                        const groupContainer = widgetEl.closest("[data-group-id]")
-                        const containerWidth = (groupContainer?.clientWidth ?? 1) - totalGapWidth
+                        const groupContainer = document.querySelector(`[data-group-id="${w.groupId}"]`)
+                        const containerWidth = groupContainer?.clientWidth ?? 1
                         width = (Number.parseFloat(widthStr) / containerWidth) * 100
                     }
 
@@ -725,42 +805,25 @@ export default function DashboardBuilder() {
                     finalWidths.push(w.customWidth ?? 100 / groupWidgets.length)
                 }
             })
-        } else {
-            // For individual widgets, determine the new size based on width
-            const width = widgetEl.offsetWidth
-            const containerWidth = widgetEl.parentElement?.offsetWidth ?? 1000
-            const widthRatio = width / containerWidth
 
-            let newSize: "small" | "medium" | "large"
-            if (widthRatio < 0.3) {
-                newSize = "small"
-            } else if (widthRatio < 0.6) {
-                newSize = "medium"
-            } else {
-                newSize = "large"
-            }
-
-            // Update the widget size in state
+            // Update widgets with new widths
             setWidgets(
                 widgets.map((w) => {
-                    if (w.id === resizingWidget) {
-                        return { ...w, size: newSize }
+                    const index = groupWidgets.findIndex((gw) => gw.id === w.id)
+                    if (index !== -1) {
+                        return {
+                            ...w,
+                            customWidth: Number.parseFloat((finalWidths[index] ?? 0).toFixed(2)),
+                        }
                     }
                     return w
                 }),
             )
         }
 
-        // Reset resize state
-        setResizingWidget(null)
-
-        // Remove event listeners
-        document.removeEventListener("mousemove", handleResizeMove)
-        document.removeEventListener("mouseup", handleResizeEnd)
-
-        // Reset inline styles for individual widgets
-        if (!widget?.groupId) {
-            widgetEl.style.width = ""
+        // Reset inline styles
+        const widgetEl = widgetRefs.current[widgetId]
+        if (widgetEl && !widget.groupId) {
             widgetEl.style.height = ""
         }
     }
@@ -819,9 +882,7 @@ export default function DashboardBuilder() {
         newWidths[dividerIndex + 1] = Math.min(Math.max((initialWidths[dividerIndex + 1] ?? 0) - deltaPercent, 10), 90)
 
         // Update the DOM for smooth resizing
-        const widgetElements = groupWidgets.map(
-            (w) => document.querySelector(`[data-widget-id="${w.id}"]`),
-        )
+        const widgetElements = groupWidgets.map((w) => document.querySelector(`[data-widget-id="${w.id}"]`))
 
         widgetElements.forEach((el, i) => {
             if (el) {
@@ -869,7 +930,7 @@ export default function DashboardBuilder() {
                 if (index !== -1) {
                     return finalWidths[index] !== undefined
                         ? { ...widget, customWidth: Number.parseFloat(finalWidths[index].toFixed(2)) }
-                        : widget;
+                        : widget
                 }
                 return widget
             }),
@@ -878,6 +939,25 @@ export default function DashboardBuilder() {
         setResizingGroup(null)
         document.removeEventListener("mousemove", handleGroupResizeMove)
         document.removeEventListener("mouseup", handleGroupResizeEnd)
+    }
+
+    const handleResizeMove = (e: MouseEvent) => {
+        if (!resizingWidget) return
+
+        const deltaX = e.clientX - resizeStartX
+        const deltaY = e.clientY - resizeStartY
+
+        handleWidgetResize(resizingWidget, deltaX, deltaY)
+    }
+
+    const handleResizeEnd = () => {
+        if (!resizingWidget) return
+
+        handleWidgetResizeEnd(resizingWidget)
+        setResizingWidget(null)
+
+        document.removeEventListener("mousemove", handleResizeMove)
+        document.removeEventListener("mouseup", handleResizeEnd)
     }
 
     useEffect(() => {
@@ -895,20 +975,12 @@ export default function DashboardBuilder() {
             try {
                 const activeLayoutData = localStorage.getItem("active-dashboard-layout")
                 if (activeLayoutData) {
-                    const {
-                        widgets,
-                        name,
-                        // theme: savedTheme,
-                    } = JSON.parse(activeLayoutData) as {
+                    const { widgets, name } = JSON.parse(activeLayoutData) as {
                         widgets: WidgetItem[]
                         name: string
-                        // theme?: Theme
                     }
                     setWidgets(widgets)
                     setLayoutName(name)
-                    // if (savedTheme) {
-                    //   setTheme(savedTheme)
-                    // }
                     setIsLayoutSaved(true)
                 }
             } catch (error) {
@@ -928,11 +1000,7 @@ export default function DashboardBuilder() {
         )
     }, [widgets])
 
-    // Remove handleThemeChange function
-    // - const handleThemeChange = (newTheme: Theme) => {
-    // -   setTheme(newTheme)
-    // - }
-
+    // Update the addWidget function to ensure default settings are applied
     const addWidget = (widgetId: string) => {
         if (widgets.some((w) => w.id === widgetId)) {
             toast({
@@ -945,12 +1013,16 @@ export default function DashboardBuilder() {
         const widgetToAdd = AVAILABLE_WIDGETS.find((w) => w.id === widgetId)
         if (!widgetToAdd) return
 
+        // Create default settings for this widget type
+        const defaultSettings = createDefaultWidgetSettings(widgetId)
+
         // Add the widget to the end of the list
         const newWidget: WidgetItem = {
             id: widgetId,
-            size: "medium",
+            size: "large", // Changed from "medium" to "large" for consistency
             order: widgets.length + 1,
             pinned: widgetId === "cover-profile", // Pin the cover-profile widget
+            settings: defaultSettings,
         }
 
         setWidgets([...widgets, newWidget])
@@ -990,20 +1062,30 @@ export default function DashboardBuilder() {
         })
     }
 
-    // Replace the changeWidgetSize function with this implementation
-    const changeWidgetSize = (widgetId: string) => {
-        const sizes: ("small" | "medium" | "large")[] = ["small", "medium", "large"]
-
+    // Update widget size with specific values
+    const updateWidgetSize = (widgetId: string, dimension: "height" | "width", value: WidgetHeight | WidgetWidth) => {
         setWidgets(
             widgets.map((widget) => {
                 if (widget.id === widgetId) {
-                    const currentSizeIndex = sizes.indexOf(widget.size)
-                    // Ensure we have a valid index, default to 0 if not found
-                    const validIndex = currentSizeIndex >= 0 ? currentSizeIndex : 0
-                    const nextSizeIndex = (validIndex + 1) % sizes.length
-                    // Explicitly type the size to ensure it's never undefined
-                    const newSize: "small" | "medium" | "large" = sizes[nextSizeIndex] ?? "medium"
-                    return { ...widget, size: newSize }
+                    const settings = widget.settings ?? {}
+
+                    if (dimension === "height") {
+                        return {
+                            ...widget,
+                            settings: {
+                                ...settings,
+                                height: value as WidgetHeight,
+                            },
+                        }
+                    } else {
+                        return {
+                            ...widget,
+                            settings: {
+                                ...settings,
+                                width: value as WidgetWidth,
+                            },
+                        }
+                    }
                 }
                 return widget
             }),
@@ -1081,11 +1163,11 @@ export default function DashboardBuilder() {
         }
 
         // Create a new group ID
-        const groupId = `group-${Date.now()}`
+        const groupId = generateGroupId()
 
         // Calculate equal widths for each widget in the group
         const widgetCount = selectedWidgets.length
-        const equalWidth = 100 / widgetCount
+        const equalProportion = 1 / widgetCount
 
         // Update widgets with the new group ID and custom widths
         const updatedWidgets = widgets.map((widget) => {
@@ -1093,7 +1175,7 @@ export default function DashboardBuilder() {
                 return {
                     ...widget,
                     groupId,
-                    customWidth: equalWidth, // Set initial equal widths
+                    customWidth: equalProportion * 100, // Set initial equal widths as percent
                 }
             }
             return widget
@@ -1106,9 +1188,9 @@ export default function DashboardBuilder() {
         // Add this to the groupSelectedWidgets function, right before the toast
         const proportionText =
             selectedWidgets.length === 2
-                ? "50,50"
+                ? "50/50"
                 : selectedWidgets.length === 3
-                    ? "33,33,34"
+                    ? "33/33/34"
                     : `${Math.floor(100 / selectedWidgets.length)}% each`
 
         toast({
@@ -1137,41 +1219,37 @@ export default function DashboardBuilder() {
         })
     }
 
-    // Add this after the existing ungroupWidgets function
-    const setGroupWidgetProportions = (groupId: string, proportions: string) => {
-        // Parse the proportions string (e.g., "70,30" or "60,40")
-        const values = proportions.split(",").map((v) => Number.parseInt(v.trim(), 10))
-
+    // Update the setGroupWidgetProportions function to work with arrays
+    const setGroupWidgetProportions = (groupId: string, proportions: number[]) => {
         // Get all widgets in this group
         const groupWidgets = widgets.filter((w) => w.groupId === groupId)
 
         // Validate that we have the right number of values
-        if (values.length !== groupWidgets.length || values.some(isNaN)) {
+        if (proportions.length !== groupWidgets.length) {
             toast({
                 title: "Invalid proportions",
-                description: `Please enter ${groupWidgets.length} valid numbers separated by commas`,
+                description: `Please provide ${groupWidgets.length} values for the group`,
                 variant: "destructive",
             })
             return
         }
 
-        // Validate that values sum to 100
-        const sum = values.reduce((a, b) => a + b, 0)
-        if (sum !== 100) {
-            toast({
-                title: "Invalid proportions",
-                description: "Values must sum to 100",
-                variant: "destructive",
-            })
-            return
+        // Validate that values sum to 1 (or close to it due to floating point)
+        const sum = proportions.reduce((a, b) => a + b, 0)
+        if (Math.abs(sum - 1) > 0.01) {
+            // Normalize the values to sum to 1
+            proportions = proportions.map((p) => p / sum)
         }
 
         // Update the widgets with the new proportions
         setWidgets(
             widgets.map((widget) => {
-                const index = groupWidgets.findIndex((w) => w.id === widget.id)
-                if (index !== -1) {
-                    return { ...widget, customWidth: values[index] }
+                const groupIndex = groupWidgets.findIndex((w) => w.id === widget.id)
+                if (groupIndex !== -1) {
+                    return {
+                        ...widget,
+                        customWidth: (proportions[groupIndex] ?? 0) * 100, // Convert to percentage
+                    }
                 }
                 return widget
             }),
@@ -1213,7 +1291,6 @@ export default function DashboardBuilder() {
         setDragOverWidget(widgetId)
     }
 
-    // Update the handleDrop function to work with the CoverProfileWidget
     const handleDrop = (e: React.DragEvent, targetWidgetId: string) => {
         if (!editMode || selectionMode || !draggedWidget) return
         e.preventDefault()
@@ -1251,8 +1328,47 @@ export default function DashboardBuilder() {
         setDraggedWidget(null)
         setDragOverWidget(null)
     }
+    // Helper functions for resize start and end
+    const startResize = () => {
+        document.body.classList.add("resizing")
+    }
 
-    // Update the renderWidgetContent function to pass the drag handlers to CoverProfileWidget
+    const endResize = () => {
+        document.body.classList.remove("resizing")
+    }
+    // Add a helper function to apply group widget sizes
+    const applyGroupWidgetSizes = (widgetsToApply = widgets) => {
+        // Get all unique group IDs
+        const groupIds = [...new Set(widgetsToApply.filter((w) => w.groupId).map((w) => w.groupId))]
+
+        // For each group, apply the custom widths
+        groupIds.forEach((groupId) => {
+            if (!groupId) return
+
+            const groupWidgets = widgetsToApply.filter((w) => w.groupId === groupId)
+
+            groupWidgets.forEach((widget) => {
+                if (widget.customWidth) {
+                    const el = document.querySelector(`[data-widget-id="${widget.id}"]`)
+                    if (el) {
+                        ; (el as HTMLElement).style.width = `${widget.customWidth}%`
+                    }
+                }
+            })
+        })
+    }
+
+    // Apply custom widths whenever widgets change
+    useEffect(() => {
+        // Apply custom widths for group widgets after a short delay to ensure DOM is ready
+        const timer = setTimeout(() => {
+            applyGroupWidgetSizes()
+        }, 100)
+
+        return () => clearTimeout(timer)
+    }, [widgets])
+
+    // Render widget content
     const renderWidgetContent = (widgetId: string) => {
         const widgetDefinition = AVAILABLE_WIDGETS.find((w) => w.id === widgetId)
         if (!widgetDefinition) return null
@@ -1266,6 +1382,21 @@ export default function DashboardBuilder() {
         const widgetSettings = widget?.settings ?? {}
         console.log(`Widget settings for ${widgetId}:`, widgetSettings)
 
+        // Pass showDefaultValues prop when in edit mode
+        const commonProps = {
+            editMode,
+            profileEditMode: isProfileEditMode,
+            onDragOver: (e: React.DragEvent) => handleDragOver(e, widgetId),
+            onDragEnter: (e: React.DragEvent) => setDragOverWidget(widgetId),
+            onDragLeave: (e: React.DragEvent) => setDragOverWidget(null),
+            onDrop: (e: React.DragEvent) => handleDrop(e, widgetId),
+            widgetId,
+            settings: widgetSettings,
+            creatorData: creator.data as CreatorWithPageAsset,
+            setProfileEditMode: toggleProfileEditMode,
+            showDefaultValues: editMode, // Add this prop to show default values in edit mode
+        }
+
         // Pass drag handlers to CoverProfileWidget
         if (widgetId === "cover-profile") {
             const settingsKey = JSON.stringify(widgetSettings ?? {})
@@ -1274,16 +1405,7 @@ export default function DashboardBuilder() {
             return (
                 <WidgetComponent
                     key={`cover-profile-${settingsKey}`}
-                    editMode={editMode}
-                    profileEditMode={isProfileEditMode}
-                    onDragOver={(e: React.DragEvent) => handleDragOver(e, widgetId)}
-                    onDragEnter={(e: React.DragEvent) => setDragOverWidget(widgetId)}
-                    onDragLeave={(e: React.DragEvent) => setDragOverWidget(null)}
-                    onDrop={(e: React.DragEvent) => handleDrop(e, widgetId)}
-                    widgetId={widgetId}
-                    creatorData={creator.data as CreatorWithPageAsset}
-                    settings={widgetSettings}
-                    setProfileEditMode={toggleProfileEditMode}
+                    {...commonProps}
                     onSettingsChange={(newSettings) => {
                         // Prevent unnecessary updates by comparing with current settings
                         const currentSettings = widget?.settings ?? {}
@@ -1291,10 +1413,17 @@ export default function DashboardBuilder() {
                         console.log("Settings change requested:", newSettings)
                         console.log("Current settings:", currentSettings)
 
+                        // Ensure we preserve height and width settings
+                        const updatedSettings = {
+                            ...currentSettings,
+                            ...newSettings,
+                            height: newSettings.height ?? currentSettings.height ?? "L",
+                            width: newSettings.width ?? currentSettings.width ?? "L",
+                        }
+
                         setWidgets(
                             widgets.map((w) => {
                                 if (w.id === widgetId) {
-                                    const updatedSettings = { ...currentSettings, ...newSettings }
                                     console.log("Updated settings:", updatedSettings)
                                     return { ...w, settings: updatedSettings }
                                 }
@@ -1306,22 +1435,11 @@ export default function DashboardBuilder() {
             )
         }
 
-        // Rest of the function remains the same...
-
         // Add a key prop to force re-render when settings change
         return (
             <WidgetComponent
                 key={`${widgetId}-${JSON.stringify(widgetSettings)}`}
-                editMode={editMode}
-                profileEditMode={isProfileEditMode}
-                onDragOver={(e: React.DragEvent) => handleDragOver(e, widgetId)}
-                onDragEnter={(e: React.DragEvent) => setDragOverWidget(widgetId)}
-                onDragLeave={(e: React.DragEvent) => setDragOverWidget(null)}
-                onDrop={(e: React.DragEvent) => handleDrop(e, widgetId)}
-                widgetId={widgetId}
-                settings={widgetSettings}
-                creatorData={creator.data as CreatorWithPageAsset}
-                setProfileEditMode={toggleProfileEditMode}
+                {...commonProps}
                 onSettingsChange={(newSettings) => {
                     // Prevent unnecessary updates by comparing with current settings
                     const currentSettings = widget?.settings ?? {}
@@ -1342,6 +1460,34 @@ export default function DashboardBuilder() {
         )
     }
 
+    // Toggle edit mode
+    const toggleEditMode = () => {
+        setEditMode(!editMode)
+        if (!editMode) {
+            setSelectionMode(false)
+            setSelectedWidgets([])
+        }
+    }
+
+    // Filter widgets for search
+    const filteredWidgets = (widgets: typeof AVAILABLE_WIDGETS) => {
+        if (!widgetSearchQuery) return widgets
+        return widgets.filter(
+            (widget) =>
+                widget.title.toLowerCase().includes(widgetSearchQuery.toLowerCase()) ??
+                widget.description.toLowerCase().includes(widgetSearchQuery.toLowerCase()),
+        )
+    }
+
+    // Fix for the referee pattern to avoid creating functions in render
+    const setWidgetRef = (el: HTMLDivElement | null, id: string): void => {
+        widgetRefs.current[id] = el
+    }
+
+    const setGroupRef = (el: HTMLDivElement | null, id: string): void => {
+        groupRefs.current[id] = el
+    }
+
     // Group widgets by row for full-width handling
     const getWidgetRows = () => {
         const sortedWidgets = [...widgets].sort((a, b) => a.order - b.order)
@@ -1358,7 +1504,7 @@ export default function DashboardBuilder() {
                 if (!groupedWidgets[widget.groupId]) {
                     groupedWidgets[widget.groupId] = []
                 }
-                (groupedWidgets[widget.groupId] ??= []).push(widget)
+                groupedWidgets[widget.groupId]?.push(widget)
             }
         })
 
@@ -1373,7 +1519,7 @@ export default function DashboardBuilder() {
 
         // Process remaining widgets
         let currentRowWidth = 0
-        const maxRowWidth = 3 // Maximum columns in a row
+        const maxRowWidth = 12 // 12-column grid
 
         unpinnedWidgets.forEach((widget) => {
             // Skip widgets that are part of a group (we'll handle them separately)
@@ -1385,7 +1531,7 @@ export default function DashboardBuilder() {
 
                 // Calculate the total width of the group
                 const groupWidgets = groupedWidgets[widget.groupId]
-                const groupWidth = (groupWidgets ?? []).length // Each widget takes 1 column in the group
+                const groupWidth = 12 // Groups always take full width
 
                 // If this group would exceed row width, start a new row
                 if (currentRowWidth + groupWidth > maxRowWidth && currentRow.length > 0) {
@@ -1402,7 +1548,9 @@ export default function DashboardBuilder() {
                 delete groupedWidgets[widget.groupId]
             } else if (!widget.groupId) {
                 // Handle individual widgets
-                const widgetWidth = widget.size === "small" ? 1 : widget.size === "medium" ? 1 : 3
+                const widthKey = (widget.settings?.width as WidgetWidth) ?? "L"
+                // Get grid span directly from the utility function to ensure consistency
+                const widgetWidth = getGridSpan(widthKey)
 
                 // If this widget would exceed row width, start a new row
                 if (currentRowWidth + widgetWidth > maxRowWidth && currentRow.length > 0) {
@@ -1427,105 +1575,12 @@ export default function DashboardBuilder() {
 
     const widgetRows = getWidgetRows()
 
-    const toggleEditMode = () => {
-        setEditMode(!editMode)
-        if (!editMode) {
-            setSelectionMode(false)
-            setSelectedWidgets([])
-        }
-    }
-
-    const filteredWidgets = (widgets: typeof AVAILABLE_WIDGETS) => {
-        if (!widgetSearchQuery) return widgets
-        return widgets.filter(
-            (widget) =>
-                widget.title.toLowerCase().includes(widgetSearchQuery.toLowerCase()) ??
-                widget.description.toLowerCase().includes(widgetSearchQuery.toLowerCase()),
-        )
-    }
-
-    // Fix for the referee pattern to avoid creating functions in render
-    const setWidgetRef = (el: HTMLDivElement | null, id: string): void => {
-        widgetRefs.current[id] = el
-    }
-
-    const setGroupRef = (el: HTMLDivElement | null, id: string) => {
-        groupRefs.current[id] = el
-        return el
-    }
-
-    // Add a helper function to apply group widget sizes
-    const applyGroupWidgetSizes = (widgetsToApply = widgets) => {
-        // Get all unique group IDs
-        const groupIds = [...new Set(widgetsToApply.filter((w) => w.groupId).map((w) => w.groupId))]
-
-        // For each group, apply the custom widths
-        groupIds.forEach((groupId) => {
-            if (!groupId) return
-
-            const groupWidgets = widgetsToApply.filter((w) => w.groupId === groupId)
-
-            groupWidgets.forEach((widgets) => {
-                if (widgets.customWidth) {
-                    const el = document.querySelector(`[data-widget-id="${widgets.id}"]`)
-                    if (el) {
-                        (el as HTMLElement).style.width = `${widgets.customWidth}%`
-                    }
-                }
-            })
-        })
-    }
-    // Add this useEffect to apply group widget sizes whenever widgets change
-    useEffect(() => {
-        // Apply custom widths for group widgets after a short delay to ensure DOM is ready
-        const timer = setTimeout(() => {
-            applyGroupWidgetSizes()
-        }, 100)
-
-        return () => clearTimeout(timer)
-    }, [widgets])
-
-    // Add this useEffect to apply custom widths whenever widgets change
-    useEffect(() => {
-        // Apply custom widths for group widgets
-        widgets.forEach((widget) => {
-            if (widget.groupId && widget.customWidth) {
-                const el = document.querySelector(`[data-widget-id="${widget.id}"]`)
-                if (el) {
-                    (el as HTMLElement).style.width = `${widget.customWidth}%`
-                }
-            }
-        })
-    }, [widgets])
     return (
-        <div
-            ref={dashboardContainerRef}
-            className=" flex flex-col h-full"
-        // Remove theme-related styling from the dashboard container
-        // - style={{
-        // -   fontFamily: theme.font.body,
-        // -   backgroundColor: theme.colors.background,
-        // -   color: theme.colors.text,
-        // - }}
-        >
+        <div ref={dashboardContainerRef} className="flex flex-col h-full">
             {/* Simplified Toolbar */}
-            <div
-                className=" border-b p-2 flex items-center justify-between"
-            // Remove theme-related styling from the toolbar
-            // - style={{
-            // -   backgroundColor: theme.colors.card,
-            // -   borderColor: theme.colors.border,
-            // -   borderWidth: `0 0 ${theme.style.borderWidth}px 0`,
-            // - }}
-            >
+            <div className="border-b p-2 flex items-center justify-between">
                 <div className="flex items-center">
-                    <h2
-                        className="text-xl font-bold mr-4"
-                    // Remove theme-related styling from the layout name
-                    // - style={{ fontFamily: theme.font.heading }}
-                    >
-                        {layoutName}
-                    </h2>
+                    <h2 className="text-xl font-bold mr-4">{layoutName}</h2>
                     {isLayoutSaved && (
                         <span className="text-xs text-muted-foreground">{makePublic ? "Public" : "Private"} Dashboard</span>
                     )}
@@ -1534,8 +1589,6 @@ export default function DashboardBuilder() {
                 <div className="flex items-center space-x-2">
                     {!editMode && !isProfileEditMode ? (
                         <div className="flex items-center gap-2">
-
-
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -1577,9 +1630,6 @@ export default function DashboardBuilder() {
                         </div>
                     ) : (
                         <>
-                            {/* Remove ThemeCustomizer component from the toolbar */}
-                            {/* - <ThemeCustomizer theme={theme} onThemeChange={handleThemeChange} /> */}
-
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -1673,7 +1723,7 @@ export default function DashboardBuilder() {
                                                         key={layout.id}
                                                         className={`p-4 border rounded-md cursor-pointer hover:bg-muted/50 flex justify-between items-center ${layout.id === layoutId ? "border-primary" : ""
                                                             }`}
-                                                        onClick={() => loadLayout(layout.id)} // This will now correctly update the existing layout
+                                                        onClick={() => loadLayout(layout.id)}
                                                     >
                                                         <div>
                                                             <div className="font-medium">{layout.name}</div>
@@ -1743,11 +1793,6 @@ export default function DashboardBuilder() {
                                                             key={widget.id}
                                                             className={`dashboard-card cursor-pointer transition-all hover:shadow-md ${widgets.some((w) => w.id === widget.id) ? "border-primary bg-primary/5" : ""
                                                                 }`}
-                                                            // Remove theme-related styling from cards and widgets
-                                                            // - style={{
-                                                            // -   borderRadius: `${theme.style.borderRadius}px`,
-                                                            // -   borderWidth: `${theme.style.borderWidth}px`,
-                                                            // - }}
                                                             onClick={() => {
                                                                 if (!widgets.some((w) => w.id === widget.id)) {
                                                                     addWidget(widget.id)
@@ -1797,20 +1842,21 @@ export default function DashboardBuilder() {
                                                 <div className="grid grid-cols-1 gap-4">
                                                     {filteredWidgets(
                                                         AVAILABLE_WIDGETS.filter((w) =>
-                                                            ["cover-profile", "profile", "recent-posts", "nft-gallery", "subscriptions"].includes(
-                                                                w.id,
-                                                            ),
+                                                            [
+                                                                "cover-profile",
+                                                                "profile",
+                                                                "recent-posts",
+                                                                "nft-gallery",
+                                                                "music-player",
+                                                                "video-gallery",
+                                                                "lyrics",
+                                                            ].includes(w.id),
                                                         ),
                                                     ).map((widget) => (
                                                         <Card
                                                             key={widget.id}
                                                             className={`dashboard-card cursor-pointer transition-all hover:shadow-md ${widgets.some((w) => w.id === widget.id) ? "border-primary bg-primary/5" : ""
                                                                 }`}
-                                                            // Remove theme-related styling from cards and widgets
-                                                            // - style={{
-                                                            // -   borderRadius: `${theme.style.borderRadius}px`,
-                                                            // -   borderWidth: `${theme.style.borderWidth}px`,
-                                                            // - }}
                                                             onClick={() => {
                                                                 if (!widgets.some((w) => w.id === widget.id)) {
                                                                     addWidget(widget.id)
@@ -1865,11 +1911,6 @@ export default function DashboardBuilder() {
                                                             key={widget.id}
                                                             className={`dashboard-card cursor-pointer transition-all hover:shadow-md ${widgets.some((w) => w.id === widget.id) ? "border-primary bg-primary/5" : ""
                                                                 }`}
-                                                            // Remove theme-related styling from cards and widgets
-                                                            // - style={{
-                                                            // -   borderRadius: `${theme.style.borderRadius}px`,
-                                                            // -   borderWidth: `${theme.style.borderWidth}px`,
-                                                            // - }}
                                                             onClick={() => {
                                                                 if (!widgets.some((w) => w.id === widget.id)) {
                                                                     addWidget(widget.id)
@@ -1928,21 +1969,10 @@ export default function DashboardBuilder() {
             </div>
 
             {/* Dashboard Grid */}
-            <div
-                className="dashboard-content flex-1 overflow-auto p-4"
-            // Remove theme-related styling from the dashboard content
-            // - style={{
-            // -   padding:
-            // -     theme.style.contentDensity === "compact"
-            // -       ? "0.5rem"
-            // -       : theme.style.contentDensity === "spacious"
-            // -         ? "2rem"
-            // -         : "1rem",
-            // - }}
-            >
+            <div className="dashboard-content flex-1 overflow-auto p-4">
                 <div className="flex flex-col gap-4">
                     {widgetRows.map((row, rowIndex) => (
-                        <div key={rowIndex} className="grid gap-4 grid-cols-1 md:grid-cols-3">
+                        <div key={rowIndex} className="grid gap-4 grid-cols-12">
                             {row.map((item, itemIndex) => {
                                 // Handle grouped widgets
                                 if (Array.isArray(item)) {
@@ -1951,39 +1981,24 @@ export default function DashboardBuilder() {
                                     return (
                                         <div
                                             key={`group-${groupId}`}
-                                            className="col-span-full bg-muted/20 rounded-lg p-2 relative"
-                                            // Remove theme-related styling from cards and widgets
-                                            // - style={{
-                                            // -   borderRadius: `${theme.style.borderRadius}px`,
-                                            // -   backgroundColor: `${theme.colors.background}`,
-                                            // -   boxShadow:
-                                            // -     theme.style.shadowSize === "sm"
-                                            // -       ? "0 1px 2px rgba(0,0,0,0.05)"
-                                            // -       : theme.style.shadowSize === "md"
-                                            // -         ? "0 4px 6px -1px rgba(0,0,0,0.1)"
-                                            // -         : theme.style.shadowSize === "lg"
-                                            // -           ? "0 10px 15px -3px rgba(0,0,0,0.1)"
-                                            // -           : "none",
-                                            // - }}
-                                            ref={(el) => {
-                                                setGroupRef(el, groupId ?? "");
-                                            }}
+                                            className="col-span-12 bg-muted/20 rounded-lg p-2 relative"
+                                            ref={(el) => setGroupRef(el, groupId ?? "")}
                                             data-group-id={groupId}
                                         >
                                             {editMode && (
-                                                <div className="absolute right-2 top-2 z-10">
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="h-7 px-2"
-                                                        onClick={() => ungroupWidgets(groupId ?? "")}
-                                                    >
-                                                        <Unlink className="h-3 w-3 mr-1" />
-                                                        Ungroup
-                                                    </Button>
+                                                <div className="absolute right-2 top-2 z-10 flex gap-2">
+                                                    <WidgetGroupControls
+                                                        groupId={groupId ?? ""}
+                                                        widgetCount={item.length}
+                                                        onUngroup={ungroupWidgets}
+                                                        onSetProportions={(groupId, proportions) => {
+                                                            setGroupWidgetProportions(groupId, proportions)
+                                                        }}
+                                                        currentProportions={item.map((w) => (w.customWidth ?? 100) / 100)}
+                                                    />
                                                 </div>
                                             )}
-                                            <div className="flex flex-row pt-6 gap-2 w-full ">
+                                            <div className="flex flex-row pt-6 gap-2 w-full">
                                                 {item.map((widget, widgetIndex) => {
                                                     const widgetInfo = AVAILABLE_WIDGETS.find((w) => w.id === widget.id)
                                                     if (!widgetInfo) return null
@@ -1991,17 +2006,22 @@ export default function DashboardBuilder() {
                                                     // Use custom width if available, otherwise calculate based on size
                                                     const widthPercentage = widget.customWidth ?? 100 / item.length
 
+                                                    // Get height from settings
+                                                    const heightKey = (widget.settings?.height as WidgetHeight) ?? "M"
+                                                    const height = HEIGHT_MAP[heightKey] ?? HEIGHT_MAP.M
+
                                                     return (
                                                         <div
                                                             key={widget.id}
-                                                            className={`
-                                relative
-                                ${dragOverWidget === widget.id ? "ring-2 ring-primary" : ""}
-                                ${selectedWidgets.includes(widget.id) ? "ring-2 ring-destructive" : ""}
-                                transition-all duration-200
-                              `}
+                                                            className={cn(
+                                                                "relative",
+                                                                dragOverWidget === widget.id ? "ring-2 ring-primary" : "",
+                                                                selectedWidgets.includes(widget.id) ? "ring-2 ring-destructive" : "",
+                                                                "transition-all duration-200",
+                                                            )}
                                                             style={{
-                                                                width: `${widthPercentage}%`, // Removed the calc to avoid calculation errors
+                                                                width: `${widthPercentage}%`,
+
                                                             }}
                                                             data-widget-id={widget.id}
                                                             data-custom-width={widget.customWidth ?? ""}
@@ -2013,23 +2033,9 @@ export default function DashboardBuilder() {
                                                             onClick={(e) => selectionMode && toggleWidgetSelection(widget.id, e)}
                                                         >
                                                             <Card
-                                                                className="flex flex-col overflow-hidden relative h-[calc(100vh-20vh)] overflow-y-auto"
+                                                                className="flex flex-col overflow-y-auto relative "
+                                                                style={{ height: `${height}px` }}
                                                                 ref={(el) => setWidgetRef(el, widget.id)}
-                                                            // Remove theme-related styling from cards and widgets
-                                                            // - style={{
-                                                            // -   borderRadius: `${theme.style.borderRadius}px`,
-                                                            // -   borderWidth: `${theme.style.borderWidth}px`,
-                                                            // -   borderColor: theme.colors.border,
-                                                            // -   backgroundColor: theme.colors.card,
-                                                            // -   boxShadow:
-                                                            // -     theme.style.shadowSize === "sm"
-                                                            // -       ? "0 1px 2px rgba(0,0,0,0.05)"
-                                                            // -       : theme.style.shadowSize === "md"
-                                                            // -         ? "0 4px 6px -1px rgba(0,0,0,0.1)"
-                                                            // -         : theme.style.shadowSize === "lg"
-                                                            // -           ? "0 10px 15px -3px rgba(0,0,0,0.1)"
-                                                            // -           : "none",
-                                                            // - }}
                                                             >
                                                                 {editMode && !widget.pinned && (
                                                                     <>
@@ -2039,17 +2045,12 @@ export default function DashboardBuilder() {
                                                                                 <span className="text-xs ml-1">{widgetInfo.title}</span>
                                                                             </div>
                                                                             <div className="flex items-center gap-1">
-                                                                                <Button
-                                                                                    size="sm"
-                                                                                    variant="ghost"
-                                                                                    className="h-6 w-6 p-0"
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation()
-                                                                                        changeWidgetSize(widget.id)
-                                                                                    }}
-                                                                                >
-                                                                                    <span className="text-xs">{widget.size.charAt(0).toUpperCase()}</span>
-                                                                                </Button>
+                                                                                <WidgetSizeSelector
+                                                                                    currentHeight={(widget.settings?.height as WidgetHeight) ?? "M"}
+                                                                                    currentWidth={(widget.settings?.width as WidgetWidth) ?? "M"}
+                                                                                    onHeightChange={(height) => updateWidgetSize(widget.id, "height", height)}
+                                                                                    onWidthChange={(width) => updateWidgetSize(widget.id, "width", width)}
+                                                                                />
                                                                                 <Button
                                                                                     size="sm"
                                                                                     variant="ghost"
@@ -2063,15 +2064,11 @@ export default function DashboardBuilder() {
                                                                                 </Button>
                                                                             </div>
                                                                         </div>
-                                                                        <div
-                                                                            className="absolute bottom-2 right-2 text-white hover:text-black cursor-se-resize bg-primary hover:bg-background border-2 rounded-full transition duration-200 p-1 z-10"
-                                                                            onMouseDown={(e) => handleResizeStart(e, widget.id)}
-                                                                        >
-                                                                            <Maximize2 className="h-3 w-3" />
-                                                                        </div>
+
+
                                                                     </>
                                                                 )}
-                                                                <CardContent className={`p-0   ${editMode && !widget.pinned ? "pt-8" : ""}`}>
+                                                                <CardContent className={`p-0 ${editMode && !widget.pinned ? "pt-8" : ""}`}>
                                                                     {renderWidgetContent(widget.id)}
                                                                 </CardContent>
                                                             </Card>
@@ -2079,32 +2076,6 @@ export default function DashboardBuilder() {
                                                     )
                                                 })}
                                             </div>
-                                            {editMode && (
-                                                <div className="absolute left-0 right-0 bottom-0 flex justify-around items-center p-2 bg-muted/50">
-                                                    {/* Divider controls */}
-                                                    {Array.from({ length: item.length - 1 }).map((_, i) => (
-                                                        <div key={`divider-${i}`} className="relative h-full flex items-center">
-                                                            <div
-                                                                className="absolute top-0 bottom-0 w-1 bg-border cursor-col-resize opacity-0 hover:opacity-100 transition-opacity"
-                                                                onMouseDown={(e) => handleGroupResizeStart(e, groupId ?? "", i)}
-                                                            />
-                                                        </div>
-                                                    ))}
-                                                    {/* Proportions input */}
-                                                    <div className="flex items-center gap-2">
-                                                        <Label htmlFor={`proportions-${groupId}`} className="text-xs">
-                                                            Proportions:
-                                                        </Label>
-                                                        <Input
-                                                            type="text"
-                                                            id={`proportions-${groupId}`}
-                                                            placeholder="e.g., 60,40"
-                                                            className="w-24 text-xs"
-                                                            onBlur={(e) => setGroupWidgetProportions(groupId ?? "", e.target.value)}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
                                     )
                                 }
@@ -2114,28 +2085,22 @@ export default function DashboardBuilder() {
                                 const widgetInfo = AVAILABLE_WIDGETS.find((w) => w.id === widget.id)
                                 if (!widgetInfo) return null
 
-                                // For single widgets in a row, make them full width
-                                const isSingleInRow = row.length === 1
-                                // For pinned widgets (like cover-profile), always make them full width
+                                // Get widget dimensions from settings
+                                const dimensions = getWidgetDimensions(widget)
                                 const isPinned = widget.pinned
 
                                 return (
                                     <div
                                         key={widget.id}
-                                        className={`
-                      ${isSingleInRow ?? isPinned
-                                                ? "col-span-full"
-                                                : widget.size === "small"
-                                                    ? "col-span-1"
-                                                    : widget.size === "medium"
-                                                        ? "col-span-1 md:col-span-1"
-                                                        : "col-span-1 md:col-span-3"
-                                            }
-                      ${dragOverWidget === widget.id ? "ring-2 ring-primary" : ""}
-                      ${selectedWidgets.includes(widget.id) ? "ring-2 ring-destructive" : ""}
-                      transition-all duration-200
-                      relative
-                    `}
+                                        className={cn(
+                                            isPinned ? "col-span-12" : `col-span-${dimensions.gridSpan}`,
+                                            dragOverWidget === widget.id ? "ring-2 ring-primary" : "",
+                                            selectedWidgets.includes(widget.id) ? "ring-2 ring-destructive" : "",
+                                            "transition-all duration-200 relative",
+                                        )}
+                                        style={{
+                                            gridColumn: isPinned ? "span 12" : `span ${dimensions.gridSpan}`,
+                                        }}
                                         draggable={editMode && !selectionMode && !widget.pinned}
                                         onDragStart={(e) => handleDragStart(e, widget.id)}
                                         onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -2144,23 +2109,9 @@ export default function DashboardBuilder() {
                                         onClick={(e) => selectionMode && toggleWidgetSelection(widget.id, e)}
                                     >
                                         <Card
-                                            className=" flex flex-col overflow-hidden relative  max-h-[calc(100vh-20vh)] overflow-y-auto"
+                                            className="flex flex-col overflow-hidden relative overflow-y-auto"
+                                            style={{ height: `${dimensions.height}px` }}
                                             ref={(el) => setWidgetRef(el, widget.id)}
-                                        // Remove theme-related styling from cards and widgets
-                                        // - style={{
-                                        // -   borderRadius: `${theme.style.borderRadius}px`,
-                                        // -   borderWidth: `${theme.style.borderWidth}px`,
-                                        // -   borderColor: theme.colors.border,
-                                        // -   backgroundColor: theme.colors.card,
-                                        // -   boxShadow:
-                                        // -     theme.style.shadowSize === "sm"
-                                        // -       ? "0 1px 2px rgba(0,0,0,0.05)"
-                                        // -       : theme.style.shadowSize === "md"
-                                        // -         ? "0 4px 6px -1px rgba(0,0,0,0.1)"
-                                        // -         : theme.style.shadowSize === "lg"
-                                        // -           ? "0 10px 15px -3px rgba(0,0,0,0.1)"
-                                        // -           : "none",
-                                        // - }}
                                         >
                                             {editMode && !isPinned && (
                                                 <>
@@ -2170,17 +2121,12 @@ export default function DashboardBuilder() {
                                                             <span className="text-xs ml-1">{widgetInfo.title}</span>
                                                         </div>
                                                         <div className="flex items-center gap-1">
-                                                            <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                className="h-6 w-6 p-0"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation()
-                                                                    changeWidgetSize(widget.id)
-                                                                }}
-                                                            >
-                                                                <span className="text-xs">{widget.size.charAt(0).toUpperCase()}</span>
-                                                            </Button>
+                                                            <WidgetSizeSelector
+                                                                currentHeight={(widget.settings?.height as WidgetHeight) ?? "M"}
+                                                                currentWidth={(widget.settings?.width as WidgetWidth) ?? "M"}
+                                                                onHeightChange={(height) => updateWidgetSize(widget.id, "height", height)}
+                                                                onWidthChange={(width) => updateWidgetSize(widget.id, "width", width)}
+                                                            />
                                                             <Button
                                                                 size="sm"
                                                                 variant="ghost"
@@ -2194,15 +2140,26 @@ export default function DashboardBuilder() {
                                                             </Button>
                                                         </div>
                                                     </div>
-                                                    <div
-                                                        className="absolute bottom-2 right-2 text-white hover:text-black cursor-se-resize bg-primary hover:bg-background border-2 rounded-full transition duration-200 p-1 z-10"
-                                                        onMouseDown={(e) => handleResizeStart(e, widget.id)}
-                                                    >
-                                                        <Maximize2 className="h-3 w-3" />
-                                                    </div>
+
+                                                    {/* Resize handle for individual widgets */}
+                                                    {/* <WidgetResizeHandle
+                                                        position="bottom-right"
+                                                        onResizeStart={() => {
+                                                            setResizingWidget(widget.id)
+                                                            setResizeStartX(0)
+                                                            setResizeStartY(0)
+                                                            startResize()
+                                                        }}
+                                                        onResize={(deltaX, deltaY) => handleWidgetResize(widget.id, deltaX, deltaY)}
+                                                        onResizeEnd={() => {
+                                                            handleWidgetResizeEnd(widget.id)
+                                                            setResizingWidget(null)
+                                                            endResize()
+                                                        }}
+                                                    /> */}
                                                 </>
                                             )}
-                                            <CardContent className={`p-0    ${editMode && !isPinned ? "pt-8" : ""}`}>
+                                            <CardContent className={`p-0 ${editMode && !isPinned ? "pt-8" : ""}`}>
                                                 {renderWidgetContent(widget.id)}
                                             </CardContent>
                                         </Card>
@@ -2215,23 +2172,16 @@ export default function DashboardBuilder() {
             </div>
 
             {editMode && (
-                <div
-                    className="bg-muted/80 p-4 text-center"
-                // Remove theme-related styling from the edit mode footer
-                // - style={{
-                // -   backgroundColor: `${theme.colors.muted}20`,
-                // -   color: theme.colors.text,
-                // - }}
-                >
+                <div className="bg-muted/80 p-4 text-center">
                     {selectionMode ? (
                         <p className="text-sm">
-                            <strong>Selection Mode:</strong> Click on widgets to select them, then click *Group Selected* to group
-                            them together. Selected widgets: {selectedWidgets.length}
+                            <strong>Selection Mode:</strong> Click on widgets to select them, then click{" "}
+                            <strong>Group Selected</strong> to group them together. Selected widgets: {selectedWidgets.length}
                         </p>
                     ) : (
                         <p className="text-sm">
-                            Edit mode active. Drag to rearrange, click size button to resize, or remove widgets with the X button.
-                            Click *Select Widgets* to select and group widgets.
+                            Edit mode active. Drag to rearrange, use the size selector to resize, or remove widgets with the X button.
+                            Click <strong>Select Widgets</strong> to select and group widgets.
                         </p>
                     )}
                 </div>
