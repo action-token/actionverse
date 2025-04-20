@@ -1,4 +1,4 @@
-import { Creator, CreatorPageAsset } from "@prisma/client"
+"use client"
 import { Users, Grid3X3, ImageIcon, DollarSign } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
 import { CreatorWithPageAsset } from "~/types/organization/dashboard"
