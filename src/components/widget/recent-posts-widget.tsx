@@ -1,4 +1,4 @@
-import Image from "next/image"
+"use client"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Button } from "~/components/shadcn/ui/button"
 import { ImageIcon, Lock, MessageSquare, Plus, ThumbsUp } from "lucide-react"

@@ -1,4 +1,4 @@
-import Image from "next/image"
+"use client"
 import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
 import { Button } from "../shadcn/ui/button"
 import { ImageIcon, Plus } from "lucide-react"
