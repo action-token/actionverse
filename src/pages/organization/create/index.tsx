@@ -141,7 +141,7 @@ export default function ArtistOnboarding() {
     const [isTrusted, setIsTrusted] = useState(false)
     const [isTrusting, setIsTrusting] = useState(false)
 
-    const totalSteps = 6
+    const totalSteps = 5
 
     // Add this function to validate form fields
     const validateField = (field: keyof FormData, value: string) => {
@@ -209,7 +209,7 @@ export default function ArtistOnboarding() {
             toast.success("Brand creation request submitted successfully")
             setShowConfetti(true)
             setTimeout(() => {
-                router.push("/organization/home");
+                router.push("/organization/home")
             }, 2000)
         },
         onError: (error) => {
@@ -342,13 +342,10 @@ export default function ArtistOnboarding() {
 
             switch (currentStep) {
                 case 1:
-                    isValid = true // No validation needed for step 1
-                    break
-                case 2:
                     // Only require profile image, cover image is optional
                     isValid = !!formData.profileUrl && !isUploading
                     break
-                case 3:
+                case 2:
                     try {
                         ProfileSchema.parse({
                             displayName: formData.displayName,
@@ -372,7 +369,7 @@ export default function ArtistOnboarding() {
                         isValid = false
                     }
                     break
-                case 4:
+                case 3:
                     if (formData.assetType === "new") {
                         // For new asset, require valid name and image
                         const validName =
@@ -390,7 +387,7 @@ export default function ArtistOnboarding() {
                         isValid = validCode && validIssuer && isTrusted
                     }
                     break
-                case 5:
+                case 4:
                     // Check if vanity URL is valid and available
                     isValid = !!formData.vanityUrl && formData.vanityUrl.length > 0 && isVanityUrlAvailable === true
                     if (!isValid && formData.vanityUrl) {
@@ -409,7 +406,7 @@ export default function ArtistOnboarding() {
                 setCurrentStep(currentStep + 1)
             } else {
                 // Show a toast message to inform the user what's missing
-                if (currentStep === 4) {
+                if (currentStep === 3) {
                     if (formData.assetType === "new") {
                         if (!formData.assetName || formData.assetName.length < 4 || formData.assetName.length > 12) {
                             toast.error("Please enter a valid asset name (4-12 letters)")
@@ -466,10 +463,10 @@ export default function ArtistOnboarding() {
     // Fix the isNextDisabled function for step 4
     const isNextDisabled = () => {
         switch (currentStep) {
-            case 2:
+            case 1:
                 // Only require profile image, cover image is optional
                 return !formData.profileUrl || isUploading
-            case 3:
+            case 2:
                 try {
                     ProfileSchema.parse({
                         displayName: formData.displayName,
@@ -479,7 +476,7 @@ export default function ArtistOnboarding() {
                 } catch (error) {
                     return true
                 }
-            case 4:
+            case 3:
                 if (formData.assetType === "new") {
                     // For new asset, require valid name and image
                     const validName =
@@ -492,7 +489,7 @@ export default function ArtistOnboarding() {
                     const validIssuer = formData.issuer.length === 56
                     return !validCode || !validIssuer || !isTrusted
                 }
-            case 5:
+            case 4:
                 // Check if vanity URL is valid and available
                 return (
                     !formData.vanityUrl || formData.vanityUrl.length < 1 || isVanityUrlAvailable !== true || isCheckingVanityUrl
@@ -634,20 +631,18 @@ export default function ArtistOnboarding() {
                                                 currentStep >= index + 1 ? "text-foreground" : "text-muted-foreground",
                                             )}
                                         >
-                                            {index === 0 && "Benefits"}
-                                            {index === 1 && "Profile Pictures"}
-                                            {index === 2 && "Organization Details"}
-                                            {index === 3 && "Asset Creation"}
-                                            {index === 4 && "Vanity URL"}
-                                            {index === 5 && "Overview"}
+                                            {index === 0 && "Profile Pictures"}
+                                            {index === 1 && "Organization Details"}
+                                            {index === 2 && "Asset Creation"}
+                                            {index === 3 && "Vanity URL"}
+                                            {index === 4 && "Overview"}
                                         </span>
                                         <span className="text-xs text-muted-foreground">
-                                            {index === 0 && "Why become an Organization"}
-                                            {index === 1 && "Upload your images"}
-                                            {index === 2 && "Name and bio"}
-                                            {index === 3 && "Create your assets"}
-                                            {index === 4 && "Choose your URL"}
-                                            {index === 5 && "Review and submit"}
+                                            {index === 0 && "Upload your images"}
+                                            {index === 1 && "Name and bio"}
+                                            {index === 2 && "Create your assets"}
+                                            {index === 3 && "Choose your URL"}
+                                            {index === 4 && "Review and submit"}
                                         </span>
                                     </div>
                                     {currentStep === index + 1 && <ChevronRight className="ml-auto h-5 w-5 text-primary" />}
@@ -679,85 +674,8 @@ export default function ArtistOnboarding() {
                             >
                                 <Card className="border-none shadow-lg overflow-hidden bg-background/80 backdrop-blur-sm">
                                     <CardContent className="p-0">
-                                        {/* Step 1: Benefits */}
-                                        {currentStep === 1 && (
-                                            <div className="p-6 md:p-8">
-                                                <div className="space-y-6">
-                                                    <div className="space-y-2">
-                                                        <h2 className="text-3xl font-bold">Benefits of Becoming an Organization</h2>
-                                                        <p className="text-muted-foreground">
-                                                            Join our platform and unlock these exclusive benefits for artists.
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="grid gap-6 md:grid-cols-2">
-                                                        {[
-                                                            {
-                                                                icon: <ImageIcon className="h-5 w-5" />,
-                                                                title: "Showcase Your Work",
-                                                                description:
-                                                                    "Display your portfolio to a global audience of collectors and enthusiasts.",
-                                                            },
-                                                            {
-                                                                icon: <User className="h-5 w-5" />,
-                                                                title: "Build Your Brand",
-                                                                description: "Establish your unique identity with a personalized organization page.",
-                                                            },
-                                                            {
-                                                                icon: <LinkIcon className="h-5 w-5" />,
-                                                                title: "Custom URL",
-                                                                description: "Get a memorable vanity URL to share with your audience.",
-                                                            },
-                                                            {
-                                                                icon: <FileText className="h-5 w-5" />,
-                                                                title: "Asset Management",
-                                                                description: "Create and manage your digital assets with powerful tools.",
-                                                            },
-                                                        ].map((benefit, index) => (
-                                                            <motion.div
-                                                                key={index}
-                                                                initial={{ opacity: 0, y: 20 }}
-                                                                animate={{ opacity: 1, y: 0 }}
-                                                                transition={{ delay: index * 0.1 }}
-                                                                className="group relative overflow-hidden rounded-xl border p-6 hover:shadow-md transition-all duration-300"
-                                                                whileHover={{
-                                                                    scale: 1.02,
-                                                                    boxShadow: "0 10px 30px -15px rgba(0, 0, 0, 0.2)",
-                                                                }}
-                                                            >
-                                                                <div className="absolute top-0 left-0 h-full w-1 bg-primary transform origin-bottom scale-y-0 group-hover:scale-y-100 transition-transform duration-300"></div>
-                                                                <div className="flex flex-col gap-3">
-                                                                    <div className="rounded-full bg-primary/10 p-3 w-fit text-primary">
-                                                                        {benefit.icon}
-                                                                    </div>
-                                                                    <div>
-                                                                        <h3 className="font-medium text-lg">{benefit.title}</h3>
-                                                                        <p className="text-sm text-muted-foreground mt-1">{benefit.description}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </motion.div>
-                                                        ))}
-                                                    </div>
-
-                                                    <div className="bg-muted/30 rounded-lg p-4 border border-border">
-                                                        <div className="flex items-start gap-3">
-                                                            <div className="rounded-full bg-primary/20 p-2 mt-1">
-                                                                <Sparkles className="h-4 w-4 text-primary" />
-                                                            </div>
-                                                            <div>
-                                                                <h3 className="font-medium">Ready to get started?</h3>
-                                                                <p className="text-sm text-muted-foreground mt-1">
-                                                                    Complete the onboarding process to start showcasing your work to the world.
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
                                         {/* Step 2: Profile & Cover Picture Upload */}
-                                        {currentStep === 2 && (
+                                        {currentStep === 1 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1014,8 +932,8 @@ export default function ArtistOnboarding() {
                                                                             <div>
                                                                                 <h3 className="font-medium">Create an immersive experience</h3>
                                                                                 <p className="text-sm text-muted-foreground mt-1">
-                                                                                    Your cover image sets the tone for your organization page. Choose an image that
-                                                                                    showcases your artistic style and creates a compelling visual experience.
+                                                                                    Your cover image sets the tone for your organization page. Choose an image
+                                                                                    that showcases your artistic style and creates a compelling visual experience.
                                                                                 </p>
                                                                             </div>
                                                                         </div>
@@ -1029,7 +947,7 @@ export default function ArtistOnboarding() {
                                         )}
 
                                         {/* Step 3: Organization Name and Bio */}
-                                        {currentStep === 3 && (
+                                        {currentStep === 2 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1078,7 +996,7 @@ export default function ArtistOnboarding() {
                                                                 <Button
                                                                     variant="link"
                                                                     className="text-xs p-0 h-auto mt-1"
-                                                                    onClick={() => setCurrentStep(2)}
+                                                                    onClick={() => setCurrentStep(1)}
                                                                 >
                                                                     Change images
                                                                 </Button>
@@ -1165,7 +1083,7 @@ export default function ArtistOnboarding() {
                                         )}
 
                                         {/* Step 4: Asset Creation */}
-                                        {currentStep === 4 && (
+                                        {currentStep === 3 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1577,7 +1495,7 @@ export default function ArtistOnboarding() {
                                         )}
 
                                         {/* Step 5: Vanity URL */}
-                                        {currentStep === 5 && (
+                                        {currentStep === 4 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1689,7 +1607,7 @@ export default function ArtistOnboarding() {
                                         )}
 
                                         {/* Step 6: Overview */}
-                                        {currentStep === 6 && (
+                                        {currentStep === 5 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1716,7 +1634,7 @@ export default function ArtistOnboarding() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="h-8 text-xs"
-                                                                    onClick={() => setCurrentStep(3)}
+                                                                    onClick={() => setCurrentStep(2)}
                                                                 >
                                                                     Edit
                                                                 </Button>
@@ -1784,7 +1702,7 @@ export default function ArtistOnboarding() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="h-8 text-xs"
-                                                                    onClick={() => setCurrentStep(4)}
+                                                                    onClick={() => setCurrentStep(3)}
                                                                 >
                                                                     Edit
                                                                 </Button>
@@ -1853,7 +1771,7 @@ export default function ArtistOnboarding() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="h-8 text-xs"
-                                                                    onClick={() => setCurrentStep(5)}
+                                                                    onClick={() => setCurrentStep(4)}
                                                                 >
                                                                     Edit
                                                                 </Button>
@@ -1881,8 +1799,8 @@ export default function ArtistOnboarding() {
                                                             <div>
                                                                 <h3 className="font-medium">Ready to Complete</h3>
                                                                 <p className="text-sm text-muted-foreground mt-1">
-                                                                    By clicking Complete below, you{"'ll"} finalize your organization profile creation. You can
-                                                                    always edit your profile details later from your dashboard.
+                                                                    By clicking Complete below, you{"'ll"} finalize your organization profile creation.
+                                                                    You can always edit your profile details later from your dashboard.
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -1929,4 +1847,3 @@ export default function ArtistOnboarding() {
         </div>
     )
 }
-

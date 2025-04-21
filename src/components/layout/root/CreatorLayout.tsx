@@ -296,7 +296,9 @@ export default function CreatorLayout({
                                   "text-white",
                                   path === item.href ? "bg-foreground " : "",
                                 )}
-                                onClick={() => console.log(`Clicked ${item.label}`)}
+                                onClick={() =>
+                                  setIsExpanded(false)
+                                }
                               >
                                 <Icon />
                                 <span className="sr-only">{item.label}</span>
@@ -386,24 +388,24 @@ const CreatorNavigation: DockerItem[] = [
   },
 
   { href: "/organization/store", icon: "pins", label: "STORE", color: "bg-pink-500" },
-  {
-    href: "/organization/gift",
-    icon: "creator",
-    label: "GIFT",
-    color: "bg-emerald-500",
-  },
+  // {
+  //   href: "/organization/gift",
+  //   icon: "creator",
+  //   label: "GIFT",
+  //   color: "bg-emerald-500",
+  // },
   {
     href: "/organization/bounty",
     icon: "users",
     label: "BOUNTY",
     color: "bg-blue-500",
   },
-  {
-    href: "/organization/settings",
-    icon: "bounty",
-    label: "SETTINGS",
-    color: "bg-purple-500",
-  },
+  // {
+  //   href: "/organization/settings",
+  //   icon: "bounty",
+  //   label: "SETTINGS",
+  //   color: "bg-purple-500",
+  // },
   {
     href: "/organization/map",
     icon: "map",
