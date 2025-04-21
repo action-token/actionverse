@@ -311,7 +311,7 @@ export function LeftBottom() {
             Support
           </Link>
         </div>
-        <p>v{1.1}</p>
+        <p>v{1.2}</p>
       </div>
     </div>
   );

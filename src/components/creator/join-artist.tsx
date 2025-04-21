@@ -27,7 +27,7 @@ export default function JoinArtistPage() {
                         >
                             <h2 className="text-3xl font-bold">Why Join as an Organization?</h2>
                             <p className="text-muted-foreground mt-2 max-w-2xl mx-auto">
-                                Our platform offers everything you need to showcase your talent and grow your audience.
+                                Our platform empowers you to engage your fans in new and exciting ways.
                             </p>
                         </motion.div>
 
@@ -36,22 +36,22 @@ export default function JoinArtistPage() {
                                 {
                                     icon: <Globe className="h-10 w-10" />,
                                     title: "Global Reach",
-                                    description: "Share your work with audiences worldwide",
+                                    description: "Share your brand with audiences worldwide",
                                 },
                                 {
                                     icon: <Award className="h-10 w-10" />,
-                                    title: "Organization Recognition",
-                                    description: "Get verified status and build credibility",
+                                    title: "Recognize your Fans",
+                                    description: "Reward your fans with exclusive rewards and unique digital badges",
                                 },
                                 {
                                     icon: <Zap className="h-10 w-10" />,
-                                    title: "Powerful Tools",
-                                    description: "Access exclusive organization features and analytics",
+                                    title: "Creative Freedom",
+                                    description: "Express your organization with digital art and unique competitions that get your fans moving IRL",
                                 },
                                 {
                                     icon: <Palette className="h-10 w-10" />,
-                                    title: "Creative Freedom",
-                                    description: "Express yourself with full creative control",
+                                    title: "Ready to Showcase your org?",
+                                    description: "Join our growing platform connecting organizations with fans",
                                 },
                             ].map((benefit, index) => (
                                 <motion.div
