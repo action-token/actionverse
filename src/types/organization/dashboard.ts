@@ -136,9 +136,9 @@ export interface WidgetData {
 export type CreatorWithPageAsset = Creator & {
     pageAsset: CreatorPageAsset | null
     _count: {
-        posts: number
-        assets: number
-        followers: number
+        posts: number;
+        assets: number;
+        followers: number;
         revenue: number
     }
 }

@@ -20,7 +20,7 @@ export default function StatsWidget({ editMode, creatorData }: StatsWidgetProps)
                 <CardContent>
                     <div className="flex items-center">
                         <Users className="h-5 w-5 text-muted-foreground mr-2" />
-                        <div className="text-2xl font-bold">{creatorData._count.followers}</div>
+                        <div className="text-2xl font-bold">{creatorData?._count.followers}</div>
                     </div>
                 </CardContent>
             </Card>
@@ -32,7 +32,7 @@ export default function StatsWidget({ editMode, creatorData }: StatsWidgetProps)
                 <CardContent>
                     <div className="flex items-center">
                         <Grid3X3 className="h-5 w-5 text-muted-foreground mr-2" />
-                        <div className="text-2xl font-bold">{creatorData._count.posts}</div>
+                        <div className="text-2xl font-bold">{creatorData?._count.posts}</div>
                     </div>
                 </CardContent>
             </Card>
@@ -44,7 +44,7 @@ export default function StatsWidget({ editMode, creatorData }: StatsWidgetProps)
                 <CardContent>
                     <div className="flex items-center">
                         <ImageIcon className="h-5 w-5 text-muted-foreground mr-2" />
-                        <div className="text-2xl font-bold">{creatorData._count.assets}</div>
+                        <div className="text-2xl font-bold">{creatorData?._count.assets}</div>
                     </div>
                 </CardContent>
             </Card>
@@ -57,7 +57,7 @@ export default function StatsWidget({ editMode, creatorData }: StatsWidgetProps)
                     <div className="flex items-center">
                         <DollarSign className="h-5 w-5 text-muted-foreground mr-2" />
                         <div className="text-2xl font-bold">
-                            {creatorData._count.revenue ?? 0}
+                            {creatorData?._count.revenue ?? 0}
                         </div>
                     </div>
                 </CardContent>

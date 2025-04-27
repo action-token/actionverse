@@ -9,7 +9,7 @@ export const HEIGHT_MAP: Record<WidgetHeight, number> = {
     SS: 120, // Extra small height
     S: 200, // Small height
     M: 300, // Medium height
-    L: 400, // Large height
+    L: 430, // Large height
     XL: 600, // Extra large height
     "2XL": 800, // 2x Extra large height
     "3XL": 1000, // 3x Extra large height
@@ -171,6 +171,34 @@ export function createDefaultWidgetSettings(widgetId: string): WidgetSettings {
         }
     }
 
+    if (widgetId === "stats") {
+        return {
+            height: "SS" as WidgetHeight,
+            width: "4XL" as WidgetWidth,
+
+        }
+    }
+    if (widgetId === "membership-tiers") {
+        return {
+            height: "L" as WidgetHeight,
+            width: "4XL" as WidgetWidth,
+
+        }
+    }
+    if (widgetId === "nft-gallery") {
+        return {
+            height: "2XL" as WidgetHeight,
+            width: "L" as WidgetWidth,
+
+        }
+    }
+    if (widgetId === "recent-posts") {
+        return {
+            height: "2XL" as WidgetHeight,
+            width: "L" as WidgetWidth,
+
+        }
+    }
     return defaultSettings
 }
 
