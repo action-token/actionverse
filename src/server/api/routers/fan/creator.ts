@@ -52,24 +52,24 @@ export const creatorRouter = createTRPCRouter({
         throw new Error("Creator already exists");
       }
 
-      if (input.assetType === 'custom') {
+      // if (input.assetType === 'custom') {
 
 
-        await ctx.db.creator.create({
-          data: {
-            id: ctx.session.user.id,
-            profileUrl: input.profileUrl,
-            coverUrl: input.coverUrl,
-            bio: input.bio,
-            storagePub: BLANK_KEYWORD,
-            storageSecret: BLANK_KEYWORD,
-            name: input.displayName,
-            aprovalSend: true,
-            customPageAssetCodeIssuer: `${input.assetCode}-${input.issuer}`,
+      //   await ctx.db.creator.create({
+      //     data: {
+      //       id: ctx.session.user.id,
+      //       profileUrl: input.profileUrl,
+      //       coverUrl: input.coverUrl,
+      //       bio: input.bio,
+      //       storagePub: BLANK_KEYWORD,
+      //       storageSecret: BLANK_KEYWORD,
+      //       name: input.displayName,
+      //       aprovalSend: true,
+      //       customPageAssetCodeIssuer: `${input.assetCode}-${input.issuer}`,
 
-          },
-        });
-      }
+      //     },
+      //   });
+      // }
       if (input.assetType === 'new') {
 
         await ctx.db.creator.create({
@@ -94,12 +94,12 @@ export const creatorRouter = createTRPCRouter({
         });
       }
 
-      await createOrRenewVanitySubscription({
-        creatorId: ctx.session.user.id,
-        isChanging: false,
-        amount: 0,
-        vanityURL: input.vanityUrl.toLocaleLowerCase(),
-      });
+      // await createOrRenewVanitySubscription({
+      //   creatorId: ctx.session.user.id,
+      //   isChanging: false,
+      //   amount: 0,
+      //   vanityURL: input.vanityUrl.toLocaleLowerCase(),
+      // });
 
     }),
 

@@ -180,11 +180,11 @@ export default function CoverProfileWidget({
     // State for profile editing
     // Profile editing state
     const [editedProfile, setEditedProfile] = useState({
-        name: creatorData.name ?? "",
-        bio: creatorData.bio ?? "",
-        website: creatorData.website ?? "",
-        twitter: creatorData.twitter ?? "",
-        instagram: creatorData.instagram ?? "",
+        name: creatorData?.name ?? "",
+        bio: creatorData?.bio ?? "",
+        website: creatorData?.website ?? "",
+        twitter: creatorData?.twitter ?? "",
+        instagram: creatorData?.instagram ?? "",
     })
     const [showSuccessMessage, setShowSuccessMessage] = useState(false)
 
@@ -198,11 +198,11 @@ export default function CoverProfileWidget({
     // Cancel profile editing
     const handleCancelEditProfile = () => {
         setEditedProfile({
-            name: creatorData.name ?? "",
-            bio: creatorData.bio ?? "",
-            website: creatorData.website ?? "",
-            twitter: creatorData.twitter ?? "",
-            instagram: creatorData.instagram ?? "",
+            name: creatorData?.name ?? "",
+            bio: creatorData?.bio ?? "",
+            website: creatorData?.website ?? "",
+            twitter: creatorData?.twitter ?? "",
+            instagram: creatorData?.instagram ?? "",
         })
         setFormErrors({
             name: "",
@@ -382,8 +382,6 @@ export default function CoverProfileWidget({
         }
     }, [showHeightControls])
 
-    // Use the appropriate data source based on showDefaultValues
-    const displayData = creatorData
 
     // Render the widget based on display mode
     const renderWidget = () => {
@@ -416,7 +414,7 @@ export default function CoverProfileWidget({
                 onDrop={handleDrop}
             >
                 <div className="absolute inset-0 overflow-hidden">
-                    <Image src={displayData.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
+                    <Image src={creatorData?.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
                     {/* Cover overlay */}
                     {widgetSettings.coverOverlayOpacity > 0 && (
                         <div
@@ -440,10 +438,10 @@ export default function CoverProfileWidget({
                 >
                     <div className="relative">
                         <div className="h-32 w-32 rounded-full overflow-hidden border-4 border-background shadow-xl">
-                            <CustomAvatar url={displayData.profileUrl} className="h-full w-full border-2 border-background" />
+                            <CustomAvatar url={creatorData?.profileUrl} className="h-full w-full border-2 border-background" />
                         </div>
 
-                        {displayData.approved && (
+                        {creatorData?.approved && (
                             <div className="absolute bottom-1 right-1 bg-primary text-primary-foreground rounded-full p-1 shadow-lg">
                                 <CheckCircle2 className="h-5 w-5" />
                             </div>
@@ -570,7 +568,7 @@ export default function CoverProfileWidget({
                                 style={{ fontFamily: theme?.font?.heading ?? "inherit" }}
                             >
                                 {editedProfile.name}
-                                {displayData.approved && <CheckCircle2 className="h-5 w-5 text-primary" />}
+                                {creatorData?.approved && <CheckCircle2 className="h-5 w-5 text-primary" />}
                             </h2>
                         </div>
                         <p className="mt-1 text-muted-foreground line-clamp-2">{editedProfile.bio}</p>
@@ -578,49 +576,49 @@ export default function CoverProfileWidget({
                 )}
 
                 <div className="mt-4 space-y-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {displayData.website && (
+                    {creatorData?.website && (
                         <div>
                             <Link
-                                href={displayData.website}
+                                href={creatorData?.website}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center text-sm text-muted-foreground hover:text-primary transition-colors"
                             >
                                 <Globe className="h-4 w-4 mr-2" />
-                                <span className="truncate">{displayData.website.replace(/(^\w+:|^)\/\//, "")}</span>
+                                <span className="truncate">{creatorData?.website.replace(/(^\w+:|^)\/\//, "")}</span>
                             </Link>
                         </div>
                     )}
-                    {displayData.twitter && (
+                    {creatorData?.twitter && (
                         <div>
                             <Link
-                                href={`https://twitter.com/${displayData.twitter}`}
+                                href={`https://twitter.com/${creatorData?.twitter}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center text-sm text-muted-foreground hover:text-[#1DA1F2] transition-colors"
                             >
                                 <Twitter className="h-4 w-4 mr-2" />
-                                <span className="truncate">@{displayData.twitter}</span>
+                                <span className="truncate">@{creatorData?.twitter}</span>
                             </Link>
                         </div>
                     )}
-                    {displayData.instagram && (
+                    {creatorData?.instagram && (
                         <div>
                             <Link
-                                href={`https://instagram.com/${displayData.instagram}`}
+                                href={`https://instagram.com/${creatorData?.instagram}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center text-sm text-muted-foreground hover:text-[#E1306C] transition-colors"
                             >
                                 <Instagram className="h-4 w-4 mr-2" />
-                                <span className="truncate">@{displayData.instagram}</span>
+                                <span className="truncate">@{creatorData?.instagram}</span>
                             </Link>
                         </div>
                     )}
 
                     <div className="flex items-center text-sm text-muted-foreground">
                         <Calendar className="h-4 w-4 mr-2" />
-                        <span>Joined {new Date(displayData.joinedAt).toLocaleDateString()}</span>
+                        <span>Joined {new Date(creatorData?.joinedAt).toLocaleDateString()}</span>
                     </div>
                 </div>
             </div>
@@ -639,7 +637,7 @@ export default function CoverProfileWidget({
             {/* Full-width cover photo */}
             <div className="relative" style={{ height: `${widgetSettings.coverHeight}px` }}>
                 <div className="absolute inset-0 overflow-hidden">
-                    <Image src={displayData.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
+                    <Image src={creatorData?.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
                     {/* Cover overlay */}
                     {widgetSettings.coverOverlayOpacity > 0 && (
                         <div
@@ -761,15 +759,15 @@ export default function CoverProfileWidget({
                         <div className="relative">
                             <div className="h-24 w-24 rounded-full overflow-hidden border-4 border-background shadow-xl">
                                 <Image
-                                    src={displayData.profileUrl ?? "/placeholder.svg"}
-                                    alt={profileEditMode ? editedProfile.name : displayData.name}
+                                    src={creatorData?.profileUrl ?? "/placeholder.svg"}
+                                    alt={profileEditMode ? editedProfile.name : creatorData?.name}
                                     width={96}
                                     height={96}
                                     className="h-full w-full object-cover"
                                 />
                             </div>
 
-                            {displayData.approved && (
+                            {creatorData?.approved && (
                                 <div className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-1 shadow-lg">
                                     <CheckCircle2 className="h-4 w-4" />
                                 </div>
@@ -828,7 +826,7 @@ export default function CoverProfileWidget({
                                     style={{ fontFamily: theme?.font?.heading ?? "inherit" }}
                                 >
                                     {editedProfile.name}
-                                    {displayData.approved && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                                    {creatorData?.approved && <CheckCircle2 className="h-4 w-4 text-primary" />}
                                 </h2>
                                 <p className="mt-1 text-sm text-muted-foreground text-center line-clamp-3">{editedProfile.bio}</p>
                             </>
@@ -836,49 +834,49 @@ export default function CoverProfileWidget({
                     </div>
 
                     <div className="mt-6 space-y-3 flex-1">
-                        {displayData.website && (
+                        {creatorData?.website && (
                             <div>
                                 <Link
-                                    href={displayData.website}
+                                    href={creatorData?.website}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center text-sm text-muted-foreground hover:text-primary transition-colors"
                                 >
                                     <Globe className="h-4 w-4 mr-2" />
-                                    <span className="truncate">{displayData.website.replace(/(^\w+:|^)\/\//, "")}</span>
+                                    <span className="truncate">{creatorData?.website.replace(/(^\w+:|^)\/\//, "")}</span>
                                 </Link>
                             </div>
                         )}
-                        {displayData.twitter && (
+                        {creatorData?.twitter && (
                             <div>
                                 <Link
-                                    href={`https://twitter.com/${displayData.twitter}`}
+                                    href={`https://twitter.com/${creatorData?.twitter}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center text-sm text-muted-foreground hover:text-[#1DA1F2] transition-colors"
                                 >
                                     <Twitter className="h-4 w-4 mr-2" />
-                                    <span className="truncate">@{displayData.twitter}</span>
+                                    <span className="truncate">@{creatorData?.twitter}</span>
                                 </Link>
                             </div>
                         )}
-                        {displayData.instagram && (
+                        {creatorData?.instagram && (
                             <div>
                                 <Link
-                                    href={`https://instagram.com/${displayData.instagram}`}
+                                    href={`https://instagram.com/${creatorData?.instagram}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center text-sm text-muted-foreground hover:text-[#E1306C] transition-colors"
                                 >
                                     <Instagram className="h-4 w-4 mr-2" />
-                                    <span className="truncate">@{displayData.instagram}</span>
+                                    <span className="truncate">@{creatorData?.instagram}</span>
                                 </Link>
                             </div>
                         )}
 
                         <div className="flex items-center text-sm text-muted-foreground">
                             <Calendar className="h-4 w-4 mr-2" />
-                            <span>Joined {new Date(displayData.joinedAt).toLocaleDateString()}</span>
+                            <span>Joined {new Date(creatorData?.joinedAt).toLocaleDateString()}</span>
                         </div>
                     </div>
                 </div>
@@ -913,7 +911,7 @@ export default function CoverProfileWidget({
                 }}
             >
                 <div className="absolute inset-0 overflow-hidden">
-                    <Image src={displayData.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
+                    <Image src={creatorData?.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
                     {/* Cover overlay */}
                     {widgetSettings.coverOverlayOpacity > 0 && (
                         <div
@@ -957,15 +955,15 @@ export default function CoverProfileWidget({
                                 }}
                             >
                                 <Image
-                                    src={displayData.profileUrl ?? "/placeholder.svg"}
-                                    alt={profileEditMode ? editedProfile.name : displayData.name}
+                                    src={creatorData?.profileUrl ?? "/placeholder.svg"}
+                                    alt={profileEditMode ? editedProfile.name : creatorData?.name}
                                     width={widgetSettings.heroProfileSize}
                                     height={widgetSettings.heroProfileSize}
                                     className="h-full w-full object-cover"
                                 />
                             </div>
 
-                            {displayData.approved && (
+                            {creatorData?.approved && (
                                 <div className="absolute bottom-1 right-1 bg-primary text-primary-foreground rounded-full p-1 shadow-lg">
                                     <CheckCircle2 className="h-5 w-5" />
                                 </div>
@@ -1025,44 +1023,44 @@ export default function CoverProfileWidget({
                                     }}
                                 >
                                     {editedProfile.name}
-                                    {displayData.approved && <CheckCircle2 className="h-5 w-5 text-primary" />}
+                                    {creatorData?.approved && <CheckCircle2 className="h-5 w-5 text-primary" />}
                                 </h2>
                                 <p className="mt-2 text-white/90 max-w-lg" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
                                     {editedProfile.bio}
                                 </p>
 
                                 <div className="mt-6 flex gap-4 flex-wrap justify-center">
-                                    {displayData.website && (
+                                    {creatorData?.website && (
                                         <Link
-                                            href={displayData.website}
+                                            href={creatorData?.website}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="flex items-center text-sm text-white/80 hover:text-white transition-colors"
                                         >
                                             <Globe className="h-4 w-4 mr-2" />
-                                            <span>{displayData.website.replace(/(^\w+:|^)\/\//, "")}</span>
+                                            <span>{creatorData?.website.replace(/(^\w+:|^)\/\//, "")}</span>
                                         </Link>
                                     )}
-                                    {displayData.twitter && (
+                                    {creatorData?.twitter && (
                                         <Link
-                                            href={`https://twitter.com/${displayData.twitter}`}
+                                            href={`https://twitter.com/${creatorData?.twitter}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="flex items-center text-sm text-white/80 hover:text-white transition-colors"
                                         >
                                             <Twitter className="h-4 w-4 mr-2" />
-                                            <span>@{displayData.twitter}</span>
+                                            <span>@{creatorData?.twitter}</span>
                                         </Link>
                                     )}
-                                    {displayData.instagram && (
+                                    {creatorData?.instagram && (
                                         <Link
-                                            href={`https://instagram.com/${displayData.instagram}`}
+                                            href={`https://instagram.com/${creatorData?.instagram}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="flex items-center text-sm text-white/80 hover:text-white transition-colors"
                                         >
                                             <Instagram className="h-4 w-4 mr-2" />
-                                            <span>@{displayData.instagram}</span>
+                                            <span>@{creatorData?.instagram}</span>
                                         </Link>
                                     )}
                                 </div>
@@ -1174,15 +1172,15 @@ export default function CoverProfileWidget({
                             }}
                         >
                             <Image
-                                src={displayData.profileUrl ?? "/placeholder.svg"}
-                                alt={profileEditMode ? editedProfile.name : displayData.name}
+                                src={creatorData?.profileUrl ?? "/placeholder.svg"}
+                                alt={profileEditMode ? editedProfile.name : creatorData?.name}
                                 width={widgetSettings.heroProfileSize}
                                 height={widgetSettings.heroProfileSize}
                                 className="h-full w-full object-cover"
                             />
                         </div>
 
-                        {displayData.approved && (
+                        {creatorData?.approved && (
                             <div className="absolute bottom-1 right-1 bg-primary text-primary-foreground rounded-full p-1 shadow-lg">
                                 <CheckCircle2 className="h-5 w-5" />
                             </div>
@@ -1264,42 +1262,42 @@ export default function CoverProfileWidget({
                                 style={{ fontFamily: theme?.font?.heading ?? "inherit" }}
                             >
                                 {editedProfile.name}
-                                {displayData.approved && <CheckCircle2 className="h-5 w-5 text-primary" />}
+                                {creatorData?.approved && <CheckCircle2 className="h-5 w-5 text-primary" />}
                             </h2>
                             <p className="mt-2 text-muted-foreground max-w-lg">{editedProfile.bio}</p>
 
                             <div className="mt-6 flex gap-4 flex-wrap justify-center">
-                                {displayData.website && (
+                                {creatorData?.website && (
                                     <Link
-                                        href={displayData.website}
+                                        href={creatorData?.website}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex items-center text-sm text-muted-foreground hover:text-primary transition-colors"
                                     >
                                         <Globe className="h-4 w-4 mr-2" />
-                                        <span>{displayData.website.replace(/(^\w+:|^)\/\//, "")}</span>
+                                        <span>{creatorData?.website.replace(/(^\w+:|^)\/\//, "")}</span>
                                     </Link>
                                 )}
-                                {displayData.twitter && (
+                                {creatorData?.twitter && (
                                     <Link
-                                        href={`https://twitter.com/${displayData.twitter}`}
+                                        href={`https://twitter.com/${creatorData?.twitter}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex items-center text-sm text-muted-foreground hover:text-[#1DA1F2] transition-colors"
                                     >
                                         <Twitter className="h-4 w-4 mr-2" />
-                                        <span>@{displayData.twitter}</span>
+                                        <span>@{creatorData?.twitter}</span>
                                     </Link>
                                 )}
-                                {displayData.instagram && (
+                                {creatorData?.instagram && (
                                     <Link
-                                        href={`https://instagram.com/${displayData.instagram}`}
+                                        href={`https://instagram.com/${creatorData?.instagram}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex items-center text-sm text-muted-foreground hover:text-[#E1306C] transition-colors"
                                     >
                                         <Instagram className="h-4 w-4 mr-2" />
-                                        <span>@{displayData.instagram}</span>
+                                        <span>@{creatorData?.instagram}</span>
                                     </Link>
                                 )}
                             </div>
@@ -1323,7 +1321,7 @@ export default function CoverProfileWidget({
         >
             <div className="relative" style={{ height: `${widgetSettings.coverHeight}px` }}>
                 <div className="absolute inset-0 overflow-hidden">
-                    <Image src={displayData.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
+                    <Image src={creatorData?.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
                     {/* Cover overlay */}
                     {widgetSettings.coverOverlayOpacity > 0 && (
                         <div
@@ -1363,7 +1361,7 @@ export default function CoverProfileWidget({
                 {/* Minimal profile info overlay */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 flex items-center">
                     <div className="h-12 w-12 rounded-full overflow-hidden border-2 border-white/50 mr-3">
-                        <CustomAvatar url={displayData.profileUrl ?? "/placeholder.svg"} className="h-full w-full object-cover" />
+                        <CustomAvatar url={creatorData?.profileUrl ?? "/placeholder.svg"} className="h-full w-full object-cover" />
                     </div>
 
                     <div className="flex-1">
@@ -1383,32 +1381,32 @@ export default function CoverProfileWidget({
                             ) : (
                                 <>
                                     {editedProfile.name}
-                                    {displayData.approved && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                                    {creatorData?.approved && <CheckCircle2 className="h-4 w-4 text-primary" />}
                                 </>
                             )}
                         </h2>
 
                         <div className="flex gap-3 text-white/80 text-xs">
-                            {displayData.twitter && (
+                            {creatorData?.twitter && (
                                 <Link
-                                    href={`https://twitter.com/${displayData.twitter}`}
+                                    href={`https://twitter.com/${creatorData?.twitter}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center hover:text-white transition-colors"
                                 >
                                     <Twitter className="h-3 w-3 mr-1" />
-                                    <span>@{displayData.twitter}</span>
+                                    <span>@{creatorData?.twitter}</span>
                                 </Link>
                             )}
-                            {displayData.instagram && (
+                            {creatorData?.instagram && (
                                 <Link
-                                    href={`https://instagram.com/${displayData.instagram}`}
+                                    href={`https://instagram.com/${creatorData?.instagram}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center hover:text-white transition-colors"
                                 >
                                     <Instagram className="h-3 w-3 mr-1" />
-                                    <span>@{displayData.instagram}</span>
+                                    <span>@{creatorData?.instagram}</span>
                                 </Link>
                             )}
                         </div>
@@ -1542,7 +1540,7 @@ export default function CoverProfileWidget({
             {/* Full-width cover photo with band name overlay */}
             <div className="relative" style={{ height: `${widgetSettings.coverHeight}px` }}>
                 <div className="absolute inset-0 overflow-hidden">
-                    <Image src={displayData.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
+                    <Image src={creatorData?.coverUrl ?? "/placeholder.svg"} alt="Cover" fill className="object-cover" priority />
                     {/* Cover overlay */}
                     <div
                         className="absolute inset-0"
@@ -1580,9 +1578,9 @@ export default function CoverProfileWidget({
                                         className="text-4xl md:text-6xl font-bold text-white mb-2"
                                         style={{ fontFamily: theme?.font?.heading ?? "inherit" }}
                                     >
-                                        {profileEditMode ? editedProfile.name : displayData.name}
+                                        {profileEditMode ? editedProfile.name : creatorData?.name}
                                     </h1>
-                                    {displayData.approved && (
+                                    {creatorData?.approved && (
                                         <div className="bg-primary text-primary-foreground rounded-full p-1 mb-2">
                                             <CheckCircle2 className="h-5 w-5" />
                                         </div>
@@ -1591,29 +1589,29 @@ export default function CoverProfileWidget({
                             </>
                         )}
 
-                        <p className="text-white/90 max-w-2xl text-lg">{profileEditMode ? editedProfile.bio : displayData.bio}</p>
+                        <p className="text-white/90 max-w-2xl text-lg">{profileEditMode ? editedProfile.bio : creatorData?.bio}</p>
 
                         {/* Social links */}
                         <div className="flex gap-4 mt-4">
-                            {displayData.website && (
+                            {creatorData?.website && (
                                 <Button variant="outline" size="sm" className="bg-black/30 text-white border-white/30" asChild>
-                                    <a href={displayData.website} target="_blank" rel="noopener noreferrer">
+                                    <a href={creatorData?.website} target="_blank" rel="noopener noreferrer">
                                         <Globe className="h-4 w-4 mr-2" />
                                         Website
                                     </a>
                                 </Button>
                             )}
-                            {displayData.twitter && (
+                            {creatorData?.twitter && (
                                 <Button variant="outline" size="sm" className="bg-black/30 text-white border-white/30" asChild>
-                                    <a href={`https://twitter.com/${displayData.twitter}`} target="_blank" rel="noopener noreferrer">
+                                    <a href={`https://twitter.com/${creatorData?.twitter}`} target="_blank" rel="noopener noreferrer">
                                         <Twitter className="h-4 w-4 mr-2" />
                                         Twitter
                                     </a>
                                 </Button>
                             )}
-                            {displayData.instagram && (
+                            {creatorData?.instagram && (
                                 <Button variant="outline" size="sm" className="bg-black/30 text-white border-white/30" asChild>
-                                    <a href={`https://instagram.com/${displayData.instagram}`} target="_blank" rel="noopener noreferrer">
+                                    <a href={`https://instagram.com/${creatorData?.instagram}`} target="_blank" rel="noopener noreferrer">
                                         <Instagram className="h-4 w-4 mr-2" />
                                         Instagram
                                     </a>

@@ -20,12 +20,12 @@ import { Button } from "~/components/shadcn/ui/button";
 import { signOut, useSession } from "next-auth/react";
 
 export const LeftNavigation: NavItem[] = [
-  { href: "/", icon: "dashboard", title: "HOMEPAGE" },
+  { href: "/", icon: "bounty", title: "ACTION" },
+  // { href: "/", icon: "dashboard", title: "HOMEPAGE" },
   { href: "/my-collection", icon: "collection", title: "MY COLLECTION" },
   // Search: { path: "/search", icon: Search, text: "Search" },
   // { href: "/music", icon: "music", title: "MUSIC" },
   // { href: "/marketplace", icon: "store", title: "MARKETPLACE" },
-  { href: "/bounty", icon: "bounty", title: "BOUNTY" },
   { href: "/organization/home", icon: "creator", title: "ORGANIZATIONS" },
   { href: "/settings", icon: "setting", title: "SETTINGS" },
 ];
