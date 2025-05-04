@@ -1,5 +1,6 @@
 import { createTRPCRouter } from "~/server/api/trpc";
 import { BountyRoute } from "./bounty";
+import { ScavengerHuntRoute } from "./scavenger-hunt";
 
 /**
  * This is the primary router for your server.
@@ -8,6 +9,8 @@ import { BountyRoute } from "./bounty";
  */
 export const BountyRouters = createTRPCRouter({
     Bounty: BountyRoute,
+    ScavengerHunt: ScavengerHuntRoute,
+
 });
 
 // export type definition of API

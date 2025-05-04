@@ -1,0 +1,152 @@
+"use client"
+
+
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
+import { format } from "date-fns"
+import { ImageIcon, MapPin } from "lucide-react"
+import { ScrollArea } from "~/components/shadcn/ui/scroll-area"
+import { Separator } from "~/components/shadcn/ui/separator"
+import { useFormContext } from "react-hook-form"
+import { ScavengerHuntFormValues } from "../modal/scavenger-hunt-modal"
+
+export default function ReviewForm() {
+    const { getValues } = useFormContext<ScavengerHuntFormValues>()
+    const formData = getValues()
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <h2 className="text-lg font-semibold">Review Your Scavenger Hunt</h2>
+                <p className="text-sm text-muted-foreground">
+                    Please review all the details of your scavenger hunt before creating it.
+                </p>
+            </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{formData.title ?? "Untitled Scavenger Hunt"}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <h4 className="font-medium">Description</h4>
+                        <p className="text-sm">{formData.description ?? "No description provided."}</p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <h4 className="font-medium">Cover Image</h4>
+                        <div className="h-40 w-full overflow-hidden rounded-md border">
+                            {formData.coverImageUrl ? (
+                                <img
+                                    src={formData.coverImageUrl[0]?.url ?? "/placeholder.svg"}
+                                    alt="Cover"
+                                    className="h-full w-full object-cover"
+                                />
+                            ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-muted">
+                                    <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                            <h4 className="font-medium">Prize Details</h4>
+                            <ul className="mt-2 space-y-1 text-sm">
+                                <li>
+                                    <span className="font-medium">Number of Winners:</span> {formData.winners}
+                                </li>
+                                <li>
+                                    <span className="font-medium">Prize in USD:</span> ${formData.priceUSD}
+                                </li>
+                                <li>
+                                    <span className="font-medium">Prize in Bandcoin:</span> {formData.priceBandcoin}
+                                </li>
+                                <li>
+                                    <span className="font-medium">Required Balance:</span> {formData.requiredBalance}
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h4 className="font-medium">Schedule</h4>
+                            <ul className="mt-2 space-y-1 text-sm">
+                                <li>
+                                    <span className="font-medium">Start Date:</span> {format(formData.startDate, "PPP")}
+                                </li>
+                                <li>
+                                    <span className="font-medium">End Date:</span> {format(formData.endDate, "PPP")}
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div>
+                        <h4 className="font-medium">Pin Details</h4>
+                        <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <ul className="space-y-1 text-sm">
+                                    <li>
+                                        <span className="font-medium">Pin URL:</span> {formData.pinUrl ?? "Not provided"}
+                                    </li>
+                                </ul>
+                            </div>
+                            <div>
+                                <span className="text-sm font-medium">Pin Image:</span>
+                                <div className="mt-2 h-32 w-full overflow-hidden rounded-md border">
+                                    {formData.pinImageUrl ? (
+                                        <img
+                                            src={formData.pinImageUrl ?? "/placeholder.svg"}
+                                            alt="Pin"
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <div className="flex h-full w-full items-center justify-center bg-muted">
+                                            <p className="text-sm text-muted-foreground">No image</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div>
+                        <h4 className="font-medium">Locations ({formData.locations.length})</h4>
+                        {formData.locations.length === 0 ? (
+                            <p className="mt-2 text-sm text-muted-foreground">No locations added to this scavenger hunt.</p>
+                        ) : (
+                            <ScrollArea className="h-[200px] mt-2">
+                                <div className="space-y-3">
+                                    {formData.locations.map((location) => (
+                                        <div key={location.id} className="flex items-start space-x-3 rounded-md border p-3">
+                                            <MapPin className="h-5 w-5 text-red-500 mt-0.5" />
+                                            <div className="space-y-1">
+                                                <h5 className="font-medium">{location.title}</h5>
+                                                {location.description && (
+                                                    <p className="text-sm text-muted-foreground">{location.description}</p>
+                                                )}
+                                                <p className="text-xs text-muted-foreground">
+                                                    Coordinates: {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                                                </p>
+                                                <p className="text-xs">
+                                                    Collection Limit: {location.collectionLimit} | Radius: {location.radius}m | Auto Collect:{" "}
+                                                    {location.autoCollect ? "Yes" : "No"}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </ScrollArea>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    )
+}
