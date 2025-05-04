@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import {
   BountyStatus,
+  BountyType,
   NotificationType,
   Prisma,
   SubmissionViewType,
@@ -197,6 +198,7 @@ export const BountyRoute = createTRPCRouter({
           latitude: Number(input.latitude),
           longitude: Number(input.longitude),
           radius: Number(input.radius),
+          bountyType: BountyType.LOCATION_BASED,
         },
       });
       const followers = await ctx.db.follow.findMany({
