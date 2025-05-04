@@ -221,6 +221,8 @@ model Creator {
     createdAt          DateTime            @default(now())
     Appearance         Appearance[]
 
+    ActionLocation ActionLocation[]
+
     @@index([bio, name])
 }
 
@@ -568,6 +570,8 @@ model LocationGroup {
     multiPin Boolean @default(false)
 
     locations Location[]
+
+    ActionLocation ActionLocation[]
 }
 
 model Location {
@@ -602,6 +606,18 @@ model LocationConsumer {
     createdAt DateTime @default(now())
 }
 
+model ActionLocation {
+    id              Int           @id @default(autoincrement())
+    bountyId        Int
+    bounty          Bounty        @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+    locationGroupId String
+    locationGroup   LocationGroup @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
+    serial          Int
+    creatorId       String
+    creator         Creator       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    createdAt       DateTime      @default(now())
+}
+
 model Bounty {
     id                 Int                 @id @default(autoincrement())
     title              String
@@ -628,6 +644,8 @@ model Bounty {
     BountyWinner       BountyWinner[]
     User               User?               @relation(fields: [userId], references: [id])
     userId             String?
+    bountyType         BountyType          @default(GENERAL)
+    ActionLocation     ActionLocation[]
 
     @@index([title, description])
 }
@@ -669,6 +687,12 @@ model BountyDoubtMessage {
 enum UserRole {
     USER
     CREATOR
+}
+
+enum BountyType {
+    GENERAL
+    LOCATION_BASED
+    SCAVENGER_HUNT
 }
 
 model BountyParticipant {
