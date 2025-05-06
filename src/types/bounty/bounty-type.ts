@@ -1,3 +1,5 @@
+import { ActionLocation } from "@prisma/client";
+
 export interface BountyTypes {
     id: number;
     title: string;
@@ -6,8 +8,13 @@ export interface BountyTypes {
     priceInBand: number;
     requiredBalance: number;
     currentWinnerCount: number;
+    latitude?: number | null;
+    longitude?: number | null;
+    radius?: number | null;
+
     imageUrls: string[];
     totalWinner: number;
+    bountyType: "GENERAL" | "LOCATION_BASED" | "SCAVENGER_HUNT";
     status: "PENDING" | "APPROVED" | "REJECTED";
     creatorId: string;
     _count: {
@@ -25,6 +32,7 @@ export interface BountyTypes {
     }[],
     isJoined: boolean;
     isOwner: boolean;
+    actionLocation?: ActionLocation[]
 
 }
 

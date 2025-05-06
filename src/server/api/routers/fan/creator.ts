@@ -906,5 +906,52 @@ export const creatorRouter = createTRPCRouter({
     });
     return packages;
   }),
+  getPaginatedCreator: publicProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(7),
+        cursor: z.string().nullish(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { limit, cursor } = input
 
+      const items = await ctx.db.creator.findMany({
+        take: limit + 1, // take an extra item to determine if there are more items
+        cursor: cursor ? { id: cursor } : undefined,
+        orderBy: { createdAt: "desc" },
+        select: {
+          _count: {
+            select: {
+              Bounty: true,
+              followers: true,
+            }
+          },
+          id: true,
+          name: true,
+          bio: true,
+          profileUrl: true,
+          coverUrl: true,
+          website: true,
+          twitter: true,
+          instagram: true,
+
+        },
+        where: {
+          approved: true,
+        },
+      })
+
+
+      let nextCursor: typeof cursor = undefined
+      if (items.length > limit) {
+        const nextItem = items.pop()
+        nextCursor = nextItem?.id
+      }
+
+      return {
+        items,
+        nextCursor,
+      }
+    }),
 });
