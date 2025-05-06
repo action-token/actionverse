@@ -34,8 +34,8 @@ export default function ReviewForm() {
 
                     <div className="space-y-2">
                         <h4 className="font-medium">Cover Image</h4>
-                        <div className="h-40 w-full overflow-hidden rounded-md border">
-                            {formData.coverImageUrl ? (
+                        <div className="h-32 w-full overflow-hidden rounded-md border">
+                            {formData?.coverImageUrl ? (
                                 <img
                                     src={formData.coverImageUrl[0]?.url ?? "/placeholder.svg"}
                                     alt="Cover"
@@ -43,7 +43,7 @@ export default function ReviewForm() {
                                 />
                             ) : (
                                 <div className="flex h-full w-full items-center justify-center bg-muted">
-                                    <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                                    <p className="text-sm text-muted-foreground">No image</p>
                                 </div>
                             )}
                         </div>
@@ -51,93 +51,120 @@ export default function ReviewForm() {
 
                     <Separator />
 
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                            <h4 className="font-medium">Prize Details</h4>
-                            <ul className="mt-2 space-y-1 text-sm">
-                                <li>
-                                    <span className="font-medium">Number of Winners:</span> {formData.winners}
-                                </li>
-                                <li>
-                                    <span className="font-medium">Prize in USD:</span> ${formData.priceUSD}
-                                </li>
-                                <li>
-                                    <span className="font-medium">Prize in Bandcoin:</span> {formData.priceBandcoin}
-                                </li>
-                                <li>
-                                    <span className="font-medium">Required Balance:</span> {formData.requiredBalance}
-                                </li>
-                            </ul>
-                        </div>
-
-                        <div>
-                            <h4 className="font-medium">Schedule</h4>
-                            <ul className="mt-2 space-y-1 text-sm">
-                                <li>
-                                    <span className="font-medium">Start Date:</span> {format(formData.startDate, "PPP")}
-                                </li>
-                                <li>
-                                    <span className="font-medium">End Date:</span> {format(formData.endDate, "PPP")}
-                                </li>
-                            </ul>
-                        </div>
+                    <div>
+                        <h4 className="font-medium">Configuration</h4>
+                        <ul className="mt-2 space-y-1 text-sm">
+                            <li>
+                                <span className="font-medium">Number of Steps:</span> {formData.numberOfSteps}
+                            </li>
+                            <li>
+                                <span className="font-medium">Using Same Info for All Steps:</span>{" "}
+                                {formData.useSameInfoForAllSteps ? "Yes" : "No"}
+                            </li>
+                        </ul>
                     </div>
 
-                    <Separator />
-
-                    <div>
-                        <h4 className="font-medium">Pin Details</h4>
-                        <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {formData.useSameInfoForAllSteps && formData.defaultLocationInfo && (
+                        <>
+                            <Separator />
                             <div>
-                                <ul className="space-y-1 text-sm">
-                                    <li>
-                                        <span className="font-medium">Pin URL:</span> {formData.pinUrl ?? "Not provided"}
-                                    </li>
-                                </ul>
-                            </div>
-                            <div>
-                                <span className="text-sm font-medium">Pin Image:</span>
-                                <div className="mt-2 h-32 w-full overflow-hidden rounded-md border">
-                                    {formData.pinImageUrl ? (
-                                        <img
-                                            src={formData.pinImageUrl ?? "/placeholder.svg"}
-                                            alt="Pin"
-                                            className="h-full w-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="flex h-full w-full items-center justify-center bg-muted">
-                                            <p className="text-sm text-muted-foreground">No image</p>
+                                <h4 className="font-medium">Default Location Information</h4>
+                                <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div>
+                                        <ul className="space-y-1 text-sm">
+                                            <li>
+                                                <span className="font-medium">Title:</span> {formData.defaultLocationInfo.title}
+                                            </li>
+                                            <li>
+                                                <span className="font-medium">Description:</span> {formData.defaultLocationInfo.description}
+                                            </li>
+                                            <li>
+                                                <span className="font-medium">Collection Limit:</span>{" "}
+                                                {formData.defaultLocationInfo.collectionLimit}
+                                            </li>
+                                            <li>
+                                                <span className="font-medium">Radius:</span> {formData.defaultLocationInfo.radius}m
+                                            </li>
+                                            <li>
+                                                <span className="font-medium">Auto Collect:</span>{" "}
+                                                {formData.defaultLocationInfo.autoCollect ? "Yes" : "No"}
+                                            </li>
+                                            <li>
+                                                <span className="font-medium">Date Range:</span>{" "}
+                                                {format(formData.defaultLocationInfo.startDate, "PPP")} -{" "}
+                                                {format(formData.defaultLocationInfo.endDate, "PPP")}
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-medium">Pin Image:</span>
+                                        <div className="mt-2 h-32 w-full overflow-hidden rounded-md border">
+                                            {formData.defaultLocationInfo.pinImage ? (
+                                                <img
+                                                    src={formData.defaultLocationInfo.pinImage ?? "/placeholder.svg"}
+                                                    alt="Pin"
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center bg-muted">
+                                                    <p className="text-sm text-muted-foreground">No image</p>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        </>
+                    )}
+
+                    <Separator />
+
+                    <div>
+                        <h4 className="font-medium">Prize Details</h4>
+                        <ul className="mt-2 space-y-1 text-sm">
+                            <li>
+                                <span className="font-medium">Number of Winners:</span> {formData.winners}
+                            </li>
+                            <li>
+                                <span className="font-medium">Prize in USD:</span> ${formData.priceUSD}
+                            </li>
+                            <li>
+                                <span className="font-medium">Prize in Bandcoin:</span> {formData.priceBandcoin}
+                            </li>
+                            <li>
+                                <span className="font-medium">Required Balance:</span> {formData.requiredBalance}
+                            </li>
+                        </ul>
                     </div>
 
                     <Separator />
 
                     <div>
-                        <h4 className="font-medium">Locations ({formData.locations.length})</h4>
+                        <h4 className="font-medium">
+                            Locations ({formData.locations.length}/{formData.numberOfSteps})
+                        </h4>
                         {formData.locations.length === 0 ? (
                             <p className="mt-2 text-sm text-muted-foreground">No locations added to this scavenger hunt.</p>
                         ) : (
                             <ScrollArea className="h-[200px] mt-2">
                                 <div className="space-y-3">
-                                    {formData.locations.map((location) => (
+                                    {formData.locations.map((location, index) => (
                                         <div key={location.id} className="flex items-start space-x-3 rounded-md border p-3">
                                             <MapPin className="h-5 w-5 text-red-500 mt-0.5" />
                                             <div className="space-y-1">
-                                                <h5 className="font-medium">{location.title}</h5>
-                                                {location.description && (
-                                                    <p className="text-sm text-muted-foreground">{location.description}</p>
-                                                )}
+                                                <h5 className="font-medium">
+                                                    {formData.useSameInfoForAllSteps
+                                                        ? `${formData.defaultLocationInfo?.title ?? "Location"} ${index + 1}`
+                                                        : location.title ?? "Unnamed Location"}
+                                                </h5>
                                                 <p className="text-xs text-muted-foreground">
                                                     Coordinates: {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
                                                 </p>
-                                                <p className="text-xs">
-                                                    Collection Limit: {location.collectionLimit} | Radius: {location.radius}m | Auto Collect:{" "}
-                                                    {location.autoCollect ? "Yes" : "No"}
-                                                </p>
+                                                {!formData.useSameInfoForAllSteps && location.collectionLimit && location.radius && (
+                                                    <p className="text-xs">
+                                                        Collection Limit: {location.collectionLimit} | Radius: {location.radius}m
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
