@@ -34,7 +34,7 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
   const isPathActive = (itemHref: string): boolean => {
     // Special case for root path - also match /bounty/* paths
     if (itemHref === "/") {
-      return path === "/" || path.startsWith("/bounty/")
+      return path === "/"
     }
 
     // Special case for organization route
@@ -45,6 +45,11 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
     // For other paths, check if current path starts with the item href
     if (path === itemHref) {
       return true
+    }
+
+    if (itemHref === "/bounty") {
+      // Check if the current path is /bounty or starts with /bounty/
+      return path === "/bounty" || path.startsWith("/bounty/")
     }
 
     // Check if it's a sub-route (except for /bounty/* which is handled above)
@@ -84,11 +89,12 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
                   <Link href={item.disabled ? "/" : item.href} key={item.href}>
                     <Button
                       className={cn(
-                        "flex w-full items-center shadow-sm justify-start gap-2 overflow-hidden rounded-md text-sm font-medium",
+                        "flex  items-center  justify-start gap-2 overflow-hidden rounded-md text-sm font-medium",
                         isActive
-                          ? "text-destructive border-2 border-destructive bg-background hover:bg-background font-bold"
-                          : "transparent shadow-black",
+                          ? "shadow-sm shadow-black bg-primary text-primary-foreground"
+                          : "transparent  border-primary bg-secondary hover:bg-primary/10 font-bold text-primary shadow-sm shadow-black",
                         item.disabled && "cursor-not-allowed opacity-80",
+                        !isMinimized && "w-full",
                       )}
                       onClick={() => {
                         if (setOpen) setOpen(false)

@@ -17,7 +17,7 @@ export interface PlotProps {
 
 export function PlotCard({ title, location, price, image, size, type, featured = false }: PlotProps) {
     return (
-        <Card className="w-[300px] flex-shrink-0 overflow-hidden bg-white shadow-md snap-start">
+        <Card className="w-[320px] flex-shrink-0 overflow-hidden bg-white shadow-md snap-start">
             <div className="relative h-40 w-full">
                 <ImageWithFallback src={image || "/placeholder.svg"} alt={title} fill className="object-cover" />
                 {featured && (

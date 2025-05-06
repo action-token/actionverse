@@ -2,30 +2,33 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion"
 
-import { ChevronLeft, LogOut, Sun, Moon, Cloud, Star, ChevronRight } from "lucide-react";
+import { ChevronLeft, LogOut, Sun, Moon, Cloud, Star, ChevronRight } from 'lucide-react';
 
 import { useSidebar } from "~/hooks/use-sidebar";
 
 import { DashboardNav } from "./dashboard-nav";
 import { ConnectWalletButton } from "package/connect_wallet";
-import { Facebook, Instagram } from "lucide-react";
+import { Facebook, Instagram } from 'lucide-react';
 import { useTheme } from "next-themes";
 import Link from "next/link";
-import { HomeIcon } from "lucide-react";
+import { HomeIcon } from 'lucide-react';
 import Image from "next/image";
 import { cn } from "~/utils/utils";
 import { env } from "~/env";
 import { NavItem } from "~/types/icon-types";
 import { Button } from "~/components/shadcn/ui/button";
 import { signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/router";
+import Logo from "../Logo";
 
 export const LeftNavigation: NavItem[] = [
-  { href: "/", icon: "bounty", title: "ACTION" },
-  // { href: "/", icon: "dashboard", title: "HOMEPAGE" },
+
+  { href: "/", icon: "dashboard", title: "HOMEPAGE" },
   { href: "/my-collection", icon: "collection", title: "MY COLLECTION" },
   // Search: { path: "/search", icon: Search, text: "Search" },
   // { href: "/music", icon: "music", title: "MUSIC" },
   // { href: "/marketplace", icon: "store", title: "MARKETPLACE" },
+  { href: "/bounty", icon: "bounty", title: "ACTION" },
   { href: "/organization/home", icon: "creator", title: "ORGANIZATIONS" },
   { href: "/settings", icon: "setting", title: "SETTINGS" },
 ];
@@ -158,16 +161,40 @@ const MiniCalendar = () => {
 export default function Sidebar({ className }: SidebarProps) {
   const { isMinimized, toggle } = useSidebar();
   const session = useSession();
-
+  const router = useRouter()
+  const isHome = router.pathname === "/";
   return (
     <div
       className={cn(
-        ` h-[calc(100vh-10.8vh)] sticky top-[5.8rem] p-1 w-full overflow-hidden border-r  hidden transition-[width] duration-500 md:block`,
+        `sticky p-1 w-full overflow-hidden border-r hidden md:block transition-all duration-500 ease-in-out`,
         !isMinimized ? "w-[280px]" : "w-[78px]",
+        isHome ? "top-0 h-[100vh]" : "top-[5.8rem] h-[calc(100vh-10.8vh)]",
         className,
       )}
     >
       <div className=" flex  h-full   w-full  flex-col items-center justify-between   py-2   no-scrollbar  ">
+        {
+          isHome && (
+            <div className="flex flex-col items-center transition-all duration-500 ease-in-out">
+              <div className="relative hidden h-24 w-24 md:block transition-all duration-500 ease-in-out">
+                <Image
+                  alt="logo"
+                  src="/images/action/logo.png"
+                  height={200}
+                  width={200}
+                  className="h-full w-full transition-transform duration-500 ease-in-out"
+                />
+              </div>
+              {/* <h1 className={cn(
+                "relative text-xl font-bold capitalize text-primary md:text-2xl transition-all duration-500 ease-in-out",
+                isMinimized ? "opacity-0 max-h-0" : "opacity-100 max-h-20",
+              )}>
+                ACTIONVERSE
+                <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
+              </h1> */}
+            </div>
+          )
+        }
         <div className="flex  w-full overflow-x-hidden   flex-col  ">
           <DashboardNav items={LeftNavigation} />
 
@@ -176,17 +203,23 @@ export default function Sidebar({ className }: SidebarProps) {
         </div>
 
         <div
-          className={`${isMinimized ? "hidden" : "flex"} w-full flex-col items-center`}
+          className={cn(
+            "flex w-full flex-col items-center transition-all duration-500 ease-in-out",
+            isMinimized ? "opacity-0 max-h-0 overflow-hidden" : "opacity-100 max-h-[1000px]"
+          )}
         >
           <LeftBottom />
         </div>
-        {session.status == "authenticated" && isMinimized &&
-          <div className="">
+        {session.status == "authenticated" && (
+          <div className={cn(
+            "transition-all duration-500 ease-in-out",
+            isMinimized ? "opacity-100 max-h-20" : "opacity-0 max-h-0 overflow-hidden"
+          )}>
             <LogOutButon />
           </div>
-        }
+        )}
       </div>
-    </div>
+    </div >
   );
 }
 
@@ -274,7 +307,7 @@ export function LeftBottom() {
       <div className="flex  items-center justify-between  gap-4 ">
         <Link
           href={"https://facebook.com/bandcoinio"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-primary justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 shadow-sm shadow-black  flex-col  justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
           <Facebook size={26} />
@@ -282,17 +315,18 @@ export function LeftBottom() {
         </Link>
         <Link
           href={"https://x.com/bandcoinio"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-primary justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 shadow-sm shadow-black flex-col  justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
           <Image src="/images/icons/x.svg" alt="X" height={18} width={18}
+
             className="w-5 h-5"
           />
 
         </Link>
         <Link
           href={"https://www.instagram.com/bandcoin"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col bg-primary justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          className="btn flex h-12 shadow-sm shadow-black flex-col justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
           <Instagram size={26} />

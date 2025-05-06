@@ -3,7 +3,7 @@
 import React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Button } from "~/components/shadcn/ui/button"
 import { cn } from "~/lib/utils"
 
@@ -15,6 +15,8 @@ interface HorizontalScrollProps {
     gap?: number
     slideBy?: number
     title?: string
+    onNavigate?: (direction: "left" | "right") => void
+    isLoadingMore?: boolean
 }
 
 export function HorizontalScroll({
@@ -25,6 +27,8 @@ export function HorizontalScroll({
     gap = 16,
     slideBy = 1,
     title,
+    onNavigate,
+    isLoadingMore = false,
 }: HorizontalScrollProps) {
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const [canScrollLeft, setCanScrollLeft] = useState(false)
@@ -72,7 +76,7 @@ export function HorizontalScroll({
         const el = scrollContainerRef.current
         if (!el) return
 
-        const itemWidth = el.firstElementChild?.clientWidth || 0
+        const itemWidth = el.firstElementChild?.clientWidth ?? 0
         const scrollAmount = (itemWidth + gap) * slideBy
 
         if (direction === "left") {
@@ -83,6 +87,11 @@ export function HorizontalScroll({
 
         // Update scroll state after scrolling
         setTimeout(checkScrollability, 500) // Check after animation completes
+
+        // Call the onNavigate callback if provided
+        if (onNavigate) {
+            onNavigate(direction)
+        }
     }
 
     // If we have 1 or 0 items, don't show controls
@@ -111,13 +120,13 @@ export function HorizontalScroll({
                         size="icon"
                         className={cn(
                             "h-8 w-8 rounded-full bg-white text-gray-700 shadow-md transition-opacity",
-                            !canScrollRight && "opacity-50 cursor-not-allowed",
+                            !canScrollRight && !isLoadingMore && "opacity-50 cursor-not-allowed",
                         )}
                         onClick={() => scroll("right")}
-                        disabled={!canScrollRight}
+                        disabled={!canScrollRight && !isLoadingMore}
                         aria-label="Scroll right"
                     >
-                        <ChevronRight className="h-4 w-4" />
+                        {isLoadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
                     </Button>
                 </div>
             )}
@@ -142,12 +151,12 @@ export function HorizontalScroll({
                         size="icon"
                         className={cn(
                             "absolute -right-4 top-1/2 z-10 h-8 w-8 -translate-y-1/2 rounded-full bg-white text-gray-700 shadow-md transition-opacity md:hidden",
-                            !canScrollRight && "opacity-0 pointer-events-none",
+                            !canScrollRight && !isLoadingMore && "opacity-0 pointer-events-none",
                         )}
                         onClick={() => scroll("right")}
                         aria-label="Scroll right"
                     >
-                        <ChevronRight className="h-4 w-4" />
+                        {isLoadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
                     </Button>
                 </>
             )}

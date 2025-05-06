@@ -6,38 +6,45 @@ import { Textarea } from "~/components/shadcn/ui/textarea"
 import { MapPin, Phone, Mail, Check, Filter } from "lucide-react"
 
 
+import { useState, useEffect, useRef } from "react"
+import { Bell, Search, User, Menu } from "lucide-react"
+
+import { cn } from "~/lib/utils"
 
 import { ImageWithFallback } from "~/components/common/image-with-fallback"
 import { HomeVideoPlayer } from "~/components/common/home-video-player"
 import { HorizontalScroll } from "~/components/common/horizontal-scroll"
 import { bounties, organizations, plots } from "~/components/dummy-data/mock-data"
-import { BountyCard } from "~/components/bounty/bounty-card"
-import { OrganizationCard } from "~/components/creator/organization-card"
+import { BountyCard, BountySection } from "~/components/bounty/bounty-card"
+import { OrganizationCard, OrganizationSection } from "~/components/creator/organization-card"
 import { PlotCard } from "~/components/plot/plot-card"
 
 export default function Home() {
+
+
   return (
     <div className="flex min-h-screen flex-col bg-white text-gray-800">
+      <Header />
       {/* Hero Section with Video Background */}
-      <section className="relative h-screen w-full overflow-hidden bg-black text-white">
+      <section className="relative h-[50vh] w-full rounded-b-xl overflow-hidden bg-black text-white">
         <div className="absolute inset-0 z-0">
           {/* Mobile: Static image instead of video */}
           <div className="md:hidden">
-            <Image src="/images/blocks-static.jpg" alt="ACTION Blocks" fill priority className="object-cover" />
+            <Image src="/images/action/plot-sign.jpeg" alt="ACTION Blocks" fill priority className="object-cover" />
             <div className="absolute inset-0 bg-black/50"></div>
           </div>
 
           {/* Desktop: Lazy-loaded video with poster image */}
-          <div className="hidden md:block">
-            <HomeVideoPlayer src="/videos/Hand.mp4" poster="/images/action/blocks-static.jpg" />
+          <div className="hidden h-full md:block">
+            <HomeVideoPlayer src="/videos/Hand.mp4" poster="/images/action/plot-sign.jpeg" />
             <div className="absolute inset-0 bg-black/50"></div>
           </div>
         </div>
 
         <div className="container relative z-10 mx-auto flex h-full flex-col items-center justify-center px-4 text-center">
           <div className="mb-6 flex items-center justify-center">
-            <div className="mr-4 text-6xl font-bold text-white">A</div>
-            <div className="text-4xl font-light tracking-widest text-green-600">ACTION</div>
+
+            <div className="mr-4 text-6xl font-bold  tracking-widest text-green-600">ACTION</div>
           </div>
           <h1 className="mb-6 text-4xl font-bold leading-tight text-white md:text-6xl">
             Premium Land Plots with <span className="text-green-600">Digital Innovation</span>
@@ -46,9 +53,24 @@ export default function Home() {
             Secure your future with our exclusive tech-integrated land plots. Limited availability. Revolutionary
             ownership experience.
           </p>
-          <div className="flex flex-col space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0">
-            <Button className="bg-green-600 px-8 py-6 text-lg hover:bg-green-700">Explore Plots</Button>
-            <Button variant="outline" className="border-green-600 px-8 py-6 text-lg text-green-600 hover:bg-green-50">
+          <div className="flex  items-center justify-center gap-4">
+            <Button
+              className="bg-green-600 px-8 py-6 text-lg hover:bg-green-700"
+              onClick={() => {
+                const section = document.getElementById("plots-section")
+                section?.scrollIntoView({ behavior: "smooth" })
+              }}
+            >
+              Explore Plots
+            </Button>
+            <Button
+              variant="outline"
+              className="border-green-600 px-8 py-6 text-lg text-green-600 hover:bg-green-50"
+              onClick={() => {
+                const section = document.getElementById("bounties-section")
+                section?.scrollIntoView({ behavior: "smooth" })
+              }}
+            >
               Join Bounties
             </Button>
           </div>
@@ -56,26 +78,11 @@ export default function Home() {
       </section>
 
       {/* Bounties Section */}
-      <section className="bg-gray-100 py-20">
-        <div className="container mx-auto px-4">
-          <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900 md:text-4xl">Available Bounties</h2>
-              <p className="mt-2 text-gray-600">Complete tasks and earn rewards in our digital ecosystem.</p>
-            </div>
-            <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
-              <Filter className="mr-2 h-4 w-4" />
-              Filter Bounties
-            </Button>
-          </div>
 
-          <HorizontalScroll>
-            {bounties.map((bounty) => (
-              <BountyCard key={bounty.id} {...bounty} />
-            ))}
-          </HorizontalScroll>
-        </div>
-      </section>
+
+      <BountySection />
+
+
 
       {/* About Section */}
       <section className="py-20">
@@ -124,23 +131,13 @@ export default function Home() {
       </section>
 
       {/* Organizations Section */}
-      <section className="bg-gray-100 py-20">
-        <div className="container mx-auto px-4">
-          <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900 md:text-4xl">Join Organizations</h2>
-              <p className="mt-2 text-gray-600">Connect with communities of like-minded property owners.</p>
-            </div>
-            <Button className="bg-green-600 hover:bg-green-700">View All Organizations</Button>
-          </div>
 
-          <HorizontalScroll>
-            {organizations.map((org) => (
-              <OrganizationCard key={org.id} {...org} />
-            ))}
-          </HorizontalScroll>
-        </div>
-      </section>
+
+
+      <OrganizationSection />
+
+
+
 
       {/* Featured Plots - Now with Horizontal Scroll */}
       <section className="py-20">
@@ -148,7 +145,7 @@ export default function Home() {
           <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
               <h2 className="text-3xl font-bold text-gray-900 md:text-4xl">Featured Plots</h2>
-              <p className="mt-2 text-gray-600">Limited availability. Secure your plot before they're gone.</p>
+              <p className="mt-2 text-gray-600">Limited availability. Secure your plot before they{"'re"} gone.</p>
             </div>
             <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
               <Filter className="mr-2 h-4 w-4" />
@@ -172,7 +169,7 @@ export default function Home() {
               <h2 className="mb-6 text-3xl font-bold text-gray-900 md:text-4xl">Limited Plots Available</h2>
               <p className="mb-6 text-gray-600">
                 Our exclusive development is selling fast. With only 30% of plots remaining, secure your investment
-                today before they're all gone.
+                today before they{"'re"} all gone.
               </p>
 
               <div className="mb-8">
@@ -195,7 +192,7 @@ export default function Home() {
                 <div className="rounded-lg bg-white/90 p-8 text-center shadow-lg">
                   <h3 className="mb-4 text-2xl font-bold text-green-600">Act Fast</h3>
                   <p className="mb-4 text-gray-700">
-                    Premium plots are selling quickly. Don't miss your chance to own a piece of the future.
+                    Premium plots are selling quickly. Don{"'t"} miss your chance to own a piece of the future.
                   </p>
                   <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
                     Schedule Viewing
@@ -207,240 +204,134 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Contact Section */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="mb-16 text-center">
-            <h2 className="mb-4 text-3xl font-bold text-gray-900 md:text-4xl">Get In Touch</h2>
-            <p className="mx-auto max-w-2xl text-gray-600">
-              Interested in learning more? Our team is ready to assist you with any questions about our premium plots.
-            </p>
-          </div>
 
-          <div className="grid gap-12 md:grid-cols-2">
-            <div className="rounded-lg bg-white p-8 shadow-lg">
-              <h3 className="mb-6 text-2xl font-bold text-gray-900">Contact Information</h3>
+    </div >
+  )
+}
 
-              <div className="mb-6 space-y-4">
-                <div className="flex items-center">
-                  <div className="mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-600">
-                    <Phone size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Call Us</p>
-                    <p className="font-medium text-gray-800">+1 (555) 123-4567</p>
-                  </div>
-                </div>
+interface HeaderProps {
+  className?: string
+  sidebarExpanded?: boolean
+}
 
-                <div className="flex items-center">
-                  <div className="mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-600">
-                    <Mail size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Email Us</p>
-                    <p className="font-medium text-gray-800">info@actionplots.com</p>
-                  </div>
-                </div>
+export function Header({ className, sidebarExpanded = false }: HeaderProps) {
+  const [isScrolled, setIsScrolled] = useState(false)
+  const [isPastHero, setIsPastHero] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const headerRef = useRef<HTMLElement>(null)
 
-                <div className="flex items-center">
-                  <div className="mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-600">
-                    <MapPin size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Visit Our Office</p>
-                    <p className="font-medium text-gray-800">123 Tech Boulevard, Innovation District</p>
-                  </div>
-                </div>
-              </div>
+  const [scrollY, setScrollY] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(0)
 
-              <div className="mt-8 rounded-lg bg-gray-100 p-6">
-                <h4 className="mb-4 text-lg font-bold text-gray-900">Office Hours</h4>
-                <ul className="space-y-2 text-gray-600">
-                  <li className="flex justify-between">
-                    <span>Monday - Friday</span>
-                    <span>9:00 AM - 6:00 PM</span>
-                  </li>
-                  <li className="flex justify-between">
-                    <span>Saturday</span>
-                    <span>10:00 AM - 4:00 PM</span>
-                  </li>
-                  <li className="flex justify-between">
-                    <span>Sunday</span>
-                    <span>Closed</span>
-                  </li>
-                </ul>
-              </div>
+  useEffect(() => {
+
+    const handleScroll = () => {
+
+      const currentScrollY = window.scrollY
+      setScrollY(currentScrollY)
+      setIsPastHero(currentScrollY > window.innerHeight * 0.5)
+    }
+
+    const handleResize = () => {
+      setViewportHeight(window.innerHeight)
+    }
+
+    // Add event listeners
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    window.addEventListener("resize", handleResize)
+
+    // Initial check
+    handleScroll()
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("scroll", handleScroll)
+      window.removeEventListener("resize", handleResize)
+    }
+  }, [])
+  return (
+    <header
+      ref={headerRef}
+      className={cn(
+        "fixed top-0 z-50 flex h-16 w-full items-center right-0 transition-all duration-300",
+        // Show header only when scrolled past hero or when slightly scrolled
+        isPastHero ? "translate-y-0 opacity-100" : isScrolled ? "bg-transparent" : "-translate-y-full opacity-0",
+        // Glass effect when past hero
+        isPastHero && "bg-white/70 backdrop-blur-md shadow-sm",
+        isMobile ? "px-4" : sidebarExpanded ? "lg:pl-64" : "lg:pl-16",
+        className,
+      )}
+    >
+      <div className="flex w-full items-center justify-between">
+        {/* Left section - Logo and Search */}
+        <div className="flex items-center gap-4">
+          <Link href="/" className="flex items-center">
+            <div className="relative hidden h-16 w-16 md:block transition-all duration-500 ease-in-out">
+              <Image
+                alt="logo"
+                src="/images/action/logo.png"
+                height={200}
+                width={200}
+                className="h-full w-full transition-transform duration-500 ease-in-out"
+              />
             </div>
+          </Link>
 
-            <div className="rounded-lg bg-white p-8 shadow-lg">
-              <h3 className="mb-6 text-2xl font-bold text-gray-900">Send Us a Message</h3>
 
-              <form className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label htmlFor="name" className="mb-2 block text-sm text-gray-700">
-                      Your Name
-                    </label>
-                    <Input id="name" placeholder="John Doe" className="border-gray-300 bg-white" />
-                  </div>
-                  <div>
-                    <label htmlFor="email" className="mb-2 block text-sm text-gray-700">
-                      Your Email
-                    </label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="john@example.com"
-                      className="border-gray-300 bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="phone" className="mb-2 block text-sm text-gray-700">
-                    Phone Number
-                  </label>
-                  <Input id="phone" placeholder="+1 (555) 123-4567" className="border-gray-300 bg-white" />
-                </div>
-
-                <div>
-                  <label htmlFor="interest" className="mb-2 block text-sm text-gray-700">
-                    I'm Interested In
-                  </label>
-                  <select id="interest" className="w-full rounded-md border border-gray-300 bg-white px-3 py-2">
-                    <option>Premium Plots</option>
-                    <option>Commercial Plots</option>
-                    <option>Residential Plots</option>
-                    <option>Investment Opportunities</option>
-                    <option>Bounty Programs</option>
-                    <option>Organizations</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="message" className="mb-2 block text-sm text-gray-700">
-                    Your Message
-                  </label>
-                  <Textarea
-                    id="message"
-                    placeholder="I'm interested in learning more about..."
-                    className="min-h-[120px] border-gray-300 bg-white"
-                  />
-                </div>
-
-                <Button className="w-full bg-green-600 hover:bg-green-700">Send Message</Button>
-              </form>
-            </div>
-          </div>
         </div>
-      </section>
 
-      {/* CTA Section */}
-      <section className="bg-gradient-to-r from-green-600 to-green-500 py-20 text-white">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="mb-6 text-3xl font-bold md:text-4xl">Ready to Secure Your Future?</h2>
-          <p className="mx-auto mb-8 max-w-2xl text-lg">
-            Don't miss this opportunity to own a premium plot in our exclusive development. Limited availability
-            remaining.
-          </p>
-          <div className="flex flex-col justify-center space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0">
-            <Button className="bg-white px-8 py-6 text-lg text-green-600 hover:bg-gray-100">Reserve Your Plot</Button>
-            <Button variant="outline" className="border-white px-8 py-6 text-lg text-white hover:bg-green-500/10">
-              Join Bounty Program
+        {/* Center section - Navigation (desktop only) */}
+        <nav className="hidden lg:block">
+          <ul className="flex space-x-6">
+
+            <Button
+              variant="link"
+              onClick={() => {
+                const section = document.getElementById("bounties-section")
+                section?.scrollIntoView({ behavior: "smooth" })
+              }}
+            >
+              Bounties
             </Button>
-          </div>
+            <Button
+              variant="link"
+              onClick={() => {
+                const section = document.getElementById("organizations-section")
+                section?.scrollIntoView({ behavior: "smooth" })
+              }}
+            >
+              Organization
+            </Button>
+            <Button
+              variant="link"
+              onClick={() => {
+                const section = document.getElementById("plots-section")
+                section?.scrollIntoView({ behavior: "smooth" })
+              }}
+            >
+              Plots
+            </Button>
+          </ul>
+        </nav>
+
+        {/* Right section - Actions */}
+        <div className="flex items-center space-x-2">
+          <Button variant="ghost" size="icon" className="text-gray-600">
+            <Bell className="h-5 w-5" />
+          </Button>
+
+          <Button variant="ghost" size="icon" className="text-gray-600">
+            <User className="h-5 w-5" />
+          </Button>
+
+          <Button className="hidden lg:inline-flex bg-green-600 hover:bg-green-700">Reserve Plot</Button>
+
+          {/* Mobile menu button */}
+          <Button variant="ghost" size="icon" className="lg:hidden text-gray-600">
+            <Menu className="h-5 w-5" />
+          </Button>
         </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-gray-100 py-12">
-        <div className="container mx-auto px-4">
-          <div className="mb-8 grid gap-8 md:grid-cols-4">
-            <div>
-              <div className="mb-4 flex items-center">
-                <div className="mr-2 text-3xl font-bold text-gray-800">A</div>
-                <div className="text-xl font-light tracking-widest text-green-600">ACTION</div>
-              </div>
-              <p className="text-gray-600">Revolutionizing land ownership with technology and innovation.</p>
-            </div>
-
-            <div>
-              <h4 className="mb-4 text-lg font-bold text-gray-900">Quick Links</h4>
-              <ul className="space-y-2 text-gray-600">
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Home
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    About Us
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Available Plots
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Bounties
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Organizations
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Contact
-                  </Link>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="mb-4 text-lg font-bold text-gray-900">Legal</h4>
-              <ul className="space-y-2 text-gray-600">
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Terms & Conditions
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Privacy Policy
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Refund Policy
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-green-600">
-                    Legal Disclaimer
-                  </Link>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="mb-4 text-lg font-bold text-gray-900">Newsletter</h4>
-              <p className="mb-4 text-gray-600">Subscribe to our newsletter for the latest updates and offers.</p>
-              <div className="flex">
-                <Input placeholder="Your email" className="rounded-r-none border-gray-300 bg-white" />
-                <Button className="rounded-l-none bg-green-600 hover:bg-green-700">Subscribe</Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200 pt-8 text-center text-gray-600">
-            <p>© {new Date().getFullYear()} ACTION Land Plots. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
-    </div>
+      </div>
+    </header>
   )
 }
