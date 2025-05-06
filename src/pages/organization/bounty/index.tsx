@@ -45,7 +45,7 @@ const CreatorBounty = () => {
 
             </div>
 
-            <div className="my-4 flex min-h-[calc(100vh-20vh)]  flex-col gap-4 ">
+            <div className="my-4 flex min-h-[calc(100vh-20vh)]   flex-col gap-4 ">
 
                 <div className="">
                     {

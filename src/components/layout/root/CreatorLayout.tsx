@@ -223,7 +223,7 @@ export default function CreatorLayout({
                   <JoinArtistPageLoading />
                 </div>
               ) : creator.data?.id && creator.data?.approved === true && selectedMode === Mode.ORG ? (
-                <div className="flex overflow-y-hidden  w-full flex-col ">{children}</div>
+                <div className="flex overflow-y-auto  w-full flex-col ">{children}</div>
               ) : creator.data?.aprovalSend && creator.data?.approved === null ? (
                 <div className="flex h-full w-full items-center justify-center">
                   <PendingArtistPage createdAt={creator.data?.createdAt} />
