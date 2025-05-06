@@ -29,13 +29,14 @@ export default function BasicInfoForm() {
     const [error, setError] = useState<string | null>(null)
     const [isUploading, setIsUploading] = useState(false)
     const inputRef = useRef<HTMLInputElement>(null)
-    const handleRemove = () => {
-        setValue("pinImageUrl", "")
-        setPreview(null)
-        if (inputRef.current) {
-            inputRef.current.value = ""
-        }
-    }
+
+    // const handleRemove = () => {
+    //     setValue("pinImageUrl", "")
+    //     setPreview(null)
+    //     if (inputRef.current) {
+    //         inputRef.current.value = ""
+    //     }
+    // }
     const [progress, setProgress] = useState(0)
 
     // Handle cover image upload
