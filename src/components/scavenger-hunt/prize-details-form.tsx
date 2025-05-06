@@ -77,7 +77,7 @@ export default function PrizeDetailsForm() {
                                     name="priceUSD"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Prize in USD*</FormLabel>
+                                            <FormLabel>Total Prize in USD*</FormLabel>
                                             <FormControl>
                                                 <Input type="number" min="0" step="0.01" {...field} />
                                             </FormControl>
@@ -101,11 +101,11 @@ export default function PrizeDetailsForm() {
                                     name="priceBandcoin"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Prize in Bandcoin*</FormLabel>
+                                            <FormLabel>Total Prize in Action*</FormLabel>
                                             <FormControl>
                                                 <Input type="number" min="0" step="0.01" {...field} />
                                             </FormControl>
-                                            <FormDescription>Bandcoin value of the prize</FormDescription>
+                                            <FormDescription>Action value of the prize</FormDescription>
                                             <FormMessage />
                                         </FormItem>
                                     )}

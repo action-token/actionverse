@@ -126,10 +126,10 @@ export default function ReviewForm() {
                                 <span className="font-medium">Number of Winners:</span> {formData.winners}
                             </li>
                             <li>
-                                <span className="font-medium">Prize in USD:</span> ${formData.priceUSD}
+                                <span className="font-medium">Total Prize in USD:</span> ${formData.priceUSD}
                             </li>
                             <li>
-                                <span className="font-medium">Prize in Bandcoin:</span> {formData.priceBandcoin}
+                                <span className="font-medium">Total Prize in Action:</span> {formData.priceBandcoin}
                             </li>
                             <li>
                                 <span className="font-medium">Required Balance:</span> {formData.requiredBalance}
