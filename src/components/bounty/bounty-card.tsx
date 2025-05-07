@@ -1,8 +1,7 @@
 "use client"
 
-
 import { Button } from "~/components/shadcn/ui/button"
-import { Award, Calendar, Coins, Compass, DollarSign, Filter, Loader2, MapPin, Trophy, Users } from "lucide-react"
+import { Award, Calendar, Coins, Compass, DollarSign, DollarSignIcon, Filter, Loader2, MapPin, Trophy, Users } from 'lucide-react'
 import { HorizontalScroll } from "../common/horizontal-scroll"
 import { api } from "~/utils/api"
 import { BountyType } from "@prisma/client"
@@ -16,6 +15,8 @@ import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
 import toast from "react-hot-toast"
 import { useRouter } from "next/router"
 import { Spinner } from "../shadcn/ui/spinner"
+import { FaDollarSign } from "react-icons/fa"
+import { useSession } from "next-auth/react"
 
 export function BountySection() {
     const { data, isLoading, error, fetchNextPage, isFetchingNextPage } = api.bounty.Bounty.getPaginatedBounty.useInfiniteQuery(
@@ -29,7 +30,6 @@ export function BountySection() {
 
     const bounties = data?.pages.flatMap((page) => page.bountyWithIsOwnerNisJoined) ?? []
     const hasMore = data?.pages[data.pages.length - 1]?.nextCursor != null
-
     const handleLoadMore = async (direction: "left" | "right") => {
         if (direction === "right" && hasMore) {
             await fetchNextPage()
@@ -38,14 +38,14 @@ export function BountySection() {
 
     if (isLoading) {
         return (
-            <section id="bounties-section" className="bg-gray-100 py-20">
+            <section id="bounties-section" className="bg-muted py-20">
                 <div className="container mx-auto px-4">
                     <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                         <div>
-                            <h2 className="text-3xl font-bold text-gray-900 md:text-4xl">Available Bounties</h2>
-                            <p className="mt-2 text-gray-600">Complete tasks and earn rewards in our digital ecosystem.</p>
+                            <h2 className="text-3xl font-bold text-foreground md:text-4xl">Available Bounties</h2>
+                            <p className="mt-2 text-muted-foreground">Complete tasks and earn rewards in our digital ecosystem.</p>
                         </div>
-                        <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
+                        <Button variant="outline" className="border-primary text-primary hover:bg-primary/10">
                             <Filter className="mr-2 h-4 w-4" />
                             Filter Bounties
                         </Button>
@@ -65,7 +65,7 @@ export function BountySection() {
     if (error) {
         return (
             <div className="flex h-40 w-full items-center justify-center">
-                <p className="text-red-500">Error loading bounties: {error.message}</p>
+                <p className="text-destructive">Error loading bounties: {error.message}</p>
             </div>
         )
     }
@@ -73,20 +73,19 @@ export function BountySection() {
     if (!bounties || bounties.length === 0) {
         return (
             <div className="flex h-40 w-full items-center justify-center">
-                <p className="text-gray-600">No bounties found.</p>
+                <p className="text-muted-foreground">No bounties found.</p>
             </div>
         )
     }
 
     return (
-        <section id="bounties-section" className="bg-gray-100 py-20">
+        <section id="bounties-section" className="bg-muted py-20">
             <div className="container mx-auto px-4">
                 <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                     <div>
-                        <h2 className="text-3xl font-bold text-gray-900 md:text-4xl">Available Bounties</h2>
-                        <p className="mt-2 text-gray-600">Complete tasks and earn rewards in our digital ecosystem.</p>
+                        <h2 className="text-3xl font-bold text-foreground md:text-4xl">Available Bounties</h2>
+                        <p className="mt-2 text-muted-foreground">Complete tasks and earn rewards in our digital ecosystem.</p>
                     </div>
-
                 </div>
 
                 <HorizontalScroll onNavigate={handleLoadMore} isLoadingMore={isFetchingNextPage}>
@@ -126,10 +125,7 @@ interface BountyProps {
     },
     isJoined: boolean;
     isOwner: boolean;
-
 }
-
-
 
 export function BountyCard({
     id,
@@ -142,7 +138,6 @@ export function BountyCard({
     latitude,
     longitude,
     radius,
-
     imageUrls,
     totalWinner,
     _count,
@@ -151,13 +146,11 @@ export function BountyCard({
     bountyType,
     isJoined,
     isOwner,
-
-
-}
-    : BountyProps
-) {
+}: BountyProps) {
     const router = useRouter()
     const { platformAssetBalance } = useUserStellarAcc();
+    console.log("Platform Asset Balance", platformAssetBalance)
+    const session = useSession()
 
     const getBountyTypeIcon = (type: BountyType) => {
         switch (type) {
@@ -184,7 +177,7 @@ export function BountyCard({
     const getBountyTypeColor = (type: BountyType) => {
         switch (type) {
             case BountyType.GENERAL:
-                return "bg-green-100 text-green-600"
+                return "bg-primary/10 text-primary"
             case BountyType.LOCATION_BASED:
                 return "bg-blue-100 text-blue-600"
             case BountyType.SCAVENGER_HUNT:
@@ -197,30 +190,31 @@ export function BountyCard({
         totalWinner: number;
         requiredBalance: number;
     }) => {
+        if (session.status === 'unauthenticated') return false
         return currentWinnerCount < totalWinner && requiredBalance <= platformAssetBalance
     }
+
     const joinBountyMutation = api.bounty.Bounty.joinBounty.useMutation({
         onSuccess: async (data, variables) => {
             toast.success("You have successfully joined the bounty")
             router.push(`/bounty/${variables?.BountyId}`)
-
         },
     });
+
     const handleJoinBounty = (id: number) => {
         joinBountyMutation.mutate({ BountyId: id });
     };
+
     return (
         <Card
             className={cn(
-                "w-[320px] flex-shrink-0 overflow-hidden bg-white shadow-md snap-start",
-
+                "w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-md snap-start",
             )}
         >
             <div className="relative h-40 w-full">
                 <ImageWithFallback src={imageUrls[0] ?? "/images/action/logo.png"} alt={title} fill className={
                     `${imageUrls[0] ? "object-cover" : "object-contain"}`
                 } />
-
             </div>
             <CardHeader className="p-4 pb-0">
                 <div className="flex items-center justify-between">
@@ -229,36 +223,31 @@ export function BountyCard({
                         {getBountyTypeLabel(bountyType)}
                     </Badge>
                     <div className="flex flex-col items-end gap-1">
-
-                        <Badge variant="outline" >
-                            {priceInBand.toFixed(2)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                        <Badge variant="outline">
+                            <FaDollarSign />{priceInUSD.toFixed(2)}
                         </Badge>
                     </div>
-
                 </div>
                 <CardTitle className="mt-2 text-lg truncate">{title}</CardTitle>
-                {/* <CardDescription className="line-clamp-2 text-gray-600 truncate">{description}</CardDescription> */}
+                {/* <CardDescription className="line-clamp-2 text-muted-foreground truncate">{description}</CardDescription> */}
             </CardHeader>
             <CardContent className="p-4 pt-2">
-                <div className="space-y-2 text-sm text-gray-600">
-
+                <div className="space-y-2 text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-gray-500" />
+                        <Users className="h-4 w-4 text-muted-foreground" />
                         <span>
                             {currentWinnerCount} / {totalWinner} winners
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-gray-500" />
+                        <Users className="h-4 w-4 text-muted-foreground" />
                         <span>
                             {_count.participants} participants
                         </span>
                     </div>
-
-
                 </div>
             </CardContent>
-            <CardFooter className="bg-secondary p-4 flex flex-col items-center ">
+            <CardFooter className="bg-secondary p-4 flex flex-col items-center">
                 <div className="flex items-center justify-between w-full mb-2">
                     <div className="flex items-center text-sm">
                         <Award className="mr-1 inline-block h-4 w-4" />
@@ -267,29 +256,27 @@ export function BountyCard({
                         </span>
                     </div>
                     <Badge
-                        className="shadow-sm shadow-black rounded-sm"
+                        className="shadow-sm shadow-foreground/10 rounded-sm"
                         variant={currentWinnerCount === totalWinner ? "destructive" : "default"}
                     >
                         {currentWinnerCount === totalWinner ? "Completed" : "Active"}
                     </Badge>
                 </div>
-                {isJoined ?? isOwner ? (
+                {(isJoined || isOwner) ? (
                     <Button
-
                         onClick={() => {
                             router.push(`/bounty/${id}`)
                         }}
-                        variant="default" className="w-full mt-2 shadow-sm shadow-foreground">
+                        variant="default" className="w-full mt-2 shadow-sm shadow-foreground/10">
                         View
                     </Button>
                 ) : (
                     <Button variant="default"
-
                         onClick={(e) => {
                             e.stopPropagation()
                             handleJoinBounty(id)
                         }}
-                        className="w-full mt-2 shadow-sm shadow-foreground" disabled={!isEligible({
+                        className="w-full mt-2 shadow-sm shadow-foreground/10" disabled={!isEligible({
                             currentWinnerCount,
                             totalWinner,
                             requiredBalance,
@@ -297,7 +284,7 @@ export function BountyCard({
                         {joinBountyMutation.isLoading
                             && id === joinBountyMutation.variables?.BountyId
                             ? <span className="flex items-center justify-center gap-2">
-                                <Spinner size='small' className="text-black" />
+                                <Spinner size='small' className="text-foreground" />
                                 Joining...
                             </span> : "Join"}
                     </Button>
@@ -307,25 +294,24 @@ export function BountyCard({
                     totalWinner,
                     requiredBalance,
                 }) ? (
-                    <p className="text-xs text-red-500 mt-2">
-                        {currentWinnerCount >= totalWinner ? "No spots left" : `${requiredBalance.toFixed(1)} ${PLATFORM_ASSET.code.toLocaleUpperCase()} required`}
+                    <p className="text-xs text-destructive mt-2">
+                        {currentWinnerCount >= totalWinner ? "No spots left" : session.status === 'unauthenticated' ? "Please connect your wallet" : `${requiredBalance.toFixed(1)} ${PLATFORM_ASSET.code.toLocaleUpperCase()} required`}
                     </p>
                 ) :
-                    <p className="text-xs text-green-500 mt-2">
+                    <p className="text-xs text-primary mt-2">
                         {currentWinnerCount >= totalWinner ? "No spots left" :
-
                             isOwner ? "You are the owner" : isJoined ? "You have already joined" : "You are eligible to join"
                         }
                     </p>
-
                 }
             </CardFooter>
         </Card>
     )
 }
+
 export function BountyCardSkeleton() {
     return (
-        <Card className="w-[320px] flex-shrink-0 overflow-hidden bg-white shadow-md snap-start">
+        <Card className="w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-md snap-start">
             {/* Image placeholder */}
             <div className="relative h-40 w-full">
                 <Skeleton className="h-full w-full" />

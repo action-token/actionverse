@@ -38,7 +38,7 @@ export default function LoginRequiredModal() {
                     </div>
 
                     <div className="flex flex-col gap-3 items-center justify-center">
-                        <ConnectWalletButton className="w-full" />
+                        <ConnectWalletButton />
                     </div>
                 </div>
             </DialogContent>
