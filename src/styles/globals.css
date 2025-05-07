@@ -26,27 +26,44 @@
       --radius: 0.5rem;
     }
   
-    .dark {
-      --background: 0 0% 3.9%;
-      --foreground: 0 0% 98%;
-      --card: 0 0% 3.9%;
-      --card-foreground: 0 0% 98%;
-      --popover: 0 0% 3.9%;
-      --popover-foreground: 0 0% 98%;
-      --primary: 142.1 70.6% 45.3%;
-      --primary-foreground: 144.9 80.4% 10%;
-      --secondary: 240 3.7% 15.9%;
-      --secondary-foreground: 0 0% 98%;
-      --muted: 0 0% 14.9%;
-      --muted-foreground: 0 0% 63.9%;
-      --accent: 240 3.7% 15.9%;
-      --accent-foreground: 0 0% 98%;
-      --destructive: 0 62.8% 30.6%;
-      --destructive-foreground: 0 0% 98%;
-      --border: 240 3.7% 15.9%;
-      --input: 240 3.7% 15.9%;
-      --ring: 142.1 70.6% 45.3%;
-    }
+.dark {
+  /* Lighter dark background for better visibility */
+  --background: 220 17% 17%;
+  --foreground: 0 0% 98%;
+
+  /* Slightly elevated card background */
+  --card: 220 17% 22%;
+  --card-foreground: 0 0% 98%;
+
+  /* Popover styling */
+  --popover: 220 17% 17%;
+  --popover-foreground: 0 0% 98%;
+
+  /* Bright, vibrant green that stands out in dark mode */
+  --primary: 142 70% 50%;
+  --primary-foreground: 0 0% 100%;
+
+  /* More visible secondary elements */
+  --secondary: 220 17% 27%;
+  --secondary-foreground: 0 0% 98%;
+
+  /* Muted but still visible elements */
+  --muted: 220 17% 25%;
+  --muted-foreground: 220 10% 75%;
+
+  /* Accent with better visibility */
+  --accent: 142 70% 20%;
+  --accent-foreground: 0 0% 98%;
+
+  /* Brighter destructive color for better visibility */
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
+
+  /* More visible borders and inputs */
+  --border: 220 17% 30%;
+  --input: 220 17% 30%;
+  --ring: 142 70% 50%;
+}
   }
 
 @layer base {

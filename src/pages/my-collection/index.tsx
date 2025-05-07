@@ -31,8 +31,8 @@ const MyCollecton = () => {
                             className={cn(
                                 "flex  w-1/2 px-2 text-sm shadow-sm shadow-black transition-all duration-300 ease-in-out lg:px-10",
                                 selectedMenu === tab
-                                    ? "w-full border-2  font-bold text-destructive border-destructive bg-background hover:bg-background"
-                                    : "",
+                                    ? "shadow-sm shadow-black bg-primary text-primary-foreground"
+                                    : "transparent  border-primary bg-secondary hover:bg-primary/10 font-bold text-primary shadow-sm shadow-black",
                             )}
                         >
                             {tab.toLocaleUpperCase()}
