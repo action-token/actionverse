@@ -57,19 +57,19 @@ export default function SearchAndSort({
                     {setFilter ? (
                         <div className="flex justify-center items-center space-x-4">
                             <Button
-                                className={`shadow-sm shadow-black ${filter === "ALL" ? "w-full border-2 font-bold text-destructive border-destructive bg-background hover:bg-background" : "transparent shadow-black"}`}
+                                className={`shadow-sm shadow-black ${filter === "ALL" ? " bg-primary text-primary-foreground" : "transparent  border-primary bg-secondary hover:bg-primary/10 font-bold text-primary shadow-sm shadow-black"}`}
                                 onClick={() => setFilter(filterEnum.ALL)}
                             >
                                 ALL
                             </Button>
                             <Button
-                                className={`shadow-sm shadow-black ${filter === "NOT_JOINED" ? "w-full border-2 font-bold text-destructive border-destructive bg-background hover:bg-background" : "transparent shadow-black"}`}
+                                className={`shadow-sm shadow-black ${filter === "NOT_JOINED" ? "bg-primary text-primary-foreground" : "transparent  border-primary bg-secondary hover:bg-primary/10 font-bold text-primary shadow-sm shadow-black"}`}
                                 onClick={() => setFilter(filterEnum.NOT_JOINED)}
                             >
                                 NOT JOINED
                             </Button>
                             <Button
-                                className={`shadow-sm shadow-black ${filter === "JOINED" ? "w-full border-2 font-bold text-destructive border-destructive bg-background hover:bg-background" : "transparent shadow-black"}`}
+                                className={`shadow-sm shadow-black ${filter === "JOINED" ? "bg-primary text-primary-foreground" : "transparent  border-primary bg-secondary hover:bg-primary/10 font-bold text-primary shadow-sm shadow-black"}`}
                                 onClick={() => setFilter(filterEnum.JOINED)}
                             >
                                 JOINED

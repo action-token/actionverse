@@ -1683,7 +1683,7 @@ export const BountyRoute = createTRPCRouter({
 
       return messages.length > 0 ? messages : [];
     }),
-  getPaginatedBounty: protectedProcedure
+  getPaginatedBounty: publicProcedure
     .input(
       z.object({
         limit: z.number().min(1).max(100).default(7),
