@@ -173,7 +173,7 @@ export default function DefaultInfoForm() {
                                                 ) : (
                                                     <div className="relative border rounded-lg overflow-hidden">
                                                         <img
-                                                            src={preview ?? "/placeholder.svg"}
+                                                            src={preview ?? "/images/action/logo.png"}
                                                             alt="Preview"
                                                             className="w-full h-48 object-cover"
                                                         />

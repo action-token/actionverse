@@ -33,6 +33,8 @@ export const userRouter = createTRPCRouter({
       }),
     )
     .mutation(({ input }) => {
+      const { userEmail, name, message } = input;
+      console.log("userEmail", userEmail);
       return sendEmail(input.userEmail, input.name, input.message);
     }),
 
@@ -55,22 +57,35 @@ const transporter: Transporter = createTransport({
   },
 });
 
-const sendEmail = async (
-  userEmail: string,
-  name: string,
-  message: string,
-): Promise<void> => {
+export const sendEmail = async (userEmail: string, name: string, message: string): Promise<void> => {
   try {
+    // Use the authenticated email as the "from" address
     const mailOptions = {
-      from: userEmail,
-      to: "support@bandcoin.io",
-      subject: `Support Request: ${name}`,
-      text: message,
-    };
+      from: process.env.NEXT_PUBLIC_NODEMAILER_USER,
+      to: "support@action-tokens.com",
+      replyTo: userEmail, // Add reply-to so support can reply directly to the user
+      subject: `Support Request from ${name}`,
+      // Format the email body to include user information
+      html: `
+        <h2>Support Request from ${name}</h2>
+        <p><strong>User Email:</strong> ${userEmail}</p>
+        <p><strong>Message:</strong></p>
+        <p>${message.replace(/\n/g, "<br>")}</p>
+      `,
+      // Include plain text version as fallback
+      text: `
+Support Request from ${name}
+User Email: ${userEmail}
 
-    const result = transporter.sendMail(mailOptions);
+Message:
+${message}
+      `,
+    }
+
+    const result = await transporter.sendMail(mailOptions)
+    console.log("Email sent: ", result)
   } catch (error) {
-    console.error("Error sending email: ", error);
-    throw new Error("Failed to send email");
+    console.error("Error sending email: ", error)
+    throw new Error("Failed to send email")
   }
 };

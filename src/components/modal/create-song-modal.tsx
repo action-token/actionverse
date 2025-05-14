@@ -481,7 +481,7 @@ function MediaStep() {
                                         className="relative aspect-square 
                                         rounded-md overflow-hidden border"
                                     >
-                                        <Image fill alt="Cover preview" src={coverImgUrl || "/placeholder.svg"} className="object-cover " />
+                                        <Image fill alt="Cover preview" src={coverImgUrl ?? "/images/action/logo.png"} className="object-cover " />
                                         <div className="absolute bottom-0 left-0 right-0 bg-background/80 py-1 px-2">
                                             <Badge variant="outline" className="bg-green-100 text-green-800">
                                                 <Check className="h-3 w-3 mr-1" /> Uploaded
@@ -691,7 +691,7 @@ function ReviewStep() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                     <div className="relative aspect-square rounded-md overflow-hidden border">
-                        <Image fill alt="Cover preview" src={coverImgUrl || "/placeholder.svg"} className="object-cover" />
+                        <Image fill alt="Cover preview" src={coverImgUrl ?? "/images/action/logo.png"} className="object-cover" />
                     </div>
 
                     <audio controls className="w-full">

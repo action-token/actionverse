@@ -59,13 +59,16 @@ const CreatorBounty = () => {
                     ))}
                 </div>
                 {getAllBounty.hasNextPage && (
-                    <Button
-                        className="flex w-1/2 items-center justify-center  shadow-sm shadow-black md:w-1/4"
-                        onClick={() => void getAllBounty.fetchNextPage()}
-                        disabled={getAllBounty.isFetchingNextPage}
-                    >
-                        {getAllBounty.isFetchingNextPage ? "Loading more..." : "Load More"}
-                    </Button>
+                    <div className="flex justify-center pb-8">
+                        <Button
+                            variant="accent"
+                            className="w-full max-w-md shadow-sm"
+                            onClick={() => void getAllBounty.fetchNextPage()}
+                            disabled={getAllBounty.isFetchingNextPage}
+                        >
+                            {getAllBounty.isFetchingNextPage ? "Loading more..." : "Load More"}
+                        </Button>
+                    </div>
                 )}
             </div>
         </div>

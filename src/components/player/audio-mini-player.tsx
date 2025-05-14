@@ -72,7 +72,7 @@ export default function AudioMiniPlayer({
             <div
                 className="relative overflow-hidden rounded-t-xl bg-gradient-to-r from-blue-400 to-purple-500 backdrop-blur-lg shadow-lg border border-white/20"
                 style={{
-                    backgroundImage: `url(${media.thumbnail ?? "/placeholder.svg?height=400&width=400"})`,
+                    backgroundImage: `url(${media.thumbnail ?? "/images/action/logo.png"})`,
                     backgroundSize: "cover",
                     backgroundPosition: "center",
                 }}
