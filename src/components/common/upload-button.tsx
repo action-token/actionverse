@@ -317,7 +317,7 @@ export function UploadS3Button({
                             >
                                 <div className="relative">
                                     <img
-                                        src={previewUrl || "/placeholder.svg"}
+                                        src={previewUrl ?? "/images/action/logo.png"}
                                         alt="Preview"
                                         className="h-20 w-20 object-cover rounded"
                                     />

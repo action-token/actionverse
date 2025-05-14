@@ -445,7 +445,7 @@ export function CreatePostModal() {
                                                                 {el.type === MediaType.IMAGE ? (
                                                                     <div className="relative h-full w-full">
                                                                         <Image
-                                                                            src={el.url ?? "/placeholder.svg"}
+                                                                            src={el.url ?? "/images/action/logo.png"}
                                                                             alt="Uploaded media"
                                                                             fill
                                                                             className="object-cover"
@@ -641,7 +641,7 @@ export function CreatePostModal() {
                                                     >
                                                         {item.type === MediaType.IMAGE ? (
                                                             <Image
-                                                                src={item.url ?? "/placeholder.svg"}
+                                                                src={item.url ?? "/images/action/logo.png"}
                                                                 alt="Media preview"
                                                                 fill
                                                                 className="object-cover"
@@ -715,7 +715,7 @@ export function CreatePostModal() {
                             {previewMedia?.type === MediaType.IMAGE && (
                                 <div className="flex items-center justify-center p-4 h-[80vh] max-h-[600px]">
                                     <Image
-                                        src={previewMedia.url ?? "/placeholder.svg"}
+                                        src={previewMedia.url ?? "/images/action/logo.png"}
                                         alt="Media preview"
                                         width={800}
                                         height={600}

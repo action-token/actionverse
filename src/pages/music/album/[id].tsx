@@ -45,7 +45,7 @@ export default function Album() {
             {/* Album Header Section */}
             <div className="relative h-auto min-h-[400px] w-full overflow-hidden rounded-t-md">
                 <Image
-                    src={album?.coverImgUrl ?? "/placeholder.svg"}
+                    src={album?.coverImgUrl ?? "/images/action/logo.png"}
                     alt="Background"
                     fill
                     className="rounded-md object-cover transition-opacity duration-1000 ease-in-out"
@@ -193,7 +193,7 @@ export const EmptyAlbum = ({ coverImgUrl }: {
                         <div className="rounded-full bg-gray-100 ">
                             <div className=" text-gray-400">
                                 <Image
-                                    src={coverImgUrl ?? "/placeholder.svg"}
+                                    src={coverImgUrl ?? "/images/action/logo.png"}
                                     alt="Background"
                                     height={48}
                                     width={48}

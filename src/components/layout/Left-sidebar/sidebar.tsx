@@ -2,13 +2,13 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion"
 
-import { ChevronLeft, LogOut, Sun, Moon, Cloud, Star, ChevronRight } from 'lucide-react';
+import { ChevronLeft, LogOut, Sun, Moon, Cloud, Star, ChevronRight, X } from 'lucide-react';
 
 import { useSidebar } from "~/hooks/use-sidebar";
 
 import { DashboardNav } from "./dashboard-nav";
 import { ConnectWalletButton } from "package/connect_wallet";
-import { Facebook, Instagram } from 'lucide-react';
+
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { HomeIcon } from 'lucide-react';
@@ -20,6 +20,8 @@ import { Button } from "~/components/shadcn/ui/button";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Logo from "../Logo";
+import { FaFacebook, FaFacebookSquare, FaInstagram, FaLinkedin, FaLinkedinIn } from "react-icons/fa";
+import { BsLinkedin, BsTwitterX } from "react-icons/bs";
 
 export const LeftNavigation: NavItem[] = [
 
@@ -166,7 +168,7 @@ export default function Sidebar({ className }: SidebarProps) {
   return (
     <div
       className={cn(
-        `sticky p-1 w-full overflow-hidden border-r hidden md:block transition-all duration-500 ease-in-out`,
+        `sticky p-1 w-full  overflow-hidden border-r hidden md:block transition-all duration-500 ease-in-out`,
         !isMinimized ? "w-[280px]" : "w-[78px]",
         isHome ? "top-0 h-[100vh]" : "top-[5.8rem] h-[calc(100vh-10.8vh)]",
         className,
@@ -306,30 +308,27 @@ export function LeftBottom() {
 
       <div className="flex  items-center justify-between  gap-4 ">
         <Link
-          href={"https://facebook.com/bandcoinio"}
+          href={"https://www.facebook.com/actiontokens/"}
           className="btn flex h-12 shadow-sm shadow-black  flex-col  justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
-          <Facebook size={26} />
+          <FaFacebook size={26} />
 
         </Link>
         <Link
-          href={"https://x.com/bandcoinio"}
-          className="btn flex h-12 shadow-sm shadow-black flex-col  justify-center  rounded-lg items-center  text-xs normal-case w-full"
+          href={"https://www.linkedin.com/company/action-tokens"}
+          className="btn flex h-12 shadow-sm shadow-black  flex-col  justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
-          <Image src="/images/icons/x.svg" alt="X" height={18} width={18}
-
-            className="w-5 h-5"
-          />
+          <FaLinkedinIn size={26} />
 
         </Link>
         <Link
-          href={"https://www.instagram.com/bandcoin"}
+          href={"https://www.instagram.com/actiontokens/"}
           className="btn flex h-12 shadow-sm shadow-black flex-col justify-center  rounded-lg items-center  text-xs normal-case w-full"
           target="_blank"
         >
-          <Instagram size={26} />
+          <FaInstagram size={26} />
         </Link>
       </div>
       <div className="flex w-full flex-col text-center text-xs text-base-content">

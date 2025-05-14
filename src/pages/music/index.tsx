@@ -90,7 +90,7 @@ const Music = () => {
                                 >
                                     <div className="flex items-center gap-2">
                                         <Image
-                                            src={song.asset.thumbnail ?? "/placeholder.svg"}
+                                            src={song.asset.thumbnail ?? "/images/action/logo.png"}
                                             alt="Thumbnail"
                                             width={50}
                                             height={50}
@@ -202,7 +202,7 @@ const RightSideItem = () => {
                         >
                             <div className="flex items-center gap-2">
                                 <Image
-                                    src={song.asset.thumbnail ?? "/placeholder.svg"}
+                                    src={song.asset.thumbnail ?? "/images/action/logo.png"}
                                     alt="Thumbnail"
                                     width={50}
                                     height={50}
@@ -240,7 +240,7 @@ const RightSideItem = () => {
                     {selectedSong ? (
                         <div className="flex flex-col border-1 rounded-md  items-center justify-center shadow-sm shadow-slate-300">
                             <Image
-                                src={selectedSong.asset.thumbnail ?? "/placeholder.svg"}
+                                src={selectedSong.asset.thumbnail ?? "/images/action/logo.png"}
                                 alt="Now Playing"
                                 width={60}
                                 height={60}
@@ -446,7 +446,7 @@ function MusicCarousel() {
                                 >
                                     <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-[0_0_15px_rgba(255,255,255,0.15)] transition-transform">
                                         <Image
-                                            src={slide.asset.thumbnail ?? "/placeholder.svg"}
+                                            src={slide.asset.thumbnail ?? "/images/action/logo.png"}
                                             alt={slide.asset.name}
                                             fill
                                             className="object-cover"

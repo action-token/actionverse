@@ -11,10 +11,10 @@ import { api } from "~/utils/api";
 import { MoreAssetsSkeleton } from "~/components/common/grid-loading";
 import MarketAssetComponent from "~/components/common/market-asset";
 import Asset from "~/components/common/admin-asset";
-const TABS = ["Bandcoin Curated", "Artist Tokens", "Trade"];
+const TABS = ["Action Curated", "ORG Tokens", "Trade"];
 
 const Marketplace = () => {
-    const [activeTab, setActiveTab] = useState("Bandcoin Curated");
+    const [activeTab, setActiveTab] = useState("Action Curated");
     console.log("activeTab", activeTab);
     return (
         <Card className="">
@@ -38,7 +38,7 @@ const Marketplace = () => {
             </CardHeader>
             <CardContent className="h-[calc(100vh-20vh)] overflow-y-auto p-0 scrollbar-hide ">
                 <div>
-                    {activeTab === "Bandcoin Curated" && (
+                    {activeTab === "Action Curated" && (
                         <div>
                             <CuratedItems />
                         </div>

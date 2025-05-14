@@ -22,7 +22,7 @@ export function PlotCard({ title, location, price, image, size, type, featured =
     return (
         <Card className="w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-md snap-start">
             <div className="relative h-40 w-full">
-                <ImageWithFallback src={image || "/placeholder.svg"} alt={title} fill className="object-cover" />
+                <ImageWithFallback src={image ?? "/images/action/logo.png"} alt={title} fill className="object-cover" />
                 {featured && (
                     <div className="absolute right-2 top-2">
                         <Badge className="bg-primary text-primary-foreground">Featured</Badge>

@@ -202,7 +202,7 @@ const EditBountyModal = () => {
                             {media.map((el, id) => (
                                 <div key={id} className="relative">
                                     <Image
-                                        src={el.url ?? "/placeholder.svg"}
+                                        src={el.url ?? "/images/action/logo.png"}
                                         alt="media"
                                         height={100}
                                         width={100}
