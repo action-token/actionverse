@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import {
   BountyStatus,
+  BountyType,
   NotificationType,
   Prisma,
   SubmissionViewType,
@@ -197,6 +198,7 @@ export const BountyRoute = createTRPCRouter({
           latitude: Number(input.latitude),
           longitude: Number(input.longitude),
           radius: Number(input.radius),
+          bountyType: BountyType.LOCATION_BASED,
         },
       });
       const followers = await ctx.db.follow.findMany({
@@ -1680,5 +1682,60 @@ export const BountyRoute = createTRPCRouter({
       );
 
       return messages.length > 0 ? messages : [];
+    }),
+  getPaginatedBounty: publicProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(7),
+        cursor: z.number().nullish(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { limit, cursor } = input
+
+      const items = await ctx.db.bounty.findMany({
+        take: limit + 1, // take an extra item to determine if there are more items
+        cursor: cursor ? { id: cursor } : undefined,
+        orderBy: { createdAt: "desc" },
+        include: {
+          _count: {
+            select: {
+              BountyWinner: true,
+              participants: true,
+            }
+          },
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              profileUrl: true,
+            },
+          },
+          participants: {
+            where: { userId: ctx.session?.user.id },
+            select: { userId: true },
+          },
+        },
+
+      })
+      const bountyWithIsOwnerNisJoined = items.map((bounty) => {
+        return {
+          ...bounty,
+          isOwner: bounty.creatorId === ctx.session?.user.id,
+          isJoined: bounty.participants.some(
+            (participant) => participant.userId === ctx.session?.user.id,
+          ),
+        };
+      });
+      let nextCursor: typeof cursor | undefined = undefined;
+      if (bountyWithIsOwnerNisJoined.length > limit) {
+        const nextItem = bountyWithIsOwnerNisJoined.pop()
+        nextCursor = nextItem?.id
+      }
+
+      return {
+        bountyWithIsOwnerNisJoined,
+        nextCursor,
+      }
     }),
 });

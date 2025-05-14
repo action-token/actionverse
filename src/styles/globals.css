@@ -4,94 +4,67 @@
 
 @layer base {
   :root {
-    /* Light mode colors - Based on the provided color scheme */
-    --background: 0 0% 100%;
-    --foreground: 200 15% 15%;
-    --card: 0 0% 98%;
-    --card-foreground: 200 15% 15%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 200 15% 15%;
-    --primary: 174 100% 33%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 174 30% 96%;
-    --secondary-foreground: 200 15% 15%;
-    --muted: 174 30% 96%;
-    --muted-foreground: 200 15% 45%;
-    --accent: 174 100% 33%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 200 15% 90%;
-    --input: 200 15% 90%;
-    --ring: 174 100% 33%;
-    --radius: 0.5rem;
+      --background: 0 0% 100%;
+      --foreground: 240 10% 3.9%;
+      --card: 0 0% 100%;
+      --card-foreground: 240 10% 3.9%;
+      --popover: 0 0% 100%;
+      --popover-foreground: 240 10% 3.9%;
+      --primary: 142.1 76.2% 36.3%;
+      --primary-foreground: 355.7 100% 97.3%;
+      --secondary: 240 4.8% 95.9%;
+      --secondary-foreground: 240 5.9% 10%;
+      --muted: 240 4.8% 95.9%;
+      --muted-foreground: 240 3.8% 46.1%;
+      --accent: 240 4.8% 95.9%;
+      --accent-foreground: 240 5.9% 10%;
+      --destructive: 0 84.2% 60.2%;
+      --destructive-foreground: 0 0% 98%;
+      --border: 240 5.9% 90%;
+      --input: 240 5.9% 90%;
+      --ring: 142.1 76.2% 36.3%;
+      --radius: 0.5rem;
+    }
+  
+.dark {
+  /* Lighter dark background for better visibility */
+  --background: 220 17% 17%;
+  --foreground: 0 0% 98%;
 
-    /* Chart colors - Adjusted to complement the new color scheme */
-    --chart-1: 174 100% 33%;
-    --chart-2: 0 75% 50%;
-    --chart-3: 30 90% 55%;
-    --chart-4: 200 75% 45%;
-    --chart-5: 300 50% 55%;
+  /* Slightly elevated card background */
+  --card: 220 17% 22%;
+  --card-foreground: 0 0% 98%;
 
-    /* Sidebar colors - Adjusted to match the new scheme */
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 200 15% 15%;
-    --sidebar-primary: 174 100% 33%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 174 100% 33%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 200 15% 90%;
-    --sidebar-ring: 174 100% 33%;
-  }
+  /* Popover styling */
+  --popover: 220 17% 17%;
+  --popover-foreground: 0 0% 98%;
 
-  .dark {
-    /* Dark mode colors - Maintaining the teal theme */
-    --background: 200 25% 10%;
-    --foreground: 0 0% 95%;
-    --card: 200 25% 12%;
-    --card-foreground: 0 0% 95%;
-    --popover: 200 25% 10%;
-    --popover-foreground: 0 0% 95%;
+  /* Bright, vibrant green that stands out in dark mode */
+  --primary: 142 70% 50%;
+  --primary-foreground: 0 0% 100%;
 
-    /* Primary & Secondary */
-    --primary: 182 74% 41%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 200 25% 18%;
-    --secondary-foreground: 0 0% 95%;
+  /* More visible secondary elements */
+  --secondary: 220 17% 27%;
+  --secondary-foreground: 0 0% 98%;
 
-    /* Muted & Accent */
-    --muted: 200 25% 18%;
-    --muted-foreground: 200 15% 65%;
-    --accent: 182 74% 41%;
-    --accent-foreground: 0 0% 100%;
+  /* Muted but still visible elements */
+  --muted: 220 17% 25%;
+  --muted-foreground: 220 10% 75%;
 
-    /* Destructive */
-    --destructive: 0 75% 50%;
-    --destructive-foreground: 0 0% 95%;
+  /* Accent with better visibility */
+  --accent: 142 70% 20%;
+  --accent-foreground: 0 0% 98%;
 
-    /* Borders, Inputs, and Rings */
-    --border: 200 25% 18%;
-    --input: 200 25% 18%;
-    --ring: 182 74% 41%;
+  /* Brighter destructive color for better visibility */
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
 
-    /* Chart Colors - Same as light mode for consistency */
-    --chart-1: 182 74% 41%;
-    --chart-2: 0 75% 50%;
-    --chart-3: 30 90% 55%;
-    --chart-4: 200 75% 45%;
-    --chart-5: 300 50% 55%;
-
-    /* Sidebar Colors */
-    --sidebar-background: 200 25% 12%;
-    --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 182 74% 41%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 182 74% 41%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 200 25% 18%;
-    --sidebar-ring: 182 74% 41%;
-  }
+  /* More visible borders and inputs */
+  --border: 220 17% 30%;
+  --input: 220 17% 30%;
+  --ring: 142 70% 50%;
 }
+  }
 
 @layer base {
   * {

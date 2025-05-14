@@ -583,7 +583,7 @@ export default function CreateAdminPinModal() {
                                                                                 width={120}
                                                                                 height={120}
                                                                                 alt="preview image"
-                                                                                src={coverUrl || "/placeholder.svg"}
+                                                                                src={coverUrl ?? "/images/action/logo.png"}
                                                                             />
                                                                         </motion.div>
                                                                     )}

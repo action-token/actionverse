@@ -62,7 +62,7 @@ const AllSongsTab = () => {
                         <Card key={index} className="my-2 flex w-full flex-col items-start gap-4 p-2 md:flex-row md:items-center shadow-sm shadow-slate-300">
                             <div className="h-16 w-16 flex items-center justify-center  rounded-lg">
                                 <Image
-                                    src={song.asset.thumbnail ?? "/placeholder.svg"}
+                                    src={song.asset.thumbnail ?? "/images/action/logo.png"}
                                     alt="Artist"
                                     width={300}
                                     height={300}

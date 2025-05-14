@@ -286,7 +286,7 @@ const Notifications = () => {
                                                             src={
                                                                 notification.notificationObject.actor.image ??
                                                                 "/images/icons/avatar-icon.png" ??
-                                                                "/placeholder.svg"
+                                                                "/images/action/logo.png"
                                                             }
                                                             alt={notification.notificationObject.actor.name ?? "User"}
                                                         />

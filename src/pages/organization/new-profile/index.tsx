@@ -78,17 +78,18 @@ const DEFAULT_LAYOUT: WidgetItem[] = [
         settings: createDefaultWidgetSettings("cover-profile"),
     },
     {
-        id: "membership-tiers",
-        size: "large",
-        order: 4,
-        settings: createDefaultWidgetSettings("membership-tiers"),
-    },
-    {
         id: "stats",
-        size: "large",
-        order: 5,
+        size: "medium",
+        order: 4,
         settings: createDefaultWidgetSettings("stats"),
     },
+    {
+        id: "membership-tiers",
+        size: "large",
+        order: 5,
+        settings: createDefaultWidgetSettings("membership-tiers"),
+    },
+
     {
         id: "nft-gallery",
         size: "large",

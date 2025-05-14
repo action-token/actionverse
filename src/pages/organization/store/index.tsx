@@ -314,18 +314,18 @@ export default function StoredItemsView() {
                                 <ShoppingBag className="mr-2 h-4 w-4" />
                                 <span>Create Stored Item</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer">
+                            {/* <DropdownMenuItem className="cursor-pointer">
                                 <Crown className="mr-2 h-4 w-4" />
                                 <span>Create Royalty Item</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
+                            </DropdownMenuItem> */}
+                            {/* <DropdownMenuItem
                                 onClick={() => {
                                     setIsAlbumModalOpen(true)
                                 }}
                                 className="cursor-pointer">
                                 <Music className="mr-2 h-4 w-4" />
                                 <span>Create Album</span>
-                            </DropdownMenuItem>
+                            </DropdownMenuItem> */}
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>

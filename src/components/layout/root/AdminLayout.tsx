@@ -48,7 +48,7 @@ export default function AdminLayout({
     const router = useRouter()
     const { isMinimized, toggle } = useAdminSidebar()
     const admin = api.wallate.admin.checkAdmin.useQuery(undefined, {
-        refetchOnWindowFocus: false,
+        refetchOnWindowFocus: true,
     });
     const path = usePathname();
     const [isExpanded, setIsExpanded] = useState(false)

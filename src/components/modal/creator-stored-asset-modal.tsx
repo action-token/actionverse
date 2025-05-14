@@ -274,7 +274,7 @@ export function EditForm({
 
                                     (<CreditCard className="h-4 w-4 text-blue-600 dark:text-blue-400" />) : PLATFORM_ASSET.code.toLocaleLowerCase() === "bandcoin" ? (
                                         <Image
-                                            src={"https://bandcoin.io/images/logo.png"}
+                                            src={"https://app.action-tokens.com/images/logo.png"}
                                             alt={PLATFORM_ASSET.code}
                                             width={24}
                                             height={24}

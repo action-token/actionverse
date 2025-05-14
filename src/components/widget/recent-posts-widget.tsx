@@ -1,4 +1,4 @@
-import Image from "next/image"
+"use client"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Button } from "~/components/shadcn/ui/button"
 import { ImageIcon, Lock, MessageSquare, Plus, ThumbsUp } from "lucide-react"
@@ -53,7 +53,7 @@ export default function RecentPostsWidget({ editMode, creatorData }: RecentPosts
 
             <CardContent className="p-0   overflow-y-auto">
 
-                <div className=" flex flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md ">
+                <div className=" min-h-[calc(100vh-20vh)] flex flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md ">
                     {allCreatedPost.isLoading && (
                         <div className="space-y-4 ">
                             {[1, 2].map((i) => (
@@ -72,7 +72,17 @@ export default function RecentPostsWidget({ editMode, creatorData }: RecentPosts
                             ))}
                         </div>
                     )}
-
+                    {allCreatedPost.data?.pages[0]?.posts.length === 0 && (
+                        <div className="h-full flex items-center justify-center flex-col text-lg font-bold">
+                            <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                            <h3 className="text-lg font-medium mb-2">No Posts Yet</h3>
+                            <p className="text-muted-foreground mb-4">Start creating content for your followers</p>
+                            <Button onClick={() => setIsPostModalOpen(true)}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Create Your First Post
+                            </Button>
+                        </div>
+                    )}
                     {allCreatedPost.data?.pages.map((page, i) => (
                         <React.Fragment key={i}>
 
@@ -105,17 +115,7 @@ export default function RecentPostsWidget({ editMode, creatorData }: RecentPosts
                         </Button>
                     )}
 
-                    {allCreatedPost.data?.pages[0]?.posts.length === 0 && (
-                        <div className="h-full flex items-center justify-center flex-col text-lg font-bold">
-                            <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                            <h3 className="text-lg font-medium mb-2">No Posts Yet</h3>
-                            <p className="text-muted-foreground mb-4">Start creating content for your followers</p>
-                            <Button onClick={() => setIsPostModalOpen(true)}>
-                                <Plus className="h-4 w-4 mr-2" />
-                                Create Your First Post
-                            </Button>
-                        </div>
-                    )}
+
                 </div>
 
             </CardContent>

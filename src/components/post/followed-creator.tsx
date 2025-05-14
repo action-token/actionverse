@@ -8,6 +8,7 @@ import CustomAvatar from "../common/custom-avatar"
 import { useToast } from "~/hooks/use-toast"
 import { Loader2, UserX } from "lucide-react"
 import { useState } from "react"
+import Link from "next/link"
 
 export default function CreatorSidebar() {
     const toast = useToast()
@@ -49,10 +50,15 @@ export default function CreatorSidebar() {
                     key={creator.id}
                     className="flex items-center gap-3 p-2 rounded-lg "
                 >
-                    <CustomAvatar url={creator.profileUrl} />
+                    <Link href={`/organization/${creator.id}`} className="flex items-center gap-2">
+                        <CustomAvatar url={creator.profileUrl} />
+                    </Link>
+
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-medium truncate">{creator.name}</p>
+                            <Link href={`/organization/${creator.id}`} className="flex items-center gap-2">
+                                <p className="text-sm font-medium truncate">{creator.name}</p>
+                            </Link>
                             <Button
                                 onClick={() => {
                                     unFollow.mutate({ creatorId: creator.id })

@@ -32,11 +32,12 @@ export default function Layout({
     const { isMinimized, toggle } = useSidebar();
 
     const router = useRouter();
+    console.log("router.pathname", router.pathname);
 
     const isArtistRoutes = router.pathname.startsWith("/organization");
     const publicRoutes = ["/about", "/privacy", "/support", "/"];
     const isPublicRoute = publicRoutes.includes(router.pathname);
-
+    const isHomeRoute = router.pathname === "/";
     const handleToggle = () => {
         toggle();
     };
@@ -49,22 +50,27 @@ export default function Layout({
         >
             <MiniPlayerProvider>
 
-                <div className={clsx("flex h-screen w-full flex-col", className)}>
-                    <Header />
+                <div className={clsx("flex  w-full flex-col", className)}>
+                    {
+                        router.pathname !== "/" && (
+                            <Header />
+                        )
+                    }
                     <div className="flex w-full scrollbar-hide ">
                         <div className="relative  bg-secondary shadow-sm shadow-primary">
                             <Sidebar />
                             <ChevronLeft
                                 className={cn(
-                                    "fixed left-[17rem] top-24 z-10 hidden cursor-pointer rounded-full border-2 bg-background text-3xl text-foreground shadow-sm shadow-black transition-all duration-500 ease-in-out md:block",
+                                    "fixed left-[17rem] top-24 z-50 hidden cursor-pointer rounded-full border-2 bg-background text-3xl text-foreground shadow-sm shadow-black transition-all duration-500 ease-in-out md:block",
                                     isMinimized && "left-[4.5rem] rotate-180",
+                                    isHomeRoute ? "top-0" : "top-24",
                                 )}
                                 onClick={handleToggle}
                             />
                         </div>
 
                         {session.status === "authenticated" ? (
-                            <div className="w-full  overflow-y-auto    scrollbar-hide lg:pl-6">
+                            <div className="w-full  overflow-y-auto    scrollbar-hide ">
                                 {isArtistRoutes ? (
                                     <>
                                         <CreatorLayout>{children}</CreatorLayout>
@@ -77,7 +83,7 @@ export default function Layout({
                             </div>
                         ) : (
                             isPublicRoute ? (
-                                <div className="w-full   overflow-y-auto    scrollbar-hide lg:pl-6">
+                                <div className="w-full   overflow-y-auto    scrollbar-hide ">
                                     <>{children}</>
                                     <LoginRequiredModal />
                                 </div>

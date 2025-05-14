@@ -188,7 +188,7 @@ const CreateAlbumModal = () => {
                                         >
                                             <Image
                                                 alt="Album cover preview"
-                                                src={coverUrl || "/placeholder.svg"}
+                                                src={coverUrl ?? "/images/action/logo.png"}
                                                 width={400}
                                                 height={400}
                                                 className="w-full h-48 object-cover rounded-lg"

@@ -1,4 +1,4 @@
-import Image from "next/image"
+"use client"
 import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
 import { Button } from "../shadcn/ui/button"
 import { ImageIcon, Plus } from "lucide-react"
@@ -30,16 +30,18 @@ export default function NFTGalleryWidget({ editMode }: NFTGalleryWidgetProps) {
                     <h2 className="text-xl font-bold">Your NFT Collection</h2>
                     {
                         (creatorNFT.data?.pages[0]?.nfts?.length ?? 0) > 0 && (
-                            <Button onClick={() => setIsNFTModalOpen(true)}>
-                                <Plus className="h-4 w-4 mr-2" />
-                                Create New NFT
-                            </Button>
+                            <div className="flex justify-between items-center">
+                                <Button size="sm" onClick={() => setIsNFTModalOpen(true)}>
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Create New NFT
+                                </Button>
+                            </div>
                         )
                     }
                 </div>
             </CardHeader>
 
-            <CardContent className="p-2">
+            <CardContent className="p-0   overflow-y-auto">
                 {
 
                     <div className="min-h-[calc(100vh-20vh)] flex flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">

@@ -103,11 +103,11 @@ export function PaymentChoose({
                                 className="flex flex-1 cursor-pointer items-center"
                             >
                                 {
-                                    PLATFORM_ASSET.code.toLocaleLowerCase() === "bandcoin" ? <Image
-                                        alt="bandcoin"
+                                    PLATFORM_ASSET.code.toLocaleLowerCase() === "action" ? <Image
+                                        alt="action"
                                         height={24}
                                         width={24}
-                                        src={"https://bandcoin.io/images/logo.png"} className="mr-3 h-6 w-6" /> : <Coins className="mr-3 h-6 w-6" />
+                                        src={"https://app.action-tokens.com/images/logo.png"} className="mr-3 h-6 w-6" /> : <Coins className="mr-3 h-6 w-6" />
                                 }
                                 <div className="flex-grow">
                                     <div className="font-medium">

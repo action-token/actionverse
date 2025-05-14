@@ -62,7 +62,7 @@ const MyAssetList = () => {
                 balance?.home_domain ===
                 (PLATFORM_ASSET.code.toLowerCase() === "wadzzo"
                   ? "app.wadzzo.com"
-                  : "bandcoin.io")
+                  : (PLATFORM_ASSET.code.toLowerCase() === "action" ? "app.action-tokens.com" : "bandcoin.io"))
               ) {
                 return (
                   <div

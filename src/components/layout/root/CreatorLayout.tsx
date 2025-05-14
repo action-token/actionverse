@@ -223,7 +223,7 @@ export default function CreatorLayout({
                   <JoinArtistPageLoading />
                 </div>
               ) : creator.data?.id && creator.data?.approved === true && selectedMode === Mode.ORG ? (
-                <div className="flex overflow-y-hidden  w-full flex-col ">{children}</div>
+                <div className="flex overflow-y-auto  w-full flex-col ">{children}</div>
               ) : creator.data?.aprovalSend && creator.data?.approved === null ? (
                 <div className="flex h-full w-full items-center justify-center">
                   <PendingArtistPage createdAt={creator.data?.createdAt} />
@@ -296,7 +296,9 @@ export default function CreatorLayout({
                                   "text-white",
                                   path === item.href ? "bg-foreground " : "",
                                 )}
-                                onClick={() => console.log(`Clicked ${item.label}`)}
+                                onClick={() =>
+                                  setIsExpanded(false)
+                                }
                               >
                                 <Icon />
                                 <span className="sr-only">{item.label}</span>
@@ -385,25 +387,25 @@ const CreatorNavigation: DockerItem[] = [
     color: "bg-blue-500",
   },
 
-  { href: "/organization/store", icon: "pins", label: "STORE", color: "bg-pink-500" },
-  {
-    href: "/organization/gift",
-    icon: "creator",
-    label: "GIFT",
-    color: "bg-emerald-500",
-  },
+  // { href: "/organization/store", icon: "pins", label: "STORE", color: "bg-pink-500" },
+  // {
+  //   href: "/organization/gift",
+  //   icon: "creator",
+  //   label: "GIFT",
+  //   color: "bg-emerald-500",
+  // },
   {
     href: "/organization/bounty",
     icon: "users",
     label: "BOUNTY",
     color: "bg-blue-500",
   },
-  {
-    href: "/organization/settings",
-    icon: "bounty",
-    label: "SETTINGS",
-    color: "bg-purple-500",
-  },
+  // {
+  //   href: "/organization/settings",
+  //   icon: "bounty",
+  //   label: "SETTINGS",
+  //   color: "bg-purple-500",
+  // },
   {
     href: "/organization/map",
     icon: "map",

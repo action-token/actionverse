@@ -557,7 +557,7 @@ function MediaGalleryContent({ media, initialIndex = 0, autoPlay = false, onClos
                                     {currentMedia.type === "IMAGE" && (
                                         <div className="w-full h-full flex items-center justify-center">
                                             <img
-                                                src={currentMedia.url ?? "/placeholder.svg?height=720&width=1280"}
+                                                src={currentMedia.url ?? "/images/action/logo.png"}
                                                 alt={currentMedia.title ?? "Image"}
                                                 className="max-w-full max-h-full object-contain"
                                             />
@@ -808,13 +808,13 @@ function MediaGalleryContent({ media, initialIndex = 0, autoPlay = false, onClos
                             >
                                 {item.type === "IMAGE" ? (
                                     <img
-                                        src={item.url ?? "/placeholder.svg?height=60&width=60"}
+                                        src={item.url ?? "/images/action/logo.png"}
                                         alt={item.title ?? `Image ${index + 1}`}
                                         className="w-full h-full object-cover"
                                     />
                                 ) : item.thumbnail ? (
                                     <img
-                                        src={item.thumbnail ?? "/placeholder.svg?height=60&width=60"}
+                                        src={item.thumbnail ?? "/images/action/logo.png"}
                                         alt={item.title ?? `Media ${index + 1}`}
                                         className="w-full h-full object-cover"
                                     />

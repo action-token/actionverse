@@ -21,8 +21,6 @@ import {
     AlertCircle,
     ClipboardCheck,
     PanelTop,
-    XCircle,
-    Loader2,
 } from "lucide-react"
 import { z } from "zod"
 
@@ -60,19 +58,44 @@ const NewAssetSchema = z.object({
     assetImagePreview: z.string().optional(),
 })
 
-// Fix the CustomAssetSchema to use assetCode instead of assetName
+// 1. Comment out the Custom Asset schema
+// Find this code:
+/* 
+// Custom Asset feature - currently disabled
 const CustomAssetSchema = z.object({
     assetType: z.literal("custom"),
     assetCode: AssetNameSchema,
     issuer: z.string().length(56, "Issuer must be exactly 56 characters"),
 })
+*/
 
+/* 
+// Custom Asset feature - currently disabled
+const CustomAssetSchema = z.object({
+    assetType: z.literal("custom"),
+    assetCode: AssetNameSchema,
+    issuer: z.string().length(56, "Issuer must be exactly 56 characters"),
+})
+*/
+
+// 2. Comment out the VanityUrlSchema
+// Find this code:
+/*
+// Vanity URL feature - currently disabled
 const VanityUrlSchema = z.object({
     vanityUrl: z.string().min(1, "Vanity URL is required"),
 })
-const AssetSchema = z.discriminatedUnion("assetType", [NewAssetSchema, CustomAssetSchema])
+*/
 
-// Fix the FormSchema to make fields required and fix the assetType type
+/*
+// Vanity URL feature - currently disabled
+const VanityUrlSchema = z.object({
+    vanityUrl: z.string().min(1, "Vanity URL is required"),
+})
+*/
+
+// 3. Update the RequestBrandCreateFormSchema to remove vanityUrl and custom asset fields from required validation
+// Find this code:
 export const RequestBrandCreateFormSchema = z
     .object({
         profileUrl: z.string().url().optional(),
@@ -81,22 +104,21 @@ export const RequestBrandCreateFormSchema = z
         coverImagePreview: z.string().optional(),
         displayName: z.string().min(1, "Display name is required").max(99, "Display name must be less than 100 characters"),
         bio: z.string().optional(),
-        assetType: z.enum(["new", "custom"]),
+        assetType: z.literal("new"), // Only allow "new" asset type
         assetName: z.string().default(""),
         assetImage: z.string().url().optional(),
         assetImagePreview: z.string().optional(),
-        assetCode: z.string().default(""),
-        issuer: z.string().default(""),
-        vanityUrl: z.string().default(""),
+        // Custom asset fields - commented out
+        /*
+            assetCode: z.string().default(""),
+            issuer: z.string().default(""),
+            vanityUrl: z.string().default(""),
+            */
     })
     .refine(
         (data) => {
-            // If assetType is "new", assetImage is required
-            if (data.assetType === "new") {
-                return !!data.assetImage
-            }
-            // If assetType is "custom", assetCode and issuer are required
-            return true
+            // Asset image is required
+            return !!data.assetImage
         },
         {
             message: "Asset image is required for new assets",
@@ -111,6 +133,8 @@ type FormErrors = {
 
 export default function ArtistOnboarding() {
     const [currentStep, setCurrentStep] = useState(1)
+    // 5. Update the initial state to remove custom asset and vanity URL
+    // Find this code:
     const [formData, setFormData] = useState<FormData>({
         profileUrl: "",
         profileUrlPreview: "",
@@ -118,13 +142,15 @@ export default function ArtistOnboarding() {
         coverImagePreview: "",
         displayName: "",
         bio: "",
-        assetType: "new", // "new" or "custom"
+        assetType: "new", // Only "new" is supported
         assetName: "", //new asset name
         assetImage: "", //new asset image
         assetImagePreview: "", //new asset image preview
-        assetCode: "", //custom asset code
-        issuer: "", //custom asset issuer
-        vanityUrl: "",
+        /* Custom asset and vanity URL fields - currently disabled
+            assetCode: "", //custom asset code
+            issuer: "", //custom asset issuer
+            vanityUrl: "",
+            */
     })
     const [formErrors, setFormErrors] = useState<FormErrors>({})
     const [isUploading, setIsUploading] = useState(false)
@@ -141,18 +167,20 @@ export default function ArtistOnboarding() {
     const [isTrusted, setIsTrusted] = useState(false)
     const [isTrusting, setIsTrusting] = useState(false)
 
-    const totalSteps = 6
+    const totalSteps = 4
 
     // Add this function to validate form fields
     const validateField = (field: keyof FormData, value: string) => {
         try {
-            if (field === "assetName" || field === "assetCode") {
+            if (field === "assetName"
+               /* || field === "assetCode" */) {
                 AssetNameSchema.parse(value)
                 return { valid: true, errors: [] }
-            } else if (field === "issuer") {
+            } /*else if (field === "issuer") {
                 z.string().length(56).parse(value)
                 return { valid: true, errors: [] }
-            } else if (field === "displayName") {
+            } */
+            else if (field === "displayName") {
                 ProfileSchema.shape.displayName.parse(value)
                 return { valid: true, errors: [] }
             }
@@ -170,8 +198,8 @@ export default function ArtistOnboarding() {
 
     // Add these computed properties to replace the old validation states
     const isAssetNameValid = formData.assetName && formData.assetName.length > 0 && !formErrors.assetName?.length
-    const isassetCodeValid = formData.assetCode && formData.assetCode.length > 0 && !formErrors.assetCode?.length
-    const isIssuerValid = formData.issuer && formData.issuer.length > 0 && !formErrors.issuer?.length
+    // const isassetCodeValid = formData.assetCode && formData.assetCode.length > 0 && !formErrors.assetCode?.length
+    // const isIssuerValid = formData.issuer && formData.issuer.length > 0 && !formErrors.issuer?.length
 
     useEffect(() => {
         // Reset upload progress when not uploading
@@ -180,28 +208,63 @@ export default function ArtistOnboarding() {
         }
     }, [isUploading])
 
-    // Add vanity URL availability check
-    useEffect(() => {
-        // Debounce the check to avoid too many API calls
-        const timer = setTimeout(() => {
-            if (formData.vanityUrl && formData.vanityUrl.length > 0) {
-                checkAvailability.mutate({
-                    vanityURL: formData.vanityUrl,
-                })
-            } else {
-                setIsVanityUrlAvailable(null)
-            }
-        }, 500)
+    // 6. Comment out the vanity URL availability check
+    // Find this code:
+    /* Vanity URL feature - currently disabled
+      // Add vanity URL availability check
+      useEffect(() => {
+          // Debounce the check to avoid too many API calls
+          const timer = setTimeout(() => {
+              if (formData.vanityUrl && formData.vanityUrl.length > 0) {
+                  checkAvailability.mutate({
+                      vanityURL: formData.vanityUrl,
+                  })
+              } else {
+                  setIsVanityUrlAvailable(null)
+              }
+          }, 500)
+  
+          return () => clearTimeout(timer)
+      }, [formData.vanityUrl])
+      */
 
-        return () => clearTimeout(timer)
-    }, [formData.vanityUrl])
+    /* Vanity URL feature - currently disabled
+      // Add vanity URL availability check
+      useEffect(() => {
+          // Debounce the check to avoid too many API calls
+          const timer = setTimeout(() => {
+              if (formData.vanityUrl && formData.vanityUrl.length > 0) {
+                  checkAvailability.mutate({
+                      vanityURL: formData.vanityUrl,
+                  })
+              } else {
+                  setIsVanityUrlAvailable(null)
+              }
+          }, 500)
+  
+          return () => clearTimeout(timer)
+      }, [formData.vanityUrl])
+      */
 
-    // Add this effect to reset isTrusted when asset code or issuer changes
-    useEffect(() => {
-        if (isTrusted && (formData.assetCode || formData.issuer)) {
-            setIsTrusted(false)
-        }
-    }, [formData.assetCode, formData.issuer])
+    // 7. Comment out the custom asset trust effect
+    // Find this code:
+    /* Custom asset feature - currently disabled
+      // Add this effect to reset isTrusted when asset code or issuer changes
+      useEffect(() => {
+          if (isTrusted && (formData.assetCode || formData.issuer)) {
+              setIsTrusted(false)
+          }
+      }, [formData.assetCode, formData.issuer])
+      */
+
+    /* Custom asset feature - currently disabled
+      // Add this effect to reset isTrusted when asset code or issuer changes
+      useEffect(() => {
+          if (isTrusted && (formData.assetCode || formData.issuer)) {
+              setIsTrusted(false)
+          }
+      }, [formData.assetCode, formData.issuer])
+      */
 
     const RequestForBrandCreation = api.fan.creator.requestForBrandCreation.useMutation({
         onSuccess: (data) => {
@@ -209,7 +272,7 @@ export default function ArtistOnboarding() {
             toast.success("Brand creation request submitted successfully")
             setShowConfetti(true)
             setTimeout(() => {
-                router.push("/organization/home");
+                router.push("/organization/home")
             }, 2000)
         },
         onError: (error) => {
@@ -217,42 +280,91 @@ export default function ArtistOnboarding() {
             toast.error(`${error.data?.code}`)
         },
     })
-    const checkAvailability = api.fan.creator.checkVanityURLAvailability.useMutation({
-        onSuccess: (data) => {
-            const isAvailable = data.isAvailable
-            setIsVanityUrlAvailable(isAvailable)
-        },
-        onError: (error) => {
-            console.error("Error checking vanity URL availability:", error)
-            setIsVanityUrlAvailable(false)
-            toast.error("Failed to check URL availability")
-        },
-    })
+    // 8. Comment out the vanity URL availability check API call
+    // Find this code:
+    /* Vanity URL feature - currently disabled
+      const checkAvailability = api.fan.creator.checkVanityURLAvailability.useMutation({
+          onSuccess: (data) => {
+              const isAvailable = data.isAvailable
+              setIsVanityUrlAvailable(isAvailable)
+          },
+          onError: (error) => {
+              console.error("Error checking vanity URL availability:", error)
+              setIsVanityUrlAvailable(false)
+              toast.error("Failed to check URL availability")
+          },
+      })
+      */
 
-    const CheckCustomAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
-        onSuccess: (data) => {
-            if (data) {
-                setIsTrusted(true)
-            }
-        },
-        onError: (error) => {
-            console.error("Error checking custom asset validity:", error)
-            setIsTrusted(false)
-            toast.error("Failed to check asset validity")
-        },
-    })
-    const checkCustomAssetValidity = ({
-        assetCode,
-        issuer,
-    }: {
-        assetCode: string
-        issuer: string
-    }) => {
-        CheckCustomAssetValidity.mutate({
-            assetCode,
-            issuer,
-        })
-    }
+    /* Vanity URL feature - currently disabled
+      const checkAvailability = api.fan.creator.checkVanityURLAvailability.useMutation({
+          onSuccess: (data) => {
+              const isAvailable = data.isAvailable
+              setIsVanityUrlAvailable(isAvailable)
+          },
+          onError: (error) => {
+              console.error("Error checking vanity URL availability:", error)
+              setIsVanityUrlAvailable(false)
+              toast.error("Failed to check URL availability")
+          },
+      })
+      */
+
+    // 9. Comment out the custom asset validity check API call
+    // Find this code:
+    /* Custom asset feature - currently disabled
+      const CheckCustomAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
+          onSuccess: (data) => {
+              if (data) {
+                  setIsTrusted(true)
+              }
+          },
+          onError: (error) => {
+              console.error("Error checking custom asset validity:", error)
+              setIsTrusted(false)
+              toast.error("Failed to check asset validity")
+          },
+      })
+      const checkCustomAssetValidity = ({
+          assetCode,
+          issuer,
+      }: {
+          assetCode: string
+          issuer: string
+      }) => {
+          CheckCustomAssetValidity.mutate({
+              assetCode,
+              issuer,
+          })
+      }
+      */
+
+    /* Custom asset feature - currently disabled
+      const CheckCustomAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
+          onSuccess: (data) => {
+              if (data) {
+                  setIsTrusted(true)
+              }
+          },
+          onError: (error) => {
+              console.error("Error checking custom asset validity:", error)
+              setIsTrusted(false)
+              toast.error("Failed to check asset validity")
+          },
+      })
+      const checkCustomAssetValidity = ({
+          assetCode,
+          issuer,
+      }: {
+          assetCode: string
+          issuer: string
+      }) => {
+          CheckCustomAssetValidity.mutate({
+              assetCode,
+              issuer,
+          })
+      }
+      */
     // Update the handleFileChange function to properly handle upload states
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: "assetImage") => {
         const file = e.target.files?.[0]
@@ -316,22 +428,34 @@ export default function ArtistOnboarding() {
         }))
 
         // Reset availability check when vanity URL changes
-        if (fieldName === "vanityUrl") {
-            setIsVanityUrlAvailable(null)
-        }
+        // if (fieldName === "vanityUrl") {
+        //     setIsVanityUrlAvailable(null)
+        // }
     }
 
-    // Fix the handleRadioChange function to properly type the value
-    const handleRadioChange = (value: "new" | "custom") => {
+    // 10. Update the handleRadioChange function to only allow "new" asset type
+    // Find this code:
+    /* 
+      // Original function that supported both asset types
+      const handleRadioChange = (value: "new" | "custom") => {
+          setFormData({
+              ...formData,
+              assetType: value,
+          })
+  
+          // Reset trust status when switching asset types
+          if (value === "new") {
+              setIsTrusted(false)
+          }
+      }
+      */
+
+    // New function that only supports "new" asset type
+    const handleRadioChange = (value: "new") => {
         setFormData({
             ...formData,
             assetType: value,
         })
-
-        // Reset trust status when switching asset types
-        if (value === "new") {
-            setIsTrusted(false)
-        }
     }
 
     // Fix the handleNext function for step 4
@@ -342,13 +466,10 @@ export default function ArtistOnboarding() {
 
             switch (currentStep) {
                 case 1:
-                    isValid = true // No validation needed for step 1
-                    break
-                case 2:
                     // Only require profile image, cover image is optional
                     isValid = !!formData.profileUrl && !isUploading
                     break
-                case 3:
+                case 2:
                     try {
                         ProfileSchema.parse({
                             displayName: formData.displayName,
@@ -372,35 +493,31 @@ export default function ArtistOnboarding() {
                         isValid = false
                     }
                     break
-                case 4:
-                    if (formData.assetType === "new") {
-                        // For new asset, require valid name and image
-                        const validName =
-                            formData.assetName.length >= 4 &&
-                            formData.assetName.length <= 12 &&
-                            /^[a-zA-Z]+$/.test(formData.assetName)
-                        isValid = validName && !!formData.assetImage && !isUploading
-                    } else {
-                        // For custom asset, require valid code, issuer, and trust operation
-                        const validCode =
-                            formData.assetCode.length >= 4 &&
-                            formData.assetCode.length <= 12 &&
-                            /^[a-zA-Z]+$/.test(formData.assetCode)
-                        const validIssuer = formData.issuer.length === 56
-                        isValid = validCode && validIssuer && isTrusted
-                    }
+                // 11. Update the handleNext function to remove custom asset and vanity URL validation
+                // Find this code for case 3:
+                case 3:
+                    // For new asset, require valid name and image
+                    const validName =
+                        formData.assetName.length >= 4 && formData.assetName.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetName)
+                    isValid = validName && !!formData.assetImage && !isUploading
                     break
-                case 5:
-                    // Check if vanity URL is valid and available
-                    isValid = !!formData.vanityUrl && formData.vanityUrl.length > 0 && isVanityUrlAvailable === true
-                    if (!isValid && formData.vanityUrl) {
-                        if (isVanityUrlAvailable === false) {
-                            toast.error("This vanity URL is already taken. Please choose another one.")
-                        } else if (isCheckingVanityUrl) {
-                            toast.error("Please wait while we check URL availability.")
-                        }
-                    }
-                    break
+
+                // 12. Comment out case 4 (vanity URL validation) in handleNext
+                // Find this code:
+                /* Vanity URL validation - currently disabled
+                        case 4:
+                            // Check if vanity URL is valid and available
+                            isValid = !!formData.vanityUrl && formData.vanityUrl.length > 0 && isVanityUrlAvailable === true
+                            if (!isValid && formData.vanityUrl) {
+                                if (isVanityUrlAvailable === false) {
+                                    toast.error("This vanity URL is already taken. Please choose another one.")
+                                } else if (isCheckingVanityUrl) {
+                                    toast.error("Please wait while we check URL availability.")
+                                }
+                            }
+                            break;
+                        */
+                // Skip vanity URL validation since feature is disabled
                 default:
                     isValid = true
             }
@@ -409,7 +526,7 @@ export default function ArtistOnboarding() {
                 setCurrentStep(currentStep + 1)
             } else {
                 // Show a toast message to inform the user what's missing
-                if (currentStep === 4) {
+                if (currentStep === 3) {
                     if (formData.assetType === "new") {
                         if (!formData.assetName || formData.assetName.length < 4 || formData.assetName.length > 12) {
                             toast.error("Please enter a valid asset name (4-12 letters)")
@@ -417,11 +534,11 @@ export default function ArtistOnboarding() {
                             toast.error("Please upload an asset image")
                         }
                     } else {
-                        if (!formData.assetCode || formData.assetCode.length < 4 || formData.assetCode.length > 12) {
-                            toast.error("Please enter a valid asset code (4-12 letters)")
-                        } else if (!formData.issuer || formData.issuer.length !== 56) {
-                            toast.error("Please enter a valid issuer (exactly 56 characters)")
-                        }
+                        // if (!formData.assetCode || formData.assetCode.length < 4 || formData.assetCode.length > 12) {
+                        //     toast.error("Please enter a valid asset code (4-12 letters)")
+                        // } else if (!formData.issuer || formData.issuer.length !== 56) {
+                        //     toast.error("Please enter a valid issuer (exactly 56 characters)")
+                        // }
                     }
                 }
             }
@@ -466,10 +583,10 @@ export default function ArtistOnboarding() {
     // Fix the isNextDisabled function for step 4
     const isNextDisabled = () => {
         switch (currentStep) {
-            case 2:
+            case 1:
                 // Only require profile image, cover image is optional
                 return !formData.profileUrl || isUploading
-            case 3:
+            case 2:
                 try {
                     ProfileSchema.parse({
                         displayName: formData.displayName,
@@ -479,24 +596,24 @@ export default function ArtistOnboarding() {
                 } catch (error) {
                     return true
                 }
-            case 4:
-                if (formData.assetType === "new") {
-                    // For new asset, require valid name and image
-                    const validName =
-                        formData.assetName.length >= 4 && formData.assetName.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetName)
-                    return !validName || !formData.assetImage || isUploading
-                } else {
-                    // For custom asset, require valid code, issuer, and trust operation
-                    const validCode =
-                        formData.assetCode.length >= 4 && formData.assetCode.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetCode)
-                    const validIssuer = formData.issuer.length === 56
-                    return !validCode || !validIssuer || !isTrusted
-                }
-            case 5:
-                // Check if vanity URL is valid and available
-                return (
-                    !formData.vanityUrl || formData.vanityUrl.length < 1 || isVanityUrlAvailable !== true || isCheckingVanityUrl
-                )
+            // 13. Update the isNextDisabled function to remove custom asset and vanity URL validation
+            // Find this code for case 3:
+            case 3:
+                // For new asset, require valid name and image
+                const validName =
+                    formData.assetName.length >= 4 && formData.assetName.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetName)
+                return !validName || !formData.assetImage || isUploading
+
+            // 14. Comment out case 4 (vanity URL validation) in isNextDisabled
+            // Find this code:
+            /* Vanity URL validation - currently disabled
+                  case 4:
+                      // Check if vanity URL is valid and available
+                      return (
+                          !formData.vanityUrl || formData.vanityUrl.length < 1 || isVanityUrlAvailable !== true || isCheckingVanityUrl
+                      )
+                  */
+            // Skip vanity URL validation since feature is disabled
             default:
                 return false
         }
@@ -538,6 +655,32 @@ export default function ArtistOnboarding() {
             opacity: 1,
             transition: { duration: 0.3 },
         },
+    }
+
+    // Custom asset feature - currently disabled
+    const CheckCustomAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
+        onSuccess: (data) => {
+            if (data) {
+                setIsTrusted(true)
+            }
+        },
+        onError: (error) => {
+            console.error("Error checking custom asset validity:", error)
+            setIsTrusted(false)
+            toast.error("Failed to check asset validity")
+        },
+    })
+    const checkCustomAssetValidity = ({
+        assetCode,
+        issuer,
+    }: {
+        assetCode: string
+        issuer: string
+    }) => {
+        CheckCustomAssetValidity.mutate({
+            assetCode,
+            issuer,
+        })
     }
 
     return (
@@ -634,20 +777,16 @@ export default function ArtistOnboarding() {
                                                 currentStep >= index + 1 ? "text-foreground" : "text-muted-foreground",
                                             )}
                                         >
-                                            {index === 0 && "Benefits"}
-                                            {index === 1 && "Profile Pictures"}
-                                            {index === 2 && "Organization Details"}
-                                            {index === 3 && "Asset Creation"}
-                                            {index === 4 && "Vanity URL"}
-                                            {index === 5 && "Overview"}
+                                            {index === 0 && "Profile Pictures"}
+                                            {index === 1 && "Organization Details"}
+                                            {index === 2 && "Asset Creation"}
+                                            {index === 3 && "Overview"}
                                         </span>
                                         <span className="text-xs text-muted-foreground">
-                                            {index === 0 && "Why become an Organization"}
-                                            {index === 1 && "Upload your images"}
-                                            {index === 2 && "Name and bio"}
-                                            {index === 3 && "Create your assets"}
-                                            {index === 4 && "Choose your URL"}
-                                            {index === 5 && "Review and submit"}
+                                            {index === 0 && "Upload your images"}
+                                            {index === 1 && "Name and bio"}
+                                            {index === 2 && "Create your assets"}
+                                            {index === 3 && "Review and submit"}
                                         </span>
                                     </div>
                                     {currentStep === index + 1 && <ChevronRight className="ml-auto h-5 w-5 text-primary" />}
@@ -679,85 +818,8 @@ export default function ArtistOnboarding() {
                             >
                                 <Card className="border-none shadow-lg overflow-hidden bg-background/80 backdrop-blur-sm">
                                     <CardContent className="p-0">
-                                        {/* Step 1: Benefits */}
-                                        {currentStep === 1 && (
-                                            <div className="p-6 md:p-8">
-                                                <div className="space-y-6">
-                                                    <div className="space-y-2">
-                                                        <h2 className="text-3xl font-bold">Benefits of Becoming an Organization</h2>
-                                                        <p className="text-muted-foreground">
-                                                            Join our platform and unlock these exclusive benefits for artists.
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="grid gap-6 md:grid-cols-2">
-                                                        {[
-                                                            {
-                                                                icon: <ImageIcon className="h-5 w-5" />,
-                                                                title: "Showcase Your Work",
-                                                                description:
-                                                                    "Display your portfolio to a global audience of collectors and enthusiasts.",
-                                                            },
-                                                            {
-                                                                icon: <User className="h-5 w-5" />,
-                                                                title: "Build Your Brand",
-                                                                description: "Establish your unique identity with a personalized organization page.",
-                                                            },
-                                                            {
-                                                                icon: <LinkIcon className="h-5 w-5" />,
-                                                                title: "Custom URL",
-                                                                description: "Get a memorable vanity URL to share with your audience.",
-                                                            },
-                                                            {
-                                                                icon: <FileText className="h-5 w-5" />,
-                                                                title: "Asset Management",
-                                                                description: "Create and manage your digital assets with powerful tools.",
-                                                            },
-                                                        ].map((benefit, index) => (
-                                                            <motion.div
-                                                                key={index}
-                                                                initial={{ opacity: 0, y: 20 }}
-                                                                animate={{ opacity: 1, y: 0 }}
-                                                                transition={{ delay: index * 0.1 }}
-                                                                className="group relative overflow-hidden rounded-xl border p-6 hover:shadow-md transition-all duration-300"
-                                                                whileHover={{
-                                                                    scale: 1.02,
-                                                                    boxShadow: "0 10px 30px -15px rgba(0, 0, 0, 0.2)",
-                                                                }}
-                                                            >
-                                                                <div className="absolute top-0 left-0 h-full w-1 bg-primary transform origin-bottom scale-y-0 group-hover:scale-y-100 transition-transform duration-300"></div>
-                                                                <div className="flex flex-col gap-3">
-                                                                    <div className="rounded-full bg-primary/10 p-3 w-fit text-primary">
-                                                                        {benefit.icon}
-                                                                    </div>
-                                                                    <div>
-                                                                        <h3 className="font-medium text-lg">{benefit.title}</h3>
-                                                                        <p className="text-sm text-muted-foreground mt-1">{benefit.description}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </motion.div>
-                                                        ))}
-                                                    </div>
-
-                                                    <div className="bg-muted/30 rounded-lg p-4 border border-border">
-                                                        <div className="flex items-start gap-3">
-                                                            <div className="rounded-full bg-primary/20 p-2 mt-1">
-                                                                <Sparkles className="h-4 w-4 text-primary" />
-                                                            </div>
-                                                            <div>
-                                                                <h3 className="font-medium">Ready to get started?</h3>
-                                                                <p className="text-sm text-muted-foreground mt-1">
-                                                                    Complete the onboarding process to start showcasing your work to the world.
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
                                         {/* Step 2: Profile & Cover Picture Upload */}
-                                        {currentStep === 2 && (
+                                        {currentStep === 1 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1014,8 +1076,8 @@ export default function ArtistOnboarding() {
                                                                             <div>
                                                                                 <h3 className="font-medium">Create an immersive experience</h3>
                                                                                 <p className="text-sm text-muted-foreground mt-1">
-                                                                                    Your cover image sets the tone for your organization page. Choose an image that
-                                                                                    showcases your artistic style and creates a compelling visual experience.
+                                                                                    Your cover image sets the tone for your organization page. Choose an image
+                                                                                    that showcases your artistic style and creates a compelling visual experience.
                                                                                 </p>
                                                                             </div>
                                                                         </div>
@@ -1029,7 +1091,7 @@ export default function ArtistOnboarding() {
                                         )}
 
                                         {/* Step 3: Organization Name and Bio */}
-                                        {currentStep === 3 && (
+                                        {currentStep === 2 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1078,7 +1140,7 @@ export default function ArtistOnboarding() {
                                                                 <Button
                                                                     variant="link"
                                                                     className="text-xs p-0 h-auto mt-1"
-                                                                    onClick={() => setCurrentStep(2)}
+                                                                    onClick={() => setCurrentStep(1)}
                                                                 >
                                                                     Change images
                                                                 </Button>
@@ -1165,7 +1227,7 @@ export default function ArtistOnboarding() {
                                         )}
 
                                         {/* Step 4: Asset Creation */}
-                                        {currentStep === 4 && (
+                                        {currentStep === 3 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1178,7 +1240,8 @@ export default function ArtistOnboarding() {
                                                     <RadioGroup
                                                         value={formData.assetType}
                                                         onValueChange={handleRadioChange}
-                                                        className="grid gap-4 md:grid-cols-2"
+                                                        // className="grid gap-4 md:grid-cols-2"
+                                                        className="grid gap-4 md:grid-cols-1"
                                                     >
                                                         <motion.div
                                                             whileHover={{ scale: 1.02 }}
@@ -1209,6 +1272,7 @@ export default function ArtistOnboarding() {
                                                             </div>
                                                         </motion.div>
 
+                                                        {/* Custom Asset option - currently disabled
                                                         <motion.div
                                                             whileHover={{ scale: 1.02 }}
                                                             transition={{ duration: 0.2 }}
@@ -1237,6 +1301,7 @@ export default function ArtistOnboarding() {
                                                                 </div>
                                                             </div>
                                                         </motion.div>
+                                                        */}
                                                     </RadioGroup>
 
                                                     <AnimatePresence mode="wait">
@@ -1400,7 +1465,10 @@ export default function ArtistOnboarding() {
                                                                 </div>
                                                             </motion.div>
                                                         ) : (
-                                                            <motion.div
+                                                            <>
+                                                                {/* Custom asset form - currently disabled
+                                                            
+                                                                   <motion.div
                                                                 key="custom-asset"
                                                                 initial={{ opacity: 0, y: 20 }}
                                                                 animate={{ opacity: 1, y: 0 }}
@@ -1530,8 +1598,8 @@ export default function ArtistOnboarding() {
                                                                         </p>
                                                                     </div>
                                                                 </div>
-
-                                                                {/* Add Trust button after the issuer field */}
+\
+                                                        
                                                                 <div className="mt-6 flex flex-col gap-3">
                                                                     <div className="rounded-lg bg-muted/30 p-4 border border-border">
                                                                         <div className="flex items-start gap-3">
@@ -1570,126 +1638,17 @@ export default function ArtistOnboarding() {
                                                                     )}
                                                                 </div>
                                                             </motion.div>
+                                                            */}
+                                                            </>
                                                         )}
                                                     </AnimatePresence>
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Step 5: Vanity URL */}
-                                        {currentStep === 5 && (
-                                            <div className="p-6 md:p-8">
-                                                <div className="space-y-6">
-                                                    <div className="space-y-2">
-                                                        <h2 className="text-3xl font-bold">Choose Your Vanity URL</h2>
-                                                        <p className="text-muted-foreground">Select a custom URL that represents your brand.</p>
-                                                    </div>
-
-                                                    <div className="rounded-lg bg-primary/10 p-6 border border-primary/20">
-                                                        <div className="flex items-start gap-3">
-                                                            <div className="rounded-full bg-primary/20 p-2 mt-1">
-                                                                <Sparkles className="h-5 w-5 text-primary" />
-                                                            </div>
-                                                            <div>
-                                                                <h3 className="font-medium">Pricing Information</h3>
-                                                                <p className="text-sm text-muted-foreground mt-1">
-                                                                    Your vanity URL is{" "}
-                                                                    <span className="font-medium text-primary">free for the first month</span>. After
-                                                                    that, renewal costs <span className="font-medium text-primary">500 Action</span>.
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-4">
-                                                        <Label htmlFor="vanityUrl" className="text-base font-medium">
-                                                            Vanity URL
-                                                        </Label>
-                                                        <div className="flex items-center">
-                                                            <span className="inline-flex h-10 items-center rounded-l-md border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground">
-                                                                actionverse.com/
-                                                            </span>
-                                                            <Input
-                                                                id="vanityUrl"
-                                                                name="vanityUrl"
-                                                                value={formData.vanityUrl}
-                                                                onChange={handleInputChange}
-                                                                className="rounded-l-none"
-                                                                placeholder="your-name"
-                                                            />
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            Choose a unique, memorable URL for your organization page.
-                                                        </p>
-
-                                                        {formData.vanityUrl && (
-                                                            <div className="mt-2">
-                                                                {isCheckingVanityUrl ? (
-                                                                    <motion.div
-                                                                        initial={{ opacity: 0 }}
-                                                                        animate={{ opacity: 1 }}
-                                                                        className="flex items-center gap-1 text-sm text-muted-foreground"
-                                                                    >
-                                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                                        <span>Checking availability...</span>
-                                                                    </motion.div>
-                                                                ) : isVanityUrlAvailable === true ? (
-                                                                    <motion.div
-                                                                        initial={{ opacity: 0, y: 10 }}
-                                                                        animate={{ opacity: 1, y: 0 }}
-                                                                        transition={{ delay: 0.3 }}
-                                                                        className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400"
-                                                                    >
-                                                                        <CheckCheck className="h-4 w-4" />
-                                                                        <span>This URL is available!</span>
-                                                                    </motion.div>
-                                                                ) : isVanityUrlAvailable === false ? (
-                                                                    <motion.div
-                                                                        initial={{ opacity: 0, y: 10 }}
-                                                                        animate={{ opacity: 1, y: 0 }}
-                                                                        transition={{ delay: 0.3 }}
-                                                                        className="flex items-center gap-1 text-sm text-destructive"
-                                                                    >
-                                                                        <XCircle className="h-4 w-4" />
-                                                                        <span>This URL is already taken. Please choose another one.</span>
-                                                                    </motion.div>
-                                                                ) : null}
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="rounded-lg bg-gradient-to-r from-primary/5 to-primary/20 p-6 border border-primary/20">
-                                                        <h3 className="font-medium">Your Complete URL</h3>
-                                                        <div className="mt-3 p-3 bg-background/80 backdrop-blur-sm rounded-md border border-border">
-                                                            <p className="font-mono text-sm break-all">
-                                                                actionverse.com/{formData.vanityUrl || "your-name"}
-                                                            </p>
-                                                        </div>
-
-                                                        <div className="mt-4 space-y-2">
-                                                            <h4 className="text-sm font-medium">Benefits of a Vanity URL:</h4>
-                                                            <ul className="space-y-1 text-sm text-muted-foreground">
-                                                                <li className="flex items-start gap-2">
-                                                                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                                                                    <span>Easier for fans to remember and share</span>
-                                                                </li>
-                                                                <li className="flex items-start gap-2">
-                                                                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                                                                    <span>Strengthens your personal brand</span>
-                                                                </li>
-                                                                <li className="flex items-start gap-2">
-                                                                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                                                                    <span>Looks more professional in marketing materials</span>
-                                                                </li>
-                                                            </ul>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
+                                        {/* Step 5: Vanity URL - currently disabled */}
                                         {/* Step 6: Overview */}
-                                        {currentStep === 6 && (
+                                        {currentStep === 4 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
                                                     <div className="space-y-2">
@@ -1716,7 +1675,7 @@ export default function ArtistOnboarding() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="h-8 text-xs"
-                                                                    onClick={() => setCurrentStep(3)}
+                                                                    onClick={() => setCurrentStep(2)}
                                                                 >
                                                                     Edit
                                                                 </Button>
@@ -1784,7 +1743,7 @@ export default function ArtistOnboarding() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="h-8 text-xs"
-                                                                    onClick={() => setCurrentStep(4)}
+                                                                    onClick={() => setCurrentStep(3)}
                                                                 >
                                                                     Edit
                                                                 </Button>
@@ -1819,7 +1778,8 @@ export default function ArtistOnboarding() {
                                                                         </div>
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="space-y-3">
+                                                                    <>
+                                                                        {/* <div className="space-y-3">
                                                                         <div>
                                                                             <h4 className="text-sm font-medium">Asset Name</h4>
                                                                             <p className="text-sm text-muted-foreground truncate">
@@ -1832,12 +1792,40 @@ export default function ArtistOnboarding() {
                                                                                 {formData.issuer || "Not provided"}
                                                                             </p>
                                                                         </div>
-                                                                    </div>
+                                                                    </div> */}
+                                                                    </>
+
                                                                 )}
                                                             </div>
                                                         </motion.div>
 
                                                         {/* Vanity URL Section */}
+                                                        {/* <motion.div
+                                                            initial={{ opacity: 0, y: 20 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            transition={{ delay: 0.3 }}
+                                                            className="rounded-xl border p-6 space-y-4 md:col-span-2"
+                                                        >
+                                                            <div className="flex items-center justify-between">
+                                                                <h3 className="font-medium text-lg flex items-center gap-2">
+                                                                    <LinkIcon className="h-5 w-5 text-muted-foreground" />
+                                                                    Vanity URL
+                                                                </h3>
+                                                            </div>
+
+                                                            <div className="p-3 bg-muted/50 rounded-md">
+                                                                <p className="font-mono text-sm text-muted-foreground">
+                                                                    Feature temporarily disabled
+                                                                </p>
+                                                            </div>
+
+                                                            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                                                                <AlertCircle className="h-4 w-4 text-yellow-500 mt-0.5" />
+                                                                <span>Vanity URL feature is currently disabled</span>
+                                                            </div>
+                                                        </motion.div> */}
+
+                                                        {/* Original Vanity URL Section - currently disabled
                                                         <motion.div
                                                             initial={{ opacity: 0, y: 20 }}
                                                             animate={{ opacity: 1, y: 0 }}
@@ -1853,7 +1841,7 @@ export default function ArtistOnboarding() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="h-8 text-xs"
-                                                                    onClick={() => setCurrentStep(5)}
+                                                                    onClick={() => setCurrentStep(4)}
                                                                 >
                                                                     Edit
                                                                 </Button>
@@ -1871,6 +1859,7 @@ export default function ArtistOnboarding() {
                                                                 <span>Free for the first month, then 500 Action to renew</span>
                                                             </div>
                                                         </motion.div>
+                                                        */}
                                                     </div>
 
                                                     <div className="rounded-lg bg-primary/10 p-6 border border-primary/20">
@@ -1881,8 +1870,8 @@ export default function ArtistOnboarding() {
                                                             <div>
                                                                 <h3 className="font-medium">Ready to Complete</h3>
                                                                 <p className="text-sm text-muted-foreground mt-1">
-                                                                    By clicking Complete below, you{"'ll"} finalize your organization profile creation. You can
-                                                                    always edit your profile details later from your dashboard.
+                                                                    By clicking Complete below, you{"'ll"} finalize your organization profile creation.
+                                                                    You can always edit your profile details later from your dashboard.
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -1926,7 +1915,6 @@ export default function ArtistOnboarding() {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     )
 }
-

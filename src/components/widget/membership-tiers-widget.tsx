@@ -88,37 +88,8 @@ export default function MembershipTiersWidget({ editMode, theme, creatorData }: 
 
 
     return (
-        <div className="mb-8">
-            {
-                subscriptionPackages.data && subscriptionPackages.data?.length > 0 && (
-                    <div className="flex items-center justify-between p-2">
-                        <h2 className="text-xl font-bold">Subscription Packages</h2>
-                        <Button size="sm" onClick={() => openForCreate({
-                            customPageAsset: creatorData?.customPageAssetCodeIssuer,
-                            pageAsset: creatorData.pageAsset,
-                        })}>
-                            <Plus className="h-4 w-4 mr-2" />
-                            Create New Package
-                        </Button>
-                    </div>
-                )
-            }
-            {
-                subscriptionPackages.data?.length === 0 && (
-                    <div className="text-center py-12 bg-muted/30 rounded-lg">
-                        <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-medium mb-2">No Subscription Packages Found</h3>
-                        <p className="text-muted-foreground mb-4">Start creating subscription packages for your followers</p>
-                        <Button onClick={() => openForCreate({
-                            customPageAsset: creatorData?.customPageAssetCodeIssuer,
-                            pageAsset: creatorData.pageAsset,
-                        })}>
-                            <Plus className="h-4 w-4 mr-2" />
-                            Create New Package
-                        </Button>
-                    </div>
-                )
-            }
+        <div className="mb-8 h-full">
+
             <div className="grid grid-cols-1 px-2 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-center justify-center w-full">
                 {subscriptionPackages.isLoading && <SubscriptionPackagesSkeleton />}
 
@@ -169,6 +140,36 @@ export default function MembershipTiersWidget({ editMode, theme, creatorData }: 
                             <CardDescription className="mt-2">{pkg.description}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4 pb-2">
+                            {
+                                subscriptionPackages.data && subscriptionPackages.data?.length > 0 && (
+                                    <div className="flex items-center justify-between p-2">
+                                        <h2 className="text-xl font-bold">Subscription Packages</h2>
+                                        <Button size="sm" onClick={() => openForCreate({
+                                            customPageAsset: creatorData?.customPageAssetCodeIssuer,
+                                            pageAsset: creatorData.pageAsset,
+                                        })}>
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Create New Package
+                                        </Button>
+                                    </div>
+                                )
+                            }
+                            {
+                                subscriptionPackages.data?.length === 0 && (
+                                    <div className="text-center py-12 bg-muted/30 rounded-lg">
+                                        <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                                        <h3 className="text-lg font-medium mb-2">No Subscription Packages Found</h3>
+                                        <p className="text-muted-foreground mb-4">Start creating subscription packages for your followers</p>
+                                        <Button onClick={() => openForCreate({
+                                            customPageAsset: creatorData?.customPageAssetCodeIssuer,
+                                            pageAsset: creatorData.pageAsset,
+                                        })}>
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Create New Package
+                                        </Button>
+                                    </div>
+                                )
+                            }
                             <ul className="space-y-2">
                                 {pkg.features
                                     .slice(0, expandedPackage === pkg.id ? pkg.features.length : 3)

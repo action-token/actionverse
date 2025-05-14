@@ -492,7 +492,7 @@ export default function NftCreateModal() {
                                                                 <Image
                                                                     fill
                                                                     alt="preview image"
-                                                                    src={coverUrl ?? "/placeholder.svg"}
+                                                                    src={coverUrl ?? "/images/action/logo.png"}
                                                                     className="object-cover"
                                                                 />
                                                                 <Button
@@ -842,7 +842,7 @@ function PlayableMedia({
             case MediaType.IMAGE:
                 return (
                     <div className="relative aspect-square w-full overflow-hidden rounded-md">
-                        <Image alt="NFT preview" src={mediaUrl ?? "/placeholder.svg"} fill className="object-cover" />
+                        <Image alt="NFT preview" src={mediaUrl ?? "/images/action/logo.png"} fill className="object-cover" />
                     </div>
                 )
             case MediaType.MUSIC:
