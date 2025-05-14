@@ -44,7 +44,7 @@ export function HomeVideoPlayer({ src, poster, className = "" }: VideoPlayerProp
             {/* Show poster image until video is loaded and playing */}
             {(!isLoaded || !isPlaying) && (
                 <Image
-                    src={poster || "/placeholder.svg"}
+                    src={poster || "/images/action/logo.png"}
                     alt="Video poster"
                     fill
                     priority

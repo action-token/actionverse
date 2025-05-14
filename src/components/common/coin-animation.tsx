@@ -23,7 +23,7 @@ export default function CoinAnimation() {
                 height={200}
                 width={200}
                 src="/images/logo.png"
-                alt="Bandcoin"
+                alt="action-tokens"
             />
         </motion.div>
     )

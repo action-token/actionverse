@@ -731,7 +731,7 @@ function MediaStep({
                         {media.map((item, index) => (
                             <div key={index} className="relative aspect-square rounded-md overflow-hidden border">
                                 <Image
-                                    src={item.url || "/placeholder.svg"}
+                                    src={item.url ?? "/images/action/logo.png"}
                                     alt={`Uploaded media ${index + 1}`}
                                     fill
                                     className="object-cover"
@@ -880,7 +880,7 @@ function ReviewStep({
                                 {media.map((item, index) => (
                                     <div key={index} className="relative aspect-square rounded-md overflow-hidden border">
                                         <Image
-                                            src={item.url || "/placeholder.svg"}
+                                            src={item.url ?? "/images/action/logo.png"}
                                             alt={`Thumbnail ${index + 1}`}
                                             fill
                                             className="object-cover"

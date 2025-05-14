@@ -34,7 +34,7 @@ export function ImageWithFallback({
                 />
             )}
             <Image
-                src={src || "/placeholder.svg"}
+                src={src || "/images/action/logo.png"}
                 alt={alt}
                 fill={fill}
                 width={!fill ? width : undefined}

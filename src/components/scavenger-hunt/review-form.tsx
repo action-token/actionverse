@@ -37,7 +37,7 @@ export default function ReviewForm() {
                         <div className="h-32 w-full overflow-hidden rounded-md border">
                             {formData?.coverImageUrl ? (
                                 <img
-                                    src={formData.coverImageUrl[0]?.url ?? "/placeholder.svg"}
+                                    src={formData.coverImageUrl[0]?.url ?? "/images/action/logo.png"}
                                     alt="Cover"
                                     className="h-full w-full object-cover"
                                 />
@@ -101,7 +101,7 @@ export default function ReviewForm() {
                                         <div className="mt-2 h-32 w-full overflow-hidden rounded-md border">
                                             {formData.defaultLocationInfo.pinImage ? (
                                                 <img
-                                                    src={formData.defaultLocationInfo.pinImage ?? "/placeholder.svg"}
+                                                    src={formData.defaultLocationInfo.pinImage ?? "/images/action/logo.png"}
                                                     alt="Pin"
                                                     className="h-full w-full object-cover"
                                                 />

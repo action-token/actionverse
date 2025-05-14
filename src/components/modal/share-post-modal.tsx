@@ -20,7 +20,8 @@ const ShareModal = () => {
         setIsOpen(false)
     }
 
-    const fullUrl = `${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "https://app.wadzzo.com" : "https://bandcoin.io"
+    const fullUrl = `${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "https://app.wadzzo.com" :
+        env.NEXT_PUBLIC_ASSET_CODE === "bandcoin" ? "https://bandcoin.io" : "https://app.action-tokens.com"
         }${data}`
 
     const handleCopy = async () => {
@@ -39,7 +40,7 @@ const ShareModal = () => {
             props: {
                 url: fullUrl,
                 quote: "Checkout my post on Wadzzo",
-                hashtag: `#${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "Wadzzo" : env.NEXT_PUBLIC_ASSET_CODE === "Bandcoin" ? "Bandcoin" : "ACTIONVERSE"}`,
+                hashtag: `#${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "Wadzzo" : env.NEXT_PUBLIC_ASSET_CODE.toLocaleLowerCase() === "bandcoin" ? "Bandcoin" : "ACTIONVERSE"}`,
             },
             icon: (
                 <svg
@@ -60,7 +61,7 @@ const ShareModal = () => {
             Component: TwitterShareButton,
             props: {
                 url: fullUrl,
-                title: `Checkout my post on ${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "Wadzzo" : env.NEXT_PUBLIC_ASSET_CODE === "Bandcoin" ? "Bandcoin" : "ACTIONVERSE"}`,
+                title: `Checkout my post on ${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "Wadzzo" : env.NEXT_PUBLIC_ASSET_CODE.toLocaleLowerCase() === "bandcoin" ? "Bandcoin" : "ACTIONVERSE"}`,
             },
             icon: <FaXTwitter className="transition-all duration-300" />,
             bgHover: "hover:bg-[#1d9bf0]",
@@ -71,7 +72,7 @@ const ShareModal = () => {
             Component: WhatsappShareButton,
             props: {
                 url: fullUrl,
-                title: `Checkout my post on ${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "Wadzzo" : env.NEXT_PUBLIC_ASSET_CODE === "Bandcoin" ? "Bandcoin" : "ACTIONVERSE"}`,
+                title: `Checkout my post on ${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "Wadzzo" : env.NEXT_PUBLIC_ASSET_CODE.toLocaleLowerCase() === "bandcoin" ? "Bandcoin" : "ACTIONVERSE"}`,
                 separator: ":: ",
             },
             icon: (
@@ -97,7 +98,7 @@ const ShareModal = () => {
             Component: TelegramShareButton,
             props: {
                 url: fullUrl,
-                title: `Checkout my post on ${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "Wadzzo" : env.NEXT_PUBLIC_ASSET_CODE === "Bandcoin" ? "Bandcoin" : "ACTIONVERSE"}`,
+                title: `Checkout my post on ${env.NEXT_PUBLIC_ASSET_CODE?.toLocaleLowerCase() === "wadzzo" ? "Wadzzo" : env.NEXT_PUBLIC_ASSET_CODE.toLocaleLowerCase() === "bandcoin" ? "Bandcoin" : "ACTIONVERSE"}`,
             },
             icon: (
                 <svg

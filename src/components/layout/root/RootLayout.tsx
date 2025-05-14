@@ -32,6 +32,7 @@ export default function Layout({
     const { isMinimized, toggle } = useSidebar();
 
     const router = useRouter();
+    console.log("router.pathname", router.pathname);
 
     const isArtistRoutes = router.pathname.startsWith("/organization");
     const publicRoutes = ["/about", "/privacy", "/support", "/"];
@@ -49,7 +50,7 @@ export default function Layout({
         >
             <MiniPlayerProvider>
 
-                <div className={clsx("flex h-screen w-full flex-col", className)}>
+                <div className={clsx("flex  w-full flex-col", className)}>
                     {
                         router.pathname !== "/" && (
                             <Header />

@@ -447,7 +447,7 @@ export default function LocationsForm() {
                                         ) : (
                                             <div className="relative border rounded-lg overflow-hidden">
                                                 <img
-                                                    src={currentImagePreview ?? "/placeholder.svg"}
+                                                    src={currentImagePreview ?? "/images/action/logo.png"}
                                                     alt="Preview"
                                                     className="w-full h-48 object-cover"
                                                 />
@@ -640,7 +640,7 @@ export default function LocationsForm() {
                                                     {useSameInfoForAllSteps ? (
                                                         defaultLocationInfo?.pinImage ? (
                                                             <img
-                                                                src={defaultLocationInfo.pinImage ?? "/placeholder.svg"}
+                                                                src={defaultLocationInfo.pinImage ?? "/images/action/logo.png"}
                                                                 alt="Pin"
                                                                 className="h-full w-16 object-cover"
                                                             />
@@ -651,7 +651,7 @@ export default function LocationsForm() {
                                                         )
                                                     ) : location.pinImage ? (
                                                         <img
-                                                            src={location.pinImage ?? "/placeholder.svg"}
+                                                            src={location.pinImage ?? "/images/action/logo.png"}
                                                             alt="Pin"
                                                             className="h-full w-16 object-cover"
                                                         />
