@@ -76,7 +76,7 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
   }
 
   return (
-    <nav className="grid w-full gap-3 p-1">
+    <nav className="grid w-full gap-2 p-1">
       <TooltipProvider>
         {items.map((item, index) => {
           const Icon = Icons[item.icon as keyof typeof Icons]
