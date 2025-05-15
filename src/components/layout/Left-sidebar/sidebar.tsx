@@ -176,34 +176,36 @@ export default function Sidebar({ className }: SidebarProps) {
         className,
       )}
     >
-      <div className=" flex  h-full   w-full  flex-col items-center justify-between   py-2   no-scrollbar  ">
-        {
-          isHome && (
-            <div className="flex flex-col items-center transition-all duration-500 ease-in-out">
-              <div className="relative hidden h-24 w-24 md:block transition-all duration-500 ease-in-out">
-                <Image
-                  alt="logo"
-                  src="/images/action/logo.png"
-                  height={200}
-                  width={200}
-                  className="h-full w-full transition-transform duration-500 ease-in-out"
-                />
-              </div>
-              {/* <h1 className={cn(
+      <div className=" flex  h-full   w-full  flex-col items-center justify-between   gap-1   no-scrollbar  ">
+        <div className="flex w-full flex-col items-center justify-between p-1">
+          {
+            isHome && (
+              <div className="flex flex-col items-center transition-all duration-500 ease-in-out">
+                <div className="relative hidden h-24 w-24 md:block transition-all duration-500 ease-in-out">
+                  <Image
+                    alt="logo"
+                    src="/images/action/logo.png"
+                    height={200}
+                    width={200}
+                    className="h-full w-full transition-transform duration-500 ease-in-out"
+                  />
+                </div>
+                {/* <h1 className={cn(
                 "relative text-xl font-bold capitalize text-primary md:text-2xl transition-all duration-500 ease-in-out",
                 isMinimized ? "opacity-0 max-h-0" : "opacity-100 max-h-20",
               )}>
                 ACTIONVERSE
                 <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
               </h1> */}
-            </div>
-          )
-        }
-        <div className="flex  w-full overflow-x-hidden   flex-col  ">
-          <DashboardNav items={LeftNavigation} />
+              </div>
+            )
+          }
+          <div className="flex  w-full overflow-x-hidden   flex-col  ">
+            <DashboardNav items={LeftNavigation} />
 
-          {/* Mini Calendar - Only show when sidebar is expanded */}
+            {/* Mini Calendar - Only show when sidebar is expanded */}
 
+          </div>
         </div>
 
         <div
@@ -213,15 +215,21 @@ export default function Sidebar({ className }: SidebarProps) {
           )}
         >
           <LeftBottom />
+
         </div>
-        {session.status == "authenticated" && (
-          <div className={cn(
-            "transition-all duration-500 ease-in-out",
-            isMinimized ? "opacity-100 max-h-20" : "opacity-0 max-h-0 overflow-hidden"
-          )}>
-            <LogOutButon />
-          </div>
-        )}
+        {
+          isMinimized && session.status == "authenticated" && (
+
+            <div className={cn(
+              "transition-all duration-500 ease-in-out",
+              isMinimized ? "opacity-100 max-h-20" : "opacity-0 max-h-0 overflow-hidden"
+            )}>
+              <LogOutButon />
+            </div>
+          )
+        }
+
+
       </div>
     </div >
   );
