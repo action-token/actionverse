@@ -260,7 +260,7 @@ const AboutUser = ({ user }: { user: UserSettingsType }) => {
                             <h1 className="text-3xl font-bold">
                                 {user.name && user?.name?.length > 21
                                     ? user.name?.slice(0, 22) + "..."
-                                    : user.name?.slice(0, 22) || "Anonymous User"}
+                                    : user.name?.slice(0, 22) ?? "Anonymous User"}
                             </h1>
 
                             <div className="space-y-3">

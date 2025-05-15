@@ -238,24 +238,23 @@ export const BountyRoute = createTRPCRouter({
         cursor: z.number().nullish(),
         skip: z.number().optional(),
         search: z.string().optional(),
-        sortBy: z
-          .enum(["DATE_ASC", "DATE_DESC", "PRICE_ASC", "PRICE_DESC"])
-          .optional(),
+        sortBy: z.nativeEnum(sortOptionEnum).optional(),
         filter: z.enum(["ALL", "NOT_JOINED", "JOINED"]).optional(),
+        bountyType: z.enum(["GENERAL", "LOCATION_BASED", "SCAVENGER_HUNT"]).optional(),
       }),
     )
     .query(async ({ input, ctx }) => {
-      const { limit, cursor, skip, search, sortBy, filter } = input;
+      const { limit, cursor, skip, search, sortBy, filter, bountyType } = input
 
-      const orderBy: Prisma.BountyOrderByWithRelationInput = {};
+      const orderBy: Prisma.BountyOrderByWithRelationInput = {}
       if (sortBy === sortOptionEnum.DATE_ASC) {
-        orderBy.createdAt = "asc";
+        orderBy.createdAt = "asc"
       } else if (sortBy === sortOptionEnum.DATE_DESC) {
-        orderBy.createdAt = "desc";
+        orderBy.createdAt = "desc"
       } else if (sortBy === sortOptionEnum.PRICE_ASC) {
-        orderBy.priceInUSD = "asc";
+        orderBy.priceInUSD = "asc"
       } else if (sortBy === sortOptionEnum.PRICE_DESC) {
-        orderBy.priceInUSD = "desc";
+        orderBy.priceInUSD = "desc"
       }
 
       const where: Prisma.BountyWhereInput = {
@@ -281,9 +280,10 @@ export const BountyRoute = createTRPCRouter({
             },
           },
         }),
-
-
-      };
+        ...(bountyType && {
+          bountyType: bountyType,
+        }),
+      }
 
       const bounties = await ctx.db.bounty.findMany({
         take: limit + 1,
@@ -304,7 +304,6 @@ export const BountyRoute = createTRPCRouter({
               profileUrl: true,
             },
           },
-
           BountyWinner: {
             select: {
               user: {
@@ -320,25 +319,26 @@ export const BountyRoute = createTRPCRouter({
             select: { userId: true },
           },
         },
-      });
+      })
+
       const bountyWithIsOwnerNisJoined = bounties.map((bounty) => {
         return {
           ...bounty,
           isOwner: bounty.creatorId === ctx.session?.user.id,
-          isJoined: bounty.participants.some(
-            (participant) => participant.userId === ctx.session?.user.id,
-          ),
-        };
-      });
-      let nextCursor: typeof cursor | undefined = undefined;
+          isJoined: bounty.participants.some((participant) => participant.userId === ctx.session?.user.id),
+        }
+      })
+
+      let nextCursor: typeof cursor | undefined = undefined
       if (bountyWithIsOwnerNisJoined.length > limit) {
-        const nextItem = bountyWithIsOwnerNisJoined.pop();
-        nextCursor = nextItem?.id;
+        const nextItem = bountyWithIsOwnerNisJoined.pop()
+        nextCursor = nextItem?.id
       }
+
       return {
         bounties: bountyWithIsOwnerNisJoined,
         nextCursor: nextCursor,
-      };
+      }
     }),
 
   isAlreadyJoined: protectedProcedure
@@ -425,21 +425,21 @@ export const BountyRoute = createTRPCRouter({
         skip: z.number().optional(),
         search: z.string().optional(),
         sortBy: z.nativeEnum(sortOptionEnum).optional(),
-
+        bountyType: z.enum(["GENERAL", "LOCATION_BASED", "SCAVENGER_HUNT"]).optional(),
       }),
     )
     .query(async ({ input, ctx }) => {
-      const { limit, cursor, skip, search, sortBy } = input;
+      const { limit, cursor, skip, search, sortBy, bountyType } = input
 
-      const orderBy: Prisma.BountyOrderByWithRelationInput = {};
+      const orderBy: Prisma.BountyOrderByWithRelationInput = {}
       if (sortBy === sortOptionEnum.DATE_ASC) {
-        orderBy.createdAt = "asc";
+        orderBy.createdAt = "asc"
       } else if (sortBy === sortOptionEnum.DATE_DESC) {
-        orderBy.createdAt = "desc";
+        orderBy.createdAt = "desc"
       } else if (sortBy === sortOptionEnum.PRICE_ASC) {
-        orderBy.priceInUSD = "asc";
+        orderBy.priceInUSD = "asc"
       } else if (sortBy === sortOptionEnum.PRICE_DESC) {
-        orderBy.priceInUSD = "desc";
+        orderBy.priceInUSD = "desc"
       }
 
       const where: Prisma.BountyWhereInput = {
@@ -450,7 +450,10 @@ export const BountyRoute = createTRPCRouter({
             { description: { contains: search, mode: "insensitive" } },
           ],
         }),
-      };
+        ...(bountyType && {
+          bountyType: bountyType,
+        }),
+      }
 
       const bounties = await ctx.db.bounty.findMany({
         take: limit + 1,
@@ -469,8 +472,6 @@ export const BountyRoute = createTRPCRouter({
               user: {
                 select: {
                   id: true,
-
-
                 },
               },
               isSwaped: true,
@@ -488,27 +489,28 @@ export const BountyRoute = createTRPCRouter({
           },
         },
         orderBy: orderBy,
-      });
+      })
+
       const bountyWithIsOwnerNisJoined = bounties.map((bounty) => {
         return {
           ...bounty,
           isOwner: bounty.creatorId === ctx.session?.user.id,
-          isJoined: bounty.participants.some(
-            (participant) => participant.userId === ctx.session?.user.id,
-          ),
-        };
-      });
-      let nextCursor: typeof cursor | undefined = undefined;
+          isJoined: bounty.participants.some((participant) => participant.userId === ctx.session?.user.id),
+        }
+      })
+
+      let nextCursor: typeof cursor | undefined = undefined
       if (bountyWithIsOwnerNisJoined.length > limit) {
-        const nextItem = bountyWithIsOwnerNisJoined.pop();
-        nextCursor = nextItem?.id;
+        const nextItem = bountyWithIsOwnerNisJoined.pop()
+        nextCursor = nextItem?.id
       }
 
       return {
         bounties: bountyWithIsOwnerNisJoined,
         nextCursor: nextCursor,
-      };
+      }
     }),
+
 
   getBountyByID: publicProcedure
     .input(
