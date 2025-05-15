@@ -49,7 +49,6 @@ export class StellarAccount {
       return Number(asset.balance);
     } else return 0;
   }
-
   hasTrustline(code: string, issuer: string) {
     const trustline = this.balances.find((balance) => {
       if (
@@ -63,5 +62,12 @@ export class StellarAccount {
     });
 
     return !!trustline;
+  }
+  getNfts() {
+    return this.balances.filter(
+      (bal) =>
+        bal.asset_type == "credit_alphanum4" ||
+        bal.asset_type == "credit_alphanum12",
+    );
   }
 }
