@@ -779,3 +779,25 @@ model RedeemConsumer {
     redeemCode Redeem   @relation(fields: [code], references: [code], onDelete: Cascade)
     redeemedAt DateTime @default(now())
 }
+
+// checker
+model OriginReward {
+    id            String    @id @default(uuid())
+    monthYear     String    @unique
+    data          Json
+    lastUpdatedAt DateTime  @default(now())
+    rewardedAt    DateTime?
+}
+
+model QuarterReward {
+    id      String @id @default(uuid())
+    year    Int
+    quarter String
+
+    data Json
+
+    lastUpdatedAt DateTime  @default(now())
+    rewardedAt    DateTime?
+
+    @@unique([year, quarter])
+}
