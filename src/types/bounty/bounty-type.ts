@@ -36,6 +36,11 @@ export interface BountyTypes {
 
 }
 
+export enum BountyTypeEnum {
+    GENERAL = "GENERAL",
+    LOCATION_BASED = "LOCATION_BASED",
+    SCAVENGER_HUNT = "SCAVENGER_HUNT",
+}
 
 export enum sortOptionEnum {
     DATE_ASC = "DATE_ASC",
