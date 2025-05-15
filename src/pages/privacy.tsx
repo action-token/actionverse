@@ -16,7 +16,7 @@ export default function Privacy() {
 
             sections.forEach((section) => {
                 const sectionTop = section.getBoundingClientRect().top
-                const sectionId = section.getAttribute("id") || ""
+                const sectionId = section.getAttribute("id") ?? ""
 
                 // Adjust this value based on testing - it determines how far from the top
                 // a section needs to be to be considered "active"

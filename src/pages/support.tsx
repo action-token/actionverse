@@ -166,7 +166,7 @@ const Support = () => {
                             Need <span className="text-primary">Support</span>?
                         </h2>
                         <p className="mb-8 text-muted-foreground max-w-2xl mx-auto">
-                            We're here to help! Fill out the form below and our team will get back to you as soon as possible.
+                            We{"'re"} here to help! Fill out the form below and our team will get back to you as soon as possible.
                         </p>
                     </div>
                 </motion.div>
@@ -188,7 +188,7 @@ const Support = () => {
                                 </div>
                                 <h3 className="mb-2 text-2xl font-bold text-card-foreground">Thank You!</h3>
                                 <p className="mb-6 text-muted-foreground">
-                                    Your message has been sent successfully. We'll get back to you soon.
+                                    Your message has been sent successfully. We{"'ll"} get back to you soon.
                                 </p>
                                 <button
                                     type="button"
