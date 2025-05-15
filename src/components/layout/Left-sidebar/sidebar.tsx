@@ -32,6 +32,8 @@ export const LeftNavigation: NavItem[] = [
   // { href: "/marketplace", icon: "store", title: "MARKETPLACE" },
   { href: "/bounty", icon: "bounty", title: "ACTION" },
   { href: "/organization/home", icon: "creator", title: "ORGANIZATIONS" },
+
+  { href: "/reward-checker", icon: "setting", title: "REWARD CHEKCER" },
   { href: "/settings", icon: "setting", title: "SETTINGS" },
 ];
 
