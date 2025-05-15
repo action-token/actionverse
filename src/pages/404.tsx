@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Music2, Home } from "lucide-react"
+import { Music2, Home, Trophy } from "lucide-react"
 import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
 
@@ -31,9 +31,9 @@ function NotFound() {
                             variant="outline"
                             className="border-[#6200EE]  hover:bg-[#6200EE]/10 px-6 py-2 rounded-full flex items-center gap-2 w-full sm:w-auto"
                         >
-                            <Link href="/music">
-                                <Music2 className="w-4 h-4" />
-                                Browse Music
+                            <Link href="/bounty">
+                                <Trophy className="w-4 h-4" />
+                                Browse Actions
                             </Link>
                         </Button>
                     </div>

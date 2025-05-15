@@ -119,11 +119,11 @@ export default function TransactionHistoryModal({
                                         </div>
                                         <div>
                                             <span className="text-sm font-medium">Max Fee:</span>
-                                            <span className="ml-2">{transaction.maxFee} XLM</span>
+                                            <span className="ml-2">{transaction.maxFee} STROOP</span>
                                         </div>
                                         <div>
                                             <span className="text-sm font-medium">Fee Charged:</span>
-                                            <span className="ml-2">{transaction.fee_charged} XLM</span>
+                                            <span className="ml-2">{transaction.fee_charged} STROOP</span>
                                         </div>
                                     </div>
                                 </div>
