@@ -201,7 +201,7 @@ export default function AboutPage() {
                     <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg p-10">
                         <h2 className="text-3xl font-bold text-gray-800 mb-6">Ready to Transform Engagement?</h2>
                         <p className="mb-8 text-xl text-gray-600">
-                            Whether you're hunting for rewards or driving organization visibility, Actionverse redefines engagement by merging technology, fun, and creativity.
+                            Whether you{"'re"} hunting for rewards or driving organization visibility, Actionverse redefines engagement by merging technology, fun, and creativity.
                         </p>
                         <motion.div
                             whileHover={{ scale: 1.05 }}

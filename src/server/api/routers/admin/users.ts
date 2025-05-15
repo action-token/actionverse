@@ -82,8 +82,7 @@ ${message}
       `,
     }
 
-    const result = await transporter.sendMail(mailOptions)
-    console.log("Email sent: ", result)
+    await transporter.sendMail(mailOptions)
   } catch (error) {
     console.error("Error sending email: ", error)
     throw new Error("Failed to send email")
