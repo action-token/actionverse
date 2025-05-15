@@ -168,7 +168,7 @@ export default function PaymentCardDialog({ isOpen, setIsOpen, offer, pubkey, xd
                 </svg>
               </motion.div>
               <p className="text-center font-medium">Processing your payment...</p>
-              <p className="text-center text-sm text-muted-foreground">Please don't close this window.</p>
+              <p className="text-center text-sm text-muted-foreground">Please don{"'t"} close this window.</p>
             </div>
           )}
 
@@ -216,7 +216,7 @@ export default function PaymentCardDialog({ isOpen, setIsOpen, offer, pubkey, xd
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
           {status === "idle" && (
             <p className="text-xs text-muted-foreground text-center sm:text-left">
-              Your payment information is securely processed. We don't store your card details.
+              Your payment information is securely processed. We don{"'t"} store your card details.
             </p>
           )}
         </DialogFooter>
