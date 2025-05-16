@@ -57,7 +57,7 @@ export default function SearchAndSort({
                             : "Discover Bounties"
                     }</h1>
 
-                    {!setFilter && (
+                    {router.pathname === "/organization/bounty" && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button className="ml-auto">

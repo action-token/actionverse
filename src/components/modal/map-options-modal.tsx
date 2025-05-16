@@ -922,7 +922,10 @@ function PinInfoUpdate({
                                                     className="mt-2 rounded-lg border p-2"
                                                 >
                                                     <Image
-                                                        className="rounded  " width={120}
+                                                        className="rounded  "
+                                                        width={120}
+                                                        height={120}
+                                                        quality={100}
 
                                                         alt="preview image"
                                                         src={coverUrl ?? image ?? "/images/action/logo.png"}

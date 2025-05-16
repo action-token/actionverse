@@ -107,7 +107,7 @@ export function PaymentChoose({
                                         alt="action"
                                         height={24}
                                         width={24}
-                                        src={"https://app.action-tokens.com/images/logo.png"} className="mr-3 h-6 w-6" /> : <Coins className="mr-3 h-6 w-6" />
+                                        src={"/images/action/logo.png"} className="mr-3 h-6 w-6" /> : <Coins className="mr-3 h-6 w-6" />
                                 }
                                 <div className="flex-grow">
                                     <div className="font-medium">
