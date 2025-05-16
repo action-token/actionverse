@@ -34,6 +34,9 @@ const config = {
       { hostname: "raw.githubusercontent.com" },
       { hostname: "avatars.githubusercontent.com" },
       { hostname: "ipfs.io" },
+      {
+        hostname: "app.action-tokens.com",
+      },
       { hostname: "daisyui.com" },
       { hostname: "picsum.photos" },
       { hostname: `${process.env.NEXT_AWS_BUCKET_NAME}.s3.amazonaws.com` },

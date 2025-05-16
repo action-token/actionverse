@@ -149,7 +149,7 @@ export const ScavengerHuntRoute = createTRPCRouter({
                             limit: location.collectionLimit,
                             image: location.pinImage,
                             link: location.pinUrl,
-                            privacy: ItemPrivacy.PRIVATE,
+                            privacy: ItemPrivacy.PUBLIC,
                             remaining: location.collectionLimit,
                             locations: {
                                 createMany: {
