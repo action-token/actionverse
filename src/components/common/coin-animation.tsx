@@ -22,7 +22,7 @@ export default function CoinAnimation() {
                 className="h-20 w-20 rounded-full shadow-lg"
                 height={200}
                 width={200}
-                src="/images/logo.png"
+                src="/images/action/logo.png"
                 alt="action-tokens"
             />
         </motion.div>

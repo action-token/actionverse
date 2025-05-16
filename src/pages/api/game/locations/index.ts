@@ -44,6 +44,7 @@ export default async function handler(
 
   let creatorsId: string[] | undefined = undefined;
   if (data.data.filterId === "1") {
+
     const getAllFollowedBrand = await db.creator.findMany({
       where: {
         followers: {
@@ -95,7 +96,6 @@ export default async function handler(
       creatorId?: { in: string[] };
       privacy: { in: ItemPrivacy[] };
     };
-
     if (creatorsId) {
       extraFilter.creatorId = { in: creatorsId };
       extraFilter.privacy = { in: [ItemPrivacy.PRIVATE, ItemPrivacy.TIER, ItemPrivacy.PUBLIC] };

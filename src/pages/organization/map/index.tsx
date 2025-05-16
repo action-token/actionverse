@@ -478,7 +478,7 @@ function SkeletonPin() {
 
 function ManualPinButton({ handleClick }: { handleClick: () => void }) {
   return (
-    <Button type="button" onClick={handleClick} variant="chart4" className="flex items-center gap-2  shadow-md">
+    <Button type="button" onClick={handleClick} variant="accentOutline" className="flex items-center gap-2  shadow-md">
       <MapPin className="h-4 w-4" />
       <span className="hidden md:block">Drop Pin</span>
     </Button>
@@ -487,7 +487,7 @@ function ManualPinButton({ handleClick }: { handleClick: () => void }) {
 
 function ReportCollection() {
   return (
-    <Button variant="chart1" asChild className="flex items-center gap-2  shadow-md">
+    <Button variant="accentOutline" asChild className="flex items-center gap-2  shadow-md">
       <Link href="/organization/map/collection-report">
         <ClipboardList className="h-4 w-4" />
         <span className="hidden md:block">Collection Report</span>
