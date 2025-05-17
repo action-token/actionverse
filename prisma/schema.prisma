@@ -696,12 +696,12 @@ enum BountyType {
 }
 
 model BountyParticipant {
-    id       Int    @id @default(autoincrement())
-    bountyId Int
-    bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+    id          Int    @id @default(autoincrement())
+    bountyId    Int
+    bounty      Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+    currentStep Int    @default(0) // Current step in the bounty
+    userId      String
+    user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     joinedAt DateTime @default(now())
 

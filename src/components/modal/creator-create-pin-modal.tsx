@@ -113,7 +113,6 @@ export default function CreatePinModal() {
     const formatDateForInput = (date: Date) => {
         return date.toISOString().split("T")[0]
     }
-
     const today = new Date()
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -305,7 +304,7 @@ export default function CreatePinModal() {
         }
         if (selectedAssetId === PAGE_ASSET_NUM) {
             const pageAsset = assets.data?.pageAsset
-
+            console.log("page asset", pageAsset)
             if (pageAsset) {
                 const bal = getAssetBalance({
                     code: pageAsset.code,
@@ -318,6 +317,7 @@ export default function CreatePinModal() {
                     id: PAGE_ASSET_NUM,
                     thumbnail: pageAsset.thumbnail ?? "",
                 })
+                console.log("bal................", bal)
                 setRemainingBalance(bal)
                 setValue("token", PAGE_ASSET_NUM)
             } else {

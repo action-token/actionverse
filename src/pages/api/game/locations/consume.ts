@@ -95,7 +95,29 @@ export default async function handler(
       },
     });
 
+    const findActionLocation = await db.actionLocation.findFirst({
+      where: {
+        locationGroupId: location.locationGroup.id,
+      },
+    });
+
     if (!hasConsumer) {
+
+      if (findActionLocation) {
+        await db.bountyParticipant.update({
+          where: {
+            bountyId_userId: {
+              userId: pubkey,
+              bountyId: findActionLocation?.bountyId,
+            }
+          },
+          data: {
+            currentStep: {
+              increment: 1,
+            },
+          }
+        })
+      }
       await db.locationConsumer.create({
         data: { locationId: location.id, userId: pubkey },
       });
