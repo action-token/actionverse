@@ -304,6 +304,7 @@ export const BountyRoute = createTRPCRouter({
               profileUrl: true,
             },
           },
+          ActionLocation: true,
           BountyWinner: {
             select: {
               user: {
@@ -316,7 +317,10 @@ export const BountyRoute = createTRPCRouter({
           },
           participants: {
             where: { userId: ctx.session?.user.id },
-            select: { userId: true },
+            select: {
+              userId: true,
+              currentStep: true,
+            },
           },
         },
       })
@@ -326,6 +330,7 @@ export const BountyRoute = createTRPCRouter({
           ...bounty,
           isOwner: bounty.creatorId === ctx.session?.user.id,
           isJoined: bounty.participants.some((participant) => participant.userId === ctx.session?.user.id),
+          currentStep: bounty.participants.find((participant) => participant.userId === ctx.session?.user.id)?.currentStep,
         }
       })
 
@@ -477,6 +482,7 @@ export const BountyRoute = createTRPCRouter({
               isSwaped: true,
             },
           },
+          ActionLocation: true,
           creator: {
             select: {
               name: true,
@@ -485,7 +491,10 @@ export const BountyRoute = createTRPCRouter({
           },
           participants: {
             where: { userId: ctx.session?.user.id },
-            select: { userId: true },
+            select: {
+              userId: true,
+              currentStep: true,
+            },
           },
         },
         orderBy: orderBy,
@@ -496,6 +505,7 @@ export const BountyRoute = createTRPCRouter({
           ...bounty,
           isOwner: bounty.creatorId === ctx.session?.user.id,
           isJoined: bounty.participants.some((participant) => participant.userId === ctx.session?.user.id),
+          currentStep: bounty.participants.find((participant) => participant.userId === ctx.session?.user.id)?.currentStep,
         }
       })
 

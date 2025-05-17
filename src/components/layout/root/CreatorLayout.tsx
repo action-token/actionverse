@@ -24,6 +24,7 @@ import JoinArtistPage from "~/components/creator/join-artist"
 import JoinArtistPageLoading from "~/components/loading/join-artist-loading"
 import PendingArtistPage from "~/components/creator/pending-artist"
 import { BannedCreatorCard } from "~/components/creator/ban-artist"
+import { useCreatorStorageAcc } from "~/lib/state/wallete/stellar-balances"
 
 export default function CreatorLayout({
   children,
@@ -34,7 +35,7 @@ export default function CreatorLayout({
   const router = useRouter()
   const toast = useToast()
   const [cursorVariant, setCursorVariant] = useState("default")
-
+  const { setBalance } = useCreatorStorageAcc()
   const path = usePathname()
   const toggleExpand = () => {
     setIsExpanded(!isExpanded)
@@ -43,6 +44,16 @@ export default function CreatorLayout({
   const { isMinimized, toggle } = useCreatorSidebar()
   const { selectedMode, toggleSelectedMode, isTransitioning, startTransition, endTransition } = useModeStore()
   const creator = api.fan.creator.meCreator.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+  })
+  const acc = api.wallate.acc.getCreatorStorageBallances.useQuery(undefined, {
+    onSuccess: (data) => {
+      // console.log(data);
+      setBalance(data)
+    },
+    onError: (error) => {
+      console.log(error)
+    },
     refetchOnWindowFocus: false,
   })
   console.log(creator.data)
@@ -388,12 +399,12 @@ const CreatorNavigation: DockerItem[] = [
   },
 
   // { href: "/organization/store", icon: "pins", label: "STORE", color: "bg-pink-500" },
-  // {
-  //   href: "/organization/gift",
-  //   icon: "creator",
-  //   label: "GIFT",
-  //   color: "bg-emerald-500",
-  // },
+  {
+    href: "/organization/gift",
+    icon: "creator",
+    label: "GIFT",
+    color: "bg-emerald-500",
+  },
   {
     href: "/organization/bounty",
     icon: "users",

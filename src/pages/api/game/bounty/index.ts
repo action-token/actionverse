@@ -51,18 +51,24 @@ export default async function handler(
           profileUrl: true,
         },
       },
-
+      ActionLocation: true,
+      bountyType: true,
       participants: {
         where: { userId: currentUserId },
-        select: { userId: true },
+        select: {
+          userId: true,
+          currentStep: true,
+        },
       },
     },
   });
 
   const bountiesWithJoinStatus = allBounty.map((bounty) => ({
     ...bounty,
-    isJoined: bounty.participants.length > 0,
     isOwner: bounty.creatorId === currentUserId,
+    isJoined: bounty.participants.some((participant) => participant.userId === currentUserId),
+    currentStep: bounty.participants.find((participant) => participant.userId === currentUserId)?.currentStep,
+
   }));
 
   res.status(200).json({ allBounty: bountiesWithJoinStatus });
