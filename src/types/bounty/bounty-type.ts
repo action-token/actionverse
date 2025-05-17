@@ -32,7 +32,8 @@ export interface BountyTypes {
     }[],
     isJoined: boolean;
     isOwner: boolean;
-    actionLocation?: ActionLocation[]
+    currentStep: number | undefined;
+    ActionLocation?: ActionLocation[]
 
 }
 

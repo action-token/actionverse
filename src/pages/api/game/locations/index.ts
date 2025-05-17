@@ -42,6 +42,41 @@ export default async function handler(
 
   const userAcc = await StellarAccount.create(userId);
 
+  // Step 1: Get all scavenger bounties user is participating in
+  const getUserActionBounties = await db.bounty.findMany({
+    where: {
+      bountyType: "SCAVENGER_HUNT",
+      participants: {
+        some: {
+          userId: userId,
+        },
+      },
+    },
+    select: {
+      ActionLocation: true,
+      participants: {
+        select: {
+          userId: true,
+          currentStep: true,
+        },
+      }
+    }
+  })
+
+  // Collect all scavenger group IDs and currentStep+1 group IDs
+  const allScavengerGroupIdsSet = new Set<string>();
+  const currentStepGroupIdsSet = new Set<string>();
+
+  for (const bounty of getUserActionBounties) {
+    const currentStep = bounty.participants.find((p) => p.userId === userId)?.currentStep ?? -1;
+    for (const action of bounty.ActionLocation) {
+      allScavengerGroupIdsSet.add(action.locationGroupId);
+      if (action.serial === currentStep + 1) {
+        currentStepGroupIdsSet.add(action.locationGroupId);
+      }
+    }
+  }
+
   let creatorsId: string[] | undefined = undefined;
   if (data.data.filterId === "1") {
 
@@ -90,24 +125,46 @@ export default async function handler(
   // now i am extracting this brands pins
 
   async function pinsForCreators(creatorsId?: string[]) {
-    const extraFilter = {
-      privacy: { in: [ItemPrivacy.PUBLIC] },
-    } as {
-      creatorId?: { in: string[] };
-      privacy: { in: ItemPrivacy[] };
-    };
-    if (creatorsId) {
-      extraFilter.creatorId = { in: creatorsId };
-      extraFilter.privacy = { in: [ItemPrivacy.PRIVATE, ItemPrivacy.TIER, ItemPrivacy.PUBLIC] };
-    }
 
     const locationGroup = await db.locationGroup.findMany({
       where: {
-        ...extraFilter,
-        approved: { equals: true },
-        endDate: { gte: new Date() },
-        subscriptionId: { equals: null },
-        remaining: { gt: 0 },
+        AND: [
+          {
+            approved: true,
+            endDate: { gte: new Date() },
+            subscriptionId: null,
+            remaining: { gt: 0 },
+          },
+          {
+            // Include only:
+            // - groups NOT in any scavenger (to avoid duplicates)
+            // OR
+            // - current step+1 scavenger pins
+            OR: [
+              {
+                NOT: {
+                  id: {
+                    in: Array.from(allScavengerGroupIdsSet),
+                  },
+                },
+              },
+              {
+                id: {
+                  in: Array.from(currentStepGroupIdsSet),
+                },
+              },
+            ],
+          },
+        ],
+        // Filter by creator if given (filterId = 1)
+        ...(creatorsId && {
+          creatorId: { in: creatorsId },
+          privacy: { in: [ItemPrivacy.PUBLIC, ItemPrivacy.PRIVATE, ItemPrivacy.TIER] },
+        }),
+        // Else only show public pins
+        ...(!creatorsId && {
+          privacy: { in: [ItemPrivacy.PUBLIC] },
+        }),
       },
       include: {
         locations: {
@@ -132,7 +189,8 @@ export default async function handler(
         },
       },
     });
-    console.log("locationGroup", locationGroup);
+
+
     const pins = locationGroup
       .flatMap((group) => {
         const multiPin = group.multiPin;
@@ -212,7 +270,7 @@ export default async function handler(
   }
 
   const locations = await pinsForCreators(creatorsId);
-
+  console.log("locations", locations.length);
   res.status(200).json({ locations });
 }
 
