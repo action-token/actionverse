@@ -346,7 +346,6 @@ export function Header({ className, sidebarExpanded = false }: HeaderProps) {
       window.removeEventListener("resize", handleResize)
     }
   }, [])
-  if (bal.isLoading) return <div className="skeleton h-10 w-48"></div>;
 
   return (
     <header
