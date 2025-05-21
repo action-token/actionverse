@@ -220,7 +220,7 @@ export default function Home() {
         <OrganizationSection />
 
         {/* Featured Plots - Now with Horizontal Scroll */}
-        <section id="plots-section" className="py-20">
+        {/* <section id="plots-section" className="py-20">
           <div className="container mx-auto px-4">
             <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
@@ -241,10 +241,10 @@ export default function Home() {
               ))}
             </HorizontalScroll>
           </div>
-        </section>
+        </section> */}
 
         {/* Availability Chart */}
-        <section className="bg-muted py-20">
+        {/* <section className="bg-muted py-20">
           <div className="container mx-auto px-4">
             <div className="grid items-center gap-12 md:grid-cols-2">
               <div>
@@ -284,7 +284,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-        </section>
+        </section> */}
 
 
       </div>
