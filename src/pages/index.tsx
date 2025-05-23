@@ -376,12 +376,12 @@ export default function Home() {
                 <span className="text-sm font-medium text-primary">Mobile Experience</span>
               </div>
 
-              <h2 className="text-3xl md:text-4xl font-bold mb-6">Download Our App</h2>
+              <h2 className="text-3xl md:text-4xl font-bold mb-6">Action Tokens Mobile App</h2>
 
-              <p className="text-lg text-muted-foreground mb-8">
+              {/* <p className="text-lg text-muted-foreground mb-8">
                 Take Action Tokens with you wherever you go. Our mobile app provides a seamless experience for
                 participating in actions, managing your tokens, and redeeming rewards on the go.
-              </p>
+              </p> */}
 
               <div className="space-y-6 mb-10">
                 <motion.div
@@ -395,8 +395,8 @@ export default function Home() {
                     <Check className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold mb-1">Augmented Reality Visualization</h3>
-                    <p className="text-muted-foreground">Explore available plots with immersive AR technology</p>
+                    <h3 className="font-bold mb-1">Positive Actions, Anytime, Anywhere</h3>
+                    <p className="text-muted-foreground">Join verified community and organizational initiatives on the go. With our mobile app, earning Action Tokens through real-world tasks is seamless and rewarding.</p>
                   </div>
                 </motion.div>
 
@@ -411,8 +411,8 @@ export default function Home() {
                     <Check className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold mb-1">Real-time Notifications</h3>
-                    <p className="text-muted-foreground">Stay updated with instant alerts about new opportunities</p>
+                    <h3 className="font-bold mb-1">Collect, Explore, Redeem</h3>
+                    <p className="text-muted-foreground">Navigate the Actionverse map, complete geo-fenced and token-gated challenges in augmented reality, and redeem digital or physical rewards—all from your phone.</p>
                   </div>
                 </motion.div>
 
@@ -427,8 +427,8 @@ export default function Home() {
                     <Check className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold mb-1">Secure Asset Management</h3>
-                    <p className="text-muted-foreground">Manage your digital assets securely on the go</p>
+                    <h3 className="font-bold mb-1">Empowered by Blockchain</h3>
+                    <p className="text-muted-foreground">Securely manage your token portfolio, access exclusive offers, and connect with purpose-driven communities—empowering your journey toward real-world impact.</p>
                   </div>
                 </motion.div>
               </div>
@@ -521,7 +521,7 @@ export default function Home() {
                 <div className="absolute -left-16 bottom-1/4 h-32 w-32 rounded-full bg-primary/20 blur-3xl"></div>
 
                 {/* Floating elements */}
-                <motion.div
+                {/* <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
@@ -537,9 +537,9 @@ export default function Home() {
                       <div className="text-muted-foreground">Downloads</div>
                     </div>
                   </div>
-                </motion.div>
+                </motion.div> */}
 
-                <motion.div
+                {/* <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
@@ -555,7 +555,7 @@ export default function Home() {
                       <div className="text-muted-foreground">User Rating</div>
                     </div>
                   </div>
-                </motion.div>
+                </motion.div> */}
               </div>
             </motion.div>
           </div>
@@ -703,8 +703,8 @@ export function Header({ className, sidebarExpanded = false }: HeaderProps) {
     >
       <div className="flex w-full items-center justify-center gap-4">
         {/* Center section - Navigation (desktop only) */}
-        <nav className="">
-          <ul className="flex gap-6 md:gap-8">
+        <nav className="flex w-full items-center justify-between md:gap-8 lg:gap-16">
+          <ul className="flex gap-6 items-center justify-center w-full md:gap-8">
             <Button
               variant="link"
               className="p-0 text-foreground hover:text-primary transition-colors"
@@ -745,17 +745,18 @@ export function Header({ className, sidebarExpanded = false }: HeaderProps) {
             >
               Download App
             </Button>
-            {session.status === "authenticated" && (
-              <Link href="/wallet-balance" className="hidden md:block">
-                <Button className="bg-primary hover:bg-primary/90 transition-colors" variant="default">
-                  BALANCE :<span className="block md:hidden">{bal.data?.platformAssetBal.toFixed(0)}</span>
-                  <span className="hidden md:block ml-2">
-                    {bal.data?.platformAssetBal.toFixed(0)} {PLATFORM_ASSET.code.toUpperCase()}
-                  </span>
-                </Button>
-              </Link>
-            )}
+
           </ul>
+          {session.status === "authenticated" && (
+            <Link href="/wallet-balance" className="hidden md:block ">
+              <Button className="bg-primary hover:bg-primary/90 transition-colors mr-2" variant="default">
+                BALANCE :<span className="block md:hidden">{bal.data?.platformAssetBal.toFixed(0)}</span>
+                <span className="hidden md:block ml-2">
+                  {bal.data?.platformAssetBal.toFixed(0)} {PLATFORM_ASSET.code.toUpperCase()}
+                </span>
+              </Button>
+            </Link>
+          )}
         </nav>
 
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
