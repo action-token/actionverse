@@ -2,24 +2,22 @@
 import clsx from "clsx";
 import { useSession } from "next-auth/react";
 
-import React, { use } from "react";
 import { ChevronLeft } from "lucide-react";
+import React from "react";
 
-import { ThemeProvider } from "../../providers/theme-provider";
 import { ConnectWalletButton } from "package/connect_wallet";
+import { ThemeProvider } from "../../providers/theme-provider";
 
-import Header from "../Header";
-import Sidebar from "../Left-sidebar/sidebar";
-import { cn } from "~/lib/utils";
-import { useSidebar } from "~/hooks/use-sidebar";
+import { useRouter } from "next/router";
+import LoginRequiredModal from "~/components/modal/login-required-modal";
+import { MiniPlayerProvider } from "~/components/player/mini-player-provider";
 import ModalProvider from "~/components/providers/modal-provider";
 import { Toaster } from "~/components/shadcn/ui/toaster";
-import { userRouter } from "~/server/api/routers/fan/user";
-import { useRouter } from "next/router";
-import { i } from "vitest/dist/reporters-w_64AS5f";
+import { useSidebar } from "~/hooks/use-sidebar";
+import { cn } from "~/lib/utils";
+import Header from "../Header";
+import Sidebar from "../Left-sidebar/sidebar";
 import CreatorLayout from "./CreatorLayout";
-import { MiniPlayerProvider } from "~/components/player/mini-player-provider";
-import LoginRequiredModal from "~/components/modal/login-required-modal";
 
 export default function Layout({
   children,
@@ -32,7 +30,7 @@ export default function Layout({
   const { isMinimized, toggle } = useSidebar();
 
   const router = useRouter();
-  console.log("router.pathname", router.pathname);
+  // console.log("router.pathname", router.pathname);
 
   const isArtistRoutes = router.pathname.startsWith("/organization");
   const publicRoutes = [

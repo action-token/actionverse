@@ -1,13 +1,15 @@
+import { randomUUID } from "crypto";
+import { Client, Environment } from "square";
 import { z } from "zod";
-import {
-  getAssetPrice,
-  getPlatformAssetNumberForUSD,
-  getPlatformAssetPrice,
-  getPlatformTokenNumberForUSD,
-} from "~/lib/stellar/fan/get_token_price";
+import { env } from "~/env";
+import { getPlatformAssetPrice } from "~/lib/stellar/fan/get_token_price";
 import { sendSiteAsset2pub } from "~/lib/stellar/marketplace/trx/site_asset_recharge";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+const { paymentsApi } = new Client({
+  accessToken: env.SQUARE_ACCESS_TOKEN,
+  environment: env.SQUARE_ENVIRONMENT as Environment,
+});
 
 // calling the squire backedapi
 const url = "https://next-actionverse.vercel.app/api/square";
@@ -35,31 +37,30 @@ export const payRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       const { amount: priceUSD, sourceId } = input;
-      const result = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sourceId: input.sourceId,
-          priceUSD: priceUSD,
-        }),
-      });
+      if (!sourceId) {
+        throw new Error("Source ID is required for payment");
+      }
+      try {
+        const { result } = await paymentsApi.createPayment({
+          idempotencyKey: randomUUID(),
+          sourceId: sourceId,
+          amountMoney: {
+            currency: "USD",
+            amount: BigInt(priceUSD),
+          },
+        });
 
-      if (result.ok) {
-        const data = (await result.json()) as { id: string; status: string };
-
-        if (data.status === "COMPLETED") {
-          return true;
-        } else {
-          throw new Error("Payment was not successful");
+        if (result.errors) {
+          console.error("Payment errors:", result.errors);
+          throw new Error("Payment failed due to errors");
         }
-      }
 
-      if (result.status === 400) {
-        throw new Error("Something went wrong with the payment");
+        if (result.payment?.status === "COMPLETED") {
+          return true;
+        }
+      } catch (error) {
+        console.error("Error creating payment:", error);
       }
-
       return false;
     }),
 
