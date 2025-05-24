@@ -29,7 +29,7 @@ export const checkerRouter = createTRPCRouter({
     }
   }),
 
-  getAllOriginRewards: protectedProcedure.query(async ({ ctx }) => {
+  getAllOriginRewards: publicProcedure.query(async ({ ctx }) => {
     const rewards = await ctx.db.originReward.findMany({
       orderBy: {
         lastUpdatedAt: "desc",
@@ -38,7 +38,7 @@ export const checkerRouter = createTRPCRouter({
     return rewards;
   }),
 
-  getAllQuarterRewards: protectedProcedure.query(async ({ ctx }) => {
+  getAllQuarterRewards: publicProcedure.query(async ({ ctx }) => {
     const rewards = await ctx.db.quarterReward.findMany({
       orderBy: {
         lastUpdatedAt: "desc",
