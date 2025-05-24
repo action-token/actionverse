@@ -181,8 +181,6 @@ function SiteAssetBuy() {
   const offersQ = api.marketplace.pay.getOffers.useQuery();
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
 
-  const { data } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery();
-
   const xdrMutation = api.marketplace.pay.getRechargeXDR.useMutation({
     onSuccess: (data) => {
       setXDR(data);

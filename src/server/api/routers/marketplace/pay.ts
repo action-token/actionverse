@@ -126,13 +126,15 @@ export const payRouter = createTRPCRouter({
   getOffers: protectedProcedure.query(async ({ ctx }) => {
     // const tokenNumber = await getPlatfromAssetPrice();
     const bandCoinPrice = await getPlatformAssetPrice();
-    const offers = [4.99, 9.99, 19.99, 24.99, 49.99, 99.99].map((price) => {
-      const num = price / bandCoinPrice;
-      return {
-        price,
-        num,
-      };
-    });
+    const offers = [0.01, 4.99, 9.99, 19.99, 24.99, 49.99, 99.99].map(
+      (price) => {
+        const num = price / bandCoinPrice;
+        return {
+          price,
+          num,
+        };
+      },
+    );
     return offers;
   }),
 });
