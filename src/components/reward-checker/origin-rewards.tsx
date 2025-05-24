@@ -36,6 +36,7 @@ export function OriginRewards() {
     useRewardStore();
   const admin = api.wallate.admin.checkAdmin.useQuery(undefined, {
     refetchOnWindowFocus: false,
+    retry: false,
   });
   const addData = api.action.checker.addOriginRewardData.useMutation({
     onSuccess: () => {

@@ -47,7 +47,7 @@ export const checkerRouter = createTRPCRouter({
     return rewards;
   }),
 
-  addOriginRewardData: protectedProcedure
+  addOriginRewardData: publicProcedure
     .input(
       z.object({
         data: holderWithPlotsSchema.array(),

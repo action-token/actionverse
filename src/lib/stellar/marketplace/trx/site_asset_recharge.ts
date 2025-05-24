@@ -4,6 +4,7 @@ import {
   Operation,
   Horizon,
   TransactionBuilder,
+  Asset,
 } from "@stellar/stellar-sdk";
 import { MOTHER_SECRET, STORAGE_SECRET } from "../SECRET";
 import { STELLAR_URL, PLATFORM_ASSET, networkPassphrase } from "../../constant";
@@ -53,27 +54,44 @@ export async function sendSiteAsset2pub(
     PLATFORM_ASSET.issuer,
   );
 
-  if (!hasTrust)
-    throw new Error(`User does not have trustline for ${PLATFORM_ASSET.code}`);
-
   const Tx = new TransactionBuilder(transactionInitializer, {
     fee: BASE_FEE,
     networkPassphrase,
-  })
-    .addOperation(
+  });
+  if (!hasTrust) {
+    // creaet trustline free, as it is a new account;
+    Tx.addOperation(
       Operation.payment({
         destination: pubkey,
-        amount: siteAssetAmount.toFixed(7).toString(), //copy,
-        asset: PLATFORM_ASSET,
+        amount: "0.5", // 1 XLM to create trustline
+        asset: Asset.native(),
         source: motherAcc.publicKey(),
       }),
     )
+      .addOperation(
+        Operation.changeTrust({
+          asset: PLATFORM_ASSET,
+          source: pubkey,
+        }),
+      )
+      .setTimeout(0)
+      .build();
+  }
+
+  const builTx = Tx.addOperation(
+    Operation.payment({
+      destination: pubkey,
+      amount: siteAssetAmount.toFixed(7).toString(), //copy,
+      asset: PLATFORM_ASSET,
+      source: motherAcc.publicKey(),
+    }),
+  )
     .setTimeout(0)
     .build();
 
-  Tx.sign(motherAcc);
+  builTx.sign(motherAcc);
 
-  return Tx.toXDR();
+  return builTx.toXDR();
 }
 
 export async function sendXLM_SiteAsset(props: {
