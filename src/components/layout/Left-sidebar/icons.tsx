@@ -25,6 +25,7 @@ import {
   SunMedium,
   Trash,
   Twitter,
+  HandCoins,
   User,
   User2Icon,
   UserX2Icon,
@@ -53,6 +54,7 @@ import { SiSpringCreators } from "react-icons/si";
 export const Icons = {
   dashboard: LayoutDashboardIcon,
   collection: ScrollText,
+  reward: HandCoins,
   store: Store,
   setting: Settings,
   gitHub: ({ ...props }: LucideProps) => (
