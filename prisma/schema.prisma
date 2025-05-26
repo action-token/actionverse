@@ -789,6 +789,11 @@ model OriginReward {
     distributedAmount Float? // Actual distributed amount
     lastUpdatedAt     DateTime  @default(now())
     rewardedAt        DateTime?
+
+    // Simple distribution tracking
+    completedUsers Json? // Array of wallet addresses that have been successfully distributed to
+    workflowHandle Json? // Trigger.dev workflow handle ID for tracking
+    lastError      Json?
 }
 
 model BlockedUser {

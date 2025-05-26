@@ -23,6 +23,7 @@ import { Skeleton } from "~/components/shadcn/ui/skeleton";
 import { api } from "~/utils/api";
 import { useRewardStore } from "./store";
 import { YearMonthSelect } from "./year-month-select";
+import { DistributeQuarterReward } from "./admin/distribute-reward";
 
 export function OriginRewards() {
   const assetsFetch = useMutation(() => getPlotsByHolder(), {
@@ -181,12 +182,7 @@ function GiftAction() {
   }
 
   if (reward && !reward.rewardedAt) {
-    return (
-      <Button className="flex items-center gap-2">
-        <Award className="h-4 w-4" />
-        Distribute Rewards
-      </Button>
-    );
+    return <DistributeQuarterReward />;
   }
 
   return null;
