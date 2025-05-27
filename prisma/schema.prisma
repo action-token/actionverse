@@ -780,24 +780,50 @@ model RedeemConsumer {
     redeemedAt DateTime @default(now())
 }
 
-// checker
 model OriginReward {
-    id            String    @id @default(uuid())
-    monthYear     String    @unique
-    data          Json
-    lastUpdatedAt DateTime  @default(now())
-    rewardedAt    DateTime?
+    id                String    @id @default(uuid())
+    monthYear         String    @unique
+    data              Json // Stores all distribution info
+    totalBalance      Float     @default(0) // Total distributable balance for the month
+    isDistributed     Boolean   @default(false) // Whether the month's distribution is paid
+    distributedAmount Float? // Actual distributed amount
+    lastUpdatedAt     DateTime  @default(now())
+    rewardedAt        DateTime?
+
+    // Simple distribution tracking
+    completedUsers Json? // Array of wallet addresses that have been successfully distributed to
+    workflowHandle Json? // Trigger.dev workflow handle ID for tracking
+    lastError      Json?
+}
+
+model OriginBlockedUser {
+    id            String   @id @default(uuid())
+    walletAddress String   @unique
+    reason        String?
+    blockedAt     DateTime @default(now())
+}
+
+model QuarterBlockedUser {
+    id            String   @id @default(uuid())
+    walletAddress String   @unique
+    reason        String?
+    blockedAt     DateTime @default(now())
 }
 
 model QuarterReward {
-    id      String @id @default(uuid())
-    year    Int
-    quarter String
+    id                String    @id @default(uuid())
+    year              Int
+    quarter           String
+    data              Json // Stores all distribution info
+    isDistributed     Boolean   @default(false) // Whether the month's distribution is paid
+    distributedAmount Float? // Actual distributed amount
+    lastUpdatedAt     DateTime  @default(now())
+    rewardedAt        DateTime?
 
-    data Json
-
-    lastUpdatedAt DateTime  @default(now())
-    rewardedAt    DateTime?
+    // Simple distribution tracking
+    completedUsers Json? // Array of wallet addresses that have been successfully distributed to
+    workflowHandle Json? // Trigger.dev workflow handle ID for tracking
+    lastError      Json?
 
     @@unique([year, quarter])
 }

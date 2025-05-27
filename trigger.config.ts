@@ -9,6 +9,7 @@ export default defineConfig({
       }),
     ],
   },
-  project: "proj_ifjzghwngjgjtawwycir",
+  maxDuration: 100,
+  project: "proj_jpbjlbvynaybljrerfxv",
   dirs: ["./src/trigger"],
 });

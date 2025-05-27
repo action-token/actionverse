@@ -18,6 +18,7 @@ export async function getBalances(account: string) {
   return balances.balances;
 }
 
+// get all plot NFTs for a given public key |  from distributor pubkey
 export async function getPlotNfts(pubkey: string) {
   const balances = await getBalances(pubkey);
 
@@ -65,7 +66,7 @@ export async function getNftHolder(asset: Asset) {
 export async function getActionHolders() {
   const holders = await getAllHolders(ACTION_ASSET.code, ACTION_ASSET.issuer);
 
-  console.log(holders, "holders");
+  // console.log(holders, "holders");
 
   const holderWithMinAction: {
     accountId: string;
@@ -81,7 +82,7 @@ export async function getActionHolders() {
     });
   }
 
-  console.log(holderWithMinAction, "holderWithMinAction");
+  // console.log(holderWithMinAction, "holderWithMinAction");
 
   return holderWithMinAction;
 }
@@ -95,7 +96,7 @@ async function getAllHolders(assetCode: string, assetIssuer: string) {
     const response = await server.accounts().forAsset(asset).limit(200).call();
     // return response;
 
-    console.log(response, ">>");
+    // console.log(response, ">>");
 
     // Loop through pages to gather all holders
     while (response.records.length > 0) {
@@ -184,9 +185,7 @@ export function getActionMinimumBalanceFromHistory(accountId: string) {
   });
 }
 
-interface BalanceHistoryResponse {
-  data: [number, string][];
-}
+type BalanceHistoryResponse = [number, string][];
 
 async function getMinimumBalanceFromHistory({
   accountId,
@@ -208,12 +207,13 @@ async function getMinimumBalanceFromHistory({
   ): Promise<[number, string][]> => {
     try {
       const response = await axios.get<BalanceHistoryResponse>(apiUrl);
-      return response.data.data;
+      return response.data;
     } catch (error) {
       const axiosError = error as AxiosError;
       if (axiosError.response?.status === 429 && retries > 0) {
         const retryAfter =
-          parseInt(axiosError.response.headers["retry-after"] as string, 10) || 1;
+          parseInt(axiosError.response.headers["retry-after"] as string, 10) ||
+          1;
         const delay =
           Math.pow(2, MAX_RETRIES - retries) * BASE_DELAY + retryAfter * 1000; // Exponential backoff
         console.warn(
@@ -230,7 +230,11 @@ async function getMinimumBalanceFromHistory({
   try {
     const history: [number, string][] = await fetchWithRetry(MAX_RETRIES);
 
+    // console.log("histroy", history);
     // Filter for entries in the last 90 days
+    if (!history) {
+      throw new Error("No history data found");
+    }
     const recentHistory = history.filter(
       ([timestamp]) => timestamp * 1000 >= ninetyDaysAgo,
     );

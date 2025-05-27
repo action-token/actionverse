@@ -1,92 +1,135 @@
-"use client"
+"use client";
 
-import { Loader2, Search, Award, RefreshCw, ExternalLink } from "lucide-react"
-import { useState } from "react"
-import { Button } from "~/components/shadcn/ui/button"
-import { Input } from "~/components/shadcn/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/shadcn/ui/table"
-import { Badge } from "~/components/shadcn/ui/badge"
-import { z } from "zod"
-import { create } from "zustand"
-import { api } from "~/utils/api"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shadcn/ui/select"
-import type { QuarterReward } from "@prisma/client"
-import { motion, AnimatePresence } from "framer-motion"
-import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import toast from "react-hot-toast"
+import { Loader2, Search, Award, RefreshCw, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { Button } from "~/components/shadcn/ui/button";
+import { Input } from "~/components/shadcn/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/shadcn/ui/table";
+import { Badge } from "~/components/shadcn/ui/badge";
+import { z } from "zod";
+import { create } from "zustand";
+import { api } from "~/utils/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../shadcn/ui/select";
+import type { QuarterReward } from "@prisma/client";
+import { motion, AnimatePresence } from "framer-motion";
+import { Skeleton } from "~/components/shadcn/ui/skeleton";
+import toast from "react-hot-toast";
+import { RealtimeStatusOfRunId } from "../trigger/realtime-status";
+import { AnimatedSyncButton } from "../trigger/animated-sync-button";
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
 
 const quarterRewardDataSchema = z.object({
   accountId: z.string(),
   action: z.number(),
-})
+});
 
-type QuarterRewardData = z.infer<typeof quarterRewardDataSchema>
+type QuarterRewardData = z.infer<typeof quarterRewardDataSchema>;
 
 interface AppState {
-  reward?: { date: string; rewardedAt?: Date; data: QuarterRewardData[] }
+  reward?: { date: string; rewardedAt?: Date; data: QuarterRewardData[] };
   setReward: (value?: {
-    date: string
-    rewardedAt?: Date
-    data: QuarterRewardData[]
-  }) => void
-  currentReward?: { date: string; data: QuarterRewardData[] }
+    date: string;
+    rewardedAt?: Date;
+    data: QuarterRewardData[];
+  }) => void;
+  currentReward?: { date: string; data: QuarterRewardData[] };
   setCurrentReward: (value: {
-    date: string
-    data: QuarterRewardData[]
-  }) => void
+    date: string;
+    data: QuarterRewardData[];
+  }) => void;
 }
 
 const useStore = create<AppState>((set) => ({
   setReward: (value) => set({ reward: value }),
   setCurrentReward: (value) => set({ currentReward: value }),
-}))
+}));
 
 export function QuarterRewards() {
-  const { reward, currentReward } = useStore()
-  const [searchQuery, setSearchQuery] = useState("")
-  const [isSearching, setIsSearching] = useState(false)
-  const [filteredData, setFilteredData] = useState<QuarterRewardData[]>([])
-  const [hasSearched, setHasSearched] = useState(false)
+  const { reward, currentReward } = useStore();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [filteredData, setFilteredData] = useState<QuarterRewardData[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const [triggerTask, setTriggerTAsk] = useState<{
+    runId: string;
+    token: string;
+  }>();
+
+  const trigger = api.trigger.tirggerQuarterTask.useMutation({
+    onSuccess: (res) => {
+      setTriggerTAsk({
+        runId: res.id,
+        token: res.publicAccessToken,
+      });
+    },
+  });
+
+  // Get realtime status for the running task
+  const { run: realtimeRun } = useRealtimeRun(triggerTask?.runId ?? "", {
+    accessToken: triggerTask?.token ?? "",
+    enabled: !!triggerTask?.runId && !!triggerTask?.token,
+  });
 
   const handleSearch = () => {
     if (!searchQuery.trim()) {
-      toast.error("Please enter a wallet address")
-      return
+      toast.error("Please enter a wallet address");
+      return;
     }
 
-    setIsSearching(true)
-    setHasSearched(true)
+    setIsSearching(true);
+    setHasSearched(true);
 
     // Filter data based on search query
     if (reward?.data) {
-      const results = reward.data.filter((item) => item.accountId.toLowerCase().includes(searchQuery.toLowerCase()))
+      const results = reward.data.filter((item) =>
+        item.accountId.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
 
-      setFilteredData(results)
+      setFilteredData(results);
 
       setTimeout(() => {
-        setIsSearching(false)
+        setIsSearching(false);
         if (results.length > 0) {
-          toast.success(`Found ${results.length} matching results`)
+          toast.success(`Found ${results.length} matching results`);
         } else {
-          toast.error("No matching results found")
+          toast.error("No matching results found");
         }
-      }, 500)
+      }, 500);
     } else {
-      setIsSearching(false)
-      toast.error("No data available to search")
+      setIsSearching(false);
+      toast.error("No data available to search");
     }
-  }
+  };
 
   const handleSync = () => {
-    toast.success("Data synchronized successfully")
-  }
+    trigger.mutate();
+
+    toast.success("Data synchronized successfully");
+  };
 
   const handleDownload = () => {
-    toast.success("Download started")
-  }
+    toast.success("Download started");
+  };
 
   // Determine which data to display - either filtered results or all data
-  const displayData = hasSearched && searchQuery.trim() !== "" ? filteredData : reward?.data ?? []
+  const displayData =
+    hasSearched && searchQuery.trim() !== ""
+      ? filteredData
+      : (reward?.data ?? []);
 
   return (
     <motion.div
@@ -96,25 +139,29 @@ export function QuarterRewards() {
       className="space-y-6"
     >
       <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
               <Search className="h-4 w-4 text-muted-foreground" />
             </div>
             <Input
               placeholder="Search by wallet address"
               value={searchQuery}
               onChange={(e) => {
-                setSearchQuery(e.target.value)
+                setSearchQuery(e.target.value);
                 if (e.target.value === "") {
-                  setHasSearched(false)
+                  setHasSearched(false);
                 }
               }}
               className="pl-10"
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             />
           </div>
-          <Button onClick={handleSearch} disabled={isSearching || !searchQuery.trim()}>
+
+          <Button
+            onClick={handleSearch}
+            disabled={isSearching || !searchQuery.trim()}
+          >
             {isSearching ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -126,16 +173,33 @@ export function QuarterRewards() {
           </Button>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <YearQuarterSelect />
           <div className="flex gap-2">
             {currentReward?.date === reward?.date ? (
-              <Button variant="outline" onClick={handleSync} className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Sync Data
-              </Button>
+              <AnimatedSyncButton
+                onClick={handleSync}
+                isLoading={
+                  trigger.isLoading || realtimeRun?.status === "EXECUTING"
+                }
+                status={
+                  realtimeRun
+                    ? {
+                        status: realtimeRun.status,
+                        createdAt: realtimeRun.createdAt.toISOString(),
+                        updatedAt: realtimeRun.updatedAt.toISOString(),
+                        runId: realtimeRun.id,
+                      }
+                    : undefined
+                }
+                disabled={trigger.isLoading}
+              />
             ) : (
-              <Button variant="outline" onClick={handleDownload} className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleDownload}
+                className="flex items-center gap-2"
+              >
                 <ExternalLink className="h-4 w-4" />
                 Download
               </Button>
@@ -146,7 +210,12 @@ export function QuarterRewards() {
 
       <AnimatePresence>
         {isSearching ? (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-2">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-2"
+          >
             {[1, 2, 3, 4].map((i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
@@ -171,9 +240,14 @@ export function QuarterRewards() {
                 {displayData
                   .sort((a, b) => b.action - a.action)
                   .map((row, index) => (
-                    <TableRow key={index} className="cursor-pointer hover:bg-muted/50 transition-colors">
+                    <TableRow
+                      key={index}
+                      className="cursor-pointer transition-colors hover:bg-muted/50"
+                    >
                       <TableCell className="font-medium">{index + 1}</TableCell>
-                      <TableCell className="font-mono text-xs truncate max-w-[300px]">{row.accountId}</TableCell>
+                      <TableCell className="max-w-[300px] truncate font-mono text-xs">
+                        {row.accountId}
+                      </TableCell>
                       <TableCell>{row.action}</TableCell>
                       <TableCell className="text-right">
                         <Badge variant="outline" className="font-medium">
@@ -192,12 +266,13 @@ export function QuarterRewards() {
             exit={{ opacity: 0 }}
             className="flex flex-col items-center justify-center p-8 text-center"
           >
-            <div className="rounded-full bg-muted p-3 mb-4">
+            <div className="mb-4 rounded-full bg-muted p-3">
               <Search className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-medium">No matching results</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Try a different search term or clear the search field to see all data.
+            <p className="mt-1 text-sm text-muted-foreground">
+              Try a different search term or clear the search field to see all
+              data.
             </p>
           </motion.div>
         ) : !reward?.data ? (
@@ -207,11 +282,11 @@ export function QuarterRewards() {
             exit={{ opacity: 0 }}
             className="flex flex-col items-center justify-center p-8 text-center"
           >
-            <div className="rounded-full bg-muted p-3 mb-4">
+            <div className="mb-4 rounded-full bg-muted p-3">
               <Award className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-medium">No reward data found</h3>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="mt-1 text-sm text-muted-foreground">
               There is no reward data available for the selected period.
             </p>
           </motion.div>
@@ -222,52 +297,56 @@ export function QuarterRewards() {
             exit={{ opacity: 0 }}
             className="flex flex-col items-center justify-center p-8 text-center"
           >
-            <div className="rounded-full bg-muted p-3 mb-4">
+            <div className="mb-4 rounded-full bg-muted p-3">
               <Award className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-medium">No reward data available</h3>
-            <p className="text-sm text-muted-foreground mt-1">This period contains no quarter reward data.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              This period contains no quarter reward data.
+            </p>
           </motion.div>
         ) : null}
       </AnimatePresence>
     </motion.div>
-  )
+  );
 }
 
 export function YearQuarterSelect() {
-  const { setReward, reward, setCurrentReward } = useStore()
+  const { setReward, reward, setCurrentReward } = useStore();
 
   const rewards = api.action.checker.getAllQuarterRewards.useQuery(undefined, {
     onSuccess(data) {
       if (data && data.length > 0) {
-        const first = data[0]
+        const first = data[0];
         if (first) {
-          const date = getYearQuarter(first)
+          const date = getYearQuarter(first);
           try {
-            const parsedData = quarterRewardDataSchema.array().parse(first.data ?? [])
+            const parsedData = quarterRewardDataSchema
+              .array()
+              .parse(first.data ?? []);
 
             setCurrentReward({
               date,
               data: parsedData,
-            })
+            });
 
             setReward({
               date,
               rewardedAt: first.rewardedAt ?? undefined,
               data: parsedData,
-            })
+            });
           } catch (error) {
-            console.error("Error parsing reward data:", error)
+            console.error("Error parsing reward data:", error);
             // Set empty data on parse error
             setCurrentReward({
               date,
               data: [],
-            })
+            });
             setReward({
               date,
               rewardedAt: first.rewardedAt ?? undefined,
               data: [],
-            })
+            });
           }
         }
       } else {
@@ -275,40 +354,42 @@ export function YearQuarterSelect() {
         setCurrentReward({
           date: "No data",
           data: [],
-        })
+        });
         setReward({
           date: "No data",
           data: [],
-        })
+        });
       }
     },
     onError(error) {
-      console.error("Error fetching quarter rewards:", error)
-      toast.error("Failed to fetch quarter rewards data")
+      console.error("Error fetching quarter rewards:", error);
+      toast.error("Failed to fetch quarter rewards data");
     },
-  })
+  });
 
   const handleSelect = (value: string) => {
-    const reward = rewards.data?.find((reward) => getYearQuarter(reward) == value)
+    const reward = rewards.data?.find(
+      (reward) => getYearQuarter(reward) == value,
+    );
     if (reward) {
       try {
-        const data = quarterRewardDataSchema.array().parse(reward.data ?? [])
+        const data = quarterRewardDataSchema.array().parse(reward.data ?? []);
         setReward({
           date: value,
           rewardedAt: reward.rewardedAt ?? undefined,
           data,
-        })
+        });
       } catch (error) {
-        console.error("Error parsing reward data:", error)
-        toast.error("Error loading reward data")
+        console.error("Error parsing reward data:", error);
+        toast.error("Error loading reward data");
         setReward({
           date: value,
           rewardedAt: reward.rewardedAt ?? undefined,
           data: [],
-        })
+        });
       }
     }
-  }
+  };
 
   return (
     <div className="w-full sm:w-[240px]">
@@ -337,9 +418,9 @@ export function YearQuarterSelect() {
         </Select>
       )}
     </div>
-  )
+  );
 }
 
 function getYearQuarter(data: QuarterReward) {
-  return `${data.year}-Q${data.quarter}`
+  return `${data.year}-Q${data.quarter}`;
 }
