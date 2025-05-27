@@ -6,7 +6,9 @@ interface PlotNFT {
   asset_code: string;
   asset_issuer: string;
 }
-
+export interface HolderWithDistribution extends HolderWithPlots {
+  distributedAmount?: number
+}
 interface Holder {
   pubkey: string;
   plotBal: number;
@@ -16,7 +18,11 @@ interface PlotWithHolders {
   plotNft: PlotNFT;
   holder: Holder[];
 }
-
+export interface HolderWithPlotsAndDistribution {
+  users: HolderWithDistribution[]
+  totalRewards: number
+  hasBalance: boolean
+}
 export interface HolderWithPlots {
   pubkey: string;
   plotBal: number;
@@ -40,7 +46,10 @@ export const holderWithPlotsSchema = z.object({
     }),
   ),
 });
-
+export const holderWithQuaterAmountSchema = z.object({
+  accountId: z.string(),
+  action: z.number(),
+});
 export async function allHolders() {
   const tokens = await getPlotNfts(plotNFTDistributor);
 

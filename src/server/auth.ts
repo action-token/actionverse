@@ -27,10 +27,7 @@ import { db } from "~/server/db";
 import { AuthCredentialType } from "~/types/auth";
 import { truncateString } from "~/utils/string";
 
-import {
-  USER_ACCOUNT_URL,
-  USER_ACCOUNT_URL_APPLE,
-} from "package/connect_wallet/src/lib/stellar/constant";
+import { USER_ACCOUNT_URL } from "package/connect_wallet/src/lib/stellar/constant";
 import { verifyXDRSignature } from "package/connect_wallet/src/lib/stellar/trx/deummy";
 
 /**
@@ -94,9 +91,8 @@ export const authOptions: NextAuthOptions = {
         console.log("cred", cred);
         // email pass login
         if (cred.walletType == WalletType.emailPass) {
-
           const { email, password, fromAppSign } = cred;
-          console.log("calling", cred)
+          console.log("calling", cred);
           const userCredential = await signInWithEmailAndPassword(
             auth,
             email,
@@ -207,8 +203,6 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
-
-
 };
 
 /**

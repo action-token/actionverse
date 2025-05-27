@@ -56,11 +56,13 @@ export default function AdminLayout({
         { href: "/admin/wallet", icon: "wallet", label: "WALLET", color: "bg-blue-500" },
         { href: "/admin/admins", icon: "admin", label: "ADMIN", color: "bg-purple-500" },
         { href: "/admin/pins", icon: "pins", label: "PINS", color: "bg-pink-500" },
+        { href: "/admin/reward-checker", icon: "reward", label: "REWARD CHECKER", color: "bg-primary" },
         { href: "/admin/creator-report", icon: "report", label: "COLLECTION REPORTS", color: "bg-amber-500" },
         { href: "/admin/creators", icon: "creator", label: "CREATORS", color: "bg-emerald-500" },
         { href: "/admin/users", icon: "users", label: "USERS", color: "bg-blue-500" },
         { href: "/admin/bounty", icon: "bounty", label: "BOUNTY", color: "bg-purple-500" },
         { href: "/admin/map", icon: "map", label: "MAP", color: "bg-pink-500" },
+
     ]
 
 
