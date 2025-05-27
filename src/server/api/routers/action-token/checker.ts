@@ -9,7 +9,7 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
-import { distributeWorkflow } from "~/trigger/distribute";
+import { distributeQuarterRewardWorkflow, distributeWorkflow } from "~/trigger/distribute";
 import { JsonObject } from "@prisma/client/runtime/library";
 import { getTaskRunStatus } from "~/trigger/status";
 
@@ -270,11 +270,170 @@ export const checkerRouter = createTRPCRouter({
         });
       }
     }),
+  distributeQuarterRewards: adminProcedure
+    .input(z.object({
+      year: z.number().int().positive(),
+      quarter: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Get the reward for the month
+        const reward = await ctx.db.quarterReward.findUnique({
+          where: {
+            year_quarter: {
+              year: input.year,
+              quarter: input.quarter,
+            },
+          },
+        });
+
+        if (!reward) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `No reward data found for ${input.year} ${input.quarter}`,
+          });
+        }
+
+        if (reward.isDistributed) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Rewards already distributed for this month",
+          });
+        }
+
+        // Trigger the distribution workflow
+        type TriggerTaskRes = {
+          id: string;
+          publicAccessToken: string;
+          taskIdentifier: string;
+        };
+
+        // check for active workflow is active, if so , return
+        if (reward.workflowHandle) {
+          const existingWorkflow =
+            reward.workflowHandle as JsonObject as TriggerTaskRes;
+
+          const res = await getTaskRunStatus(existingWorkflow.id);
+          if (res === "EXECUTING" || res === "QUEUED") {
+            console.log("Task is already running");
+            // return;
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Rewards distribution is already in progress",
+            });
+          }
+        }
+
+        const res = await distributeQuarterRewardWorkflow.trigger({
+          id: reward.id,
+        });
+
+        await ctx.db.quarterReward.update({
+          where: {
+            id: reward.id,
+          },
+          data: {
+            workflowHandle: res as TriggerTaskRes,
+          },
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error distributing origin rewards:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to distribute rewards",
+        });
+      }
+    }),
+  // Blocked Users API endpoints
+  getQuarterBlockedUsers: protectedProcedure.query(async ({ ctx }) => {
+    try {
+      return await ctx.db.quarterBlockedUser.findMany({
+        orderBy: {
+          blockedAt: "desc",
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching blocked users:", error);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to fetch blocked users",
+      });
+    }
+  }),
+  blockQuarterUser: adminProcedure
+    .input(blockUserSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Check if user is already blocked
+        const existingBlock = await ctx.db.quarterBlockedUser.findUnique({
+          where: {
+            walletAddress: input.walletAddress,
+          },
+        });
+
+        if (existingBlock) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "User is already blocked",
+          });
+        }
+
+        // Block the user
+        return await ctx.db.quarterBlockedUser.create({
+          data: {
+            walletAddress: input.walletAddress,
+            reason: input.reason,
+          },
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error blocking user:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to block user",
+        });
+      }
+    }),
+
+  unQuarterblockUser: adminProcedure
+    .input(unblockUserSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Check if block exists
+        const existingBlock = await ctx.db.quarterBlockedUser.findUnique({
+          where: {
+            id: input.id,
+          },
+        });
+
+        if (!existingBlock) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Block not found",
+          });
+        }
+
+        // Unblock the user
+        return await ctx.db.quarterBlockedUser.delete({
+          where: {
+            id: input.id,
+          },
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error unblocking user:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to unblock user",
+        });
+      }
+    }),
 
   // Blocked Users API endpoints
   getBlockedUsers: protectedProcedure.query(async ({ ctx }) => {
     try {
-      return await ctx.db.blockedUser.findMany({
+      return await ctx.db.originBlockedUser.findMany({
         orderBy: {
           blockedAt: "desc",
         },
@@ -293,7 +452,7 @@ export const checkerRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       try {
         // Check if user is already blocked
-        const existingBlock = await ctx.db.blockedUser.findUnique({
+        const existingBlock = await ctx.db.originBlockedUser.findUnique({
           where: {
             walletAddress: input.walletAddress,
           },
@@ -307,7 +466,7 @@ export const checkerRouter = createTRPCRouter({
         }
 
         // Block the user
-        return await ctx.db.blockedUser.create({
+        return await ctx.db.originBlockedUser.create({
           data: {
             walletAddress: input.walletAddress,
             reason: input.reason,
@@ -328,7 +487,7 @@ export const checkerRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       try {
         // Check if block exists
-        const existingBlock = await ctx.db.blockedUser.findUnique({
+        const existingBlock = await ctx.db.originBlockedUser.findUnique({
           where: {
             id: input.id,
           },
@@ -342,7 +501,7 @@ export const checkerRouter = createTRPCRouter({
         }
 
         // Unblock the user
-        return await ctx.db.blockedUser.delete({
+        return await ctx.db.originBlockedUser.delete({
           where: {
             id: input.id,
           },

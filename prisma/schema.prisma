@@ -796,7 +796,14 @@ model OriginReward {
     lastError      Json?
 }
 
-model BlockedUser {
+model OriginBlockedUser {
+    id            String   @id @default(uuid())
+    walletAddress String   @unique
+    reason        String?
+    blockedAt     DateTime @default(now())
+}
+
+model QuarterBlockedUser {
     id            String   @id @default(uuid())
     walletAddress String   @unique
     reason        String?
@@ -804,12 +811,19 @@ model BlockedUser {
 }
 
 model QuarterReward {
-    id            String    @id @default(uuid())
-    year          Int
-    quarter       String
-    data          Json
-    lastUpdatedAt DateTime  @default(now())
-    rewardedAt    DateTime?
+    id                String    @id @default(uuid())
+    year              Int
+    quarter           String
+    data              Json // Stores all distribution info
+    isDistributed     Boolean   @default(false) // Whether the month's distribution is paid
+    distributedAmount Float? // Actual distributed amount
+    lastUpdatedAt     DateTime  @default(now())
+    rewardedAt        DateTime?
+
+    // Simple distribution tracking
+    completedUsers Json? // Array of wallet addresses that have been successfully distributed to
+    workflowHandle Json? // Trigger.dev workflow handle ID for tracking
+    lastError      Json?
 
     @@unique([year, quarter])
 }
