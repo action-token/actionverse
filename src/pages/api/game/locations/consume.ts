@@ -17,7 +17,7 @@ export default async function handler(
       error: "User is not authenticated",
     });
   }
-
+  console.log("token", token);
   const pubkey = token.sub;
 
   if (!pubkey) {
@@ -101,22 +101,30 @@ export default async function handler(
       },
     });
 
-    if (!hasConsumer) {
+    if (!hasConsumer && findActionLocation) {
+      const bountyParticipant = await db.bountyParticipant.findUnique({
+        where: {
+          bountyId_userId: {
+            userId: pubkey,
+            bountyId: findActionLocation.bountyId,
+          },
+        },
+      });
 
-      if (findActionLocation) {
+      if (bountyParticipant) {
         await db.bountyParticipant.update({
           where: {
             bountyId_userId: {
               userId: pubkey,
-              bountyId: findActionLocation?.bountyId,
-            }
+              bountyId: findActionLocation.bountyId,
+            },
           },
           data: {
             currentStep: {
               increment: 1,
             },
-          }
-        })
+          },
+        });
       }
       await db.locationConsumer.create({
         data: { locationId: location.id, userId: pubkey },
