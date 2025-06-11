@@ -339,6 +339,7 @@ export const BountyRoute = createTRPCRouter({
         const nextItem = bountyWithIsOwnerNisJoined.pop()
         nextCursor = nextItem?.id
       }
+      console.log("bountyWithIsOwnerNisJoined", bountyWithIsOwnerNisJoined)
 
       return {
         bounties: bountyWithIsOwnerNisJoined,
@@ -537,6 +538,7 @@ export const BountyRoute = createTRPCRouter({
           participants: {
             select: {
               user: true,
+              currentStep: true,
             },
           },
           creator: {
@@ -587,6 +589,7 @@ export const BountyRoute = createTRPCRouter({
               submissions: true,
               comments: true,
               BountyWinner: true,
+              ActionLocation: true,
             },
           },
         },

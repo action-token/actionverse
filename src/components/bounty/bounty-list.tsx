@@ -80,7 +80,6 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {bounties.map((bounty, index) => {
                 console.log(bounty.ActionLocation?.length)
-                const currentStep = 0
                 const totalSteps = bounty.ActionLocation?.length ?? 0
 
                 return (
@@ -170,13 +169,17 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
                                         <div className="w-full space-y-1">
                                             <div className="flex justify-between text-xs text-muted-foreground">
                                                 <span>
-                                                    Step {currentStep + 1} of {totalSteps}
+                                                    Step {(bounty.currentStep ?? 0)} of {totalSteps}
                                                 </span>
-                                                <span>{Math.round((currentStep / Math.max(totalSteps - 1, 1)) * 100)}%</span>
+                                                <span>{Math.round(((bounty.currentStep ?? 0) / Math.max(totalSteps, 1)) * 100)
+                                                    === 100 ?
+                                                    <Badge variant="secondary" className="text-xs">Completed</Badge>
+                                                    : Math.round(((bounty.currentStep ?? 0) / Math.max(totalSteps, 1)) * 100) + "%"
+                                                }</span>
                                             </div>
                                             <Progress
                                                 className="h-2"
-                                                value={Math.round((currentStep / Math.max(totalSteps - 1, 1)) * 100)}
+                                                value={Math.round(((bounty.currentStep ?? 0) / Math.max(totalSteps, 1)) * 100)}
 
                                             />
                                         </div>

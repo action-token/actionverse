@@ -18,6 +18,7 @@ import {
     FilePlus,
     FileText,
     FileX,
+    ListChecks,
     Loader2,
     MapPin,
     MessageCircle,
@@ -28,6 +29,7 @@ import {
     Send,
     Trash,
     Trophy,
+    UserCheck,
     UserPlus,
     Users,
     XCircle,
@@ -110,6 +112,7 @@ import { useEditBuyModalStore } from "~/components/store/edit-bounty-modal-store
 import { useBountySubmissionModalStore } from "~/components/store/bounty-submission-store";
 import { useViewBountySubmissionModalStore } from "~/components/store/view-bounty-attachment-store";
 import { Circle } from "~/components/common/circle";
+import { Progress } from "~/components/shadcn/ui/progress";
 type Message = {
     role: UserRole
     message: string
@@ -1197,6 +1200,7 @@ const AdminBountyPage = () => {
 
     const handleWinner = (bountyId: number, userId: string, prize: number) => {
         setLoadingBountyId(bountyId)
+        console.log("handleWinner", bountyId, userId, prize)
         GetSendBalanceToWinnerXdr.mutate({
             BountyId: bountyId,
             userId: userId,
@@ -1220,7 +1224,15 @@ const AdminBountyPage = () => {
             status: status,
         })
     }
-
+    const tabsConfig = [
+        { id: "details", label: "Details", icon: Trophy },
+        { id: "submissions", label: "Submissions", icon: Paperclip, count: data?._count.submissions },
+        ...(data?.bountyType === "SCAVENGER_HUNT"
+            ? [{ id: "participants", label: "Participants", icon: ListChecks, count: data._count.participants }]
+            : []),
+        { id: "doubt", label: "Chat", icon: MessageSquare },
+        { id: "comments", label: "Comments", icon: MessageSquare, count: data?._count.comments },
+    ]
     if (bountyLoading) {
         return (
             <div className="flex items-center justify-center h-screen">
@@ -1361,20 +1373,20 @@ const AdminBountyPage = () => {
                             <Tabs defaultValue="details" className="w-full">
                                 <div className="border-b border-slate-200 dark:border-slate-700 mb-6">
                                     <TabsList className="bg-transparent p-0 h-auto space-x-6">
-                                        {[
-                                            { id: "details", label: "Details", icon: Trophy },
-                                            { id: "submissions", label: "Submissions", icon: Paperclip },
-                                            { id: "doubt", label: "Chat", icon: MessageSquare },
-                                            { id: "comments", label: "Comments", icon: MessageSquare },
-                                        ].map((tab) => (
+                                        {tabsConfig.map((tab) => (
                                             <TabsTrigger
                                                 key={tab.id}
                                                 value={tab.id}
-                                                className="relative py-3 px-2 bg-transparent rounded-none data-[state=active]:text-primary data-[state=active]:shadow-none data-[state=active]:bg-transparent group"
+                                                className="relative py-3 px-2 bg-transparent rounded-none data-[state=active]:text-primary data-[state=active]:shadow-none data-[state=active]:bg-transparent group whitespace-nowrap"
                                             >
                                                 <div className="flex items-center gap-2">
                                                     <tab.icon size={18} />
                                                     <span>{tab.label}</span>
+                                                    {tab.count !== undefined && (
+                                                        <Badge variant="outline" className="ml-1 px-1.5 py-0.5 text-xs">
+                                                            {tab.count}
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                                 <motion.div
                                                     className="absolute -bottom-[1px] left-0 right-0 h-0.5 bg-primary rounded-full opacity-0 scale-x-0 group-data-[state=active]:opacity-100 group-data-[state=active]:scale-x-100 transition-all duration-200"
@@ -1571,7 +1583,109 @@ const AdminBountyPage = () => {
                                         </Dialog>
                                     )}
                                 </TabsContent>
+                                {data.bountyType === "SCAVENGER_HUNT" && (
+                                    <TabsContent value="participants" className="mt-0">
+                                        <div className="space-y-6">
+                                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                                                Participants ({data._count.participants})
+                                            </h2>
+                                            {data.participants.length === 0 ? (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ duration: 0.4 }}
+                                                    className="flex flex-col items-center justify-center py-12 px-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700"
+                                                >
+                                                    <div className="text-slate-400 dark:text-slate-500 mb-4">
+                                                        <Users size={48} />
+                                                    </div>
+                                                    <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-1">No participants yet</h3>
+                                                    <p className="text-slate-500 dark:text-slate-400 text-center max-w-md">
+                                                        No one has joined this scavenger hunt yet.
+                                                    </p>
+                                                </motion.div>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    {data.participants.map((participant, idx) => {
+                                                        const isCompleted = data._count.ActionLocation > 0 && participant.currentStep >= data._count.ActionLocation
+                                                        const progressPercentage =
+                                                            data._count.ActionLocation > 0 ? (participant.currentStep / data._count.ActionLocation) * 100 : 0
+                                                        const isAlreadyWinner = data.BountyWinner.some(
+                                                            (winner) => winner.user.id === participant.user.id,
+                                                        )
 
+                                                        return (
+                                                            <motion.div
+                                                                key={participant.user.id}
+                                                                initial={{ opacity: 0, y: 20 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                transition={{ duration: 0.3, delay: idx * 0.1 }}
+                                                                className="bg-white dark:bg-slate-800 rounded-xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm"
+                                                            >
+                                                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <CustomAvatar url={participant.user.image} className="h-10 w-10" />
+                                                                        <div>
+                                                                            <p className="font-medium text-slate-900 dark:text-white">
+                                                                                {participant.user.name || "Unnamed User"}
+                                                                            </p>
+                                                                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                                                                Step {participant.currentStep} of {data._count.ActionLocation}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="w-full sm:w-auto flex flex-col items-start sm:items-end gap-2">
+                                                                        <div className="w-full flex items-center justify-center gap-2">
+                                                                            {
+                                                                                isCompleted ? (
+                                                                                    <Badge variant="default" className="bg-green-500 text-white">
+                                                                                        <CheckCircle className="mr-1 h-4 w-4" />
+                                                                                        Completed
+                                                                                    </Badge>
+                                                                                ) : (
+                                                                                    <Badge variant="outline" className="text-slate-500 dark:text-slate-400">
+                                                                                        <Clock className="mr-1 h-4 w-4" />
+                                                                                        {progressPercentage.toFixed(0)}% Completed
+                                                                                    </Badge>
+                                                                                )
+                                                                            }
+                                                                        </div>
+                                                                        {isCompleted && !isAlreadyWinner && (
+                                                                            <Button
+                                                                                size="sm"
+                                                                                onClick={() =>
+                                                                                    handleWinner(data.id, participant.user.id, data.priceInBand / data.totalWinner)
+                                                                                }
+                                                                                disabled={
+                                                                                    loadingBountyId === data.id ||
+                                                                                    data.totalWinner <= data.currentWinnerCount ||
+                                                                                    GetSendBalanceToWinnerXdr.isLoading
+                                                                                }
+                                                                                className="bg-green-500 hover:bg-green-600 text-white mt-2"
+                                                                            >
+                                                                                {GetSendBalanceToWinnerXdr.isLoading && loadingBountyId === data.id ? (
+                                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                                ) : (
+                                                                                    <Crown className="mr-2 h-4 w-4" />
+                                                                                )}
+                                                                                Select as Winner
+                                                                            </Button>
+                                                                        )}
+                                                                        {isAlreadyWinner && (
+                                                                            <Badge variant="default" className="mt-2 bg-amber-500 text-white">
+                                                                                <UserCheck className="mr-1 h-4 w-4" /> Winner
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </motion.div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </TabsContent>
+                                )}
                                 <TabsContent value="doubt" className="mt-0 ">
                                     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm" >
                                         <Chat bountyId={data.id} />
