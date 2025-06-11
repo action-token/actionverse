@@ -46,11 +46,7 @@ export default async function handler(
   const getUserActionBounties = await db.bounty.findMany({
     where: {
       bountyType: "SCAVENGER_HUNT",
-      participants: {
-        some: {
-          userId: userId,
-        },
-      },
+
     },
     select: {
       ActionLocation: true,
@@ -66,17 +62,20 @@ export default async function handler(
   // Collect all scavenger group IDs and currentStep+1 group IDs
   const allScavengerGroupIdsSet = new Set<string>();
   const currentStepGroupIdsSet = new Set<string>();
-
+  console.log("getUserActionBounties", getUserActionBounties);
   for (const bounty of getUserActionBounties) {
+    console.log("bounty", bounty);
     const currentStep = bounty.participants.find((p) => p.userId === userId)?.currentStep ?? -1;
     for (const action of bounty.ActionLocation) {
+      console.log("action", action);
       allScavengerGroupIdsSet.add(action.locationGroupId);
       if (action.serial === currentStep + 1) {
         currentStepGroupIdsSet.add(action.locationGroupId);
       }
     }
   }
-
+  console.log("allScavengerGroupIdsSet", allScavengerGroupIdsSet);
+  console.log("currentStepGroupIdsSet", currentStepGroupIdsSet);
   let creatorsId: string[] | undefined = undefined;
   if (data.data.filterId === "1") {
 
@@ -270,7 +269,7 @@ export default async function handler(
   }
 
   const locations = await pinsForCreators(creatorsId);
-  console.log("locations", locations.length);
+
   res.status(200).json({ locations });
 }
 
