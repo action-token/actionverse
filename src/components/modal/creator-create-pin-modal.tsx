@@ -1,6 +1,7 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
+
 import {
     Loader,
     MapPin,
@@ -16,32 +17,62 @@ import {
     ArrowRight,
     Trophy,
 } from "lucide-react"
+
 import Image from "next/image"
+
 import { type ChangeEvent, useEffect, useRef, useState } from "react"
+
 import { Controller, type SubmitHandler, useForm, FormProvider, useFormContext } from "react-hook-form"
+
 import toast from "react-hot-toast"
+
 import { match } from "ts-pattern"
+
 import { z } from "zod"
+
 import { useCreatorStorageAcc } from "~/lib/state/wallete/stellar-balances"
+
 import { api } from "~/utils/api"
+
 import { BADWORDS } from "~/utils/banned-word"
+
 import { error, loading, success } from "~/utils/trcp/patterns"
+
 import { motion, AnimatePresence } from "framer-motion"
+
 import { cn } from "~/lib/utils"
 
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "~/components/shadcn/ui/dialog"
+
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
+
 import { Input } from "~/components/shadcn/ui/input"
+
 import { Textarea } from "~/components/shadcn/ui/textarea"
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/shadcn/ui/select"
+
 import { Checkbox } from "~/components/shadcn/ui/checkbox"
+
 import { Button } from "~/components/shadcn/ui/button"
+
 import { Label } from "~/components/shadcn/ui/label"
+
 import { Badge } from "~/components/shadcn/ui/badge"
+
 import { Card, CardContent } from "~/components/shadcn/ui/card"
-import { Separator } from "~/components/shadcn/ui/separator"
+
 import { useCreatorMapModalStore } from "../store/creator-map-modal-store"
+
 import { UploadS3Button } from "../common/upload-button"
+
 import { useCreateLocationBasedBountyStore } from "../store/create-locationbased-bounty-store"
 
 type AssetType = {
@@ -52,10 +83,12 @@ type AssetType = {
 }
 
 export const PAGE_ASSET_NUM = -10
+
 export const NO_ASSET = -99
 
 // Define the steps as a type for better type safety
 type FormStep = "basic" | "tokens" | "advanced"
+
 const FORM_STEPS: FormStep[] = ["basic", "tokens", "advanced"]
 
 export const createPinFormSchema = z.object({
@@ -109,10 +142,12 @@ export default function CreatePinModal() {
     const [activeStep, setActiveStep] = useState<FormStep>("basic")
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const { setData, setIsOpen: setBountyOpen } = useCreateLocationBasedBountyStore()
+
     // Format dates for input fields
     const formatDateForInput = (date: Date) => {
         return date.toISOString().split("T")[0]
     }
+
     const today = new Date()
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -151,11 +186,14 @@ export default function CreatePinModal() {
     const tokenAmount = watch("pinCollectionLimit")
     const startDate = watch("startDate")
     const endDate = watch("endDate")
+    const autoCollect = watch("autoCollect")
+    const multiPin = watch("multiPin")
 
     // query
     const assets = api.fan.asset.myAssets.useQuery(undefined, {
         enabled: isOpen,
     })
+
     const tiers = api.fan.member.getAllMembership.useQuery()
 
     const assetsDropdown = match(assets)
@@ -166,6 +204,7 @@ export default function CreatePinModal() {
             if (isPageAsset && pageAsset) {
                 return <p>{pageAsset.code}</p>
             }
+
             // if (isPageAsset === false && shopAsset)
             if (true)
                 return (
@@ -214,6 +253,7 @@ export default function CreatePinModal() {
 
     function TiersOptions() {
         if (tiers.isLoading) return <div className="h-10 w-full bg-muted animate-pulse rounded-md"></div>
+
         if (tiers.data) {
             return (
                 <div className="space-y-2 w-full">
@@ -249,6 +289,7 @@ export default function CreatePinModal() {
     }
 
     const openPopup = () => setIsOpen(true)
+
     const closePopup = () => {
         setIsOpen(false)
         resetState()
@@ -298,18 +339,22 @@ export default function CreatePinModal() {
 
     function handleTokenOptionChange(event: ChangeEvent<HTMLSelectElement>): void {
         const selectedAssetId = Number(event.target.value)
+
         if (selectedAssetId === NO_ASSET) {
             setSelectedToken(undefined)
             return
         }
+
         if (selectedAssetId === PAGE_ASSET_NUM) {
             const pageAsset = assets.data?.pageAsset
             console.log("page asset", pageAsset)
+
             if (pageAsset) {
                 const bal = getAssetBalance({
                     code: pageAsset.code,
                     issuer: pageAsset.issuer,
                 })
+
                 setSelectedToken({
                     bal,
                     code: pageAsset.code,
@@ -317,6 +362,7 @@ export default function CreatePinModal() {
                     id: PAGE_ASSET_NUM,
                     thumbnail: pageAsset.thumbnail ?? "",
                 })
+
                 console.log("bal................", bal)
                 setRemainingBalance(bal)
                 setValue("token", PAGE_ASSET_NUM)
@@ -326,11 +372,13 @@ export default function CreatePinModal() {
         }
 
         const selectedAsset = assets.data?.shopAsset.find((asset) => asset.id === selectedAssetId)
+
         if (selectedAsset) {
             const bal = getAssetBalance({
                 code: selectedAsset.code,
                 issuer: selectedAsset.issuer,
             })
+
             setSelectedToken({ ...selectedAsset, bal: bal })
             setRemainingBalance(bal)
             setValue("token", selectedAsset.id)
@@ -362,33 +410,42 @@ export default function CreatePinModal() {
         if (isOpen && scrollContainerRef.current) {
             scrollContainerRef.current.scrollTop = 0
         }
+
         if (duplicate) {
             if (prevData) {
                 if (prevData.title) {
                     setValue("title", prevData.title)
                 }
+
                 if (prevData.description) {
                     setValue("description", prevData.description)
                 }
+
                 if (prevData.image) {
                     setCover(prevData.image)
                     setValue("image", prevData.image)
                 }
+
                 if (prevData.startDate) {
                     setValue("startDate", prevData.startDate)
                 }
+
                 if (prevData.endDate) {
                     setValue("endDate", prevData.endDate)
                 }
+
                 if (prevData.url) {
                     setValue("url", prevData.url)
                 }
+
                 if (prevData.autoCollect) {
                     setValue("autoCollect", prevData.autoCollect)
                 }
+
                 if (prevData.pinCollectionLimit) {
                     setValue("pinCollectionLimit", prevData.pinCollectionLimit)
                 }
+
                 if (prevData.token) {
                     handleTokenOptionChange({
                         target: { value: prevData.token.toString() },
@@ -398,6 +455,7 @@ export default function CreatePinModal() {
                 if (prevData.tier) {
                     setValue("tier", prevData.tier)
                 }
+
                 if (prevData.image) {
                     setCover(prevData.image)
                 }
@@ -431,6 +489,7 @@ export default function CreatePinModal() {
                         code: pageAsset.code,
                         issuer: pageAsset.issuer,
                     })
+
                     setSelectedToken({
                         bal,
                         code: pageAsset.code,
@@ -438,6 +497,7 @@ export default function CreatePinModal() {
                         id: PAGE_ASSET_NUM,
                         thumbnail: pageAsset.thumbnail ?? "",
                     })
+
                     setRemainingBalance(bal - (getValues("pinCollectionLimit") || 0))
                 }
             } else if (tokenValue !== NO_ASSET) {
@@ -447,12 +507,14 @@ export default function CreatePinModal() {
                         code: selectedAsset.code,
                         issuer: selectedAsset.issuer,
                     })
+
                     setSelectedToken({ ...selectedAsset, bal: bal })
                     setRemainingBalance(bal - (getValues("pinCollectionLimit") || 0))
                 }
             }
         }
     }, [assets.data, getValues, getAssetBalance, selectedToken])
+
     return (
         <>
             <AnimatePresence>
@@ -498,22 +560,18 @@ export default function CreatePinModal() {
                                             <div
                                                 className={cn(
                                                     "w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm mb-1 ",
-                                                    activeStep === step ? "bg-primary text-primary-foreground shadow-sm shadow-foreground" : "bg-muted text-muted-foreground",
+                                                    activeStep === step
+                                                        ? "bg-primary text-primary-foreground shadow-sm shadow-foreground"
+                                                        : "bg-muted text-muted-foreground",
                                                 )}
                                             >
                                                 {index + 1}
                                             </div>
-                                            <span
-                                                className={cn(
-                                                    "text-xs",
-                                                    activeStep === step ? " font-medium" : "text-muted-foreground",
-                                                )}
-                                            >
+                                            <span className={cn("text-xs", activeStep === step ? " font-medium" : "text-muted-foreground")}>
                                                 {step === "basic" ? "Basic Info" : step === "tokens" ? "Tokens & Tiers" : "Advanced"}
                                             </span>
                                         </div>
                                     ))}
-
                                     <div className="absolute left-0 right-0 top-[6.5rem] px-6 z-0">
                                         <div className="h-[2px] bg-muted w-full relative">
                                             <div
@@ -572,7 +630,6 @@ export default function CreatePinModal() {
                                                                 toast.error(`ERROR! ${error.message}`)
                                                             }}
                                                         />
-
                                                         <AnimatePresence>
                                                             {coverUrl && (
                                                                 <motion.div
@@ -686,50 +743,53 @@ export default function CreatePinModal() {
                                                 <div className="grid gap-4 md:grid-cols-2">
                                                     {assetsDropdown}
 
-                                                    <AnimatePresence>
-                                                        {selectedToken && (
-                                                            <motion.div
-                                                                initial={{ opacity: 0, y: 10 }}
-                                                                animate={{ opacity: 1, y: 0 }}
-                                                                exit={{ opacity: 0, y: 10 }}
-                                                                className="space-y-2"
-                                                            >
-                                                                <div className="flex items-center gap-2">
-                                                                    <Coins className="h-4 w-4" />
-                                                                    <Label htmlFor="perUserTokenAmount" className="text-sm font-medium">
-                                                                        Collection limit
-                                                                    </Label>
-                                                                </div>
-                                                                <Input
-                                                                    type="number"
-                                                                    defaultValue={1}
-                                                                    id="perUserTokenAmount"
-                                                                    {...register("pinCollectionLimit", {
-                                                                        valueAsNumber: true,
-                                                                        min: 1,
-                                                                        max: 2147483647,
-                                                                    })}
-                                                                    max={2147483647}
-                                                                />
-
-                                                                <div className="flex items-center gap-2">
-                                                                    <Badge
-                                                                        variant={remainingBalance < 0 ? "destructive" : "outline"}
-                                                                        className="px-2 py-0 h-5"
-                                                                    >
-                                                                        {remainingBalance < 0
-                                                                            ? "Insufficient token balance"
-                                                                            : `Limit Remaining: ${remainingBalance}`}
-                                                                    </Badge>
-                                                                </div>
-
-                                                                {errors.pinCollectionLimit && (
-                                                                    <p className="text-sm text-destructive">{errors.pinCollectionLimit.message}</p>
-                                                                )}
-                                                            </motion.div>
+                                                    {/* Collection Limit - Always visible */}
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <Coins className="h-4 w-4" />
+                                                            <Label htmlFor="perUserTokenAmount" className="text-sm font-medium">
+                                                                Collection limit
+                                                            </Label>
+                                                        </div>
+                                                        <Input
+                                                            type="number"
+                                                            defaultValue={1}
+                                                            id="perUserTokenAmount"
+                                                            {...register("pinCollectionLimit", {
+                                                                valueAsNumber: true,
+                                                                min: 1,
+                                                                max: 2147483647,
+                                                            })}
+                                                            max={2147483647}
+                                                        />
+                                                        {errors.pinCollectionLimit && (
+                                                            <p className="text-sm text-destructive">{errors.pinCollectionLimit.message}</p>
                                                         )}
-                                                    </AnimatePresence>
+                                                    </div>
                                                 </div>
+
+                                                {/* Token Balance Info - Only visible when token is selected */}
+                                                <AnimatePresence>
+                                                    {selectedToken && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: 10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: 10 }}
+                                                            className="space-y-2"
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <Badge
+                                                                    variant={remainingBalance < 0 ? "destructive" : "outline"}
+                                                                    className="px-2 py-1 h-6"
+                                                                >
+                                                                    {remainingBalance < 0
+                                                                        ? "Insufficient token balance"
+                                                                        : `Limit Remaining: ${remainingBalance}`}
+                                                                </Badge>
+                                                            </div>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
                                             </motion.div>
                                         )}
 
@@ -791,7 +851,18 @@ export default function CreatePinModal() {
 
                                                 <div className="grid gap-4 md:grid-cols-2">
                                                     <div className="flex items-start space-x-2">
-                                                        <Checkbox id="autoCollect" {...register("autoCollect")} />
+                                                        <Controller
+                                                            name="autoCollect"
+                                                            control={control}
+                                                            render={({ field }) => (
+                                                                <Checkbox
+                                                                    id="autoCollect"
+                                                                    checked={field.value}
+                                                                    onCheckedChange={field.onChange}
+                                                                    disabled={multiPin} // Disable autoCollect if multiPin is enabled
+                                                                />
+                                                            )}
+                                                        />
                                                         <div className="grid gap-1.5 leading-none">
                                                             <Label
                                                                 htmlFor="autoCollect"
@@ -804,7 +875,18 @@ export default function CreatePinModal() {
                                                     </div>
 
                                                     <div className="flex items-start space-x-2">
-                                                        <Checkbox id="multiPin" {...register("multiPin")} />
+                                                        <Controller
+                                                            name="multiPin"
+                                                            control={control}
+                                                            render={({ field }) => (
+                                                                <Checkbox
+                                                                    id="multiPin"
+                                                                    checked={field.value}
+                                                                    onCheckedChange={field.onChange}
+                                                                    disabled={autoCollect} // Disable multiPin if autoCollect is enabled
+                                                                />
+                                                            )}
+                                                        />
                                                         <div className="grid gap-1.5 leading-none">
                                                             <Label
                                                                 htmlFor="multiPin"
@@ -819,9 +901,6 @@ export default function CreatePinModal() {
                                             </motion.div>
                                         )}
 
-
-
-
                                         {addPinM.isError && (
                                             <div className="mt-4 rounded-lg bg-destructive/10 p-3 text-destructive">
                                                 <p>{addPinM.failureReason?.message}</p>
@@ -831,6 +910,7 @@ export default function CreatePinModal() {
                                 </FormProvider>
                             </div>
                         </motion.div>
+
                         <DialogFooter className="px-4 py-2 border-t-2 ">
                             <div className="flex items-center justify-between w-full">
                                 <Button type="button" variant="outline" onClick={closePopup}>
@@ -843,7 +923,7 @@ export default function CreatePinModal() {
                                             type="button"
                                             variant="outline"
                                             onClick={goToPreviousStep}
-                                            className="flex items-center gap-1"
+                                            className="flex items-center gap-1 bg-transparent"
                                         >
                                             <ChevronLeft className="h-4 w-4" />
                                             Previous
@@ -852,8 +932,11 @@ export default function CreatePinModal() {
 
                                     {activeStep !== "advanced" ? (
                                         <Button
-                                            variant='sidebar'
-                                            type="button" onClick={goToNextStep} className="flex items-center gap-1 shadow-sm shadow-foreground">
+                                            variant="sidebar"
+                                            type="button"
+                                            onClick={goToNextStep}
+                                            className="flex items-center gap-1 shadow-sm shadow-foreground"
+                                        >
                                             Next
                                             <ChevronRight className="h-4 w-4" />
                                         </Button>
@@ -875,7 +958,8 @@ export default function CreatePinModal() {
                                         </Button>
                                     )}
                                 </div>
-                            </div></DialogFooter>
+                            </div>
+                        </DialogFooter>
                     </DialogContent>
                 </Dialog>
             </AnimatePresence>
@@ -886,6 +970,7 @@ export default function CreatePinModal() {
 // components
 function ManualLatLanInputField() {
     const { manual, position } = useCreatorMapModalStore()
+
     // Use the parent form context instead of creating a new one
     const {
         register,
@@ -903,6 +988,7 @@ function ManualLatLanInputField() {
                     <Input type="number" step={0.0000000000000000001} {...register("lat", { valueAsNumber: true })} />
                     {errors.lat && <p className="text-sm text-destructive">{errors.lat?.message}</p>}
                 </div>
+
                 <div className="space-y-2">
                     <div className="flex items-center gap-2">
                         <MapPin className="h-4 w-4" />
@@ -939,4 +1025,3 @@ function ManualLatLanInputField() {
             </Card>
         )
 }
-

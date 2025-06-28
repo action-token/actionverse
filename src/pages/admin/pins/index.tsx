@@ -1,111 +1,143 @@
 "use client"
 
 import type { Location, LocationGroup } from "@prisma/client"
-import {
-    Check,
-    ChevronDown,
-    ChevronUp,
-    X,
-    Search,
-    MapPin,
-    User,
-    Info,
-    Clock,
-    Calendar,
-    FileText,
-    RefreshCw,
-    AlertCircle,
-} from "lucide-react"
+import { Check, ChevronDown, Trash2, X, User, MapPin } from "lucide-react"
 import Image from "next/image"
 import { useState } from "react"
 import toast from "react-hot-toast"
-import { motion, AnimatePresence } from "framer-motion"
+
+import { PinInfoUpdateModal } from "~/components/modal/pin-info-update-modal"
 import { Button } from "~/components/shadcn/ui/button"
-import { Input } from "~/components/shadcn/ui/input"
-import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import { Badge } from "~/components/shadcn/ui/badge"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
-import { Checkbox } from "~/components/shadcn/ui/checkbox"
+import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/shadcn/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
-import { ScrollArea } from "~/components/shadcn/ui/scroll-area"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
+import { Badge } from "~/components/shadcn/ui/badge"
+import { Checkbox } from "~/components/shadcn/ui/checkbox"
+import { Separator } from "~/components/shadcn/ui/separator"
 import { api } from "~/utils/api"
 import { CREATOR_TERM } from "~/utils/term"
-import { cn } from "~/lib/utils"
-import AdminLayout from "~/components/layout/root/AdminLayout"
 
+interface pinData {
+    image: string
+    title: string
+    description: string
+    id: string
+    startDate?: Date
+    endDate?: Date
+    collectionLimit?: number
+    remainingLimit?: number
+    multiPin?: boolean
+    autoCollect?: boolean
+    lat?: number
+    long?: number
+    link?: string
+}
+
+// Enhanced loading skeleton component
+function LoadingSkeleton() {
+    return (
+        <div className="w-full p-6 space-y-6">
+            <div className="flex space-x-1 mb-8">
+                <div className="h-10 w-32 bg-gray-200 animate-pulse rounded-md"></div>
+                <div className="h-10 w-32 bg-gray-200 animate-pulse rounded-md"></div>
+            </div>
+
+            {Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i} className="w-full">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="h-5 w-5 bg-gray-200 animate-pulse rounded"></div>
+                                <div className="h-5 w-48 bg-gray-200 animate-pulse rounded"></div>
+                            </div>
+                            <div className="h-8 w-8 bg-gray-200 animate-pulse rounded"></div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {Array.from({ length: 2 }).map((_, j) => (
+                            <Card key={j} className="border-l-4 border-l-blue-200">
+                                <CardHeader className="pb-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-2">
+                                            <div className="h-4 w-40 bg-gray-200 animate-pulse rounded"></div>
+                                            <div className="h-3 w-56 bg-gray-200 animate-pulse rounded"></div>
+                                        </div>
+                                        <div className="h-8 w-8 bg-gray-200 animate-pulse rounded"></div>
+                                    </div>
+                                </CardHeader>
+                            </Card>
+                        ))}
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    )
+}
+
+// Main Pins component with enhanced UI
 export default function Pins() {
-    const [isRefreshing, setIsRefreshing] = useState(false)
+    const [viewMode, setViewMode] = useState<"pending" | "approved">("pending")
 
-    const locationGroups = api.maps.pin.getLocationGroups.useQuery(undefined, {
-        refetchOnWindowFocus: false,
-        onSettled: () => {
-            setIsRefreshing(false)
-        },
+    // Separate queries for pending and approved pins
+    const pendingLocationGroups = api.maps.pin.getLocationGroups.useQuery(undefined, {
+        enabled: viewMode === "pending",
     })
 
-    const handleRefresh = () => {
-        setIsRefreshing(true)
-        locationGroups.refetch()
-    }
+    const approvedLocationGroups = api.maps.pin.getApprovedLocationGroups.useQuery(undefined, {
+        enabled: viewMode === "approved",
+    })
 
-    if (locationGroups.isLoading && !isRefreshing) {
-        return <PinsLoadingSkeleton />
-    }
+    // Determine which data to use based on current view mode
+    const locationGroups = viewMode === "pending" ? pendingLocationGroups : approvedLocationGroups
 
+    if (locationGroups.isLoading) return <LoadingSkeleton />
     if (locationGroups.error) {
         return (
-            <AdminLayout>
-                <div className="container mx-auto px-4 py-12">
-                    <Card className="border-destructive/50 bg-destructive/5">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-destructive">
-                                <AlertCircle className="h-5 w-5" />
-                                Error Loading Pins
-                            </CardTitle>
-                            <CardDescription className="text-destructive/80">
-                                {locationGroups.error.message || "There was an error loading the pins data."}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardFooter>
-                            <Button variant="outline" onClick={handleRefresh}>
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                                Try Again
-                            </Button>
-                        </CardFooter>
-                    </Card>
-                </div>
-            </AdminLayout>
+            <div className="w-full p-6">
+                <Card className="border-red-200 bg-red-50">
+                    <CardContent className="pt-6">
+                        <div className="text-red-800">Error: {locationGroups.error.message}</div>
+                    </CardContent>
+                </Card>
+            </div>
         )
     }
 
-    if (locationGroups.data) {
-        return (
-            <AdminLayout>
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.5 }}
-                    className="px-4 py-8"
-                >
-                    <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <h1 className="text-3xl font-bold tracking-tight">Manage Pins</h1>
-                            <p className="text-muted-foreground">Review and approve location pins submitted by creators.</p>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
-                            <RefreshCw className={cn("mr-2 h-4 w-4", isRefreshing && "animate-spin")} />
-                            Refresh
-                        </Button>
-                    </div>
+    return (
+        <div className="w-full p-6 space-y-6">
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold text-gray-900">Pin Management</h1>
+                <Badge variant="outline" className="text-sm">
+                    {locationGroups.data?.length || 0} groups
+                </Badge>
+            </div>
 
-                    <GroupPins groups={locationGroups.data} />
-                </motion.div>
-            </AdminLayout>
-        )
-    }
+            <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "pending" | "approved")} className="w-full">
+                <TabsList className="grid w-full max-w-md grid-cols-2">
+                    <TabsTrigger value="pending" className="flex items-center gap-2">
+                        <div className="h-2 w-2 bg-yellow-500 rounded-full"></div>
+                        Pending Pins
+                    </TabsTrigger>
+                    <TabsTrigger value="approved" className="flex items-center gap-2">
+                        <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+                        Approved Pins
+                    </TabsTrigger>
+                </TabsList>
 
-    return null
+                <TabsContent value="pending" className="mt-6">
+                    {locationGroups.data && (
+                        <GroupPins groups={locationGroups.data} mode="pending" refetch={locationGroups.refetch} />
+                    )}
+                </TabsContent>
+
+                <TabsContent value="approved" className="mt-6">
+                    {locationGroups.data && (
+                        <GroupPins groups={locationGroups.data} mode="approved" refetch={locationGroups.refetch} />
+                    )}
+                </TabsContent>
+            </Tabs>
+        </div>
+    )
 }
 
 type GroupPins = LocationGroup & {
@@ -115,133 +147,89 @@ type GroupPins = LocationGroup & {
 
 type Group = Record<string, GroupPins[]>
 
-function PinsLoadingSkeleton() {
-    return (
-        <div className="container mx-auto px-4 py-8">
-            <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <Skeleton className="h-10 w-64" />
-                    <Skeleton className="mt-2 h-4 w-48" />
-                </div>
-                <Skeleton className="h-10 w-32" />
-            </div>
-
-            <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <Skeleton className="h-10 w-64" />
-                <div className="flex gap-2">
-                    <Skeleton className="h-10 w-24" />
-                    <Skeleton className="h-10 w-24" />
-                </div>
-            </div>
-
-            <div className="space-y-4">
-                {Array(3)
-                    .fill(0)
-                    .map((_, i) => (
-                        <Skeleton key={i} className="h-16 w-full rounded-lg" />
-                    ))}
-
-                <div className="pl-8 space-y-3">
-                    {Array(2)
-                        .fill(0)
-                        .map((_, i) => (
-                            <Skeleton key={i} className="h-14 w-full rounded-lg" />
-                        ))}
-                </div>
-            </div>
-        </div>
-    )
-}
-
-function GroupPins({ groups }: { groups: GroupPins[] }) {
-    const [searchTerm, setSearchTerm] = useState("")
-
+function GroupPins({
+    groups,
+    mode,
+    refetch,
+}: {
+    groups: GroupPins[]
+    mode: "pending" | "approved"
+    refetch: () => void
+}) {
     const groupByCreator: Record<string, GroupPins[]> = {}
-
     groups.forEach((group) => {
         const creatorId = group.creator.id
-
         if (!groupByCreator[creatorId]) {
             groupByCreator[creatorId] = []
         }
-
         groupByCreator[creatorId].push(group)
     })
 
-    // Filter groups based on search term
-    const filteredGroupsByCreator: Record<string, GroupPins[]> = {}
-
-    if (searchTerm) {
-        const lowerSearchTerm = searchTerm.toLowerCase()
-
-        Object.entries(groupByCreator).forEach(([creatorId, creatorGroups]) => {
-            const filteredGroups = creatorGroups.filter(
-                (group) =>
-                    group.title.toLowerCase().includes(lowerSearchTerm) ??
-                    group.description?.toLowerCase().includes(lowerSearchTerm) ??
-                    group.creator.name.toLowerCase().includes(lowerSearchTerm),
-            )
-
-            if (filteredGroups.length > 0) {
-                filteredGroupsByCreator[creatorId] = filteredGroups
-            }
-        })
-    } else {
-        Object.assign(filteredGroupsByCreator, groupByCreator)
+    if (Object.keys(groupByCreator).length === 0) {
+        return (
+            <Card className="w-full">
+                <CardContent className="pt-6">
+                    <div className="text-center py-12">
+                        <MapPin className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No pins found</h3>
+                        <p className="text-gray-500">
+                            {mode === "pending" ? "No pending pins to review." : "No approved pins available."}
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+        )
     }
 
-    const totalGroups = Object.values(filteredGroupsByCreator).flat().length
-    const totalCreators = Object.keys(filteredGroupsByCreator).length
-
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="relative w-full max-w-sm">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search pins by title or creator..."
-                        className="pl-8"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-                <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">
-                        {totalGroups} Pin Groups
-                    </Badge>
-                    <Badge variant="outline" className="text-xs">
-                        {totalCreators} Creators
-                    </Badge>
-                </div>
-            </div>
-
-            {totalGroups === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <Search className="mb-4 h-12 w-12 text-muted-foreground/50" />
-                    <h3 className="text-lg font-medium">No matching pins found</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Try adjusting your search term to find what you{"'re"} looking for.
-                    </p>
-                </div>
-            ) : (
-                <PinsList groupsByCreator={filteredGroupsByCreator} />
-            )}
+        <div className="w-full space-y-4">
+            <PinsList groupsByCreator={groupByCreator} mode={mode} refetch={refetch} />
         </div>
     )
 }
 
-function PinsList({ groupsByCreator }: { groupsByCreator: Record<string, GroupPins[]> }) {
+function PinsList({
+    groupsByCreator,
+    mode,
+    refetch,
+}: {
+    groupsByCreator: Record<string, GroupPins[]>
+    mode: "pending" | "approved"
+    refetch: () => void
+}) {
     const [selectedGroup, setSelectedGroup] = useState<string[]>([])
-    const [expandedCreators, setExpandedCreators] = useState<string[]>([])
+    const [isModalOpen, setIsModalOpen] = useState(false)
+    const [pinData, setPinData] = useState<pinData | undefined>(undefined)
 
     const approveM = api.maps.pin.approveLocationGroups.useMutation({
         onSuccess: (data, variable) => {
             if (variable.approved) toast.success("Pins Approved Successfully!")
             if (!variable.approved) toast.error("Pins Rejected Successfully!")
             setSelectedGroup([])
+            refetch()
         },
         onError: (error) => {
             toast.error("Operation failed: " + error.message)
+        },
+    })
+
+    const deleteGroupM = api.maps.pin.deleteLocationGroupForAdmin.useMutation({
+        onSuccess: () => {
+            toast.success("Pin group deleted successfully!")
+            refetch()
+        },
+        onError: (error) => {
+            toast.error("Failed to delete: " + error.message)
+        },
+    })
+
+    const deletePinM = api.maps.pin.deletePinForAdmin.useMutation({
+        onSuccess: () => {
+            toast.success("Pin deleted successfully!")
+            refetch()
+        },
+        onError: (error) => {
+            toast.error("Failed to delete pin: " + error.message)
         },
     })
 
@@ -255,304 +243,216 @@ function PinsList({ groupsByCreator }: { groupsByCreator: Record<string, GroupPi
         })
     }
 
-    function toggleCreatorExpanded(creatorId: string) {
-        setExpandedCreators((prev) => {
-            if (prev.includes(creatorId)) {
-                return prev.filter((id) => id !== creatorId)
-            } else {
-                return [...prev, creatorId]
-            }
-        })
+    function handleDeletePin(pinId: string) {
+        deletePinM.mutate({ id: pinId })
     }
 
-    function selectAllGroups() {
-        const allGroupIds = Object.values(groupsByCreator)
-            .flat()
-            .map((group) => group.id)
-
-        setSelectedGroup(allGroupIds)
-    }
-
-    function deselectAllGroups() {
-        setSelectedGroup([])
+    function handleDeleteGroup(groupId: string) {
+        deleteGroupM.mutate({ id: groupId })
     }
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-wrap gap-2">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={selectAllGroups}
-                    disabled={Object.keys(groupsByCreator).length === 0}
-                >
-                    Select All
-                </Button>
-                <Button variant="outline" size="sm" onClick={deselectAllGroups} disabled={selectedGroup.length === 0}>
-                    Deselect All
-                </Button>
-
-                {selectedGroup.length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                        {selectedGroup.length} selected
-                    </Badge>
-                )}
-            </div>
-
+        <div className="w-full space-y-6">
             <div className="space-y-4">
-                <AnimatePresence>
-                    {Object.entries(groupsByCreator).map(([creatorId, creatorGroups]) => {
-                        // Get creator name from the first group
-                        const creatorName = creatorGroups[0]?.creator.name ?? "Unknown Creator"
-                        const isCreatorExpanded = expandedCreators.includes(creatorId)
+                {Object.entries(groupsByCreator).map(([creatorId, creatorGroups]) => {
+                    const creatorName = creatorGroups[0]?.creator.name ?? "Unknown Creator"
+                    const groupPins: Group = {}
 
-                        return (
-                            <motion.div
-                                key={`creator-${creatorId}`}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, height: 0, overflow: "hidden" }}
-                                transition={{ duration: 0.3 }}
-                            >
-                                <Card>
-                                    <CardHeader className="cursor-pointer py-4" onClick={() => toggleCreatorExpanded(creatorId)}>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <User className="h-5 w-5 text-primary" />
-                                                <CardTitle className="text-lg">
+                    creatorGroups.forEach((group) => {
+                        const locationGroupId = group.id
+                        if (groupPins[locationGroupId]) {
+                            groupPins[locationGroupId].push(group)
+                        } else {
+                            groupPins[locationGroupId] = [group]
+                        }
+                    })
+
+                    return (
+                        <Card key={`creator-${creatorId}`} className="w-full">
+                            <Collapsible className="w-full">
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <User className="h-5 w-5 text-gray-500" />
+                                            <div>
+                                                <h4 className="font-semibold text-gray-900">
                                                     {CREATOR_TERM}: {creatorName}
-                                                </CardTitle>
-                                                <Badge variant="outline" className="ml-2">
-                                                    {creatorGroups.length} pin groups
-                                                </Badge>
+                                                </h4>
+                                                <p className="text-sm text-gray-500">
+                                                    {Object.keys(groupPins).length} pin group{Object.keys(groupPins).length !== 1 ? "s" : ""}
+                                                </p>
                                             </div>
-                                            <Button variant="ghost" size="sm">
-                                                {isCreatorExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                            </Button>
                                         </div>
-                                    </CardHeader>
+                                        <CollapsibleTrigger asChild>
+                                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                <ChevronDown className="h-4 w-4" />
+                                                <span className="sr-only">Toggle creator pins</span>
+                                            </Button>
+                                        </CollapsibleTrigger>
+                                    </div>
+                                </CardHeader>
 
-                                    <AnimatePresence>
-                                        {isCreatorExpanded && (
-                                            <motion.div
-                                                initial={{ opacity: 0, height: 0 }}
-                                                animate={{ opacity: 1, height: "auto" }}
-                                                exit={{ opacity: 0, height: 0 }}
-                                                transition={{ duration: 0.3 }}
-                                            >
-                                                <CardContent className="pb-4">
-                                                    <div className="space-y-3">
-                                                        {creatorGroups.map((group) => (
-                                                            <PinGroupItem
-                                                                key={group.id}
-                                                                group={group}
-                                                                isSelected={selectedGroup.includes(group.id)}
-                                                                onToggleSelection={() => handleGroupSelection(group.id)}
-                                                            />
-                                                        ))}
-                                                    </div>
-                                                </CardContent>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </Card>
-                            </motion.div>
-                        )
-                    })}
-                </AnimatePresence>
+                                <CollapsibleContent>
+                                    <CardContent className="pt-0 space-y-4">
+                                        {Object.entries(groupPins).map(([key, pins]) => (
+                                            <Card key={key} className="border-l-4 border-l-blue-500">
+                                                <Collapsible className="w-full">
+                                                    <CardHeader className="pb-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-3 flex-grow overflow-hidden">
+                                                                {mode === "pending" && (
+                                                                    <Checkbox
+                                                                        checked={selectedGroup.includes(key)}
+                                                                        onCheckedChange={() => handleGroupSelection(key)}
+                                                                    />
+                                                                )}
+                                                                <div className="flex flex-col overflow-hidden">
+                                                                    <h5 className="font-medium text-gray-900 truncate">{pins[0]?.title}</h5>
+                                                                    <p className="text-sm text-gray-600 truncate">{pins[0]?.description}</p>
+                                                                    <Badge variant="secondary" className="w-fit mt-1">
+                                                                        {pins[0]?.locations.length} location{pins[0]?.locations.length !== 1 ? "s" : ""}
+                                                                    </Badge>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                {mode === "approved" && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation()
+                                                                            handleDeleteGroup(key)
+                                                                        }}
+                                                                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                )}
+                                                                <CollapsibleTrigger asChild>
+                                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                                        <ChevronDown className="h-4 w-4" />
+                                                                    </Button>
+                                                                </CollapsibleTrigger>
+                                                            </div>
+                                                        </div>
+                                                    </CardHeader>
+
+                                                    <CollapsibleContent>
+                                                        <CardContent className="pt-0">
+                                                            <Separator className="mb-4" />
+                                                            <div className="overflow-x-auto">
+                                                                <table className="w-full">
+                                                                    <thead>
+                                                                        <tr className="border-b">
+                                                                            <th className="text-left py-2 px-3 font-medium text-gray-700">Image</th>
+                                                                            <th className="text-left py-2 px-3 font-medium text-gray-700">Location ID</th>
+                                                                            <th className="text-left py-2 px-3 font-medium text-gray-700">Coordinates</th>
+                                                                            {mode === "approved" && (
+                                                                                <th className="text-left py-2 px-3 font-medium text-gray-700">Actions</th>
+                                                                            )}
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {pins.map((pin) =>
+                                                                            pin.locations.map((location, index) => (
+                                                                                <tr
+                                                                                    key={location.id}
+                                                                                    className={`border-b border-gray-100 ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                                                                                        }`}
+                                                                                >
+                                                                                    <td className="py-3 px-3">
+                                                                                        <Image
+                                                                                            alt="pin image"
+                                                                                            width={40}
+                                                                                            height={40}
+                                                                                            src={pin.image ?? "https://app.wadzzo.com/images/loading.png"}
+                                                                                            className="h-10 w-10 object-cover rounded-md border"
+                                                                                        />
+                                                                                    </td>
+                                                                                    <td className="py-3 px-3">
+                                                                                        <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
+                                                                                            {location.id.slice(0, 8)}...
+                                                                                        </code>
+                                                                                    </td>
+                                                                                    <td className="py-3 px-3 text-sm text-gray-600">
+                                                                                        <div className="flex flex-col">
+                                                                                            <span>Lat: {location.latitude.toFixed(6)}</span>
+                                                                                            <span>Lng: {location.longitude.toFixed(6)}</span>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    {mode === "approved" && (
+                                                                                        <td className="py-3 px-3">
+                                                                                            <Button
+                                                                                                variant="ghost"
+                                                                                                size="sm"
+                                                                                                onClick={() => handleDeletePin(location.id)}
+                                                                                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                                                            >
+                                                                                                <Trash2 className="h-3 w-3" />
+                                                                                            </Button>
+                                                                                        </td>
+                                                                                    )}
+                                                                                </tr>
+                                                                            )),
+                                                                        )}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </CardContent>
+                                                    </CollapsibleContent>
+                                                </Collapsible>
+                                            </Card>
+                                        ))}
+                                    </CardContent>
+                                </CollapsibleContent>
+                            </Collapsible>
+                        </Card>
+                    )
+                })}
             </div>
 
-            <div className="sticky bottom-0 bg-background/80 backdrop-blur-sm py-4 border-t">
-                <div className="flex justify-end gap-4">
-                    <Button
-                        variant="destructive"
-                        onClick={() => {
-                            approveM.mutate({
-                                locationGroupIds: selectedGroup,
-                                approved: false,
-                            })
-                        }}
-                        disabled={selectedGroup.length === 0 || approveM.isLoading}
-                        className="gap-2 shadow-sm shadow-foreground"
-                    >
-                        {approveM.isLoading && !approveM.variables?.approved ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <X className="h-4 w-4" />
-                        )}
-                        Reject {selectedGroup.length > 0 && `(${selectedGroup.length})`}
-                    </Button>
-                    <Button
-                        variant="default"
-                        onClick={() => {
-                            approveM.mutate({
-                                locationGroupIds: selectedGroup,
-                                approved: true,
-                            })
-                        }}
-                        disabled={selectedGroup.length === 0 || approveM.isLoading}
-                        className="gap-2 shadow-sm shadow-foreground"
-                    >
-                        {approveM.isLoading && approveM.variables?.approved ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Check className="h-4 w-4" />
-                        )}
-                        Approve {selectedGroup.length > 0 && `(${selectedGroup.length})`}
-                    </Button>
+            {mode === "pending" && selectedGroup.length > 0 && (
+                <Card className="border-blue-200 bg-blue-50">
+                    <CardContent className="pt-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Badge variant="secondary">{selectedGroup.length} selected</Badge>
+                                <span className="text-sm text-gray-600">Ready to approve or reject selected pin groups</span>
+                            </div>
+                            <div className="flex gap-3">
+                                <Button
+                                    onClick={() => {
+                                        approveM.mutate({
+                                            locationGroupIds: selectedGroup,
+                                            approved: true,
+                                        })
+                                    }}
+                                    disabled={approveM.isLoading}
+                                    className="bg-green-600 hover:bg-green-700"
+                                >
+                                    <Check className="h-4 w-4 mr-2" />
+                                    Approve
+                                </Button>
+                                <Button
+                                    onClick={() =>
+                                        approveM.mutate({
+                                            locationGroupIds: selectedGroup,
+                                            approved: false,
+                                        })
+                                    }
+                                    disabled={approveM.isLoading}
+                                    variant="destructive"
+                                >
+                                    <X className="h-4 w-4 mr-2" />
+                                    Reject
+                                </Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
-                </div>
-            </div>
+            {pinData && <PinInfoUpdateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} pinData={pinData} />}
         </div>
     )
 }
-
-function PinGroupItem({
-    group,
-    isSelected,
-    onToggleSelection,
-}: {
-    group: GroupPins
-    isSelected: boolean
-    onToggleSelection: () => void
-}) {
-    const [isOpen, setIsOpen] = useState(false)
-
-    return (
-        <Card
-            className={cn(
-                "border transition-all duration-200",
-                isSelected ? "border-primary bg-primary/5" : "hover:border-muted-foreground/20",
-            )}
-        >
-            <CardHeader className="p-4 pb-0">
-                <div className="flex items-center gap-3">
-                    <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelection()} id={`group-${group.id}`} />
-                    <div className="flex flex-col gap-1 flex-1">
-                        <div className="flex items-center gap-2">
-                            <label htmlFor={`group-${group.id}`} className="font-medium cursor-pointer flex-1">
-                                {group.title}
-                            </label>
-                            <Badge variant="outline" className="text-xs">
-                                ID: {group.id}
-                            </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-1">{group.description}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className="ml-auto">
-                        {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </Button>
-                </div>
-            </CardHeader>
-
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.3 }}
-                    >
-                        <CardContent className="p-4 pt-4">
-                            <Tabs defaultValue="details">
-                                <TabsList className="mb-4">
-                                    <TabsTrigger value="details">
-                                        <Info className="mr-2 h-4 w-4" />
-                                        Details
-                                    </TabsTrigger>
-                                    <TabsTrigger value="locations">
-                                        <MapPin className="mr-2 h-4 w-4" />
-                                        Locations ({group.locations.length})
-                                    </TabsTrigger>
-                                </TabsList>
-
-                                <TabsContent value="details" className="mt-0">
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        <div className="space-y-3">
-                                            <div>
-                                                <h4 className="text-sm font-medium flex items-center gap-2">
-                                                    <FileText className="h-4 w-4 text-muted-foreground" />
-                                                    Description
-                                                </h4>
-                                                <p className="text-sm mt-1">{group.description}</p>
-                                            </div>
-
-                                            <div>
-                                                <h4 className="text-sm font-medium flex items-center gap-2">
-                                                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                                                    Date Range
-                                                </h4>
-                                                <p className="text-sm mt-1">
-                                                    {new Date(group.startDate).toLocaleDateString()} -{" "}
-                                                    {new Date(group.endDate).toLocaleDateString()}
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <h4 className="text-sm font-medium flex items-center gap-2">
-                                                    <Clock className="h-4 w-4 text-muted-foreground" />
-                                                    Created
-                                                </h4>
-                                                <p className="text-sm mt-1">{new Date(group.createdAt).toLocaleString()}</p>
-                                            </div>
-                                        </div>
-
-                                        {group.image && (
-                                            <div className="flex justify-center items-center">
-                                                <div className="relative overflow-hidden rounded-md border h-40 w-full">
-                                                    <Image
-                                                        src={group.image || "/placeholder.svg"}
-                                                        alt={group.title}
-                                                        fill
-                                                        className="object-cover"
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </TabsContent>
-
-                                <TabsContent value="locations" className="mt-0">
-                                    <ScrollArea className="h-[200px] rounded-md border p-4">
-                                        <div className="space-y-4">
-                                            {group.locations.map((location) => (
-                                                <div key={location.id} className="flex items-center justify-between border-b pb-2">
-                                                    <div>
-                                                        <h4 className="text-sm font-medium">Location ID: {location.id}</h4>
-                                                        <div className="flex items-center gap-2 mt-1">
-                                                            <MapPin className="h-3 w-3 text-muted-foreground" />
-                                                            <p className="text-xs font-mono">
-                                                                {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <TooltipProvider>
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <Badge variant={location.autoCollect ? "default" : "outline"}>
-                                                                    {location.autoCollect ? "Auto Collect" : "Manual Collect"}
-                                                                </Badge>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>
-                                                                <p className="text-xs">
-                                                                    {location.autoCollect
-                                                                        ? "Users automatically collect this pin when in range"
-                                                                        : "Users must manually collect this pin when in range"}
-                                                                </p>
-                                                            </TooltipContent>
-                                                        </Tooltip>
-                                                    </TooltipProvider>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </ScrollArea>
-                                </TabsContent>
-                            </Tabs>
-                        </CardContent>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </Card>
-    )
-}
-

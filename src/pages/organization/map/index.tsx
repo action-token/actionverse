@@ -576,7 +576,9 @@ function MyPins({
   setIsAutoCollect: (value: boolean) => void
 }) {
   const { setAllPins } = useNearbyPinsStore()
-  const pins = api.maps.pin.getMyPins.useQuery()
+  const pins = api.maps.pin.getMyPins.useQuery({
+    showExpired: false,
+  })
   const { setData, setIsOpen } = useMapOptionsModalStore()
   const { setData: setBountyData } = useCreateLocationBasedBountyStore()
   useEffect(() => {

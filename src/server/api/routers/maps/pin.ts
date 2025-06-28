@@ -1,6 +1,9 @@
 import { ItemPrivacy } from "@prisma/client";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createAdminPinFormSchema } from "~/components/modal/admin-create-pin-modal";
+import { createPinFormSchema } from "~/components/modal/creator-create-pin-modal";
+import { updateMapFormSchema } from "~/components/modal/pin-info-update-modal";
 
 
 import {
@@ -12,6 +15,7 @@ import {
 } from "~/server/api/trpc";
 import { PinLocation } from "~/types/pin";
 import { BADWORDS } from "~/utils/banned-word";
+import { fetchUsersByPublicKeys } from "~/utils/get-pubkey";
 import { randomLocation as getLocationInLatLngRad } from "~/utils/map";
 export const PAGE_ASSET_NUM = -10;
 export const NO_ASSET = -99;
@@ -29,44 +33,6 @@ export type LocationWithConsumers = {
   autoCollect: boolean;
   id: string;
 };
-export const createPinFormSchema = z.object({
-  lat: z
-    .number({
-      message: "Latitude is required",
-    })
-    .min(-180)
-    .max(180),
-  lng: z
-    .number({
-      message: "Longitude is required",
-    })
-    .min(-180)
-    .max(180),
-  description: z.string(),
-  title: z
-    .string()
-    .min(3)
-    .refine(
-      (value) => {
-        return !BADWORDS.some((word) => value.includes(word));
-      },
-      {
-        message: "Input contains banned words.",
-      },
-    ),
-  image: z.string().url().optional(),
-  startDate: z.date(),
-  endDate: z.date().min(new Date(new Date().setHours(0, 0, 0, 0))),
-  url: z.string().url().optional(),
-  autoCollect: z.boolean(),
-  token: z.number().optional(),
-  tokenAmount: z.number().nonnegative().optional(), // if it optional then no token selected
-  pinNumber: z.number().nonnegative().min(1),
-  radius: z.number().nonnegative(),
-  pinCollectionLimit: z.number().min(0),
-  tier: z.string().optional(),
-  multiPin: z.boolean().optional(),
-});
 export const pinRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
     return "you can now see this secret message!";
@@ -76,7 +42,7 @@ export const pinRouter = createTRPCRouter({
     .input(createPinFormSchema)
     .mutation(async ({ ctx, input }) => {
       const { pinNumber, pinCollectionLimit, token, tier, multiPin } = input;
-
+      console.log("Input for pin creation", input);
       let tierId: number | undefined;
       let privacy: ItemPrivacy = ItemPrivacy.PUBLIC;
 
@@ -115,6 +81,82 @@ export const pinRouter = createTRPCRouter({
       await ctx.db.locationGroup.create({
         data: {
           creatorId: ctx.session.user.id,
+          endDate: input.endDate,
+          startDate: input.startDate,
+          title: input.title,
+          description: input.description,
+          assetId: assetId,
+          pageAsset: pageAsset,
+          limit: pinCollectionLimit,
+          image: input.image,
+          link: input.url,
+          locations: {
+            createMany: {
+              data: locations,
+            },
+          },
+          subscriptionId: tierId,
+          privacy: privacy,
+          remaining: pinCollectionLimit,
+          multiPin: multiPin,
+        },
+      });
+    }),
+  createForAdminPin: adminProcedure
+    .input(createAdminPinFormSchema)
+    .mutation(async ({ ctx, input }) => {
+      const {
+        pinNumber,
+        pinCollectionLimit,
+        token,
+        tier,
+        multiPin,
+        creatorId,
+      } = input;
+
+      const creator = await ctx.db.creator.findUnique({
+        where: { id: creatorId },
+      });
+      if (!creator || !creatorId) throw new Error("Creator not found");
+
+      let tierId: number | undefined;
+      let privacy: ItemPrivacy = ItemPrivacy.PUBLIC;
+
+      if (!tier) {
+        privacy = ItemPrivacy.PUBLIC;
+      } else if (tier == "public") {
+        privacy = ItemPrivacy.PUBLIC;
+      } else if (tier == "private") {
+        privacy = ItemPrivacy.PRIVATE;
+      } else {
+        tierId = Number(tier);
+        privacy = ItemPrivacy.TIER;
+      }
+
+      let assetId = token;
+      let pageAsset = false;
+
+      if (token == PAGE_ASSET_NUM) {
+        assetId = undefined;
+        pageAsset = true;
+      }
+
+      const locations = Array.from({ length: pinNumber }).map(() => {
+        const randomLocatin = getLocationInLatLngRad(
+          input.lat,
+          input.lng,
+          input.radius,
+        );
+        return {
+          autoCollect: input.autoCollect,
+          latitude: randomLocatin.latitude,
+          longitude: randomLocatin.longitude,
+        };
+      });
+
+      await ctx.db.locationGroup.create({
+        data: {
+          creatorId: creatorId,
           endDate: input.endDate,
           startDate: input.startDate,
           title: input.title,
@@ -184,76 +226,6 @@ export const pinRouter = createTRPCRouter({
         }) ?? [],
     };
   }),
-  createForAdminPin: adminProcedure
-    .input(createAdminPinFormSchema)
-    .mutation(async ({ ctx, input }) => {
-      const { pinNumber, pinCollectionLimit, token, tier, multiPin, creatorId } = input;
-      console.log(creatorId)
-      const creator = await ctx.db.creator.findUnique({
-        where: { id: creatorId },
-      });
-      console.log(creator)
-      if (!creator || !creatorId) throw new Error("Creator not found");
-
-      let tierId: number | undefined;
-      let privacy: ItemPrivacy = ItemPrivacy.PUBLIC;
-
-      if (!tier) {
-        privacy = ItemPrivacy.PUBLIC;
-      } else if (tier == "public") {
-        privacy = ItemPrivacy.PUBLIC;
-      } else if (tier == "private") {
-        privacy = ItemPrivacy.PRIVATE;
-      } else {
-        tierId = Number(tier);
-        privacy = ItemPrivacy.TIER;
-      }
-
-      let assetId = token;
-      let pageAsset = false;
-
-      if (token == PAGE_ASSET_NUM) {
-        assetId = undefined;
-        pageAsset = true;
-      }
-
-      const locations = Array.from({ length: pinNumber }).map(() => {
-        const randomLocatin = getLocationInLatLngRad(
-          input.lat,
-          input.lng,
-          input.radius,
-        );
-        return {
-          autoCollect: input.autoCollect,
-          latitude: randomLocatin.latitude,
-          longitude: randomLocatin.longitude,
-        };
-      });
-
-      await ctx.db.locationGroup.create({
-        data: {
-          creatorId: creatorId,
-          endDate: input.endDate,
-          startDate: input.startDate,
-          title: input.title,
-          description: input.description,
-          assetId: assetId,
-          pageAsset: pageAsset,
-          limit: pinCollectionLimit,
-          image: input.image,
-          link: input.url,
-          locations: {
-            createMany: {
-              data: locations,
-            },
-          },
-          subscriptionId: tierId,
-          privacy: privacy,
-          remaining: pinCollectionLimit,
-          multiPin: multiPin,
-        },
-      });
-    }),
 
   getPinM: creatorProcedure
     .input(z.string())
@@ -292,45 +264,8 @@ export const pinRouter = createTRPCRouter({
       };
     }),
 
-  updatePin: creatorProcedure
-    .input(
-      z.object({
-        pinId: z.string(),
-        lat: z
-          .number({
-            message: "Latitude is required",
-          })
-          .min(-180)
-          .max(180),
-        lng: z
-          .number({
-            message: "Longitude is required",
-          })
-          .min(-180)
-          .max(180),
-        description: z.string(),
-        title: z
-          .string()
-          .min(3)
-          .refine(
-            (value) => {
-              return !BADWORDS.some((word) => value.includes(word));
-            },
-            {
-              message: "Input contains banned words.",
-            },
-          ),
-        image: z.string().url().optional(),
-        startDate: z.date().optional(),
-        endDate: z
-          .date()
-          .min(new Date(new Date().setHours(0, 0, 0, 0)))
-          .optional(),
-        url: z.string().url().optional(),
-        autoCollect: z.boolean(),
-        pinRemainingLimit: z.number().optional(),
-      }),
-    )
+  updatePin: protectedProcedure
+    .input(updateMapFormSchema)
     .mutation(async ({ ctx, input }) => {
       const {
         pinId,
@@ -345,7 +280,7 @@ export const pinRouter = createTRPCRouter({
         pinRemainingLimit,
         autoCollect,
       } = input;
-
+      console.log("Input,", input);
       try {
         // Step 1: Find the Location object by pinId (which is the location ID)
         const findLocation = await ctx.db.location.findFirst({
@@ -361,15 +296,6 @@ export const pinRouter = createTRPCRouter({
         if (!findLocation || !findLocation.locationGroup) {
           throw new Error("Location or associated LocationGroup not found");
         }
-
-        // Step 3: Check if the logged-in user is the creator of the LocationGroup
-        if (findLocation.locationGroup.creatorId !== ctx.session.user.id) {
-          throw new Error(
-            "Unauthorized: You are not the creator of this location group",
-          );
-        }
-
-        console.log("Location Group to update:", findLocation.locationGroup);
 
         const update = await ctx.db.location.update({
           where: {
@@ -416,100 +342,128 @@ export const pinRouter = createTRPCRouter({
         throw new Error("Failed to update location group");
       }
     }),
-  getMyPins: creatorProcedure.query(async ({ ctx }) => {
-    const pins = await ctx.db.location.findMany({
-      where: {
-        locationGroup: {
-          creatorId: ctx.session.user.id,
-          endDate: { gte: new Date() },
-          approved: { equals: true },
+  getMyPins: creatorProcedure
+    .input(z.object({ showExpired: z.boolean().optional() }))
+    .query(async ({ ctx, input }) => {
+      const { showExpired = false } = input;
+
+      const dateCondition = showExpired
+        ? {
+          endDate: {
+            lte: new Date(),
+          },
+        } // No date filter when showing all pins
+        : { endDate: { gte: new Date() } }; // Only active pins
+
+      const pins = await ctx.db.location.findMany({
+        where: {
+          locationGroup: {
+            creatorId: ctx.session.user.id,
+            ...dateCondition,
+            OR: [{ approved: true }, { approved: null }],
+          },
         },
-      },
-      include: {
-        _count: { select: { consumers: true } },
-        locationGroup: {
-          include: {
-            creator: { select: { profileUrl: true } },
-            locations: {
-              select: {
-                locationGroup: {
-                  select: {
-                    endDate: true,
-                    startDate: true,
-                    limit: true,
-                    image: true,
-                    description: true,
-                    title: true,
-                    link: true,
-                    multiPin: true,
-                    subscriptionId: true,
-                    pageAsset: true,
-                    privacy: true,
-                    remaining: true,
-                    assetId: true,
+        include: {
+          _count: { select: { consumers: true } },
+          locationGroup: {
+            include: {
+              creator: { select: { profileUrl: true } },
+              locations: {
+                select: {
+                  locationGroup: {
+                    select: {
+                      endDate: true,
+                      startDate: true,
+                      limit: true,
+                      image: true,
+                      description: true,
+                      title: true,
+                      link: true,
+                      multiPin: true,
+                      subscriptionId: true,
+                      pageAsset: true,
+                      privacy: true,
+                      remaining: true,
+                      assetId: true,
+                    },
                   },
+                  latitude: true,
+                  longitude: true,
+                  id: true,
+                  autoCollect: true,
                 },
-                latitude: true,
-                longitude: true,
-                id: true,
-                autoCollect: true,
               },
             },
           },
         },
-      },
-    });
+      });
 
-    return pins;
-  }),
-  getCreatorPins: adminProcedure.input(z.object({
-    creator_id: z.string(),
-  })).query(async ({ ctx, input }) => {
-    const pins = await ctx.db.location.findMany({
-      where: {
-        locationGroup: {
-          creatorId: input.creator_id,
-          endDate: { gte: new Date() },
-          approved: { equals: true },
+      return pins;
+    }),
+
+  getCreatorPins: adminProcedure
+    .input(
+      z.object({
+        creator_id: z.string(),
+        showExpired: z.boolean().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { showExpired = false, creator_id } = input;
+
+      const dateCondition = showExpired
+        ? {
+          endDate: {
+            lte: new Date(),
+          },
+        } // No date filter when showing all pins
+        : { endDate: { gte: new Date() } }; // Only active pins
+
+      const pins = await ctx.db.location.findMany({
+        where: {
+          locationGroup: {
+            creatorId: creator_id,
+            ...dateCondition,
+            approved: { equals: true },
+          },
         },
-      },
-      include: {
-        _count: { select: { consumers: true } },
-        locationGroup: {
-          include: {
-            creator: { select: { profileUrl: true } },
-            locations: {
-              select: {
-                locationGroup: {
-                  select: {
-                    endDate: true,
-                    startDate: true,
-                    limit: true,
-                    image: true,
-                    description: true,
-                    title: true,
-                    link: true,
-                    multiPin: true,
-                    subscriptionId: true,
-                    pageAsset: true,
-                    privacy: true,
-                    remaining: true,
-                    assetId: true,
+        include: {
+          _count: { select: { consumers: true } },
+          locationGroup: {
+            include: {
+              creator: { select: { profileUrl: true } },
+              locations: {
+                select: {
+                  locationGroup: {
+                    select: {
+                      endDate: true,
+                      startDate: true,
+                      limit: true,
+                      image: true,
+                      description: true,
+                      title: true,
+                      link: true,
+                      multiPin: true,
+                      subscriptionId: true,
+                      pageAsset: true,
+                      privacy: true,
+                      remaining: true,
+                      assetId: true,
+                    },
                   },
+                  latitude: true,
+                  longitude: true,
+                  id: true,
+                  autoCollect: true,
                 },
-                latitude: true,
-                longitude: true,
-                id: true,
-                autoCollect: true,
               },
             },
           },
         },
-      },
-    });
+      });
 
-    return pins;
-  }),
+      return pins;
+    }),
   getRangePins: creatorProcedure
     .input(
       z.object({
@@ -556,7 +510,22 @@ export const pinRouter = createTRPCRouter({
   getLocationGroups: adminProcedure.query(async ({ ctx, input }) => {
     const locationGroups = await ctx.db.locationGroup.findMany({
       where: { approved: { equals: null }, endDate: { gte: new Date() } },
-      include: { creator: { select: { name: true, id: true } }, locations: true },
+      include: {
+        creator: { select: { name: true, id: true } },
+        locations: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return locationGroups;
+  }),
+  getApprovedLocationGroups: adminProcedure.query(async ({ ctx, input }) => {
+    const locationGroups = await ctx.db.locationGroup.findMany({
+      where: { approved: { equals: true }, endDate: { gte: new Date() } },
+      include: {
+        creator: { select: { name: true, id: true } },
+        locations: true,
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -631,51 +600,128 @@ export const pinRouter = createTRPCRouter({
     return consumedLocations;
   }),
 
-  getCreatorPinTConsumedByUser: creatorProcedure.query(async ({ ctx }) => {
-    const creatorId = ctx.session.user.id;
-    const consumedLocations = await ctx.db.locationGroup.findMany({
-      where: {
-        creatorId,
-      },
-      select: {
-        locations: {
-          select: {
-            id: true,
-            latitude: true,
-            longitude: true,
-            autoCollect: true,
-            _count: { select: { consumers: true } },
-            consumers: {
-              select: {
-                user: {
-                  select: {
-                    name: true,
-                    id: true,
-                    email: true,
+  getCreatorPinTConsumedByUser: protectedProcedure
+    .input(
+      z.object({
+        day: z.number().optional(),
+        creatorId: z.string().optional(),
+        isAdmin: z.boolean().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      // console.log("Input for consumed pins", input);
+      if (input?.isAdmin) {
+        const admin = await ctx.db.admin.findUnique({
+          where: { id: ctx.session.user.id },
+        });
+
+        if (!admin) throw new TRPCError({ code: "UNAUTHORIZED" });
+        if (!input.creatorId) {
+          console.log("Creator ID is required for admin view");
+
+          return;
+        }
+      } else {
+        const creator = await ctx.db.creator.findUnique({
+          where: { id: ctx.session.user.id },
+        });
+
+        if (!creator) {
+          throw new TRPCError({ code: "UNAUTHORIZED" });
+        }
+      }
+      const selectedCreatorId = input?.creatorId;
+      const consumedLocations = await ctx.db.locationGroup.findMany({
+        where: {
+          creatorId: selectedCreatorId,
+          createdAt: input?.day
+            ? {
+              gte: new Date(
+                new Date().getTime() - input.day * 24 * 60 * 60 * 1000,
+              ),
+            }
+            : {},
+        },
+        select: {
+          locations: {
+            select: {
+              id: true,
+              latitude: true,
+              longitude: true,
+              autoCollect: true,
+              _count: { select: { consumers: true } },
+              consumers: {
+                select: {
+                  user: {
+                    select: {
+                      name: true,
+                      id: true,
+                      email: true,
+                    },
                   },
+                  claimedAt: true,
                 },
               },
             },
           },
+          startDate: true,
+          endDate: true,
+          title: true,
+          id: true,
+          creatorId: true,
         },
-        startDate: true,
-        endDate: true,
-        title: true,
-        id: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+        orderBy: { createdAt: "desc" },
+      });
 
-    return consumedLocations;
-  }),
+      const usersPublicKeys = Array.from(
+        new Set(
+          consumedLocations.flatMap((group) =>
+            group.locations.flatMap((location) =>
+              location.consumers.map((consumer) => consumer.user.id),
+            ),
+          ),
+        ),
+      );
 
-  downloadCreatorPinTConsumedByUser: creatorProcedure
-    .input(z.object({ day: z.number() }).optional())
+      if (usersPublicKeys.length > 0) {
+        const usersEmails = await fetchUsersByPublicKeys(
+          Array.from(usersPublicKeys),
+        );
+
+        if (usersEmails.length > 0)
+          consumedLocations.forEach((group) => {
+            group.locations.forEach((location) => {
+              location.consumers.forEach((consumer) => {
+                const user = usersEmails.find(
+                  (user) => user.publicKey === consumer.user.id,
+                );
+                consumer.user.email =
+                  user?.email ?? consumer.user.email ?? "Unknown";
+              });
+            });
+          });
+      }
+
+      return consumedLocations;
+    }),
+  downloadCreatorPinTConsumedByUser: protectedProcedure
+    .input(
+      z.object({
+        day: z.number().optional(),
+        creatorId: z.string().optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
-      const creatorId = ctx.session.user.id;
+      const creatorId = input.creatorId;
+      if (!creatorId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Creator ID is required",
+        });
+      }
       const consumedLocations = await ctx.db.locationGroup.findMany({
         where: {
-          createdAt: input
+          createdAt: input.day
             ? {
               gte: new Date(
                 new Date().getTime() - input.day * 24 * 60 * 60 * 1000,
@@ -701,10 +747,12 @@ export const pinRouter = createTRPCRouter({
                       email: true,
                     },
                   },
+                  claimedAt: true,
                 },
               },
             },
           },
+          creatorId: true,
           startDate: true,
           endDate: true,
           title: true,
@@ -712,6 +760,39 @@ export const pinRouter = createTRPCRouter({
         },
         orderBy: { createdAt: "desc" },
       });
+      console.log(
+        "Consumed locations",
+        consumedLocations.length,
+        consumedLocations[0],
+      );
+
+      if (consumedLocations.length > 0) {
+        const usersPublicKeys = Array.from(
+          new Set(
+            consumedLocations.flatMap((group) =>
+              group.locations.flatMap((location) =>
+                location.consumers.map((consumer) => consumer.user.id),
+              ),
+            ),
+          ),
+        );
+        const usersEmails = await fetchUsersByPublicKeys(
+          Array.from(usersPublicKeys),
+        );
+
+        if (usersEmails.length > 0)
+          consumedLocations.forEach((group) => {
+            group.locations.forEach((location) => {
+              location.consumers.forEach((consumer) => {
+                const user = usersEmails.find(
+                  (user) => user.publicKey === consumer.user.id,
+                );
+                consumer.user.email =
+                  user?.email ?? consumer.user.email ?? "Unknown";
+              });
+            });
+          });
+      }
 
       return consumedLocations;
     }),
@@ -920,14 +1001,13 @@ export const pinRouter = createTRPCRouter({
   toggleAutoCollect: protectedProcedure
     .input(z.object({ id: z.string(), isAutoCollect: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
-      console.log(input);
       await ctx.db.location.update({
         where: { id: input.id },
         data: { autoCollect: input.isAutoCollect },
       });
     }),
 
-  paste: publicProcedure
+  paste: protectedProcedure
     .input(
       z.object({
         id: z.string(),
@@ -944,8 +1024,16 @@ export const pinRouter = createTRPCRouter({
       if (!location) throw new Error("Location not found");
 
       const { lat, long } = input;
-      if (ctx.session?.user.id != location.locationGroup?.creatorId)
-        throw new Error("You are not the creator of this pin");
+      if (ctx.session.user.id != location.locationGroup?.creatorId) {
+        // now decide this user is admin
+        const admin = await ctx.db.admin.findUnique({
+          where: { id: ctx.session.user.id },
+        });
+
+        if (!admin) {
+          throw new Error("You are not authorized to paste this pin");
+        }
+      }
 
       if (input.isCut) {
         await ctx.db.location.update({
@@ -979,6 +1067,44 @@ export const pinRouter = createTRPCRouter({
         where: {
           id: input.id,
           locationGroup: { creatorId: ctx.session.user.id },
+        },
+      });
+      return {
+        item: items.id,
+      };
+    }),
+  deletePinForAdmin: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const items = await ctx.db.location.delete({
+        where: {
+          id: input.id,
+        },
+      });
+      return {
+        item: items.id,
+      };
+    }),
+  deleteLocationGroupForAdmin: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const items = await ctx.db.locationGroup.delete({
+        where: {
+          id: input.id,
+        },
+      });
+      return {
+        item: items.id,
+      };
+    }),
+
+  deleteLocationGroup: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const items = await ctx.db.locationGroup.delete({
+        where: {
+          id: input.id,
+          creatorId: ctx.session.user.id,
         },
       });
       return {
