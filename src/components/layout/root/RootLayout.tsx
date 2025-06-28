@@ -45,11 +45,13 @@ export default function Layout({
   const handleToggle = () => {
     toggle();
   };
+  if (router.pathname.includes("/albedo")) {
+    return <div>{children}</div>;
+  }
   return (
     <ThemeProvider
       attribute="class"
       defaultTheme="light"
-      enableSystem
       disableTransitionOnChange
     >
       <MiniPlayerProvider>
