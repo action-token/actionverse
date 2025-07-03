@@ -827,3 +827,8 @@ model QuarterReward {
 
     @@unique([year, quarter])
 }
+
+model AppConfig {
+    id              Int   @id @default(autoincrement())
+    nearbyPinRadius Float
+}
