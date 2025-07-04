@@ -17,8 +17,7 @@ import {
 } from "../../constant";
 import { env } from "~/env";
 import { StellarAccount } from "../../marketplace/test/Account";
-import { b } from "vitest/dist/suite-IbNSsUWN";
-import { getplatformAssetNumberForXLM } from "../../fan/get_token_price";
+import { getplatformAssetNumberForXLM, getPlatformAssetPrice } from "../../fan/get_token_price";
 
 const log = console;
 
@@ -130,6 +129,124 @@ export async function XDR4BuyAsset({
   return singedXdr;
 }
 
+export async function XDR4BuyUSDC({
+  signWith,
+  code,
+  issuerPub,
+  buyer,
+  price,
+  storageSecret,
+  seller,
+  usdcPrice,
+}: {
+  buyer: string;
+  code: string;
+  issuerPub: string;
+  price: string;
+  signWith: SignUserType;
+  storageSecret: string;
+  seller: string;
+  usdcPrice: number;
+}) {
+  // this asset limit only for buying more item.
+  const asset = new Asset(code, issuerPub);
+  const server = new Horizon.Server(STELLAR_URL);
+  const storageAcc = Keypair.fromSecret(storageSecret);
+
+  const motherAcc = Keypair.fromSecret(env.MOTHER_SECRET);
+  const USDC = new Asset(
+    "USDC",
+    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  );
+
+  const transactionInializer = await server.loadAccount(motherAcc.publicKey());
+
+  const buyerAcc = await StellarAccount.create(buyer);
+  const hasTrust = buyerAcc.hasTrustline(code, issuerPub);
+
+  const requiredAsset2refundXlm = hasTrust
+    ? 0
+    : await getplatformAssetNumberForXLM(0.5);
+
+  const assetPriceInUsd = await getPlatformAssetPrice();
+
+  const totalPlatformFee =
+    requiredAsset2refundXlm +
+    Number(PLATFORM_FEE) +
+    Number(TrxBaseFeeInPlatformAsset);
+
+  const totalPlatformFeeInUSD = ((totalPlatformFee * assetPriceInUsd) / usdcPrice);
+
+  const Tx2 = new TransactionBuilder(transactionInializer, {
+    fee: TrxBaseFee,
+    networkPassphrase,
+  });
+
+  Tx2.addOperation(
+    Operation.payment({
+      destination: motherAcc.publicKey(),
+      amount: totalPlatformFeeInUSD.toFixed(7),
+      asset: USDC,
+      source: buyer,
+    }),
+  );
+
+  // pay price to seller
+  if (Number(price) > 0) {
+    Tx2.addOperation(
+      Operation.payment({
+        destination: seller,
+        amount: price,
+        asset: USDC,
+        source: buyer,
+      }),
+    );
+  }
+
+  if (!hasTrust) {
+    Tx2.addOperation(
+      Operation.payment({
+        destination: buyer,
+        amount: "0.5",
+        asset: Asset.native(),
+        source: motherAcc.publicKey(),
+      }),
+    ).addOperation(
+      Operation.changeTrust({
+        asset: asset,
+        source: buyer,
+      }),
+    );
+  }
+
+  // send token to buyer
+  Tx2.addOperation(
+    Operation.payment({
+      asset: asset,
+      amount: "1",
+      source: storageAcc.publicKey(),
+      destination: buyer,
+    }),
+  )
+
+    // pay fee for platform
+    // .addOperation(
+    //   Operation.payment({
+    //     asset: PLATFORM_ASSET,
+    //     amount: PLATFORM_FEE,
+    //     destination: Keypair.fromSecret(env.MOTHER_SECRET).publicKey(),
+    //   }),
+    // )
+    .setTimeout(0);
+
+  const buildTrx = Tx2.build();
+
+  buildTrx.sign(motherAcc, storageAcc);
+
+  const xdr = buildTrx.toXDR();
+  const singedXdr = WithSing({ xdr, signWith });
+  return singedXdr;
+}
 export async function XDR4BuyAssetWithXLM({
   signWith,
   code,
