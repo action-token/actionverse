@@ -262,7 +262,7 @@ const CreateBountyModal = () => {
         SendBalanceToBountyMother.mutate({
             signWith: needSign(),
             prize: paymentMethod === "asset" ? Number(getValues("prize")) :
-                paymentMethod === "xlm" ? (Number(getValues("prize")) / (XLMRate ?? 1)) :
+                paymentMethod === "xlm" ? Number(getValues("prizeInUSD") / (XLMRate ?? 1)) :
                     paymentMethod === "usdc" ? Number(getValues("prizeInUSD") / (XLMRate ?? 1)) :
                         0,
             fees: paymentMethod === "asset" ? totalFees :
@@ -440,7 +440,7 @@ const CreateBountyModal = () => {
                                                     amount: paymentMethod === "asset"
                                                         ? Number(getValues("prize"))
                                                         : paymentMethod === "xlm"
-                                                            ? (Number(getValues("prize")) / (XLMRate ?? 1))
+                                                            ? Number(getValues("prizeInUSD") / (XLMRate ?? 1))
                                                             : paymentMethod === "usdc"
                                                                 ? Number(getValues("prizeInUSD") / (XLMRate ?? 1))
                                                                 : 0,
@@ -464,7 +464,7 @@ const CreateBountyModal = () => {
                                                     amount: paymentMethod === "asset"
                                                         ? Number(getValues("prize")) + totalFees
                                                         : paymentMethod === "xlm"
-                                                            ? (Number(getValues("prize")) / (XLMRate ?? 1)) + 1
+                                                            ? Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + 1
                                                             : paymentMethod === "usdc"
                                                                 ? Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)))
                                                                 : 0,
@@ -472,7 +472,7 @@ const CreateBountyModal = () => {
                                                     type: "total",
                                                 },
                                             ]}
-                                            XLM_EQUIVALENT={(Number(getValues("prize")) / (XLMRate ?? 1)) + 1}
+                                            XLM_EQUIVALENT={Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + 1}
                                             USDC_EQUIVALENT={Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)))}
                                             handleConfirm={handleSubmit(onSubmit)}
                                             loading={loading}
