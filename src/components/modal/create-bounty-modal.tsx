@@ -254,15 +254,21 @@ const CreateBountyModal = () => {
     })
 
     // Queries
-    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
+    const XLMRate = api.bounty.Bounty.getXLMPrice.useQuery().data
 
-    // Handlers
     const onSubmit: SubmitHandler<z.infer<typeof BountySchema>> = (data) => {
         data.medias = media
         setLoading(true)
         SendBalanceToBountyMother.mutate({
             signWith: needSign(),
-            prize: data.prize,
+            prize: paymentMethod === "asset" ? Number(getValues("prize")) :
+                paymentMethod === "xlm" ? (Number(getValues("prize")) / (XLMRate ?? 1)) :
+                    paymentMethod === "usdc" ? Number(getValues("prizeInUSD") / (XLMRate ?? 1)) :
+                        0,
+            fees: paymentMethod === "asset" ? totalFees :
+                paymentMethod === "xlm" ? 1 :
+                    paymentMethod === "usdc" ? 3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)) :
+                        0,
             method: paymentMethod,
         })
     }
@@ -426,53 +432,68 @@ const CreateBountyModal = () => {
                                     </Button>
                                 ) : (
                                     <>
-                                        {platformAssetBalance < getValues("prize") + totalFees ? (
-                                            <Button disabled className="shadow-sm shadow-foreground">
-                                                Insufficient Balance
-                                            </Button>
-                                        ) : (
-                                            <PaymentChoose
-                                                costBreakdown={[
-                                                    {
-                                                        label: "Bounty Prize",
-                                                        amount: paymentMethod === "asset" ? Number(getValues("prize")) : Number(getValues("prize")) * 0.7,
-                                                        highlighted: true,
-                                                        type: "cost",
-                                                    },
-                                                    {
-                                                        label: "Platform Fee",
-                                                        amount: paymentMethod === "asset" ? totalFees : 2 + 1,
-                                                        highlighted: false,
-                                                        type: "fee",
-                                                    },
-                                                    {
-                                                        label: "Total Cost",
-                                                        amount: paymentMethod === "asset" ? Number(getValues("prize")) + totalFees : Number(getValues("prize")) * 0.7 + 2 + 1,
-                                                        highlighted: false,
-                                                        type: "total",
-                                                    },
-                                                ]}
-                                                XLM_EQUIVALENT={Number(getValues("prize")) * 0.7 + 2 + 1}
-                                                handleConfirm={handleSubmit(onSubmit)}
-                                                loading={loading}
-                                                requiredToken={Number(getValues("prize")) + totalFees}
-                                                trigger={
-                                                    <Button disabled={loading || !isValid} className="shadow-sm shadow-foreground">
-                                                        {loading ? (
-                                                            <>
-                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                                Creating Bounty...
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <Coins className="mr-2 h-4 w-4" />
-                                                                Create Bounty
-                                                            </>
-                                                        )}
-                                                    </Button>
-                                                }
-                                            />
-                                        )}
+
+                                        <PaymentChoose
+                                            costBreakdown={[
+                                                {
+                                                    label: "Bounty Prize",
+                                                    amount: paymentMethod === "asset"
+                                                        ? Number(getValues("prize"))
+                                                        : paymentMethod === "xlm"
+                                                            ? (Number(getValues("prize")) / (XLMRate ?? 1))
+                                                            : paymentMethod === "usdc"
+                                                                ? Number(getValues("prizeInUSD") / (XLMRate ?? 1))
+                                                                : 0,
+                                                    highlighted: true,
+                                                    type: "cost",
+                                                },
+                                                {
+                                                    label: "Platform Fee",
+                                                    amount: paymentMethod === "asset"
+                                                        ? totalFees
+                                                        : paymentMethod === "xlm"
+                                                            ? 1
+                                                            : paymentMethod === "usdc"
+                                                                ? 3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1))
+                                                                : 0,
+                                                    highlighted: false,
+                                                    type: "fee",
+                                                },
+                                                {
+                                                    label: "Total Cost",
+                                                    amount: paymentMethod === "asset"
+                                                        ? Number(getValues("prize")) + totalFees
+                                                        : paymentMethod === "xlm"
+                                                            ? (Number(getValues("prize")) / (XLMRate ?? 1)) + 1
+                                                            : paymentMethod === "usdc"
+                                                                ? Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)))
+                                                                : 0,
+                                                    highlighted: false,
+                                                    type: "total",
+                                                },
+                                            ]}
+                                            XLM_EQUIVALENT={(Number(getValues("prize")) / (XLMRate ?? 1)) + 1}
+                                            USDC_EQUIVALENT={Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)))}
+                                            handleConfirm={handleSubmit(onSubmit)}
+                                            loading={loading}
+                                            requiredToken={Number(getValues("prize")) + totalFees}
+                                            trigger={
+                                                <Button disabled={loading || !isValid} className="shadow-sm shadow-foreground">
+                                                    {loading ? (
+                                                        <>
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                            Creating Bounty...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Coins className="mr-2 h-4 w-4" />
+                                                            Create Bounty
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            }
+                                        />
+
                                     </>
                                 )}
                             </div>

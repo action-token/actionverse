@@ -37,7 +37,7 @@ type PaymentProcessProps = {
   marketItemId?: number;
   setClose: () => void;
 };
-export const PaymentMethodEnum = z.enum(["asset", "xlm", "card"]);
+export const PaymentMethodEnum = z.enum(["asset", "xlm", "usdc", "card"]);
 export type PaymentMethod = z.infer<typeof PaymentMethodEnum>;
 
 export default function PaymentProcessItem({

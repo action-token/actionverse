@@ -17,18 +17,20 @@ import {
 } from "../constant";
 import { MOTHER_SECRET } from "../marketplace/SECRET";
 import { SignUserType, WithSing } from "../utils";
+import { getAssetToUSDCRate, getPlatformAssetPrice } from "../fan/get_token_price";
 
 const assetIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 const assetCode = "USDC";
 
-export async function SendBountyBalanceToMotherAccount({
+export async function SendBountyBalanceToMotherAccountViaAsset({
   prize,
   signWith,
   userPubKey,
   secretKey,
+  fees,
 }: {
   prize: number;
-
+  fees: number;
   signWith: SignUserType;
   userPubKey: string;
   secretKey?: string | undefined;
@@ -42,8 +44,7 @@ export async function SendBountyBalanceToMotherAccount({
     networkPassphrase,
   });
 
-  const totalAmount =
-    prize + (2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE));
+  const totalAmount = prize + fees;
 
   transaction.addOperation(
     Operation.payment({
@@ -68,17 +69,66 @@ export async function SendBountyBalanceToMotherAccount({
   }
   return { xdr: buildTrx.toXDR(), pubKey: userPubKey };
 }
+export async function SendBountyBalanceToMotherAccountViaUSDC({
+  prize,
+  signWith,
+  userPubKey,
+  secretKey,
+  fees,
+}: {
+  prize: number;
+  fees: number;
+  signWith: SignUserType;
+  userPubKey: string;
+  secretKey?: string | undefined;
+}) {
+  const server = new Horizon.Server(STELLAR_URL);
+  const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
+  const account = await server.loadAccount(motherAcc.publicKey());
+  const USDC = new Asset(
+    "USDC",
+    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  );
+  const transaction = new TransactionBuilder(account, {
+    fee: TrxBaseFee,
+    networkPassphrase,
+  });
 
+  transaction.addOperation(
+    Operation.payment({
+      destination: motherAcc.publicKey(),
+      asset: USDC,
+      amount: (prize + fees).toFixed(7).toString(),
+      source: userPubKey,
+    }),
+  );
+  transaction.setTimeout(0);
+
+  const buildTrx = transaction.build();
+  buildTrx.sign(motherAcc);
+
+  if (signWith && "email" in signWith && secretKey) {
+    const xdr = buildTrx.toXDR();
+    const signedXDr = await WithSing({
+      xdr: xdr,
+      signWith: signWith,
+    });
+    return { xdr: signedXDr, pubKey: userPubKey };
+  }
+  return { xdr: buildTrx.toXDR(), pubKey: userPubKey };
+}
 export async function SendBountyBalanceToMotherAccountViaXLM({
   prizeInXLM,
   signWith,
   userPubKey,
   secretKey,
+  fees,
 }: {
   prizeInXLM: number;
   signWith: SignUserType;
   userPubKey: string;
   secretKey?: string | undefined;
+  fees: number;
 }) {
   const server = new Horizon.Server(STELLAR_URL);
   const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
@@ -90,7 +140,7 @@ export async function SendBountyBalanceToMotherAccountViaXLM({
     networkPassphrase,
   });
 
-  const totalAmount = prizeInXLM + 2 + 1;
+  const totalAmount = prizeInXLM + fees;
 
   transaction.addOperation(
     Operation.payment({

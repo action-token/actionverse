@@ -48,6 +48,7 @@ export function PaymentChoose({
     trigger,
     beforeTrigger,
     costBreakdown,
+    USDC_EQUIVALENT
 }: {
     requiredToken: number;
     XLM_EQUIVALENT: number;
@@ -56,6 +57,7 @@ export function PaymentChoose({
     trigger: React.ReactNode;
     beforeTrigger?: () => Promise<boolean>;
     costBreakdown?: CostBreakdownItem[];
+    USDC_EQUIVALENT?: number;
 }) {
     const { paymentMethod, setPaymentMethod, isOpen, setIsOpen } =
         usePaymentMethodStore();
@@ -144,6 +146,32 @@ export function PaymentChoose({
                                 </div>
                             </Label>
                         </div>
+                        {
+                            USDC_EQUIVALENT && (
+                                <div className="flex items-center space-x-2 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
+                                    <RadioGroupItem
+                                        value={PaymentMethodEnum.enum.usdc}
+                                        id={PaymentMethodEnum.enum.usdc}
+                                        className=""
+                                    />
+                                    <Label
+                                        htmlFor={PaymentMethodEnum.enum.usdc}
+                                        className="flex flex-1 cursor-pointer items-center"
+                                    >
+                                        <DollarSign className="mr-3 h-6 w-6" />
+                                        <div className="flex-grow">
+                                            <div className="font-medium">Pay with USDC</div>
+                                            <div className="text-sm text-gray-500">
+                                                Use Stellar Lumens
+                                            </div>
+                                        </div>
+                                        <div className="text-right font-medium">
+                                            {USDC_EQUIVALENT.toFixed(0)} USDC
+                                        </div>
+                                    </Label>
+                                </div>
+                            )
+                        }
                     </RadioGroup>
                 </div>
 
@@ -158,7 +186,9 @@ export function PaymentChoose({
                                 {item.label}
                             </span>
                             <span>
-                                {item.amount.toFixed(0)} {paymentMethod === "asset" ? PLATFORM_ASSET.code : "XLM"}
+                                {item.amount.toFixed(0)} {paymentMethod === "asset" ? PLATFORM_ASSET.code :
+                                    paymentMethod === "xlm" ? "XLM" : paymentMethod === "usdc" ? "USDC" : ""
+                                }
                             </span>
                         </div>
                     )) : <></>}
@@ -167,7 +197,9 @@ export function PaymentChoose({
                     Your account will be charged{" "}
                     {paymentMethod === "asset"
                         ? `${requiredToken} ${PLATFORM_ASSET.code}`
-                        : `${XLM_EQUIVALENT} XLM`}{" "}
+                        : paymentMethod === "xlm"
+                            ? `${XLM_EQUIVALENT} XLM`
+                            : `${USDC_EQUIVALENT} USDC`}
                     to perform this action.
                 </div>
                 <DialogFooter className=" flex flex-row items-center justify-between gap-2">
