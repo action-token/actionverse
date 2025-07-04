@@ -3,6 +3,7 @@ import { AwardIcon } from "lucide-react";
 import { getAccSecretFromRubyApi } from "package/connect_wallet/src/lib/stellar/get-acc-secret";
 import { z } from "zod";
 import { env } from "~/env";
+import { getAssetToUSDCRate } from "~/lib/stellar/fan/get_token_price";
 
 // import { getUserSecret } from "~/components/recharge/utils";
 import { covertSiteAsset2XLM } from "~/lib/stellar/marketplace/trx/convert_site_asset";
@@ -11,6 +12,7 @@ import {
   XDR4BuyAsset,
   XDR4BuyAssetWithSquire,
   XDR4BuyAssetWithXLM,
+  XDR4BuyUSDC,
 } from "~/lib/stellar/music/trx/payment_xdr";
 import { SignUser } from "~/lib/stellar/utils";
 import {
@@ -33,7 +35,7 @@ export const stellarRouter = createTRPCRouter({
         limit: z.number(),
         placerId: z.string().optional().nullable(),
         signWith: SignUser,
-        method: z.enum(["xlm", "asset", "card"]),
+        method: z.enum(["xlm", "asset", "usdc", "card"]),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -99,6 +101,19 @@ export const stellarRouter = createTRPCRouter({
             buyer,
             price: marketAsset.price.toString(),
             signWith,
+          });
+        }
+        case "usdc": {
+          const usdcPrice = await getAssetToUSDCRate();
+          return await XDR4BuyUSDC({
+            seller: seller,
+            storageSecret: sellerStorageSec,
+            code: assetCode,
+            issuerPub,
+            buyer,
+            price: ((1 / usdcPrice) * marketAsset.priceUSD).toString(),
+            signWith,
+            usdcPrice: usdcPrice,
           });
         }
         case "card": {

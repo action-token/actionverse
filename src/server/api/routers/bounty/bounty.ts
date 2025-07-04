@@ -15,7 +15,8 @@ import {
   checkXDRSubmitted,
   getHasMotherTrustOnUSDC,
   getHasUserHasTrustOnUSDC,
-  SendBountyBalanceToMotherAccount,
+  SendBountyBalanceToMotherAccountViaAsset,
+  SendBountyBalanceToMotherAccountViaUSDC,
   SendBountyBalanceToMotherAccountViaXLM,
   SendBountyBalanceToUserAccount,
   SendBountyBalanceToUserAccountViaXLM,
@@ -28,6 +29,7 @@ import {
   getAssetToUSDCRate,
   getplatformAssetNumberForXLM,
   getPlatformAssetPrice,
+  getXLMPrice,
 } from "~/lib/stellar/fan/get_token_price";
 import { SignUser } from "~/lib/stellar/utils";
 import {
@@ -38,7 +40,7 @@ import {
 import { BountySchema } from "~/components/modal/edit-bounty-modal";
 import { BountyFormSchema } from "~/components/modal/create-locationbased-bounty";
 
-export const PaymentMethodEnum = z.enum(["asset", "xlm", "card"]);
+export const PaymentMethodEnum = z.enum(["asset", "xlm", "usdc", "card"]);
 export type PaymentMethod = z.infer<typeof PaymentMethodEnum>;
 
 export const BountyCommentSchema = z.object({
@@ -86,6 +88,7 @@ export const BountyRoute = createTRPCRouter({
         signWith: SignUser,
         prize: z.number().min(0.00001, { message: "Prize can't less than 0" }),
         method: PaymentMethodEnum,
+        fees: z.number()
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -99,18 +102,30 @@ export const BountyRoute = createTRPCRouter({
       if (input.method === PaymentMethodEnum.enum.xlm) {
         return await SendBountyBalanceToMotherAccountViaXLM({
           userPubKey: userPubKey,
-          prizeInXLM: input.prize * 0.7,
+          prizeInXLM: input.prize,
           signWith: input.signWith,
           secretKey: secretKey,
+          fees: input.fees,
         });
-      } else {
-        return await SendBountyBalanceToMotherAccount({
+      } else if (input.method === PaymentMethodEnum.enum.asset) {
+        return await SendBountyBalanceToMotherAccountViaAsset({
           userPubKey: userPubKey,
           prize: input.prize,
           signWith: input.signWith,
           secretKey: secretKey,
+          fees: input.fees,
         });
       }
+      else if (input.method === PaymentMethodEnum.enum.usdc) {
+        return await SendBountyBalanceToMotherAccountViaUSDC({
+          userPubKey: userPubKey,
+          prize: input.prize,
+          signWith: input.signWith,
+          secretKey: secretKey,
+          fees: input.fees,
+        });
+      }
+
     }),
 
   createBounty: protectedProcedure
@@ -779,7 +794,9 @@ export const BountyRoute = createTRPCRouter({
   getPlatformAsset: protectedProcedure.query(async ({ ctx }) => {
     return await getAssetPrice();
   }),
-
+  getXLMPrice: protectedProcedure.query(async ({ ctx }) => {
+    return await getXLMPrice();
+  }),
   getAssetToUSDCRate: protectedProcedure.query(async ({ ctx }) => {
     return await getAssetToUSDCRate();
   }),
