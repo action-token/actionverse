@@ -60,14 +60,14 @@ const NewAssetSchema = z.object({
 
 // 1. Comment out the Custom Asset schema
 // Find this code:
-/* 
+
 // Custom Asset feature - currently disabled
 const CustomAssetSchema = z.object({
     assetType: z.literal("custom"),
     assetCode: AssetNameSchema,
     issuer: z.string().length(56, "Issuer must be exactly 56 characters"),
 })
-*/
+
 
 /* 
 // Custom Asset feature - currently disabled
@@ -104,16 +104,16 @@ export const RequestBrandCreateFormSchema = z
         coverImagePreview: z.string().optional(),
         displayName: z.string().min(1, "Display name is required").max(99, "Display name must be less than 100 characters"),
         bio: z.string().optional(),
-        assetType: z.literal("new"), // Only allow "new" asset type
+        assetType: z.literal("new").or(z.literal("custom")),
         assetName: z.string().default(""),
         assetImage: z.string().url().optional(),
         assetImagePreview: z.string().optional(),
         // Custom asset fields - commented out
-        /*
-            assetCode: z.string().default(""),
-            issuer: z.string().default(""),
-            vanityUrl: z.string().default(""),
-            */
+
+        assetCode: z.string().default(""),
+        issuer: z.string().default(""),
+        /*   vanityUrl: z.string().default(""),
+         */
     })
     .refine(
         (data) => {
@@ -142,15 +142,15 @@ export default function ArtistOnboarding() {
         coverImagePreview: "",
         displayName: "",
         bio: "",
-        assetType: "new", // Only "new" is supported
+        assetType: "new", // default to new asset type
         assetName: "", //new asset name
         assetImage: "", //new asset image
         assetImagePreview: "", //new asset image preview
-        /* Custom asset and vanity URL fields - currently disabled
-            assetCode: "", //custom asset code
-            issuer: "", //custom asset issuer
-            vanityUrl: "",
-            */
+
+        assetCode: "", //custom asset code
+        issuer: "", //custom asset issuer
+        /*    vanityUrl: "",
+        */
     })
     const [formErrors, setFormErrors] = useState<FormErrors>({})
     const [isUploading, setIsUploading] = useState(false)
@@ -176,10 +176,10 @@ export default function ArtistOnboarding() {
                /* || field === "assetCode" */) {
                 AssetNameSchema.parse(value)
                 return { valid: true, errors: [] }
-            } /*else if (field === "issuer") {
+            } else if (field === "issuer") {
                 z.string().length(56).parse(value)
                 return { valid: true, errors: [] }
-            } */
+            }
             else if (field === "displayName") {
                 ProfileSchema.shape.displayName.parse(value)
                 return { valid: true, errors: [] }
@@ -198,8 +198,8 @@ export default function ArtistOnboarding() {
 
     // Add these computed properties to replace the old validation states
     const isAssetNameValid = formData.assetName && formData.assetName.length > 0 && !formErrors.assetName?.length
-    // const isassetCodeValid = formData.assetCode && formData.assetCode.length > 0 && !formErrors.assetCode?.length
-    // const isIssuerValid = formData.issuer && formData.issuer.length > 0 && !formErrors.issuer?.length
+    const isassetCodeValid = formData.assetCode && formData.assetCode.length > 0 && !formErrors.assetCode?.length
+    const isIssuerValid = formData.issuer && formData.issuer.length > 0 && !formErrors.issuer?.length
 
     useEffect(() => {
         // Reset upload progress when not uploading
@@ -248,14 +248,14 @@ export default function ArtistOnboarding() {
 
     // 7. Comment out the custom asset trust effect
     // Find this code:
-    /* Custom asset feature - currently disabled
-      // Add this effect to reset isTrusted when asset code or issuer changes
-      useEffect(() => {
-          if (isTrusted && (formData.assetCode || formData.issuer)) {
-              setIsTrusted(false)
-          }
-      }, [formData.assetCode, formData.issuer])
-      */
+
+    // Add this effect to reset isTrusted when asset code or issuer changes
+    useEffect(() => {
+        if (isTrusted && (formData.assetCode || formData.issuer)) {
+            setIsTrusted(false)
+        }
+    }, [formData.assetCode, formData.issuer])
+
 
     /* Custom asset feature - currently disabled
       // Add this effect to reset isTrusted when asset code or issuer changes
@@ -435,28 +435,21 @@ export default function ArtistOnboarding() {
 
     // 10. Update the handleRadioChange function to only allow "new" asset type
     // Find this code:
-    /* 
-      // Original function that supported both asset types
-      const handleRadioChange = (value: "new" | "custom") => {
-          setFormData({
-              ...formData,
-              assetType: value,
-          })
-  
-          // Reset trust status when switching asset types
-          if (value === "new") {
-              setIsTrusted(false)
-          }
-      }
-      */
 
-    // New function that only supports "new" asset type
-    const handleRadioChange = (value: "new") => {
+    // Original function that supported both asset types
+    const handleRadioChange = (value: "new" | "custom") => {
         setFormData({
             ...formData,
             assetType: value,
         })
+
+        // Reset trust status when switching asset types
+        if (value === "new") {
+            setIsTrusted(false)
+        }
     }
+
+
 
     // Fix the handleNext function for step 4
     const handleNext = () => {
@@ -534,11 +527,11 @@ export default function ArtistOnboarding() {
                             toast.error("Please upload an asset image")
                         }
                     } else {
-                        // if (!formData.assetCode || formData.assetCode.length < 4 || formData.assetCode.length > 12) {
-                        //     toast.error("Please enter a valid asset code (4-12 letters)")
-                        // } else if (!formData.issuer || formData.issuer.length !== 56) {
-                        //     toast.error("Please enter a valid issuer (exactly 56 characters)")
-                        // }
+                        if (!formData.assetCode || formData.assetCode.length < 4 || formData.assetCode.length > 12) {
+                            toast.error("Please enter a valid asset code (4-12 letters)")
+                        } else if (!formData.issuer || formData.issuer.length !== 56) {
+                            toast.error("Please enter a valid issuer (exactly 56 characters)")
+                        }
                     }
                 }
             }
@@ -1272,7 +1265,7 @@ export default function ArtistOnboarding() {
                                                             </div>
                                                         </motion.div>
 
-                                                        {/* Custom Asset option - currently disabled
+
                                                         <motion.div
                                                             whileHover={{ scale: 1.02 }}
                                                             transition={{ duration: 0.2 }}
@@ -1301,7 +1294,7 @@ export default function ArtistOnboarding() {
                                                                 </div>
                                                             </div>
                                                         </motion.div>
-                                                        */}
+
                                                     </RadioGroup>
 
                                                     <AnimatePresence mode="wait">
@@ -1466,179 +1459,178 @@ export default function ArtistOnboarding() {
                                                             </motion.div>
                                                         ) : (
                                                             <>
-                                                                {/* Custom asset form - currently disabled
-                                                            
-                                                                   <motion.div
-                                                                key="custom-asset"
-                                                                initial={{ opacity: 0, y: 20 }}
-                                                                animate={{ opacity: 1, y: 0 }}
-                                                                exit={{ opacity: 0, y: -20 }}
-                                                                transition={{ duration: 0.3 }}
-                                                                className="space-y-6 pt-4"
-                                                            >
-                                                                <div className="flex flex-col md:flex-row gap-6">
-                                                                    <div className="w-full md:w-1/2">
-                                                                        <div className="flex justify-between">
-                                                                            <Label htmlFor="assetCode" className="text-base font-medium">
-                                                                                Asset Name
-                                                                            </Label>
-                                                                            <span
-                                                                                className={cn(
-                                                                                    "text-xs",
-                                                                                    formData.assetCode.length > 0 && !isassetCodeValid
-                                                                                        ? "text-destructive"
-                                                                                        : "text-muted-foreground",
-                                                                                )}
-                                                                            >
-                                                                                {formData.assetCode.length}/4-12 characters
-                                                                            </span>
-                                                                        </div>
-                                                                        <Input
-                                                                            id="assetCode"
-                                                                            name="assetCode"
-                                                                            value={formData.assetCode}
-                                                                            onChange={handleInputChange}
-                                                                            placeholder="Enter asset name"
-                                                                            className={cn(
-                                                                                "mt-1",
-                                                                                formData.assetCode.length > 0 && !isassetCodeValid && "border-destructive",
-                                                                            )}
-                                                                            maxLength={12}
-                                                                        />
-                                                                        <div className="mt-1 h-1 w-full bg-muted rounded-full overflow-hidden">
-                                                                            <motion.div
-                                                                                className={cn(
-                                                                                    "h-full",
-                                                                                    isassetCodeValid
-                                                                                        ? "bg-primary"
-                                                                                        : formData.assetCode.length > 0
-                                                                                            ? "bg-destructive"
-                                                                                            : "bg-primary",
-                                                                                )}
-                                                                                initial={{ width: "0%" }}
-                                                                                animate={{
-                                                                                    width:
-                                                                                        formData.assetCode.length < 4
-                                                                                            ? `${(formData.assetCode.length / 4) * 33}%`
-                                                                                            : formData.assetCode.length > 12
-                                                                                                ? "100%"
-                                                                                                : `${33 + ((formData.assetCode.length - 4) / 8) * 67}%`,
-                                                                                }}
-                                                                                transition={{ duration: 0.2 }}
-                                                                            />
-                                                                        </div>
-                                                                        {formErrors.assetCode && formErrors.assetCode.length > 0 && (
-                                                                            <p className="mt-1 text-xs text-destructive flex items-center gap-1">
-                                                                                <AlertCircle className="h-3 w-3" />
-                                                                                {formErrors.assetCode[0]}
-                                                                            </p>
-                                                                        )}
-                                                                        <p className="mt-1 text-xs text-muted-foreground">
-                                                                            Enter the asset name (4-12 letters, a-z and A-Z only).
-                                                                        </p>
-                                                                    </div>
 
-                                                                    <div className="w-full md:w-1/2">
-                                                                        <div className="flex justify-between">
-                                                                            <Label htmlFor="issuer" className="text-base font-medium">
-                                                                                Issuer
-                                                                            </Label>
-                                                                            <span
+                                                                <motion.div
+                                                                    key="custom-asset"
+                                                                    initial={{ opacity: 0, y: 20 }}
+                                                                    animate={{ opacity: 1, y: 0 }}
+                                                                    exit={{ opacity: 0, y: -20 }}
+                                                                    transition={{ duration: 0.3 }}
+                                                                    className="space-y-6 pt-4"
+                                                                >
+                                                                    <div className="flex flex-col md:flex-row gap-6">
+                                                                        <div className="w-full md:w-1/2">
+                                                                            <div className="flex justify-between">
+                                                                                <Label htmlFor="assetCode" className="text-base font-medium">
+                                                                                    Asset Name
+                                                                                </Label>
+                                                                                <span
+                                                                                    className={cn(
+                                                                                        "text-xs",
+                                                                                        formData.assetCode.length > 0 && !isassetCodeValid
+                                                                                            ? "text-destructive"
+                                                                                            : "text-muted-foreground",
+                                                                                    )}
+                                                                                >
+                                                                                    {formData.assetCode.length}/4-12 characters
+                                                                                </span>
+                                                                            </div>
+                                                                            <Input
+                                                                                id="assetCode"
+                                                                                name="assetCode"
+                                                                                value={formData.assetCode}
+                                                                                onChange={handleInputChange}
+                                                                                placeholder="Enter asset name"
                                                                                 className={cn(
-                                                                                    "text-xs",
-                                                                                    formData.issuer.length > 0 && !isIssuerValid
-                                                                                        ? "text-destructive"
-                                                                                        : "text-muted-foreground",
+                                                                                    "mt-1",
+                                                                                    formData.assetCode.length > 0 && !isassetCodeValid && "border-destructive",
                                                                                 )}
-                                                                            >
-                                                                                {formData.issuer.length}/56 characters
-                                                                            </span>
-                                                                        </div>
-                                                                        <Input
-                                                                            id="issuer"
-                                                                            name="issuer"
-                                                                            value={formData.issuer}
-                                                                            onChange={handleInputChange}
-                                                                            placeholder="Enter issuer"
-                                                                            className={cn(
-                                                                                "mt-1",
-                                                                                formData.issuer.length > 0 && !isIssuerValid && "border-destructive",
-                                                                            )}
-                                                                            maxLength={56}
-                                                                        />
-                                                                        <div className="mt-1 h-1 w-full bg-muted rounded-full overflow-hidden">
-                                                                            <motion.div
-                                                                                className={cn(
-                                                                                    "h-full",
-                                                                                    isIssuerValid
-                                                                                        ? "bg-green-500"
-                                                                                        : formData.issuer.length > 0
+                                                                                maxLength={12}
+                                                                            />
+                                                                            <div className="mt-1 h-1 w-full bg-muted rounded-full overflow-hidden">
+                                                                                <motion.div
+                                                                                    className={cn(
+                                                                                        "h-full",
+                                                                                        isassetCodeValid
                                                                                             ? "bg-primary"
-                                                                                            : "bg-primary",
-                                                                                )}
-                                                                                initial={{ width: "0%" }}
-                                                                                animate={{ width: `${(formData.issuer.length / 56) * 100}%` }}
-                                                                                transition={{ duration: 0.2 }}
-                                                                            />
-                                                                        </div>
-                                                                        {formErrors.issuer && formErrors.issuer.length > 0 && (
-                                                                            <p className="mt-1 text-xs text-destructive flex items-center gap-1">
-                                                                                <AlertCircle className="h-3 w-3" />
-                                                                                {formErrors.issuer[0]}
-                                                                            </p>
-                                                                        )}
-                                                                        {isIssuerValid && (
-                                                                            <p className="mt-1 text-xs text-green-500 flex items-center gap-1">
-                                                                                <CheckCircle2 className="h-3 w-3" />
-                                                                                Valid issuer format
-                                                                            </p>
-                                                                        )}
-                                                                        <p className="mt-1 text-xs text-muted-foreground">
-                                                                            Enter the issuer information for your asset (exactly 56 characters).
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-\
-                                                        
-                                                                <div className="mt-6 flex flex-col gap-3">
-                                                                    <div className="rounded-lg bg-muted/30 p-4 border border-border">
-                                                                        <div className="flex items-start gap-3">
-                                                                            <div className="rounded-full bg-yellow-500/20 p-2 mt-1">
-                                                                                <AlertCircle className="h-4 w-4 text-yellow-500" />
+                                                                                            : formData.assetCode.length > 0
+                                                                                                ? "bg-destructive"
+                                                                                                : "bg-primary",
+                                                                                    )}
+                                                                                    initial={{ width: "0%" }}
+                                                                                    animate={{
+                                                                                        width:
+                                                                                            formData.assetCode.length < 4
+                                                                                                ? `${(formData.assetCode.length / 4) * 33}%`
+                                                                                                : formData.assetCode.length > 12
+                                                                                                    ? "100%"
+                                                                                                    : `${33 + ((formData.assetCode.length - 4) / 8) * 67}%`,
+                                                                                    }}
+                                                                                    transition={{ duration: 0.2 }}
+                                                                                />
                                                                             </div>
-                                                                            <div>
-                                                                                <h3 className="font-medium">Trust Required</h3>
-                                                                                <p className="text-sm text-muted-foreground mt-1">
-                                                                                    You must trust this asset before continuing. This verifies the asset exists
-                                                                                    and is valid.
+                                                                            {formErrors.assetCode && formErrors.assetCode.length > 0 && (
+                                                                                <p className="mt-1 text-xs text-destructive flex items-center gap-1">
+                                                                                    <AlertCircle className="h-3 w-3" />
+                                                                                    {formErrors.assetCode[0]}
                                                                                 </p>
+                                                                            )}
+                                                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                                                Enter the asset name (4-12 letters, a-z and A-Z only).
+                                                                            </p>
+                                                                        </div>
+
+                                                                        <div className="w-full md:w-1/2">
+                                                                            <div className="flex justify-between">
+                                                                                <Label htmlFor="issuer" className="text-base font-medium">
+                                                                                    Issuer
+                                                                                </Label>
+                                                                                <span
+                                                                                    className={cn(
+                                                                                        "text-xs",
+                                                                                        formData.issuer.length > 0 && !isIssuerValid
+                                                                                            ? "text-destructive"
+                                                                                            : "text-muted-foreground",
+                                                                                    )}
+                                                                                >
+                                                                                    {formData.issuer.length}/56 characters
+                                                                                </span>
                                                                             </div>
+                                                                            <Input
+                                                                                id="issuer"
+                                                                                name="issuer"
+                                                                                value={formData.issuer}
+                                                                                onChange={handleInputChange}
+                                                                                placeholder="Enter issuer"
+                                                                                className={cn(
+                                                                                    "mt-1",
+                                                                                    formData.issuer.length > 0 && !isIssuerValid && "border-destructive",
+                                                                                )}
+                                                                                maxLength={56}
+                                                                            />
+                                                                            <div className="mt-1 h-1 w-full bg-muted rounded-full overflow-hidden">
+                                                                                <motion.div
+                                                                                    className={cn(
+                                                                                        "h-full",
+                                                                                        isIssuerValid
+                                                                                            ? "bg-green-500"
+                                                                                            : formData.issuer.length > 0
+                                                                                                ? "bg-primary"
+                                                                                                : "bg-primary",
+                                                                                    )}
+                                                                                    initial={{ width: "0%" }}
+                                                                                    animate={{ width: `${(formData.issuer.length / 56) * 100}%` }}
+                                                                                    transition={{ duration: 0.2 }}
+                                                                                />
+                                                                            </div>
+                                                                            {formErrors.issuer && formErrors.issuer.length > 0 && (
+                                                                                <p className="mt-1 text-xs text-destructive flex items-center gap-1">
+                                                                                    <AlertCircle className="h-3 w-3" />
+                                                                                    {formErrors.issuer[0]}
+                                                                                </p>
+                                                                            )}
+                                                                            {isIssuerValid && (
+                                                                                <p className="mt-1 text-xs text-green-500 flex items-center gap-1">
+                                                                                    <CheckCircle2 className="h-3 w-3" />
+                                                                                    Valid issuer format
+                                                                                </p>
+                                                                            )}
+                                                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                                                Enter the issuer information for your asset (exactly 56 characters).
+                                                                            </p>
                                                                         </div>
                                                                     </div>
+                                                                    \
 
-                                                                    <Button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            checkCustomAssetValidity({
-                                                                                assetCode: formData.assetCode,
-                                                                                issuer: formData.issuer,
-                                                                            })
-                                                                        }}
-                                                                        disabled={!isassetCodeValid || !isIssuerValid || isTrusting || isTrusted}
-                                                                        className="w-full"
-                                                                    >
-                                                                        Check Validity
-                                                                    </Button>
-
-                                                                    {isTrusted && (
-                                                                        <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                                                                            <CheckCheck className="h-4 w-4" />
-                                                                            <span>Asset trusted successfully! You can now proceed.</span>
+                                                                    <div className="mt-6 flex flex-col gap-3">
+                                                                        <div className="rounded-lg bg-muted/30 p-4 border border-border">
+                                                                            <div className="flex items-start gap-3">
+                                                                                <div className="rounded-full bg-yellow-500/20 p-2 mt-1">
+                                                                                    <AlertCircle className="h-4 w-4 text-yellow-500" />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <h3 className="font-medium">Trust Required</h3>
+                                                                                    <p className="text-sm text-muted-foreground mt-1">
+                                                                                        You must trust this asset before continuing. This verifies the asset exists
+                                                                                        and is valid.
+                                                                                    </p>
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
-                                                                    )}
-                                                                </div>
-                                                            </motion.div>
-                                                            */}
+
+                                                                        <Button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                checkCustomAssetValidity({
+                                                                                    assetCode: formData.assetCode,
+                                                                                    issuer: formData.issuer,
+                                                                                })
+                                                                            }}
+                                                                            disabled={!isassetCodeValid || !isIssuerValid || isTrusting || isTrusted}
+                                                                            className="w-full"
+                                                                        >
+                                                                            Check Validity
+                                                                        </Button>
+
+                                                                        {isTrusted && (
+                                                                            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                                                                                <CheckCheck className="h-4 w-4" />
+                                                                                <span>Asset trusted successfully! You can now proceed.</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </motion.div>
+
                                                             </>
                                                         )}
                                                     </AnimatePresence>
@@ -1779,20 +1771,20 @@ export default function ArtistOnboarding() {
                                                                     </div>
                                                                 ) : (
                                                                     <>
-                                                                        {/* <div className="space-y-3">
-                                                                        <div>
-                                                                            <h4 className="text-sm font-medium">Asset Name</h4>
-                                                                            <p className="text-sm text-muted-foreground truncate">
-                                                                                {formData.assetCode || "Not provided"}
-                                                                            </p>
+                                                                        <div className="space-y-3">
+                                                                            <div>
+                                                                                <h4 className="text-sm font-medium">Asset Name</h4>
+                                                                                <p className="text-sm text-muted-foreground truncate">
+                                                                                    {formData.assetCode || "Not provided"}
+                                                                                </p>
+                                                                            </div>
+                                                                            <div>
+                                                                                <h4 className="text-sm font-medium">Issuer</h4>
+                                                                                <p className="text-sm text-muted-foreground truncate">
+                                                                                    {formData.issuer || "Not provided"}
+                                                                                </p>
+                                                                            </div>
                                                                         </div>
-                                                                        <div>
-                                                                            <h4 className="text-sm font-medium">Issuer</h4>
-                                                                            <p className="text-sm text-muted-foreground truncate">
-                                                                                {formData.issuer || "Not provided"}
-                                                                            </p>
-                                                                        </div>
-                                                                    </div> */}
                                                                     </>
 
                                                                 )}
