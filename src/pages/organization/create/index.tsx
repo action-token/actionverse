@@ -1,7 +1,5 @@
 "use client"
-
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import { motion, AnimatePresence } from "framer-motion"
@@ -11,7 +9,6 @@ import {
     User,
     FileText,
     ImageIcon,
-    LinkIcon,
     ArrowRight,
     ArrowLeft,
     CheckCheck,
@@ -23,7 +20,6 @@ import {
     PanelTop,
 } from "lucide-react"
 import { z } from "zod"
-
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
 import { Textarea } from "~/components/shadcn/ui/textarea"
@@ -39,6 +35,7 @@ import { UploadS3Button } from "~/components/common/upload-button"
 import toast from "react-hot-toast"
 import { api } from "~/utils/api"
 import { useRouter } from "next/navigation"
+
 // Form validation schemas
 const ProfileSchema = z.object({
     displayName: z.string().min(1, "Display name is required").max(99, "Display name must be less than 100 characters"),
@@ -58,44 +55,16 @@ const NewAssetSchema = z.object({
     assetImagePreview: z.string().optional(),
 })
 
-// 1. Comment out the Custom Asset schema
-// Find this code:
-
-// Custom Asset feature - currently disabled
+// Fix the CustomAssetSchema to use assetCode instead of assetName
 const CustomAssetSchema = z.object({
     assetType: z.literal("custom"),
     assetCode: AssetNameSchema,
     issuer: z.string().length(56, "Issuer must be exactly 56 characters"),
 })
 
+const AssetSchema = z.discriminatedUnion("assetType", [NewAssetSchema, CustomAssetSchema])
 
-/* 
-// Custom Asset feature - currently disabled
-const CustomAssetSchema = z.object({
-    assetType: z.literal("custom"),
-    assetCode: AssetNameSchema,
-    issuer: z.string().length(56, "Issuer must be exactly 56 characters"),
-})
-*/
-
-// 2. Comment out the VanityUrlSchema
-// Find this code:
-/*
-// Vanity URL feature - currently disabled
-const VanityUrlSchema = z.object({
-    vanityUrl: z.string().min(1, "Vanity URL is required"),
-})
-*/
-
-/*
-// Vanity URL feature - currently disabled
-const VanityUrlSchema = z.object({
-    vanityUrl: z.string().min(1, "Vanity URL is required"),
-})
-*/
-
-// 3. Update the RequestBrandCreateFormSchema to remove vanityUrl and custom asset fields from required validation
-// Find this code:
+// Fix the FormSchema to make fields required and fix the assetType type
 export const RequestBrandCreateFormSchema = z
     .object({
         profileUrl: z.string().url().optional(),
@@ -104,21 +73,21 @@ export const RequestBrandCreateFormSchema = z
         coverImagePreview: z.string().optional(),
         displayName: z.string().min(1, "Display name is required").max(99, "Display name must be less than 100 characters"),
         bio: z.string().optional(),
-        assetType: z.literal("new").or(z.literal("custom")),
+        assetType: z.enum(["new", "custom"]),
         assetName: z.string().default(""),
         assetImage: z.string().url().optional(),
         assetImagePreview: z.string().optional(),
-        // Custom asset fields - commented out
-
         assetCode: z.string().default(""),
         issuer: z.string().default(""),
-        /*   vanityUrl: z.string().default(""),
-         */
     })
     .refine(
         (data) => {
-            // Asset image is required
-            return !!data.assetImage
+            // If assetType is "new", assetImage is required
+            if (data.assetType === "new") {
+                return !!data.assetImage
+            }
+            // If assetType is "custom", assetCode and issuer are required
+            return true
         },
         {
             message: "Asset image is required for new assets",
@@ -133,8 +102,6 @@ type FormErrors = {
 
 export default function ArtistOnboarding() {
     const [currentStep, setCurrentStep] = useState(1)
-    // 5. Update the initial state to remove custom asset and vanity URL
-    // Find this code:
     const [formData, setFormData] = useState<FormData>({
         profileUrl: "",
         profileUrlPreview: "",
@@ -142,15 +109,12 @@ export default function ArtistOnboarding() {
         coverImagePreview: "",
         displayName: "",
         bio: "",
-        assetType: "new", // default to new asset type
+        assetType: "new", // "new" or "custom"
         assetName: "", //new asset name
         assetImage: "", //new asset image
         assetImagePreview: "", //new asset image preview
-
         assetCode: "", //custom asset code
         issuer: "", //custom asset issuer
-        /*    vanityUrl: "",
-        */
     })
     const [formErrors, setFormErrors] = useState<FormErrors>({})
     const [isUploading, setIsUploading] = useState(false)
@@ -159,9 +123,6 @@ export default function ArtistOnboarding() {
     const [isDarkMode, setIsDarkMode] = useState(false)
     const [activeImageTab, setActiveImageTab] = useState("profile")
     const router = useRouter()
-    // Add state for vanity URL availability
-    const [isVanityUrlAvailable, setIsVanityUrlAvailable] = useState<boolean | null>(null)
-    const [isCheckingVanityUrl, setIsCheckingVanityUrl] = useState(false)
 
     // In the state declarations at the top of the component, add a new state for tracking trust status
     const [isTrusted, setIsTrusted] = useState(false)
@@ -172,15 +133,13 @@ export default function ArtistOnboarding() {
     // Add this function to validate form fields
     const validateField = (field: keyof FormData, value: string) => {
         try {
-            if (field === "assetName"
-               /* || field === "assetCode" */) {
+            if (field === "assetName" || field === "assetCode") {
                 AssetNameSchema.parse(value)
                 return { valid: true, errors: [] }
             } else if (field === "issuer") {
                 z.string().length(56).parse(value)
                 return { valid: true, errors: [] }
-            }
-            else if (field === "displayName") {
+            } else if (field === "displayName") {
                 ProfileSchema.shape.displayName.parse(value)
                 return { valid: true, errors: [] }
             }
@@ -208,63 +167,12 @@ export default function ArtistOnboarding() {
         }
     }, [isUploading])
 
-    // 6. Comment out the vanity URL availability check
-    // Find this code:
-    /* Vanity URL feature - currently disabled
-      // Add vanity URL availability check
-      useEffect(() => {
-          // Debounce the check to avoid too many API calls
-          const timer = setTimeout(() => {
-              if (formData.vanityUrl && formData.vanityUrl.length > 0) {
-                  checkAvailability.mutate({
-                      vanityURL: formData.vanityUrl,
-                  })
-              } else {
-                  setIsVanityUrlAvailable(null)
-              }
-          }, 500)
-  
-          return () => clearTimeout(timer)
-      }, [formData.vanityUrl])
-      */
-
-    /* Vanity URL feature - currently disabled
-      // Add vanity URL availability check
-      useEffect(() => {
-          // Debounce the check to avoid too many API calls
-          const timer = setTimeout(() => {
-              if (formData.vanityUrl && formData.vanityUrl.length > 0) {
-                  checkAvailability.mutate({
-                      vanityURL: formData.vanityUrl,
-                  })
-              } else {
-                  setIsVanityUrlAvailable(null)
-              }
-          }, 500)
-  
-          return () => clearTimeout(timer)
-      }, [formData.vanityUrl])
-      */
-
-    // 7. Comment out the custom asset trust effect
-    // Find this code:
-
     // Add this effect to reset isTrusted when asset code or issuer changes
     useEffect(() => {
         if (isTrusted && (formData.assetCode || formData.issuer)) {
             setIsTrusted(false)
         }
     }, [formData.assetCode, formData.issuer])
-
-
-    /* Custom asset feature - currently disabled
-      // Add this effect to reset isTrusted when asset code or issuer changes
-      useEffect(() => {
-          if (isTrusted && (formData.assetCode || formData.issuer)) {
-              setIsTrusted(false)
-          }
-      }, [formData.assetCode, formData.issuer])
-      */
 
     const RequestForBrandCreation = api.fan.creator.requestForBrandCreation.useMutation({
         onSuccess: (data) => {
@@ -280,91 +188,33 @@ export default function ArtistOnboarding() {
             toast.error(`${error.data?.code}`)
         },
     })
-    // 8. Comment out the vanity URL availability check API call
-    // Find this code:
-    /* Vanity URL feature - currently disabled
-      const checkAvailability = api.fan.creator.checkVanityURLAvailability.useMutation({
-          onSuccess: (data) => {
-              const isAvailable = data.isAvailable
-              setIsVanityUrlAvailable(isAvailable)
-          },
-          onError: (error) => {
-              console.error("Error checking vanity URL availability:", error)
-              setIsVanityUrlAvailable(false)
-              toast.error("Failed to check URL availability")
-          },
-      })
-      */
 
-    /* Vanity URL feature - currently disabled
-      const checkAvailability = api.fan.creator.checkVanityURLAvailability.useMutation({
-          onSuccess: (data) => {
-              const isAvailable = data.isAvailable
-              setIsVanityUrlAvailable(isAvailable)
-          },
-          onError: (error) => {
-              console.error("Error checking vanity URL availability:", error)
-              setIsVanityUrlAvailable(false)
-              toast.error("Failed to check URL availability")
-          },
-      })
-      */
+    const CheckCustomAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
+        onSuccess: (data) => {
+            if (data) {
+                setIsTrusted(true)
+            }
+        },
+        onError: (error) => {
+            console.error("Error checking custom asset validity:", error)
+            setIsTrusted(false)
+            toast.error("Failed to check asset validity")
+        },
+    })
 
-    // 9. Comment out the custom asset validity check API call
-    // Find this code:
-    /* Custom asset feature - currently disabled
-      const CheckCustomAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
-          onSuccess: (data) => {
-              if (data) {
-                  setIsTrusted(true)
-              }
-          },
-          onError: (error) => {
-              console.error("Error checking custom asset validity:", error)
-              setIsTrusted(false)
-              toast.error("Failed to check asset validity")
-          },
-      })
-      const checkCustomAssetValidity = ({
-          assetCode,
-          issuer,
-      }: {
-          assetCode: string
-          issuer: string
-      }) => {
-          CheckCustomAssetValidity.mutate({
-              assetCode,
-              issuer,
-          })
-      }
-      */
+    const checkCustomAssetValidity = ({
+        assetCode,
+        issuer,
+    }: {
+        assetCode: string
+        issuer: string
+    }) => {
+        CheckCustomAssetValidity.mutate({
+            assetCode,
+            issuer,
+        })
+    }
 
-    /* Custom asset feature - currently disabled
-      const CheckCustomAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
-          onSuccess: (data) => {
-              if (data) {
-                  setIsTrusted(true)
-              }
-          },
-          onError: (error) => {
-              console.error("Error checking custom asset validity:", error)
-              setIsTrusted(false)
-              toast.error("Failed to check asset validity")
-          },
-      })
-      const checkCustomAssetValidity = ({
-          assetCode,
-          issuer,
-      }: {
-          assetCode: string
-          issuer: string
-      }) => {
-          CheckCustomAssetValidity.mutate({
-              assetCode,
-              issuer,
-          })
-      }
-      */
     // Update the handleFileChange function to properly handle upload states
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: "assetImage") => {
         const file = e.target.files?.[0]
@@ -374,7 +224,6 @@ export default function ArtistOnboarding() {
             try {
                 const uploadFormData = new FormData()
                 uploadFormData.append("file", file, file.name)
-
                 // Simulate progress
                 const progressInterval = setInterval(() => {
                     setUploadProgress((prev) => Math.min(prev + 10, 90))
@@ -390,6 +239,7 @@ export default function ArtistOnboarding() {
 
                 const ipfsHash = await res.text()
                 const thumbnail = ipfsHashToUrl(ipfsHash)
+
                 setFormData((prevFormData) => ({
                     ...prevFormData,
                     assetImage: thumbnail,
@@ -426,37 +276,25 @@ export default function ArtistOnboarding() {
             ...prev,
             [fieldName]: validation.valid ? undefined : validation.errors,
         }))
-
-        // Reset availability check when vanity URL changes
-        // if (fieldName === "vanityUrl") {
-        //     setIsVanityUrlAvailable(null)
-        // }
     }
 
-    // 10. Update the handleRadioChange function to only allow "new" asset type
-    // Find this code:
-
-    // Original function that supported both asset types
+    // Fix the handleRadioChange function to properly type the value
     const handleRadioChange = (value: "new" | "custom") => {
         setFormData({
             ...formData,
             assetType: value,
         })
-
         // Reset trust status when switching asset types
         if (value === "new") {
             setIsTrusted(false)
         }
     }
 
-
-
-    // Fix the handleNext function for step 4
+    // Fix the handleNext function
     const handleNext = () => {
         if (currentStep < totalSteps) {
             // Validate current step before proceeding
             let isValid = false
-
             switch (currentStep) {
                 case 1:
                     // Only require profile image, cover image is optional
@@ -486,31 +324,24 @@ export default function ArtistOnboarding() {
                         isValid = false
                     }
                     break
-                // 11. Update the handleNext function to remove custom asset and vanity URL validation
-                // Find this code for case 3:
                 case 3:
-                    // For new asset, require valid name and image
-                    const validName =
-                        formData.assetName.length >= 4 && formData.assetName.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetName)
-                    isValid = validName && !!formData.assetImage && !isUploading
+                    if (formData.assetType === "new") {
+                        // For new asset, require valid name and image
+                        const validName =
+                            formData.assetName.length >= 4 &&
+                            formData.assetName.length <= 12 &&
+                            /^[a-zA-Z]+$/.test(formData.assetName)
+                        isValid = validName && !!formData.assetImage && !isUploading
+                    } else {
+                        // For custom asset, require valid code, issuer, and trust operation
+                        const validCode =
+                            formData.assetCode.length >= 4 &&
+                            formData.assetCode.length <= 12 &&
+                            /^[a-zA-Z]+$/.test(formData.assetCode)
+                        const validIssuer = formData.issuer.length === 56
+                        isValid = validCode && validIssuer && isTrusted
+                    }
                     break
-
-                // 12. Comment out case 4 (vanity URL validation) in handleNext
-                // Find this code:
-                /* Vanity URL validation - currently disabled
-                        case 4:
-                            // Check if vanity URL is valid and available
-                            isValid = !!formData.vanityUrl && formData.vanityUrl.length > 0 && isVanityUrlAvailable === true
-                            if (!isValid && formData.vanityUrl) {
-                                if (isVanityUrlAvailable === false) {
-                                    toast.error("This vanity URL is already taken. Please choose another one.")
-                                } else if (isCheckingVanityUrl) {
-                                    toast.error("Please wait while we check URL availability.")
-                                }
-                            }
-                            break;
-                        */
-                // Skip vanity URL validation since feature is disabled
                 default:
                     isValid = true
             }
@@ -546,7 +377,6 @@ export default function ArtistOnboarding() {
                         ? { assetCode: undefined, issuer: undefined }
                         : { assetName: undefined, assetImage: undefined, assetImagePreview: undefined }),
                 }
-
                 RequestForBrandCreation.mutate(submissionData)
             } catch (error) {
                 if (error instanceof z.ZodError) {
@@ -573,7 +403,7 @@ export default function ArtistOnboarding() {
         }
     }
 
-    // Fix the isNextDisabled function for step 4
+    // Fix the isNextDisabled function
     const isNextDisabled = () => {
         switch (currentStep) {
             case 1:
@@ -589,24 +419,19 @@ export default function ArtistOnboarding() {
                 } catch (error) {
                     return true
                 }
-            // 13. Update the isNextDisabled function to remove custom asset and vanity URL validation
-            // Find this code for case 3:
             case 3:
-                // For new asset, require valid name and image
-                const validName =
-                    formData.assetName.length >= 4 && formData.assetName.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetName)
-                return !validName || !formData.assetImage || isUploading
-
-            // 14. Comment out case 4 (vanity URL validation) in isNextDisabled
-            // Find this code:
-            /* Vanity URL validation - currently disabled
-                  case 4:
-                      // Check if vanity URL is valid and available
-                      return (
-                          !formData.vanityUrl || formData.vanityUrl.length < 1 || isVanityUrlAvailable !== true || isCheckingVanityUrl
-                      )
-                  */
-            // Skip vanity URL validation since feature is disabled
+                if (formData.assetType === "new") {
+                    // For new asset, require valid name and image
+                    const validName =
+                        formData.assetName.length >= 4 && formData.assetName.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetName)
+                    return !validName || !formData.assetImage || isUploading
+                } else {
+                    // For custom asset, require valid code, issuer, and trust operation
+                    const validCode =
+                        formData.assetCode.length >= 4 && formData.assetCode.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetCode)
+                    const validIssuer = formData.issuer.length === 56
+                    return !validCode || !validIssuer || !isTrusted
+                }
             default:
                 return false
         }
@@ -648,32 +473,6 @@ export default function ArtistOnboarding() {
             opacity: 1,
             transition: { duration: 0.3 },
         },
-    }
-
-    // Custom asset feature - currently disabled
-    const CheckCustomAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
-        onSuccess: (data) => {
-            if (data) {
-                setIsTrusted(true)
-            }
-        },
-        onError: (error) => {
-            console.error("Error checking custom asset validity:", error)
-            setIsTrusted(false)
-            toast.error("Failed to check asset validity")
-        },
-    })
-    const checkCustomAssetValidity = ({
-        assetCode,
-        issuer,
-    }: {
-        assetCode: string
-        issuer: string
-    }) => {
-        CheckCustomAssetValidity.mutate({
-            assetCode,
-            issuer,
-        })
     }
 
     return (
@@ -719,7 +518,6 @@ export default function ArtistOnboarding() {
                     ))}
                 </div>
             )}
-
             <div className="container mx-auto px-4 py-8 max-w-7xl">
                 <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-start">
                     {/* Left Sidebar - Steps */}
@@ -730,7 +528,6 @@ export default function ArtistOnboarding() {
                             </div>
                             <h1 className="text-2xl font-bold">Organization Onboarding</h1>
                         </div>
-
                         <div className="space-y-2">
                             {Array.from({ length: totalSteps }).map((_, index) => (
                                 <motion.div
@@ -786,7 +583,6 @@ export default function ArtistOnboarding() {
                                 </motion.div>
                             ))}
                         </div>
-
                         <div className="hidden lg:block p-4 rounded-lg bg-muted/50 border border-border">
                             <h3 className="text-sm font-medium mb-2">Need help?</h3>
                             <p className="text-xs text-muted-foreground">
@@ -811,7 +607,7 @@ export default function ArtistOnboarding() {
                             >
                                 <Card className="border-none shadow-lg overflow-hidden bg-background/80 backdrop-blur-sm">
                                     <CardContent className="p-0">
-                                        {/* Step 2: Profile & Cover Picture Upload */}
+                                        {/* Step 1: Profile & Cover Picture Upload */}
                                         {currentStep === 1 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
@@ -822,7 +618,6 @@ export default function ArtistOnboarding() {
                                                             cover image is optional.
                                                         </p>
                                                     </div>
-
                                                     <Tabs value={activeImageTab} onValueChange={setActiveImageTab} className="w-full">
                                                         <TabsList className="grid w-full grid-cols-2 mb-6">
                                                             <TabsTrigger value="profile" className="flex items-center gap-2">
@@ -834,7 +629,6 @@ export default function ArtistOnboarding() {
                                                                 Cover Image (Optional)
                                                             </TabsTrigger>
                                                         </TabsList>
-
                                                         <TabsContent value="profile" className="mt-0">
                                                             <div className="flex flex-col md:flex-row gap-8 items-center">
                                                                 <div className="w-full md:w-1/2 flex flex-col items-center justify-center space-y-4">
@@ -891,7 +685,6 @@ export default function ArtistOnboarding() {
                                                                             </div>
                                                                         </motion.div>
                                                                     )}
-
                                                                     <div className="w-full max-w-xs">
                                                                         <UploadS3Button
                                                                             id="profile-upload"
@@ -916,7 +709,6 @@ export default function ArtistOnboarding() {
                                                                         />
                                                                     </div>
                                                                 </div>
-
                                                                 <div className="w-full md:w-1/2 space-y-4">
                                                                     <div className="rounded-lg border p-4 space-y-3">
                                                                         <h3 className="font-medium">Profile Picture Tips</h3>
@@ -939,7 +731,6 @@ export default function ArtistOnboarding() {
                                                                             </li>
                                                                         </ul>
                                                                     </div>
-
                                                                     <div className="rounded-lg bg-primary/10 p-4 border border-primary/20">
                                                                         <div className="flex items-start gap-3">
                                                                             <div className="rounded-full bg-primary/20 p-2 mt-1">
@@ -957,7 +748,6 @@ export default function ArtistOnboarding() {
                                                                 </div>
                                                             </div>
                                                         </TabsContent>
-
                                                         <TabsContent value="cover" className="mt-0">
                                                             <div className="flex flex-col md:flex-row gap-8 items-center">
                                                                 <div className="w-full md:w-1/2 flex flex-col items-center justify-center space-y-4">
@@ -1014,7 +804,6 @@ export default function ArtistOnboarding() {
                                                                             </div>
                                                                         </motion.div>
                                                                     )}
-
                                                                     <div className="w-full max-w-xs">
                                                                         <UploadS3Button
                                                                             variant="button"
@@ -1037,7 +826,6 @@ export default function ArtistOnboarding() {
                                                                         />
                                                                     </div>
                                                                 </div>
-
                                                                 <div className="w-full md:w-1/2 space-y-4">
                                                                     <div className="rounded-lg border p-4 space-y-3">
                                                                         <h3 className="font-medium">Cover Image Tips</h3>
@@ -1060,7 +848,6 @@ export default function ArtistOnboarding() {
                                                                             </li>
                                                                         </ul>
                                                                     </div>
-
                                                                     <div className="rounded-lg bg-primary/10 p-4 border border-primary/20">
                                                                         <div className="flex items-start gap-3">
                                                                             <div className="rounded-full bg-primary/20 p-2 mt-1">
@@ -1083,7 +870,7 @@ export default function ArtistOnboarding() {
                                             </div>
                                         )}
 
-                                        {/* Step 3: Organization Name and Bio */}
+                                        {/* Step 2: Organization Name and Bio */}
                                         {currentStep === 2 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
@@ -1093,7 +880,6 @@ export default function ArtistOnboarding() {
                                                             Tell us more about yourself and your artistic journey.
                                                         </p>
                                                     </div>
-
                                                     <div className="flex flex-col md:flex-row gap-8">
                                                         <div className="w-full md:w-1/3 flex flex-col items-center">
                                                             {formData.profileUrlPreview && (
@@ -1111,7 +897,6 @@ export default function ArtistOnboarding() {
                                                                     />
                                                                 </motion.div>
                                                             )}
-
                                                             {formData.coverImagePreview && (
                                                                 <motion.div
                                                                     initial={{ scale: 0.8, opacity: 0 }}
@@ -1127,7 +912,6 @@ export default function ArtistOnboarding() {
                                                                     />
                                                                 </motion.div>
                                                             )}
-
                                                             <div className="mt-4 text-center">
                                                                 <p className="text-sm text-muted-foreground">This is how collectors will see you</p>
                                                                 <Button
@@ -1139,7 +923,6 @@ export default function ArtistOnboarding() {
                                                                 </Button>
                                                             </div>
                                                         </div>
-
                                                         <div className="w-full md:w-2/3 space-y-6">
                                                             <div className="space-y-4">
                                                                 <div>
@@ -1176,7 +959,6 @@ export default function ArtistOnboarding() {
                                                                         />
                                                                     </div>
                                                                 </div>
-
                                                                 <div>
                                                                     <Label htmlFor="bio" className="text-base font-medium">
                                                                         Bio (Optional)
@@ -1195,7 +977,6 @@ export default function ArtistOnboarding() {
                                                                     </p>
                                                                 </div>
                                                             </div>
-
                                                             <div className="rounded-lg bg-muted/30 p-4 border border-border">
                                                                 <h3 className="font-medium">Bio Writing Tips</h3>
                                                                 <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
@@ -1219,7 +1000,7 @@ export default function ArtistOnboarding() {
                                             </div>
                                         )}
 
-                                        {/* Step 4: Asset Creation */}
+                                        {/* Step 3: Asset Creation */}
                                         {currentStep === 3 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
@@ -1229,12 +1010,10 @@ export default function ArtistOnboarding() {
                                                             Choose between creating a new asset or using a custom one.
                                                         </p>
                                                     </div>
-
                                                     <RadioGroup
                                                         value={formData.assetType}
                                                         onValueChange={handleRadioChange}
-                                                        // className="grid gap-4 md:grid-cols-2"
-                                                        className="grid gap-4 md:grid-cols-1"
+                                                        className="grid gap-4 md:grid-cols-2"
                                                     >
                                                         <motion.div
                                                             whileHover={{ scale: 1.02 }}
@@ -1264,8 +1043,6 @@ export default function ArtistOnboarding() {
                                                                 </div>
                                                             </div>
                                                         </motion.div>
-
-
                                                         <motion.div
                                                             whileHover={{ scale: 1.02 }}
                                                             transition={{ duration: 0.2 }}
@@ -1294,7 +1071,6 @@ export default function ArtistOnboarding() {
                                                                 </div>
                                                             </div>
                                                         </motion.div>
-
                                                     </RadioGroup>
 
                                                     <AnimatePresence mode="wait">
@@ -1368,7 +1144,6 @@ export default function ArtistOnboarding() {
                                                                             Choose a descriptive name for your asset (4-12 letters, a-z and A-Z only).
                                                                         </p>
                                                                     </div>
-
                                                                     <div className="w-full md:w-1/2">
                                                                         <Label htmlFor="asset-upload" className="block mb-2 text-base font-medium">
                                                                             Asset Image
@@ -1415,7 +1190,6 @@ export default function ArtistOnboarding() {
                                                                                     </div>
                                                                                 </motion.div>
                                                                             )}
-
                                                                             <div className="flex items-center gap-2">
                                                                                 <Input
                                                                                     id="asset-upload"
@@ -1438,7 +1212,6 @@ export default function ArtistOnboarding() {
                                                                         </div>
                                                                     </div>
                                                                 </div>
-
                                                                 <div className="rounded-lg bg-muted/30 p-4 border border-border">
                                                                     <h3 className="font-medium">Asset Guidelines</h3>
                                                                     <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
@@ -1458,188 +1231,179 @@ export default function ArtistOnboarding() {
                                                                 </div>
                                                             </motion.div>
                                                         ) : (
-                                                            <>
-
-                                                                <motion.div
-                                                                    key="custom-asset"
-                                                                    initial={{ opacity: 0, y: 20 }}
-                                                                    animate={{ opacity: 1, y: 0 }}
-                                                                    exit={{ opacity: 0, y: -20 }}
-                                                                    transition={{ duration: 0.3 }}
-                                                                    className="space-y-6 pt-4"
-                                                                >
-                                                                    <div className="flex flex-col md:flex-row gap-6">
-                                                                        <div className="w-full md:w-1/2">
-                                                                            <div className="flex justify-between">
-                                                                                <Label htmlFor="assetCode" className="text-base font-medium">
-                                                                                    Asset Name
-                                                                                </Label>
-                                                                                <span
-                                                                                    className={cn(
-                                                                                        "text-xs",
-                                                                                        formData.assetCode.length > 0 && !isassetCodeValid
-                                                                                            ? "text-destructive"
-                                                                                            : "text-muted-foreground",
-                                                                                    )}
-                                                                                >
-                                                                                    {formData.assetCode.length}/4-12 characters
-                                                                                </span>
-                                                                            </div>
-                                                                            <Input
-                                                                                id="assetCode"
-                                                                                name="assetCode"
-                                                                                value={formData.assetCode}
-                                                                                onChange={handleInputChange}
-                                                                                placeholder="Enter asset name"
+                                                            <motion.div
+                                                                key="custom-asset"
+                                                                initial={{ opacity: 0, y: 20 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                exit={{ opacity: 0, y: -20 }}
+                                                                transition={{ duration: 0.3 }}
+                                                                className="space-y-6 pt-4"
+                                                            >
+                                                                <div className="flex flex-col md:flex-row gap-6">
+                                                                    <div className="w-full md:w-1/2">
+                                                                        <div className="flex justify-between">
+                                                                            <Label htmlFor="assetCode" className="text-base font-medium">
+                                                                                Asset Name
+                                                                            </Label>
+                                                                            <span
                                                                                 className={cn(
-                                                                                    "mt-1",
-                                                                                    formData.assetCode.length > 0 && !isassetCodeValid && "border-destructive",
+                                                                                    "text-xs",
+                                                                                    formData.assetCode.length > 0 && !isassetCodeValid
+                                                                                        ? "text-destructive"
+                                                                                        : "text-muted-foreground",
                                                                                 )}
-                                                                                maxLength={12}
-                                                                            />
-                                                                            <div className="mt-1 h-1 w-full bg-muted rounded-full overflow-hidden">
-                                                                                <motion.div
-                                                                                    className={cn(
-                                                                                        "h-full",
-                                                                                        isassetCodeValid
-                                                                                            ? "bg-primary"
-                                                                                            : formData.assetCode.length > 0
-                                                                                                ? "bg-destructive"
-                                                                                                : "bg-primary",
-                                                                                    )}
-                                                                                    initial={{ width: "0%" }}
-                                                                                    animate={{
-                                                                                        width:
-                                                                                            formData.assetCode.length < 4
-                                                                                                ? `${(formData.assetCode.length / 4) * 33}%`
-                                                                                                : formData.assetCode.length > 12
-                                                                                                    ? "100%"
-                                                                                                    : `${33 + ((formData.assetCode.length - 4) / 8) * 67}%`,
-                                                                                    }}
-                                                                                    transition={{ duration: 0.2 }}
-                                                                                />
-                                                                            </div>
-                                                                            {formErrors.assetCode && formErrors.assetCode.length > 0 && (
-                                                                                <p className="mt-1 text-xs text-destructive flex items-center gap-1">
-                                                                                    <AlertCircle className="h-3 w-3" />
-                                                                                    {formErrors.assetCode[0]}
-                                                                                </p>
-                                                                            )}
-                                                                            <p className="mt-1 text-xs text-muted-foreground">
-                                                                                Enter the asset name (4-12 letters, a-z and A-Z only).
-                                                                            </p>
+                                                                            >
+                                                                                {formData.assetCode.length}/4-12 characters
+                                                                            </span>
                                                                         </div>
-
-                                                                        <div className="w-full md:w-1/2">
-                                                                            <div className="flex justify-between">
-                                                                                <Label htmlFor="issuer" className="text-base font-medium">
-                                                                                    Issuer
-                                                                                </Label>
-                                                                                <span
-                                                                                    className={cn(
-                                                                                        "text-xs",
-                                                                                        formData.issuer.length > 0 && !isIssuerValid
-                                                                                            ? "text-destructive"
-                                                                                            : "text-muted-foreground",
-                                                                                    )}
-                                                                                >
-                                                                                    {formData.issuer.length}/56 characters
-                                                                                </span>
-                                                                            </div>
-                                                                            <Input
-                                                                                id="issuer"
-                                                                                name="issuer"
-                                                                                value={formData.issuer}
-                                                                                onChange={handleInputChange}
-                                                                                placeholder="Enter issuer"
+                                                                        <Input
+                                                                            id="assetCode"
+                                                                            name="assetCode"
+                                                                            value={formData.assetCode}
+                                                                            onChange={handleInputChange}
+                                                                            placeholder="Enter asset name"
+                                                                            className={cn(
+                                                                                "mt-1",
+                                                                                formData.assetCode.length > 0 && !isassetCodeValid && "border-destructive",
+                                                                            )}
+                                                                            maxLength={12}
+                                                                        />
+                                                                        <div className="mt-1 h-1 w-full bg-muted rounded-full overflow-hidden">
+                                                                            <motion.div
                                                                                 className={cn(
-                                                                                    "mt-1",
-                                                                                    formData.issuer.length > 0 && !isIssuerValid && "border-destructive",
+                                                                                    "h-full",
+                                                                                    isassetCodeValid
+                                                                                        ? "bg-primary"
+                                                                                        : formData.assetCode.length > 0
+                                                                                            ? "bg-destructive"
+                                                                                            : "bg-primary",
                                                                                 )}
-                                                                                maxLength={56}
+                                                                                initial={{ width: "0%" }}
+                                                                                animate={{
+                                                                                    width:
+                                                                                        formData.assetCode.length < 4
+                                                                                            ? `${(formData.assetCode.length / 4) * 33}%`
+                                                                                            : formData.assetCode.length > 12
+                                                                                                ? "100%"
+                                                                                                : `${33 + ((formData.assetCode.length - 4) / 8) * 67}%`,
+                                                                                }}
+                                                                                transition={{ duration: 0.2 }}
                                                                             />
-                                                                            <div className="mt-1 h-1 w-full bg-muted rounded-full overflow-hidden">
-                                                                                <motion.div
-                                                                                    className={cn(
-                                                                                        "h-full",
-                                                                                        isIssuerValid
-                                                                                            ? "bg-green-500"
-                                                                                            : formData.issuer.length > 0
-                                                                                                ? "bg-primary"
-                                                                                                : "bg-primary",
-                                                                                    )}
-                                                                                    initial={{ width: "0%" }}
-                                                                                    animate={{ width: `${(formData.issuer.length / 56) * 100}%` }}
-                                                                                    transition={{ duration: 0.2 }}
-                                                                                />
-                                                                            </div>
-                                                                            {formErrors.issuer && formErrors.issuer.length > 0 && (
-                                                                                <p className="mt-1 text-xs text-destructive flex items-center gap-1">
-                                                                                    <AlertCircle className="h-3 w-3" />
-                                                                                    {formErrors.issuer[0]}
-                                                                                </p>
-                                                                            )}
-                                                                            {isIssuerValid && (
-                                                                                <p className="mt-1 text-xs text-green-500 flex items-center gap-1">
-                                                                                    <CheckCircle2 className="h-3 w-3" />
-                                                                                    Valid issuer format
-                                                                                </p>
-                                                                            )}
-                                                                            <p className="mt-1 text-xs text-muted-foreground">
-                                                                                Enter the issuer information for your asset (exactly 56 characters).
+                                                                        </div>
+                                                                        {formErrors.assetCode && formErrors.assetCode.length > 0 && (
+                                                                            <p className="mt-1 text-xs text-destructive flex items-center gap-1">
+                                                                                <AlertCircle className="h-3 w-3" />
+                                                                                {formErrors.assetCode[0]}
                                                                             </p>
-                                                                        </div>
-                                                                    </div>
-                                                                    \
-
-                                                                    <div className="mt-6 flex flex-col gap-3">
-                                                                        <div className="rounded-lg bg-muted/30 p-4 border border-border">
-                                                                            <div className="flex items-start gap-3">
-                                                                                <div className="rounded-full bg-yellow-500/20 p-2 mt-1">
-                                                                                    <AlertCircle className="h-4 w-4 text-yellow-500" />
-                                                                                </div>
-                                                                                <div>
-                                                                                    <h3 className="font-medium">Trust Required</h3>
-                                                                                    <p className="text-sm text-muted-foreground mt-1">
-                                                                                        You must trust this asset before continuing. This verifies the asset exists
-                                                                                        and is valid.
-                                                                                    </p>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        <Button
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                checkCustomAssetValidity({
-                                                                                    assetCode: formData.assetCode,
-                                                                                    issuer: formData.issuer,
-                                                                                })
-                                                                            }}
-                                                                            disabled={!isassetCodeValid || !isIssuerValid || isTrusting || isTrusted}
-                                                                            className="w-full"
-                                                                        >
-                                                                            Check Validity
-                                                                        </Button>
-
-                                                                        {isTrusted && (
-                                                                            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                                                                                <CheckCheck className="h-4 w-4" />
-                                                                                <span>Asset trusted successfully! You can now proceed.</span>
-                                                                            </div>
                                                                         )}
+                                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                                            Enter the asset name (4-12 letters, a-z and A-Z only).
+                                                                        </p>
                                                                     </div>
-                                                                </motion.div>
-
-                                                            </>
+                                                                    <div className="w-full md:w-1/2">
+                                                                        <div className="flex justify-between">
+                                                                            <Label htmlFor="issuer" className="text-base font-medium">
+                                                                                Issuer
+                                                                            </Label>
+                                                                            <span
+                                                                                className={cn(
+                                                                                    "text-xs",
+                                                                                    formData.issuer.length > 0 && !isIssuerValid
+                                                                                        ? "text-destructive"
+                                                                                        : "text-muted-foreground",
+                                                                                )}
+                                                                            >
+                                                                                {formData.issuer.length}/56 characters
+                                                                            </span>
+                                                                        </div>
+                                                                        <Input
+                                                                            id="issuer"
+                                                                            name="issuer"
+                                                                            value={formData.issuer}
+                                                                            onChange={handleInputChange}
+                                                                            placeholder="Enter issuer"
+                                                                            className={cn(
+                                                                                "mt-1",
+                                                                                formData.issuer.length > 0 && !isIssuerValid && "border-destructive",
+                                                                            )}
+                                                                            maxLength={56}
+                                                                        />
+                                                                        <div className="mt-1 h-1 w-full bg-muted rounded-full overflow-hidden">
+                                                                            <motion.div
+                                                                                className={cn(
+                                                                                    "h-full",
+                                                                                    isIssuerValid
+                                                                                        ? "bg-green-500"
+                                                                                        : formData.issuer.length > 0
+                                                                                            ? "bg-primary"
+                                                                                            : "bg-primary",
+                                                                                )}
+                                                                                initial={{ width: "0%" }}
+                                                                                animate={{ width: `${(formData.issuer.length / 56) * 100}%` }}
+                                                                                transition={{ duration: 0.2 }}
+                                                                            />
+                                                                        </div>
+                                                                        {formErrors.issuer && formErrors.issuer.length > 0 && (
+                                                                            <p className="mt-1 text-xs text-destructive flex items-center gap-1">
+                                                                                <AlertCircle className="h-3 w-3" />
+                                                                                {formErrors.issuer[0]}
+                                                                            </p>
+                                                                        )}
+                                                                        {isIssuerValid && (
+                                                                            <p className="mt-1 text-xs text-green-500 flex items-center gap-1">
+                                                                                <CheckCircle2 className="h-3 w-3" />
+                                                                                Valid issuer format
+                                                                            </p>
+                                                                        )}
+                                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                                            Enter the issuer information for your asset (exactly 56 characters).
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                {/* Add Trust button after the issuer field */}
+                                                                <div className="mt-6 flex flex-col gap-3">
+                                                                    <div className="rounded-lg bg-muted/30 p-4 border border-border">
+                                                                        <div className="flex items-start gap-3">
+                                                                            <div className="rounded-full bg-yellow-500/20 p-2 mt-1">
+                                                                                <AlertCircle className="h-4 w-4 text-yellow-500" />
+                                                                            </div>
+                                                                            <div>
+                                                                                <h3 className="font-medium">Trust Required</h3>
+                                                                                <p className="text-sm text-muted-foreground mt-1">
+                                                                                    You must trust this asset before continuing. This verifies the asset exists
+                                                                                    and is valid.
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            checkCustomAssetValidity({
+                                                                                assetCode: formData.assetCode,
+                                                                                issuer: formData.issuer,
+                                                                            })
+                                                                        }}
+                                                                        disabled={!isassetCodeValid || !isIssuerValid || isTrusting || isTrusted}
+                                                                        className="w-full"
+                                                                    >
+                                                                        Check Validity
+                                                                    </Button>
+                                                                    {isTrusted && (
+                                                                        <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                                                                            <CheckCheck className="h-4 w-4" />
+                                                                            <span>Asset trusted successfully! You can now proceed.</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </motion.div>
                                                         )}
                                                     </AnimatePresence>
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Step 5: Vanity URL - currently disabled */}
-                                        {/* Step 6: Overview */}
+                                        {/* Step 4: Overview */}
                                         {currentStep === 4 && (
                                             <div className="p-6 md:p-8">
                                                 <div className="space-y-6">
@@ -1649,7 +1413,6 @@ export default function ArtistOnboarding() {
                                                             Please review all your information before completing the onboarding process.
                                                         </p>
                                                     </div>
-
                                                     <div className="grid gap-6 md:grid-cols-2">
                                                         {/* Organization Details Section */}
                                                         <motion.div
@@ -1672,7 +1435,6 @@ export default function ArtistOnboarding() {
                                                                     Edit
                                                                 </Button>
                                                             </div>
-
                                                             <div className="flex items-center gap-4">
                                                                 {formData.profileUrlPreview ? (
                                                                     <div className="relative h-16 w-16 overflow-hidden rounded-full border-2 border-primary">
@@ -1688,7 +1450,6 @@ export default function ArtistOnboarding() {
                                                                         <User className="h-8 w-8 text-muted-foreground" />
                                                                     </div>
                                                                 )}
-
                                                                 <div>
                                                                     <h4 className="font-medium">{formData.displayName || "Organization Name"}</h4>
                                                                     <Badge variant="outline" className="mt-1">
@@ -1696,7 +1457,6 @@ export default function ArtistOnboarding() {
                                                                     </Badge>
                                                                 </div>
                                                             </div>
-
                                                             {formData.coverImagePreview && (
                                                                 <div className="mt-2">
                                                                     <h4 className="text-sm font-medium mb-1">Cover Image</h4>
@@ -1710,7 +1470,6 @@ export default function ArtistOnboarding() {
                                                                     </div>
                                                                 </div>
                                                             )}
-
                                                             {formData.bio && (
                                                                 <div>
                                                                     <h4 className="text-sm font-medium mb-1">Bio</h4>
@@ -1740,12 +1499,10 @@ export default function ArtistOnboarding() {
                                                                     Edit
                                                                 </Button>
                                                             </div>
-
                                                             <div>
                                                                 <Badge className="mb-2">
                                                                     {formData.assetType === "new" ? "New Asset" : "Custom Asset"}
                                                                 </Badge>
-
                                                                 {formData.assetType === "new" ? (
                                                                     <div className="space-y-3">
                                                                         <div className="flex items-center gap-3">
@@ -1770,88 +1527,23 @@ export default function ArtistOnboarding() {
                                                                         </div>
                                                                     </div>
                                                                 ) : (
-                                                                    <>
-                                                                        <div className="space-y-3">
-                                                                            <div>
-                                                                                <h4 className="text-sm font-medium">Asset Name</h4>
-                                                                                <p className="text-sm text-muted-foreground truncate">
-                                                                                    {formData.assetCode || "Not provided"}
-                                                                                </p>
-                                                                            </div>
-                                                                            <div>
-                                                                                <h4 className="text-sm font-medium">Issuer</h4>
-                                                                                <p className="text-sm text-muted-foreground truncate">
-                                                                                    {formData.issuer || "Not provided"}
-                                                                                </p>
-                                                                            </div>
+                                                                    <div className="space-y-3">
+                                                                        <div>
+                                                                            <h4 className="text-sm font-medium">Asset Name</h4>
+                                                                            <p className="text-sm text-muted-foreground truncate">
+                                                                                {formData.assetCode || "Not provided"}
+                                                                            </p>
                                                                         </div>
-                                                                    </>
-
+                                                                        <div>
+                                                                            <h4 className="text-sm font-medium">Issuer</h4>
+                                                                            <p className="text-sm text-muted-foreground truncate">
+                                                                                {formData.issuer || "Not provided"}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </motion.div>
-
-                                                        {/* Vanity URL Section */}
-                                                        {/* <motion.div
-                                                            initial={{ opacity: 0, y: 20 }}
-                                                            animate={{ opacity: 1, y: 0 }}
-                                                            transition={{ delay: 0.3 }}
-                                                            className="rounded-xl border p-6 space-y-4 md:col-span-2"
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <h3 className="font-medium text-lg flex items-center gap-2">
-                                                                    <LinkIcon className="h-5 w-5 text-muted-foreground" />
-                                                                    Vanity URL
-                                                                </h3>
-                                                            </div>
-
-                                                            <div className="p-3 bg-muted/50 rounded-md">
-                                                                <p className="font-mono text-sm text-muted-foreground">
-                                                                    Feature temporarily disabled
-                                                                </p>
-                                                            </div>
-
-                                                            <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                                                                <AlertCircle className="h-4 w-4 text-yellow-500 mt-0.5" />
-                                                                <span>Vanity URL feature is currently disabled</span>
-                                                            </div>
-                                                        </motion.div> */}
-
-                                                        {/* Original Vanity URL Section - currently disabled
-                                                        <motion.div
-                                                            initial={{ opacity: 0, y: 20 }}
-                                                            animate={{ opacity: 1, y: 0 }}
-                                                            transition={{ delay: 0.3 }}
-                                                            className="rounded-xl border p-6 space-y-4 md:col-span-2"
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <h3 className="font-medium text-lg flex items-center gap-2">
-                                                                    <LinkIcon className="h-5 w-5 text-primary" />
-                                                                    Vanity URL
-                                                                </h3>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="h-8 text-xs"
-                                                                    onClick={() => setCurrentStep(4)}
-                                                                >
-                                                                    Edit
-                                                                </Button>
-                                                            </div>
-
-                                                            <div className="p-3 bg-muted/50 rounded-md">
-                                                                <p className="font-mono text-sm">
-                                                                    actionverse.com/
-                                                                    <span className="font-bold text-primary">{formData.vanityUrl || "your-name"}</span>
-                                                                </p>
-                                                            </div>
-
-                                                            <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                                                                <Sparkles className="h-4 w-4 text-primary mt-0.5" />
-                                                                <span>Free for the first month, then 500 Action to renew</span>
-                                                            </div>
-                                                        </motion.div>
-                                                        */}
                                                     </div>
 
                                                     <div className="rounded-lg bg-primary/10 p-6 border border-primary/20">
@@ -1879,16 +1571,14 @@ export default function ArtistOnboarding() {
                                                 variant="outline"
                                                 onClick={handleBack}
                                                 disabled={currentStep === 1 || RequestForBrandCreation.isLoading}
-                                                className="gap-2"
+                                                className="gap-2 bg-transparent"
                                             >
                                                 <ArrowLeft className="h-4 w-4" />
                                                 Back
                                             </Button>
-
                                             <div className="text-sm text-muted-foreground">
                                                 Step {currentStep} of {totalSteps}
                                             </div>
-
                                             <Button
                                                 type="button"
                                                 onClick={handleNext}
@@ -1907,6 +1597,6 @@ export default function ArtistOnboarding() {
                     </div>
                 </div>
             </div>
-        </div >
+        </div>
     )
 }
