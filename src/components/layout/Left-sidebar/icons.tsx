@@ -39,6 +39,7 @@ import {
   Store,
   Trophy,
   MapPinned,
+  QrCode
 
 } from "lucide-react";
 import { RiAdminFill } from "react-icons/ri";
@@ -86,6 +87,7 @@ export const Icons = {
   bounty: Trophy,
   music: Music,
   map: MapPinned,
+  qr: QrCode,
   artist: ({ ...props }: LucideProps) => (
     <svg width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <g clipPath="url(#clip0_86_1027)">
