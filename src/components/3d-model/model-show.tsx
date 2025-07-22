@@ -45,6 +45,7 @@ const Model = ({ url, setLoadingProgress }: { url: string; setLoadingProgress: (
 };
 
 const ModelLoader = ({ url, setLoadingProgress }: { url: string; setLoadingProgress: (progress: number) => void }) => {
+    console.log("Loading model from URL:", url);
     return (
         <Canvas
             camera={{ fov: 45, position: [0, 0, 5] }}
