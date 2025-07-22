@@ -351,6 +351,8 @@ model User {
     BountyWinner BountyWinner[]
 
     RedeemConsumer RedeemConsumer[]
+
+    QRItem QRItem[]
 }
 
 model VerificationToken {
@@ -826,6 +828,26 @@ model QuarterReward {
     lastError      Json?
 
     @@unique([year, quarter])
+}
+
+model QRItem {
+    id           String   @id @default(cuid())
+    title        String
+    description  String   @db.Text
+    modelUrl     String
+    externalLink String?
+    startDate    DateTime
+    endDate      DateTime
+    qrCode       String   @db.Text
+    isActive     Boolean  @default(true)
+    creatorId    String
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    // Relations
+    creator User @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+    @@unique([id, creatorId])
 }
 
 model AppConfig {
