@@ -23,6 +23,9 @@ import {
     ChevronUp,
     ChevronDown,
     ArrowDownFromLine,
+    Info,
+    Copy,
+    Check,
 } from "lucide-react"
 
 import { Button } from "~/components/shadcn/ui/button"
@@ -49,7 +52,13 @@ import MarketAssetComponent from "~/components/common/market-asset"
 import { useNFTCreateModalStore } from "~/components/store/nft-create-modal-store"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { SubscriptionContextMenu } from "~/components/common/subscripton-context"
-
+import { useCreatorStorageAcc } from "~/lib/state/wallete/stellar-balances"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "~/components/shadcn/ui/tooltip"
 const isValidUrl = (string: string) => {
     try {
         const url = new URL(string)
@@ -72,11 +81,17 @@ export default function ArtistDashboard() {
     const { setIsOpen: setIsPostModalOpen } = useCreatePostModalStore()
     const { openForCreate, openForEdit } = useAddSubsciptionModalStore()
     const { setIsOpen: setIsNFTModalOpen } = useNFTCreateModalStore()
+    const { getAssetBalance } = useCreatorStorageAcc();
+    const [copied, setCopied] = useState(false)
 
     const contentRef = useRef<HTMLDivElement>(null)
 
     // API calls
     const creator = api.fan.creator.meCreator.useQuery()
+    const code = creator.data?.pageAsset?.code ?? creator.data?.customPageAssetCodeIssuer?.split(":")[0]
+    const issuer = creator.data?.pageAsset?.issuer ?? creator.data?.customPageAssetCodeIssuer?.split(":")[1]
+    const assetObj = { code, issuer };
+
     const subscriptionPackages = api.fan.creator.getCreatorPackages.useQuery()
     const updateProfileMutation = api.fan.creator.changeCreatorProfilePicture.useMutation({
         onSuccess: () => {
@@ -157,6 +172,17 @@ export default function ArtistDashboard() {
         setIsEditingProfile(false)
     }
 
+    const handleCopy = async (url: string | undefined) => {
+        try {
+            if (url) {
+                await navigator.clipboard.writeText(url)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 2000)
+            }
+        } catch (err) {
+            console.error("Failed to copy text: ", err)
+        }
+    }
     // Save profile changes
     const saveProfileChanges = () => {
         setIsEditingProfile(false)
@@ -730,12 +756,35 @@ export default function ArtistDashboard() {
 
                                 <Card>
                                     <CardHeader className="pb-2">
-                                        <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Revenue</CardTitle>
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">PageAsset</CardTitle>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="flex items-center">
-                                            <DollarSign className="h-5 w-5 text-muted-foreground mr-2" />
-                                            <div className="text-2xl font-bold">-</div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="text-2xl font-bold">{getAssetBalance(assetObj) ?? 0} <span className="text-sm">{code}</span></div>
+                                            {
+                                                session.data?.user?.id === creator.data.id && (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger>
+                                                                <Info className="h-5 w-5 text-muted-foreground cursor-pointer" />
+                                                            </TooltipTrigger>
+                                                            <TooltipContent className="flex items-center gap-2" align="end">
+                                                                <p>{creator.data.storagePub} </p>
+                                                                <Button
+                                                                    onClick={() => handleCopy(creator.data?.storagePub)}
+                                                                    className={cn(
+                                                                        "flex h-full items-center justify-center gap-1.5 text-sm font-medium text-white transition-all",
+                                                                        copied ? "bg-green-500" : "bg-indigo-500 hover:bg-indigo-600",
+                                                                    )}
+                                                                >
+                                                                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+
+                                                                </Button>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )
+                                            }
                                         </div>
                                     </CardContent>
                                 </Card>
