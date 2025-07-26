@@ -43,7 +43,7 @@ enum assetType {
   PLATFORMASSET = "PLATFORMASSET",
   SHOPASSET = "SHOPASSET"
 }
-const HIGHEST_LIMIT = "922337203685.4775807";
+const HIGHEST_LIMIT = "1000000000";
 export const PaymentMethodEnum = z.enum(["asset", "xlm", "card"]);
 export type PaymentMethod = z.infer<typeof PaymentMethodEnum>;
 export const FanGitFormSchema = z.object({
