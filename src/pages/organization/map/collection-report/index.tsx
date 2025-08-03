@@ -32,7 +32,7 @@ import {
 } from "~/components/shadcn/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import { type CreatorConsumedPin, useModal } from "~/lib/state/play/use-modal-store"
+import { type CreatorConsumedPin, useModal } from "~/lib/state/augmented-reality/use-modal-store"
 import { addrShort } from "~/utils/utils"
 import { cn } from "~/lib/utils"
 import toast from "react-hot-toast"

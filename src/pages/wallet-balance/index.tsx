@@ -13,7 +13,7 @@ import {
 } from "package/connect_wallet/src/lib/stellar/utils";
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "react-qr-code";
-import { useModal } from "~/lib/state/play/use-modal-store";
+import { useModal } from "~/lib/state/augmented-reality/use-modal-store";
 import TransactionHistory from "~/components/wallet-balance/transactionHistory";
 import CopyToClip from "~/components/common/copy_to_Clip";
 import useNeedSign from "~/lib/hook";
@@ -136,7 +136,7 @@ const Wallets = () => {
         );
     }
 
-    const url = `https://app.wadzzo.com${router.pathname}?id=${session?.data?.user?.id}`;
+    const url = `https://app.action-tokens.com${router.pathname}?id=${session?.data?.user?.id}`;
 
     if (!isAccountActivate) {
         return (

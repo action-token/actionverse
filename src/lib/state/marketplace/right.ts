@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { MarketAssetType } from "../play/use-modal-store";
+import { MarketAssetType } from "../augmented-reality/use-modal-store";
 
 export interface MarketRightState {
   open: boolean;

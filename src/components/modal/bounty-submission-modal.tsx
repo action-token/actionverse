@@ -12,7 +12,7 @@ import {
 } from "~/components/shadcn/ui/dialog";
 import { api } from "~/utils/api";
 
-import { useModal } from "../../lib/state/play/use-modal-store";
+import { useModal } from "../../lib/state/augmented-reality/use-modal-store";
 
 import { Button } from "../shadcn/ui/button";
 import { Editor } from "../common/quill-editor";

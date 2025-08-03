@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { AdminAssetWithTag } from "../play/use-modal-store";
+import { AdminAssetWithTag } from "../augmented-reality/use-modal-store";
 
 interface RightState {
   open: boolean;

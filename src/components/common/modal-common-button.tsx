@@ -17,7 +17,7 @@ import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 
 
 import { useMarketRightStore } from "~/lib/state/marketplace/right";
-import { AssetType } from "~/lib/state/play/use-modal-store";
+import { AssetType } from "~/lib/state/augmented-reality/use-modal-store";
 import toast from "react-hot-toast";
 import StorageCreateDialog from "../modal/place-nft-to-storage-modal";
 import EnableInMarket from "../modal/Enable-nft-in-market";
