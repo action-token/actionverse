@@ -24,8 +24,8 @@ import {
   type ModalData,
   type ModalType,
   useModal,
-} from "~/lib/state/play/use-modal-store";
-import { useSelectedAutoSuggestion } from "~/lib/state/play/use-selectedAutoSuggestion";
+} from "~/lib/state/augmented-reality/use-modal-store";
+import { useSelectedAutoSuggestion } from "~/lib/state/augmented-reality/use-selectedAutoSuggestion";
 import { useCreatorStorageAcc } from "~/lib/state/wallete/stellar-balances";
 import { api } from "~/utils/api";
 

@@ -20,7 +20,7 @@ import { addrShort } from "~/utils/utils";
 
 import clsx from "clsx";
 import { Card, CardContent, CardFooter } from "~/components/shadcn/ui/card";
-import { SongItemType, useModal } from "~/lib/state/play/use-modal-store";
+import { SongItemType, useModal } from "~/lib/state/augmented-reality/use-modal-store";
 
 import { useRouter } from "next/router";
 import {

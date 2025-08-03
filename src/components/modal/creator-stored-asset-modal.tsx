@@ -26,7 +26,7 @@ import {
     CardHeader,
     CardTitle,
 } from "~/components/shadcn/ui/card";
-import { MarketAssetType, useModal } from "~/lib/state/play/use-modal-store";
+import { MarketAssetType, useModal } from "~/lib/state/augmented-reality/use-modal-store";
 import { Label } from "../shadcn/ui/label";
 import ShowThreeDModel from "../3d-model/model-show";
 import { useCreatorStoredAssetModalStore } from "../store/creator-stored-asset-modal-store";

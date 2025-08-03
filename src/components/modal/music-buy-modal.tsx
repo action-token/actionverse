@@ -20,7 +20,7 @@ import { addrShort } from "~/utils/utils";
 import clsx from "clsx";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardFooter } from "~/components/shadcn/ui/card";
-import { useModal } from "~/lib/state/play/use-modal-store";
+import { useModal } from "~/lib/state/augmented-reality/use-modal-store";
 import { DeleteAssetByAdmin, DisableFromMarketButton, SparkleEffect } from "../common/modal-common-button";
 import PaymentProcessItem from "../payment/payment-process";
 import { useMusicBuyModalStore } from "../store/music-buy-store";

@@ -17,7 +17,7 @@ import {
 } from "~/components/shadcn/ui/card";
 import React, { useRef, useState } from "react";
 import { Skeleton } from "../shadcn/ui/skeleton";
-import { useModal } from "~/lib/state/play/use-modal-store";
+import { useModal } from "~/lib/state/augmented-reality/use-modal-store";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { RecentTransactionHistory } from "~/lib/stellar/walletBalance/acc";
 import { useSession } from "next-auth/react";

@@ -6,7 +6,7 @@ import { useState } from "react"
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
 import { ConnectWalletButton } from "package/connect_wallet"
-import type { MarketAssetType } from "~/lib/state/play/use-modal-store"
+import type { MarketAssetType } from "~/lib/state/augmented-reality/use-modal-store"
 import { useBuyModalStore } from "../store/buy-modal-store"
 import AssetView from "./asset"
 import { useLoginRequiredModalStore } from "../store/login-required-modal-store"

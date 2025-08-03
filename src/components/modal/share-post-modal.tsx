@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
-import { useModal } from "../../lib/state/play/use-modal-store"
+import { useModal } from "../../lib/state/augmented-reality/use-modal-store"
 import { FacebookShareButton, TwitterShareButton, WhatsappShareButton, TelegramShareButton } from "next-share"
 import { FaXTwitter } from "react-icons/fa6"
 import { Check, Copy, Link } from "lucide-react"
