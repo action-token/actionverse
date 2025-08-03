@@ -863,7 +863,7 @@ const UserBountyPage = () => {
                                                     <Alert
                                                         className="flex items-center justify-center"
                                                         variant="destructive"
-                                                        content="Please contact Admin at support@wadzzo.com"
+                                                        content="Please contact Admin at support@action-tokens.com"
                                                     />
                                                 ) : (
                                                     <>

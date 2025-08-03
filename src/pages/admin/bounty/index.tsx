@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react"
 import Image from "next/image"
 import toast from "react-hot-toast"
-import { useModal } from "~/lib/state/play/use-modal-store"
+import { useModal } from "~/lib/state/augmented-reality/use-modal-store"
 import type React from "react"
 import {
     Dialog,

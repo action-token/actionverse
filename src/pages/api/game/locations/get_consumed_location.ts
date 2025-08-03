@@ -113,7 +113,7 @@ export default async function handler(
         location.locationGroup.image ??
         location.locationGroup.creator.profileUrl ??
         WadzzoIconURL,
-      url: location.locationGroup.link ?? "https://app.wadzzo.com/",
+      url: location.locationGroup.link ?? "https://app.action-tokens.com/images/action/logo.png",
     };
     return loc;
   });

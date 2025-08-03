@@ -26,7 +26,7 @@ import {
     AssetMenu,
     useAssetMenu,
 } from "~/lib/state/marketplace/asset-tab-menu";
-import { SongItemType, useModal } from "~/lib/state/play/use-modal-store";
+import { SongItemType, useModal } from "~/lib/state/augmented-reality/use-modal-store";
 import { DeleteAssetByAdmin, DisableFromMarketButton, OtherButtons, SparkleEffect } from "../common/modal-common-button";
 import ShowThreeDModel from "../3d-model/model-show";
 import { useAssestInfoModalStore } from "../store/asset-info-modal-store";

@@ -18,7 +18,15 @@ import { cn } from "~/lib/utils";
 import Header from "../Header";
 import Sidebar from "../Left-sidebar/sidebar";
 import CreatorLayout from "./CreatorLayout";
-
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "~/components/shadcn/ui/card";
+import ARLayout from "./ARLayout";
+import ARModalProvider from "~/components/providers/augmented-reality/augmented-modal-provider";
 export default function Layout({
   children,
   className,
@@ -47,6 +55,34 @@ export default function Layout({
   };
   if (router.pathname.includes("/albedo")) {
     return <div>{children}</div>;
+  }
+  if (router.pathname.includes("/augmented-reality")) {
+    if (router.pathname.includes("/augmented-reality/enter")) {
+      return <>{children}</>;
+    }
+    return (
+      <>
+        {session?.status === "authenticated" ? (
+          <div className="h-screen w-full overflow-hidden fixed inset-0">
+            <ARLayout>
+              <ARModalProvider />
+              {children}</ARLayout>
+          </div>
+        ) : (
+          <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
+            <Card className="w-full max-w-[350px] mx-4">
+              <CardHeader className="text-center">
+                <CardTitle className="text-lg sm:text-xl">Welcome to Actionverse AR</CardTitle>
+                <CardDescription className="text-sm sm:text-base">Please login/signup to continue</CardDescription>
+              </CardHeader>
+              <CardContent className="flex items-center justify-center">
+                <ConnectWalletButton />
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </>
+    )
   }
   return (
     <ThemeProvider

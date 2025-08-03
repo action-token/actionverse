@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/s
 import { z } from "zod";
 
 import { Card, CardContent, CardFooter } from "~/components/shadcn/ui/card";
-import { useModal } from "~/lib/state/play/use-modal-store";
+import { useModal } from "~/lib/state/augmented-reality/use-modal-store";
 import { Badge } from "~/components/shadcn/ui/badge";
 import { useCollectedPinInfoModalStore } from "../store/collectedPin-info-modal-store";
 

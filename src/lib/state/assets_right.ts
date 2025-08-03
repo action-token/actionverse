@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { AssetRightType } from "./play/use-modal-store";
+import { AssetRightType } from "./augmented-reality/use-modal-store";
 
 
 interface AssetRightState {
