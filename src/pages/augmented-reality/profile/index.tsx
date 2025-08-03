@@ -312,7 +312,9 @@ export default function SettingScreen() {
                                     ref={signOutButtonRef}
                                     className="w-full h-10 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-medium rounded-xl text-sm"
                                     onClick={async () =>
-                                        await signOut()
+                                        await signOut({
+                                            redirect: false,
+                                        })
                                     }
                                 >
                                     <LogOut className="mr-2 h-4 w-4" />
@@ -321,10 +323,10 @@ export default function SettingScreen() {
                             </CardContent>
                         </Card>
                     </div>
-                </ScrollArea>
+                </ScrollArea >
 
                 {/* Compact Delete Dialog */}
-                <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                < Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog} >
                     <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-0 shadow-xl max-w-sm">
                         <DialogHeader>
                             <DialogTitle className="flex items-center space-x-2 text-slate-900 dark:text-white text-lg">
@@ -354,10 +356,11 @@ export default function SettingScreen() {
                             </Button>
                         </DialogFooter>
                     </DialogContent>
-                </Dialog>
+                </Dialog >
 
-                {showWalkthrough && <Walkthrough steps={steps} onFinish={() => setShowWalkthrough(false)} />}
-            </div>
+                {showWalkthrough && <Walkthrough steps={steps} onFinish={() => setShowWalkthrough(false)} />
+                }
+            </div >
         </>
     )
 }
