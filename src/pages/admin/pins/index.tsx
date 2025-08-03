@@ -365,7 +365,7 @@ function PinsList({
                                                                                             alt="pin image"
                                                                                             width={40}
                                                                                             height={40}
-                                                                                            src={pin.image ?? "https://app.wadzzo.com/images/loading.png"}
+                                                                                            src={pin.image ?? "https://app.action-tokens.com/images/action/logo.png"}
                                                                                             className="h-10 w-10 object-cover rounded-md border"
                                                                                         />
                                                                                     </td>

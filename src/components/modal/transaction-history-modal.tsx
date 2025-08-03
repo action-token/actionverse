@@ -10,7 +10,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "~/components/shadcn/ui/collapsible"
-import { useModal } from '~/lib/state/play/use-modal-store'
+import { useModal } from '~/lib/state/augmented-reality/use-modal-store'
 import {
     Dialog,
     DialogContent,

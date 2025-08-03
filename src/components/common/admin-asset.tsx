@@ -2,7 +2,7 @@ import React from "react";
 
 import { AdminAsset } from "@prisma/client";
 
-import { useModal } from "~/lib/state/play/use-modal-store";
+import { useModal } from "~/lib/state/augmented-reality/use-modal-store";
 import Image from "next/image";
 import { AdminAssetWithTag } from "~/types/market/admin-asset-tag-type";
 import ViewAdminAsset from "../modal/view-admin-asset";

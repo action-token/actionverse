@@ -1,5 +1,5 @@
 import React from "react";
-import { useModal } from "../../lib/state/play/use-modal-store";
+import { useModal } from "../../lib/state/augmented-reality/use-modal-store";
 import { Button } from "../shadcn/ui/button";
 import {
     Dialog,
