@@ -358,124 +358,124 @@ export default function HomeScreen() {
 
     return (
         <div className="relative h-screen w-full">
-            (userLocation && (
-            <>
-                <Map
-                    mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_API}
-                    initialViewState={{
-                        latitude: userLocation.lat,
-                        longitude: userLocation.lng,
-                        zoom: 14,
-                    }}
-                    latitude={center?.lat}
-                    longitude={center?.lng}
-                    onDrag={(e) => {
-                        setCenter({
-                            lat: e.viewState.latitude ?? 0,
-                            lng: e.viewState.longitude ?? 0,
-                        })
-                    }}
-                    style={{ width: "100%", height: "100%" }}
-                    mapStyle="mapbox://styles/mapbox/streets-v12"
-                >
-                    {userLocation && (
-                        <Marker longitude={userLocation.lng} latitude={userLocation.lat} anchor="center">
-                            <div className="relative">
-                                <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full border-3 border-white shadow-lg flex items-center justify-center">
-                                    <div className="w-2 h-2 bg-white rounded-full"></div>
+            {userLocation && (
+                <>
+                    <Map
+                        mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_API}
+                        initialViewState={{
+                            latitude: userLocation.lat,
+                            longitude: userLocation.lng,
+                            zoom: 14,
+                        }}
+                        latitude={center?.lat}
+                        longitude={center?.lng}
+                        onDrag={(e) => {
+                            setCenter({
+                                lat: e.viewState.latitude ?? 0,
+                                lng: e.viewState.longitude ?? 0,
+                            })
+                        }}
+                        style={{ width: "100%", height: "100%" }}
+                        mapStyle="mapbox://styles/mapbox/streets-v12"
+                    >
+                        {userLocation && (
+                            <Marker longitude={userLocation.lng} latitude={userLocation.lat} anchor="center">
+                                <div className="relative">
+                                    <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+                                        <div className="w-2 h-2 bg-white rounded-full"></div>
+                                    </div>
+                                    <div className="absolute -inset-2 bg-blue-500/20 rounded-full animate-ping"></div>
+                                    <div className="absolute -inset-1 bg-blue-500/30 rounded-full animate-pulse"></div>
                                 </div>
-                                <div className="absolute -inset-2 bg-blue-500/20 rounded-full animate-ping"></div>
-                                <div className="absolute -inset-1 bg-blue-500/30 rounded-full animate-pulse"></div>
-                            </div>
-                        </Marker>
-                    )}
-                    <MyPins locations={locations} />
-                    {showWalkthrough && <div ref={welcomeRef}></div>}
-                </Map>
+                            </Marker>
+                        )}
+                        <MyPins locations={locations} />
+                        {showWalkthrough && <div ref={welcomeRef}></div>}
+                    </Map>
 
-                {/* Modern Balance Display */}
-                <div
-                    ref={balanceRef}
-                    className="absolute top-4 right-4 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 shadow-xl rounded-2xl p-3"
-                >
-                    <div className="flex items-center space-x-3">
-                        {/* <div className="w-10 h-10 bg-gradient-to-br from-[#38C02B] to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                    {/* Modern Balance Display */}
+                    <div
+                        ref={balanceRef}
+                        className="absolute top-4 right-4 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 shadow-xl rounded-2xl p-3"
+                    >
+                        <div className="flex items-center space-x-3">
+                            {/* <div className="w-10 h-10 bg-gradient-to-br from-[#38C02B] to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
                                     <Zap className="h-5 w-5 text-white" />
                                 </div> */}
-                        <div>
-                            <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Balance</p>
-                            <p className="text-lg font-bold text-slate-900 dark:text-white">
-                                {Number(balanceRes.data).toFixed(2) ?? 0}
-                            </p>
+                            <div>
+                                <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Balance</p>
+                                <p className="text-lg font-bold text-slate-900 dark:text-white">
+                                    {Number(balanceRes.data).toFixed(2) ?? 0}
+                                </p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                {/* Modern Control Buttons */}
-                <div className="absolute bottom-24 right-4 z-10 flex flex-col space-y-3">
-                    {/* AR Button */}
-                    <Button
-                        ref={arButtonRef}
-                        size="lg"
-                        className="w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white shadow-xl shadow-violet-500/25 rounded-2xl border-0"
-                        onClick={() => handleARPress(userLocation, locations)}
-                    >
-                        <ScanLine className="h-6 w-6" />
-                    </Button>
+                    {/* Modern Control Buttons */}
+                    <div className="absolute bottom-36 right-4 z-10 flex flex-col space-y-3">
+                        {/* AR Button */}
+                        <Button
+                            ref={arButtonRef}
+                            size="lg"
+                            className="w-14 h-14 bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white shadow-xl shadow-violet-500/25 rounded-2xl border-0"
+                            onClick={() => handleARPress(userLocation, locations)}
+                        >
+                            <ScanLine className="h-6 w-6" />
+                        </Button>
 
-                    {/* Recenter Button */}
-                    <Button
-                        ref={recenterButtonRef}
-                        variant="outline"
-                        size="lg"
-                        className="w-14 h-14 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 shadow-xl rounded-2xl hover:bg-white/90 dark:hover:bg-slate-800/90"
-                        onClick={handleRecenter}
-                    >
-                        <Crosshair className="h-5 w-5" />
-                    </Button>
+                        {/* Recenter Button */}
+                        <Button
+                            ref={recenterButtonRef}
+                            variant="outline"
+                            size="lg"
+                            className="w-14 h-14 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 shadow-xl rounded-2xl hover:bg-white/90 dark:hover:bg-slate-800/90"
+                            onClick={handleRecenter}
+                        >
+                            <Crosshair className="h-5 w-5" />
+                        </Button>
 
-                    {/* Refresh Button */}
-                    <Button
-                        ref={refreshButtonRef}
-                        variant="outline"
-                        size="lg"
-                        className="w-14 h-14 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 shadow-xl rounded-2xl hover:bg-white/90 dark:hover:bg-slate-800/90"
-                        onClick={() => response.refetch()}
-                    >
-                        <RefreshCcw className="h-5 w-5" />
-                    </Button>
-                </div>
-
-                {/* Enhanced Pin Collection Animation */}
-                {pinCollected && collectedPinData && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-                        <Card className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-0 shadow-2xl rounded-3xl p-8 max-w-sm mx-4 animate-in zoom-in-50 duration-500">
-                            <CardContent className="text-center space-y-6">
-                                <div className="relative">
-                                    <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center mx-auto shadow-2xl animate-pulse">
-                                        <Trophy className="h-12 w-12 text-white" />
-                                    </div>
-                                    <div className="absolute -inset-4 bg-emerald-500/20 rounded-full animate-ping"></div>
-                                </div>
-
-                                <div>
-                                    <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Pin Collected!</h3>
-                                    <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400 mb-1">
-                                        {collectedPinData.title}
-                                    </p>
-                                    <p className="text-sm text-slate-600 dark:text-slate-400">From {collectedPinData.brand_name}</p>
-                                </div>
-
-                                <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0 px-4 py-2 text-sm font-semibold">
-                                    <Star className="h-4 w-4 mr-1" />
-                                    Auto Collected
-                                </Badge>
-                            </CardContent>
-                        </Card>
+                        {/* Refresh Button */}
+                        <Button
+                            ref={refreshButtonRef}
+                            variant="outline"
+                            size="lg"
+                            className="w-14 h-14 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 shadow-xl rounded-2xl hover:bg-white/90 dark:hover:bg-slate-800/90"
+                            onClick={() => response.refetch()}
+                        >
+                            <RefreshCcw className="h-5 w-5" />
+                        </Button>
                     </div>
-                )}
-            </>
 
+                    {/* Enhanced Pin Collection Animation */}
+                    {pinCollected && collectedPinData && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+                            <Card className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-0 shadow-2xl rounded-3xl p-8 max-w-sm mx-4 animate-in zoom-in-50 duration-500">
+                                <CardContent className="text-center space-y-6">
+                                    <div className="relative">
+                                        <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center mx-auto shadow-2xl animate-pulse">
+                                            <Trophy className="h-12 w-12 text-white" />
+                                        </div>
+                                        <div className="absolute -inset-4 bg-emerald-500/20 rounded-full animate-ping"></div>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Pin Collected!</h3>
+                                        <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400 mb-1">
+                                            {collectedPinData.title}
+                                        </p>
+                                        <p className="text-sm text-slate-600 dark:text-slate-400">From {collectedPinData.brand_name}</p>
+                                    </div>
+
+                                    <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0 px-4 py-2 text-sm font-semibold">
+                                        <Star className="h-4 w-4 mr-1" />
+                                        Auto Collected
+                                    </Badge>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+                </>
+            )}
 
             {showWalkthrough && <Walkthrough steps={steps} onFinish={() => setShowWalkthrough(false)} />}
         </div>
