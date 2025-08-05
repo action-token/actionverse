@@ -140,7 +140,7 @@ const SingleCollectionItem = () => {
                   zoom: 14,
                 }}
                 style={{ width: "100%", height: "100%" }}
-                mapStyle="mapbox://styles/mapbox/streets-v12"
+                mapStyle="mapbox://styles/suppport-10/cmcntcaoj010m01sb66oiddp8"
               >
                 <Marker
                   latitude={data.collections.lat}
