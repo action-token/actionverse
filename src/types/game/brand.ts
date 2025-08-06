@@ -5,4 +5,7 @@ export interface Brand {
   email: string;
   logo: string;
   followed_by_current_user?: boolean;
+  description?: string;
+  createdAt: Date;
+  follower_count?: number;
 }

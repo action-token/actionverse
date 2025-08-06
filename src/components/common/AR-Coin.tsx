@@ -50,7 +50,7 @@ export class ARCoin {
 
         // Load brand image texture for both sides
         const brandTexture = textureLoader.load(
-            this.location.brand_image_url ?? this.location.image_url ?? "https://app.action-tokens.com/images/action/logo.png",
+            this.location.image_url ?? this.location.brand_image_url ?? "https://app.action-tokens.com/images/action/logo.png",
             (texture) => {
                 // Ensure texture repeats properly
                 texture.wrapS = THREE.ClampToEdgeWrapping
