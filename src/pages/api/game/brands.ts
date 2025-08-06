@@ -29,8 +29,9 @@ export default async function handler(
       id: true,
       name: true,
       profileUrl: true,
-
+      createdAt: true,
       pageAsset: { select: { code: true, thumbnail: true } },
+      _count: { select: { followers: true } },
     },
     where: { pageAsset: {} },
   });
@@ -49,6 +50,8 @@ export default async function handler(
       followed_by_current_user: follows.some(
         (follow) => follow.creatorId === brand.id,
       ),
+      createdAt: brand.createdAt,
+      follower_count: brand._count.followers,
     };
   });
 
