@@ -21,6 +21,7 @@ import { storage } from "package/connect_wallet/src/lib/firebase/firebase-auth"
 import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 import { UploadSubmission } from "~/lib/augmented-reality/upload-submission"
 import { Preview } from "~/components/common/quill-preview"
+import { motion, AnimatePresence } from "framer-motion"
 
 type UploadProgress = Record<string, number>
 
@@ -43,7 +44,6 @@ const SingleBountyItem = () => {
   const [media, setMedia] = useState<SubmissionMediaInfoType[]>([])
   const [uploadFiles, setUploadFiles] = useState<FileItem[]>([])
   const queryClient = useQueryClient()
-
   const { data } = useBounty()
   const { item: bounty } = data
 
@@ -103,14 +103,11 @@ const SingleBountyItem = () => {
         const response = await fetch(URL.createObjectURL(file))
         const blob = await response.blob()
         const fileName = file.name
-
         if (uploadFiles.some((existingFile) => existingFile.name === fileName)) {
           return
         }
-
         const storageRef = ref(storage, `action/bounty/${bounty.id}/${fileName}/${new Date().getTime()}`)
         const uploadTask = uploadBytesResumable(storageRef, blob)
-
         uploadTask.on(
           "state_changed",
           (snapshot) => {
@@ -161,9 +158,19 @@ const SingleBountyItem = () => {
   }
 
   return (
-    <div className="min-h-screen ">
+    <motion.div
+      className="min-h-screen pb-32 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
       {/* Modern Header */}
-      <div className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200/50 dark:border-slate-700/50">
+      <motion.div
+        className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50 shadow-lg"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <div className="px-6 py-4">
           <div className="flex items-center space-x-4">
             <Button
@@ -180,13 +187,17 @@ const SingleBountyItem = () => {
             </div>
           </div>
         </div>
-      </div>
-
+      </motion.div>
       <div className="px-6 py-8 max-w-4xl mx-auto space-y-8">
         {/* Hero Image */}
-        <div className="relative overflow-hidden rounded-3xl shadow-2xl">
+        <motion.div
+          className="relative overflow-hidden rounded-3xl shadow-2xl"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+        >
           <Image
-            src={bounty.imageUrls[0] ?? "https://app.action-tokens.com/images/action/logo.png"}
+            src={bounty.imageUrls[0] ?? "/placeholder.svg?height=400&width=800&query=abstract pattern for bounty hero"}
             alt={bounty.title}
             width={800}
             height={400}
@@ -198,8 +209,7 @@ const SingleBountyItem = () => {
               {bounty.status}
             </Badge>
           </div>
-        </div>
-
+        </motion.div>
         {/* Bounty Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
@@ -218,7 +228,6 @@ const SingleBountyItem = () => {
               </div>
             </CardContent>
           </Card>
-
           <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
             <CardContent className="p-6">
               <div className="flex items-center space-x-3">
@@ -233,7 +242,6 @@ const SingleBountyItem = () => {
               </div>
             </CardContent>
           </Card>
-
           <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
             <CardContent className="p-6">
               <div className="flex items-center space-x-3">
@@ -251,7 +259,6 @@ const SingleBountyItem = () => {
             </CardContent>
           </Card>
         </div>
-
         {/* Upload Progress */}
         {uploadFiles.length > 0 && (
           <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
@@ -276,7 +283,6 @@ const SingleBountyItem = () => {
             </CardContent>
           </Card>
         )}
-
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-lg p-1 rounded-2xl">
@@ -284,112 +290,117 @@ const SingleBountyItem = () => {
               value="information"
               className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-slate-900 font-medium"
             >
-              <FileText className="h-4 w-4 mr-2" />
-              Information
+              <FileText className="h-4 w-4 mr-2" /> Information
             </TabsTrigger>
             <TabsTrigger
               value="submission"
               className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-slate-900 font-medium"
             >
-              <Award className="h-4 w-4 mr-2" />
-              Submission
+              <Award className="h-4 w-4 mr-2" /> Submission
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="information" className="space-y-6">
-            <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold text-slate-900 dark:text-white">Description</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="prose max-w-none dark:prose-invert">
-                  <Preview value={bounty.description} />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="submission" className="space-y-6">
-            {bounty.BountyWinner.length < bounty.totalWinner && !bounty.isOwner ? (
-              <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
-                <CardHeader>
-                  <CardTitle className="text-xl font-bold text-slate-900 dark:text-white">
-                    Submit Your Solution
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Your Solution *
-                    </label>
-                    <Textarea
-                      placeholder="Describe your solution in detail..."
-                      value={solution}
-                      onChange={(e) => setSolution(e.target.value)}
-                      className="min-h-[120px] bg-white/50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 rounded-xl"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Attachments (Optional)
-                    </label>
-                    <Input
-                      type="file"
-                      multiple
-                      onChange={handleFileChange}
-                      className="bg-white/50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 rounded-xl file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
-                    />
-                  </div>
-
-                  <Button
-                    onClick={handleSubmitSolution}
-                    disabled={solution.length === 0 || createBountyAttachmentMutation.isLoading}
-                    className="w-full h-12 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-semibold rounded-2xl shadow-lg shadow-violet-500/25 hover:shadow-xl hover:shadow-violet-500/40 transition-all duration-200"
-                  >
-                    {createBountyAttachmentMutation.isLoading ? "Submitting..." : "Submit Solution"}
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2 text-xl font-bold text-slate-900 dark:text-white">
-                    <Trophy className="h-6 w-6 text-amber-500" />
-                    <span>Winners</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {bounty.BountyWinner.length > 0 ? (
-                    <div className="space-y-3">
-                      {bounty.BountyWinner.map((winner, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center space-x-3 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl"
-                        >
-                          <div className="p-2 rounded-full bg-green-500">
-                            <Trophy className="h-4 w-4 text-white" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-green-700 dark:text-green-400">{winner.userId}</p>
-                            <p className="text-sm text-green-600 dark:text-green-500">Winner #{index + 1}</p>
-                          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+              className="w-full"
+            >
+              <TabsContent value="information" className="space-y-6 mt-0">
+                <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
+                  <CardHeader>
+                    <CardTitle className="text-xl font-bold text-slate-900 dark:text-white">Description</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose max-w-none dark:prose-invert">
+                      <Preview value={bounty.description} />
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              <TabsContent value="submission" className="space-y-6 mt-0">
+                {bounty.BountyWinner.length < bounty.totalWinner && !bounty.isOwner ? (
+                  <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
+                    <CardHeader>
+                      <CardTitle className="text-xl font-bold text-slate-900 dark:text-white">
+                        Submit Your Solution
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Your Solution *
+                        </label>
+                        <Textarea
+                          placeholder="Describe your solution in detail..."
+                          value={solution}
+                          onChange={(e) => setSolution(e.target.value)}
+                          className="min-h-[120px] bg-white/50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Attachments (Optional)
+                        </label>
+                        <Input
+                          type="file"
+                          multiple
+                          onChange={handleFileChange}
+                          className="bg-white/50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 rounded-xl file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                        />
+                      </div>
+                      <Button
+                        onClick={handleSubmitSolution}
+                        disabled={solution.length === 0 || createBountyAttachmentMutation.isLoading}
+                        className="w-full h-12 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-semibold rounded-2xl shadow-lg shadow-violet-500/25 hover:shadow-xl hover:shadow-violet-500/40 transition-all duration-200"
+                      >
+                        {createBountyAttachmentMutation.isLoading ? "Submitting..." : "Submit Solution"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2 text-xl font-bold text-slate-900 dark:text-white">
+                        <Trophy className="h-6 w-6 text-amber-500" />
+                        <span>Winners</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {bounty.BountyWinner.length > 0 ? (
+                        <div className="space-y-3">
+                          {bounty.BountyWinner.map((winner, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center space-x-3 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl"
+                            >
+                              <div className="p-2 rounded-full bg-green-500">
+                                <Trophy className="h-4 w-4 text-white" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-green-700 dark:text-green-400">{winner.userId}</p>
+                                <p className="text-sm text-green-600 dark:text-green-500">Winner #{index + 1}</p>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Trophy className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-                      <p className="text-slate-600 dark:text-slate-400">No winners yet</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
+                      ) : (
+                        <div className="text-center py-8">
+                          <Trophy className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                          <p className="text-slate-600 dark:text-slate-400">No winners yet</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            </motion.div>
+          </AnimatePresence>
         </Tabs>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
