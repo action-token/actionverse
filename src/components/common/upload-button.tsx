@@ -68,7 +68,7 @@ export function UploadS3Button({
     endpoint: EndPointType
     onUploadProgress?: (p: number) => void
     onClientUploadComplete?: (file: { url: string }) => void
-    onBeforeUploadBegin?: (files: File) => Promise<File> | File
+    onBeforeUploadBegin?: (files: File) => Promise<File> | File | undefined;
     onUploadError?: (error: Error) => void
     disabled?: boolean
     type?: "profile" | "cover"
@@ -149,10 +149,9 @@ export function UploadS3Button({
         const selectedFile = event.target.files?.[0]
 
         if (selectedFile) {
-            const isOBJFile = selectedFile.name.endsWith(".obj") || selectedFile.type === "model/obj"
-            console.log("Selected file:", selectedFile)
-            console.log("Is OBJ file:", isOBJFile)
-            const fileType = isOBJFile ? ".obj" : selectedFile.type
+            const isOBJFile = selectedFile.name.endsWith(".obj");
+            const isGLBFile = selectedFile.name.endsWith(".glb");
+            const fileType = isOBJFile ? ".obj" : isGLBFile ? ".glb" : selectedFile.type;
 
             let targetFile = selectedFile
             if (onBeforeUploadBegin) {
@@ -371,7 +370,7 @@ function getAcceptString(endpoint: EndPointType) {
         case "musicUploader":
             return "audio/mpeg,audio/mp3,audio/wav,audio/ogg,audio/aac,audio/flac,audio/alac,audio/aiff,audio/wma,audio/m4a"
         case "modelUploader":
-            return ".obj"
+            return ".obj,.glb";
         case "svgUploader":
             return "image/svg+xml"
         case "multiBlobUploader":
