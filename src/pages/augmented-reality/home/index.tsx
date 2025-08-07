@@ -6,7 +6,7 @@ import Map, { Marker } from "react-map-gl"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { motion, AnimatePresence } from "framer-motion"
-import { MapPin, ScanLine, RefreshCcw, Crosshair, Zap, Trophy, Star, Search, Filter, Navigation, Users, Clock, ChevronUp, ChevronDown, Menu, X } from 'lucide-react'
+import { MapPin, ScanLine, RefreshCcw, Crosshair, Zap, Trophy, Star, Search, Filter, Navigation, Users, Clock, ChevronUp, ChevronDown, Menu, X, ScanEye } from 'lucide-react'
 import { useExtraInfo } from "~/lib/state/augmented-reality/useExtraInfo"
 import { useNearByPin } from "~/lib/state/augmented-reality/useNearbyPin"
 import { useAccountAction } from "~/lib/state/augmented-reality/useAccountAction"
@@ -151,16 +151,19 @@ export default function HomeScreen() {
     }
 
     const handleARPress = (
-        userLocation: UserLocationType,
-        locations: ConsumedLocation[],
+        userLocation: UserLocationType, // Keep for potential future use or if other logic depends on it
+        locations: ConsumedLocation[], // Keep for potential future use
     ) => {
+        // Old logic (commented out or removed):
         const nearbyPins = getNearbyPins(userLocation, locations, 50)
-
         setData({
             nearbyPins: nearbyPins,
             singleAR: false,
         })
-        router.push("/augmented-reality/enter")
+        // router.push("/augmented-reality/enter")
+
+        // New logic: Open the AR/QR selection modal
+        onOpen("ArQrSelection")
     }
 
     const handleRecenter = () => {

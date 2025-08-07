@@ -6,7 +6,8 @@ export type ModalType =
   | "Delete"
   | "LocationInformation"
   | "JoinBounty"
-  | "NearbyPin";
+  | "NearbyPin"
+  | "ArQrSelection";
 
 export interface ModalData {
   collectionId?: string;

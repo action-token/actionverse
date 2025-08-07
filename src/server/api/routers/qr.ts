@@ -9,6 +9,9 @@ export const qrRouter = createTRPCRouter({
             where: {
                 creatorId: ctx.session.user.id,
             },
+            include: {
+                descriptions: true,
+            },
             orderBy: {
                 createdAt: "desc",
             },
@@ -55,8 +58,17 @@ export const qrRouter = createTRPCRouter({
         .input(
             z.object({
                 title: z.string().min(1, "Title is required").max(100, "Title too long"),
-                description: z.string().min(1, "Description is required").max(500, "Description too long"),
-                modelUrl: z.string().url().optional(),
+                descriptions: z // Changed from 'description' to 'descriptions'
+                    .array(
+                        z.object({
+                            title: z.string().min(1, "Description title is required").max(50, "Description title too long"),
+                            content: z.string().min(1, "Description content cannot be empty"),
+                            order: z.number().int().positive(),
+                        }),
+                    )
+                    .min(1, "At least one description is required")
+                    .max(4, "Maximum 4 descriptions allowed"),
+                modelUrl: z.string().url("Invalid model URL"),
                 externalLink: z.string().url().optional(),
                 startDate: z.date(),
                 endDate: z.date(),
@@ -74,33 +86,43 @@ export const qrRouter = createTRPCRouter({
             // Generate QR code data
             const qrData = JSON.stringify({
                 title: input.title,
-                description: input.description,
-                modelUrl: input.modelUrl ?? "",
-                externalLink: input.externalLink,
                 startDate: input.startDate,
                 endDate: input.endDate,
                 type: "qr-item",
             })
 
-            const qrItem = await ctx.db.qRItem.create({
-                data: {
-                    title: input.title,
-                    description: input.description,
-                    modelUrl: input.modelUrl ?? "",
-                    externalLink: input.externalLink,
-                    startDate: input.startDate,
-                    endDate: input.endDate,
-                    qrCode: qrData,
-                    creatorId: ctx.session.user.id,
-                },
+            // Create QR item with descriptions in transaction
+            const result = await ctx.db.$transaction(async (tx) => {
+                const qrItem = await tx.qRItem.create({
+                    data: {
+                        title: input.title,
+                        modelUrl: input.modelUrl,
+                        externalLink: input.externalLink,
+                        startDate: input.startDate,
+                        endDate: input.endDate,
+                        qrCode: qrData,
+                        creatorId: ctx.session.user.id,
+                    },
+                })
+
+                // Create descriptions
+                await tx.qRDescription.createMany({
+                    data: input.descriptions.map((desc) => ({
+                        title: desc.title,
+                        content: desc.content,
+                        order: desc.order,
+                        qrItemId: qrItem.id,
+                    })),
+                })
+
+                return qrItem
             })
 
             return {
-                ...qrItem,
-                isActive: new Date() >= qrItem.startDate && new Date() <= qrItem.endDate,
+                ...result,
+                isActive: new Date() >= result.startDate && new Date() <= result.endDate,
             }
         }),
-
     // Update a QR item
     updateQRItem: protectedProcedure
         .input(
@@ -163,7 +185,7 @@ export const qrRouter = createTRPCRouter({
             if (Object.keys(updatedData).length > 0) {
                 const qrData = JSON.stringify({
                     title: input.title ?? existingItem.title,
-                    description: input.description ?? existingItem.description,
+                    description: input.description ?? null,
                     modelUrl: input.modelUrl ?? existingItem.modelUrl,
                     externalLink: input.externalLink ?? existingItem.externalLink,
                     startDate: startDate,

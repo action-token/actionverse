@@ -833,7 +833,6 @@ model QuarterReward {
 model QRItem {
     id           String   @id @default(cuid())
     title        String
-    description  String   @db.Text
     modelUrl     String
     externalLink String?
     startDate    DateTime
@@ -845,9 +844,24 @@ model QRItem {
     updatedAt    DateTime @updatedAt
 
     // Relations
-    creator User @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    creator      User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    descriptions QRDescription[]
 
     @@unique([id, creatorId])
+}
+
+model QRDescription {
+    id       String @id @default(cuid())
+    title    String @db.VarChar(50)
+    content  String @db.Text
+    order    Int
+    qrItemId String
+
+    // Relations
+    qrItem QRItem @relation(fields: [qrItemId], references: [id], onDelete: Cascade)
+
+    @@unique([qrItemId, order]) // Ensure unique order per QR item
+    @@index([qrItemId, order])
 }
 
 model AppConfig {

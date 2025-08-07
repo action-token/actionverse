@@ -8,7 +8,7 @@ export default async function handler(
     req: NextApiRequest,
     res: NextApiResponse,
 ) {
-    await EnableCors(req, res);
+
     const token = await getToken({ req });
 
     // Check if the user is authenticated
@@ -45,6 +45,7 @@ export default async function handler(
                     image: true,
                 },
             },
+            descriptions: true,
         },
     });
 
@@ -53,10 +54,11 @@ export default async function handler(
             error: "QR item not found",
         });
     }
+    console.log("QR Item found:", qrItem);
     return res.status(200).json({
         id: qrItem.id,
         title: qrItem.title,
-        description: qrItem.description,
+        descriptions: qrItem.descriptions,
         modelUrl: qrItem.modelUrl,
         externalLink: qrItem.externalLink,
         startDate: qrItem.startDate,
