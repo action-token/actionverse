@@ -3,6 +3,6 @@ import { useRouter } from "next/router"
 
 export default function AugmentedRealityPage() {
     const router = useRouter()
-    router.push(`/augmented-reality/home`)
+    return router.push(`/augmented-reality/home`)
 }
 
