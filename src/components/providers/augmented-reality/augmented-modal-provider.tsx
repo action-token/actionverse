@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ArQrSelectionModal from "~/components/modal/augmented-reality/ArQrSelectionModal";
 import DeleteCollectionModal from "~/components/modal/augmented-reality/Delete-Collection-Modal";
 import JoinBountyModal from "~/components/modal/augmented-reality/Join-Bounty-Modal";
 import LocationInformationModal from "~/components/modal/augmented-reality/Location-Info-Modal";
@@ -20,6 +21,7 @@ const ARModalProvider = () => {
       <DeleteCollectionModal />
       <LocationInformationModal />
       <NearbyPinModal />
+      <ArQrSelectionModal />
     </>
   );
 };

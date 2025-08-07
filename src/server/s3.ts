@@ -49,7 +49,7 @@ const allowedFileTypes = [
   // model
   "application/octet-stream", // General binary files
   ".obj", // Explicitly allow `.obj` extensions
-
+  ".glb", // Explicitly allow `.glb` extensions
   // other
   "application/vnd.google-apps.document", // Google Docs
   "application/vnd.google-apps.spreadsheet", // Google Sheets
