@@ -1,820 +1,746 @@
-"use client"
+"use client";
 
-import { useEffect, useState, useRef, useLayoutEffect } from "react"
-import { useQuery } from "@tanstack/react-query"
-import Map, { Marker } from "react-map-gl"
-import { useRouter } from "next/navigation"
-import Image from "next/image"
-import { motion, AnimatePresence } from "framer-motion"
-import { MapPin, ScanLine, RefreshCcw, Crosshair, Zap, Trophy, Star, Search, Filter, Navigation, Users, Clock, ChevronUp, ChevronDown, Menu, X } from 'lucide-react'
-import { useExtraInfo } from "~/lib/state/augmented-reality/useExtraInfo"
-import { useNearByPin } from "~/lib/state/augmented-reality/useNearbyPin"
-import { useAccountAction } from "~/lib/state/augmented-reality/useAccountAction"
-import { useModal } from "~/lib/state/augmented-reality/useModal"
-import type { ConsumedLocation } from "~/types/game/location"
-import { Button } from "~/components/shadcn/ui/button"
-import { Card, CardContent } from "~/components/shadcn/ui/card"
-import { Badge } from "~/components/shadcn/ui/badge"
-import { Input } from "~/components/shadcn/ui/input"
-import { BASE_URL } from "~/lib/common"
-import { useBrandFollowMode } from "~/lib/state/augmented-reality/useBrandFollowMode"
-import { useWalkThrough } from "~/hooks/useWalkthrough"
-import { getMapAllPins } from "~/lib/augmented-reality/get-Map-all-pins"
-import { getUserPlatformAsset } from "~/lib/augmented-reality/get-user-platformAsset"
-import Loading from "~/components/common/loading"
-import { Walkthrough } from "~/components/common/walkthrough"
-import { LocationPermissionHandler } from "~/components/common/location-permission-handler"
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
 
-type UserLocationType = {
-  lat: number
-  lng: number
-}
+import {
+  ClickHandler,
+  DeviceOrientationControls,
+  LocationBased,
+  WebcamRenderer,
+} from "~/lib/augmented-reality/locationbased-ar";
 
-type ButtonLayout = {
-  x: number
-  y: number
-  width: number
-  height: number
-}
+import { ArrowLeft, Coins, ShoppingBasket, Navigation, X } from 'lucide-react';
+import ArCard from "~/components/common/ar-card";
+import { ARCoin } from "~/components/common/AR-Coin";
+import { BASE_URL } from "~/lib/common";
+import { useNearByPin } from "~/lib/state/augmented-reality/useNearbyPin";
+import useWindowDimensions from "~/lib/state/augmented-reality/useWindowWidth";
+import type { ConsumedLocation } from "~/types/game/location";
+import { Button } from "~/components/shadcn/ui/button";
+import { useRouter } from "next/router";
 
-export default function HomeScreen() {
-  const [userLocation, setUserLocation] = useState<UserLocationType | null>(null)
-  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false)
-  const [pinCollected, setPinCollected] = useState(false)
-  const [collectedPinData, setCollectedPinData] = useState<ConsumedLocation | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [showMap, setShowMap] = useState(true)
-  const [headerVisible, setHeaderVisible] = useState(true)
-  const router = useRouter()
-  const { setData: setExtraInfo } = useExtraInfo()
+const ARPage = () => {
+  const router = useRouter();
+  const [selectedPin, setPin] = useState<ConsumedLocation>();
+  const collectPinRes = useRef();
+  const { data } = useNearByPin();
+  const winDim = useWindowDimensions();
+  const [infoBoxVisible, setInfoBoxVisible] = useState(false);
+  const [infoBoxPosition, setInfoBoxPosition] = useState({ left: 0, top: 0 });
+  const [infoText, setInfoText] = useState<ConsumedLocation>();
+  const rendererRef = useRef<THREE.WebGLRenderer>();
+  const previousIntersectedObject = useRef<THREE.Object3D | undefined>(undefined);
 
-  const [center, setCenter] = useState<UserLocationType | null>(null)
-  const { setData } = useNearByPin()
-  const { data } = useAccountAction()
-  const autoCollectModeRef = useRef(data.mode)
-  const { onOpen } = useModal()
-  const [buttonLayouts, setButtonLayouts] = useState<ButtonLayout[]>([])
-  const [showWalkthrough, setShowWalkthrough] = useState(false)
-  const { data: walkthroughData } = useWalkThrough()
-  const { data: brandFollowMode } = useBrandFollowMode()
+  const [showLoading, setShowLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showCollectionAnimation, setShowCollectionAnimation] = useState(false);
+  const [collectedPin, setCollectedPin] = useState<ConsumedLocation | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [coinsLoaded, setCoinsLoaded] = useState(0);
+  const [showPathToNearest, setShowPathToNearest] = useState(false);
 
-  const welcomeRef = useRef<HTMLDivElement>(null)
-  const balanceRef = useRef<HTMLDivElement>(null)
-  const refreshButtonRef = useRef<HTMLButtonElement>(null)
-  const recenterButtonRef = useRef<HTMLButtonElement>(null)
-  const arButtonRef = useRef<HTMLButtonElement>(null)
+  // Core AR refs
+  const pathToNearestRef = useRef<THREE.Line | null>(null);
+  const pathLabelsRef = useRef<THREE.Sprite[]>([]);
+  const arCoinsRef = useRef<ARCoin[]>([]);
+  const hoveredCoinRef = useRef<ARCoin | null>(null);
+  const clockRef = useRef<THREE.Clock>(new THREE.Clock());
+  const locarRef = useRef<LocationBased | null>(null);
+  const coinsRef = useRef<THREE.Mesh[]>([]);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.Camera | null>(null);
 
-  const steps = [
-    {
-      target: buttonLayouts[0],
-      title: "Welcome to the Actionverse AR!",
-      content: "This tutorial will show you how to use Actionverse to find pins around you, follow your favorite brands, and collect rewards.",
-    },
-    {
-      target: buttonLayouts[1],
-      title: "Actionverse Balance",
-      content: "The Actionverse Balance displays your Actionverse count. Check the Bounty Board for the latest ways to earn more Actionverse!",
-    },
-    {
-      target: buttonLayouts[2],
-      title: "Refresh Button",
-      content: "If you need to refresh your map, press the refresh button. This will reload your entire map with all up to date app data.",
-    },
-    {
-      target: buttonLayouts[3],
-      title: "Re-center button",
-      content: "Press the Re-center button to center your map view to your current location",
-    },
-    {
-      target: buttonLayouts[4],
-      title: "AR button",
-      content: "To collect manual pins, press the AR button on your map to view your surroundings. Locate the icon on your screen, then press the Collect button that appears below it to add the item to your collection.",
-    },
-    {
-      target: buttonLayouts[5],
-      title: "Pin Auto Collection",
-      content: "This celebration occurs when a pin has been automatically collected in Actionverse.",
-    },
-  ]
+  // Distance calculation helper function
+  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lng2 - lng1) * Math.PI) / 180;
 
-  const handleLocationGranted = (location: UserLocationType) => {
-    console.log("Location granted:", location)
-    setUserLocation(location)
-    setCenter(location)
-    setLocationPermissionGranted(true)
-  }
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-  const handleLocationDenied = () => {
-    console.log("Location access denied")
-    setLocationPermissionGranted(false)
-  }
+    return R * c; // Distance in meters
+  };
 
-  const getNearbyPins = (
-    userLocation: UserLocationType,
-    locations: ConsumedLocation[],
-    radius: number,
-  ) => {
-    return locations.filter((location) => {
-      if (
-        location.auto_collect ||
-        location.collection_limit_remaining <= 0 ||
-        location.collected
-      )
-        return false
-      const distance = getDistanceFromLatLonInMeters(
-        userLocation.lat,
-        userLocation.lng,
-        location.lat,
-        location.lng,
-      )
-      return distance <= radius
-    })
-  }
+  // Initialize camera with better settings for AR
+  const initializeCamera = () => {
+    const camera = new THREE.PerspectiveCamera(
+      75, // Wider field of view for better AR experience
+      window.innerWidth / window.innerHeight,
+      0.1, // Near clipping plane
+      1000 // Far clipping plane
+    );
 
-  const getDistanceFromLatLonInMeters = (
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ) => {
-    const R = 6371000 // Radius of the Earth in meters
-    const dLat = ((lat2 - lat1) * Math.PI) / 180
-    const dLon = ((lon2 - lon1) * Math.PI) / 180
-    const a =
-      0.5 -
-      Math.cos(dLat) / 2 +
-      (Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        (1 - Math.cos(dLon))) /
-      2
-    return R * 2 * Math.asin(Math.sqrt(a))
-  }
+    // Set camera at eye level
+    camera.position.set(0, 1.6, 0);
+    camera.rotation.set(0, 0, 0);
 
-  const handleARPress = (
-    userLocation: UserLocationType, // Keep for potential future use or if other logic depends on it
-    locations: ConsumedLocation[], // Keep for potential future use
-  ) => {
-    // Old logic (commented out or removed):
-    // const nearbyPins = getNearbyPins(userLocation, locations, 50)
-    // setData({
-    //     nearbyPins: nearbyPins,
-    //     singleAR: false,
-    // })
-    // router.push("/augmented-reality/enter")
+    // Ensure proper matrix updates
+    camera.updateMatrixWorld();
 
-    // New logic: Open the AR/QR selection modal
-    onOpen("ArQrSelection")
-  }
+    return camera;
+  };
 
-  const handleRecenter = () => {
-    if (userLocation) {
-      setCenter({
-        lat: userLocation.lat,
-        lng: userLocation.lng,
-      })
-    }
-  }
+  // Create optimized renderer for AR
+  const initializeRenderer = () => {
+    const renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: true,
+      powerPreference: "high-performance"
+    });
 
-  const getAutoCollectPins = (
-    userLocation: UserLocationType | null,
-    locations: ConsumedLocation[],
-    radius: number,
-  ) => {
-    if (!userLocation) return []
-    return locations.filter((location) => {
-      if (location.collection_limit_remaining <= 0 || location.collected)
-        return false
-      if (location.auto_collect) {
-        const distance = getDistanceFromLatLonInMeters(
-          userLocation.lat,
-          userLocation.lng,
-          location.lat,
-          location.lng,
-        )
-        return distance <= radius
-      }
-    })
-  }
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 0); // Transparent background for AR
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimize for performance
 
-  const collectPinsSequentially = async (pins: ConsumedLocation[]) => {
-    for (const pin of pins) {
-      if (!autoCollectModeRef.current) {
-        console.log("Auto collect mode paused")
-        return
-      }
-      if (pin.collection_limit_remaining <= 0 || pin.collected) {
-        console.log("Pin limit reached:", pin.id)
-        continue
-      }
-      const response = await fetch(
-        new URL("api/game/locations/consume", BASE_URL).toString(),
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ location_id: pin.id.toString() }),
-        },
-      )
-      if (response.ok) {
-        console.log("Collected pin:", pin.id)
-        setCollectedPinData(pin)
-        showPinCollectionAnimation()
-      }
-      await new Promise((resolve) => setTimeout(resolve, 20000))
-    }
-  }
+    // Enable proper depth testing
+    renderer.sortObjects = true;
+    renderer.autoClear = true;
 
-  const showPinCollectionAnimation = () => {
-    setPinCollected(true)
-    setTimeout(() => {
-      setPinCollected(false)
-      setCollectedPinData(null)
-    }, 3000)
-  }
+    return renderer;
+  };
 
-  const response = useQuery({
-    queryKey: ["MapsAllPins", brandFollowMode],
-    queryFn: () =>
-      getMapAllPins({
-        filterID: brandFollowMode ? "1" : "0",
-      }),
-  })
+  // Add comprehensive lighting for better coin visibility
+  const setupLighting = (scene: THREE.Scene) => {
+    // Ambient light for overall illumination
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
 
-  const balanceRes = useQuery({
-    queryKey: ["balance"],
-    queryFn: getUserPlatformAsset,
-  })
+    // Main directional light
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight.position.set(5, 10, 5);
+    directionalLight.castShadow = false; // Disable shadows for performance
+    scene.add(directionalLight);
 
-  const locations = response.data?.locations ?? []
-  const filteredLocations = locations.filter((location: ConsumedLocation) =>
-    location.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    location.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+    // Secondary directional light for fill
+    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight2.position.set(-5, 5, -5);
+    scene.add(directionalLight2);
 
-  useLayoutEffect(() => {
-    const updateButtonLayouts = () => {
-      if (!showWalkthrough) return
+    // Point light for additional illumination
+    const pointLight = new THREE.PointLight(0xffffff, 0.8, 100);
+    pointLight.position.set(0, 5, 0);
+    scene.add(pointLight);
+  };
 
-      const welcome = welcomeRef.current
-      const balance = balanceRef.current
-      const refreshButton = refreshButtonRef.current
-      const recenterButton = recenterButtonRef.current
-      const arButton = arButtonRef.current
+  // Show path to nearest coin
+  const showPathToNearestCoin = () => {
+    if (!locarRef.current || !sceneRef.current || coinsRef.current.length === 0) return;
 
-      const allElementsExist =
-        welcome && balance && refreshButton && recenterButton && arButton
+    // Find the nearest coin
+    let nearestCoin: THREE.Mesh | null = null;
+    let shortestDistance = Number.POSITIVE_INFINITY;
 
-      if (allElementsExist) {
-        try {
-          const welcomeRect = welcome.getBoundingClientRect()
-          const balanceRect = balance.getBoundingClientRect()
-          const refreshRect = refreshButton.getBoundingClientRect()
-          const recenterRect = recenterButton.getBoundingClientRect()
-          const arRect = arButton.getBoundingClientRect()
-
-          if (
-            welcomeRect.width > 0 &&
-            balanceRect.width > 0 &&
-            refreshRect.width > 0 &&
-            recenterRect.width > 0 &&
-            arRect.width > 0
-          ) {
-            setButtonLayouts([
-              {
-                x: welcomeRect.left,
-                y: welcomeRect.top,
-                width: welcomeRect.width,
-                height: welcomeRect.height,
-              },
-              {
-                x: balanceRect.left,
-                y: balanceRect.top,
-                width: balanceRect.width,
-                height: balanceRect.height,
-              },
-              {
-                x: refreshRect.left,
-                y: refreshRect.top,
-                width: refreshRect.width,
-                height: refreshRect.height,
-              },
-              {
-                x: recenterRect.left,
-                y: recenterRect.top,
-                width: recenterRect.width,
-                height: recenterRect.height,
-              },
-              {
-                x: arRect.left,
-                y: arRect.top,
-                width: arRect.width,
-                height: arRect.height,
-              },
-            ])
-          }
-        } catch (error) {
-          console.error("Error updating button layouts:", error)
+    coinsRef.current.forEach((coin) => {
+      if (coin.userData.lat && coin.userData.lng) {
+        // Calculate distance from camera to coin
+        const distance = coin.position.distanceTo(cameraRef.current?.position ?? new THREE.Vector3());
+        if (distance < shortestDistance) {
+          shortestDistance = distance;
+          nearestCoin = coin;
         }
       }
+    });
+
+    if (!nearestCoin) return;
+
+    // Create a curved path line
+    const start = new THREE.Vector3(0, 1.6, 0); // Camera position
+    const end = (nearestCoin as THREE.Mesh).position.clone();
+    const mid = new THREE.Vector3(
+      (start.x + end.x) / 2,
+      Math.max(start.y, end.y) + 2, // Arc upward
+      (start.z + end.z) / 2
+    );
+
+    // Create curved path using quadratic bezier
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    const points = curve.getPoints(20);
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({
+      color: 0x00ff88,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.8
+    });
+
+    // Remove existing path
+    clearPath();
+
+    const line = new THREE.Line(geometry, material);
+    sceneRef.current.add(line);
+    pathToNearestRef.current = line;
+
+    // Add distance marker
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.fillStyle = "rgba(0, 0, 0, 0.8)";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#00ff88";
+      context.font = "bold 20px Arial";
+      context.textAlign = "center";
+      context.fillText(`${shortestDistance.toFixed(0)}m`, canvas.width / 2, canvas.height / 2 + 7);
     }
 
-    let timeoutId: NodeJS.Timeout
-    const debouncedUpdate = () => {
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(updateButtonLayouts, 100)
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+    });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.position.copy(mid);
+    sprite.scale.set(4, 2, 1);
+    sceneRef.current.add(sprite);
+
+    pathLabelsRef.current.push(sprite);
+    setShowPathToNearest(true);
+  };
+
+  // Clear path visualization
+  const clearPath = () => {
+    if (!sceneRef.current) return;
+
+    if (pathToNearestRef.current) {
+      sceneRef.current.remove(pathToNearestRef.current);
+      pathToNearestRef.current = null;
     }
 
-    const observer = new MutationObserver(debouncedUpdate)
+    pathLabelsRef.current.forEach((label) => {
+      sceneRef.current?.remove(label);
+    });
+    pathLabelsRef.current = [];
+    setShowPathToNearest(false);
+  };
 
-    if (showWalkthrough) {
-      observer.observe(document.body, { childList: true, subtree: true })
-      setTimeout(updateButtonLayouts, 500)
+  const simulateApiCall = async () => {
+    if (!selectedPin) return;
+    try {
+      setShowLoading(true);
+
+      const response = await fetch(new URL("api/game/locations/consume", BASE_URL).toString(), {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ location_id: selectedPin.id.toString() }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to consume location");
+      }
+
+      // Set the collected pin and show collection animation
+      setCollectedPin(selectedPin);
+      setShowCollectionAnimation(true);
+
+      // Hide the collection animation after 4 seconds
+      setTimeout(() => {
+        setShowCollectionAnimation(false);
+        setShowSuccess(true);
+        // Navigate back after success
+        setTimeout(() => {
+          setShowSuccess(false);
+          setCollectedPin(null);
+          router.push("/augmented-reality/home");
+        }, 2000);
+      }, 4000);
+    } catch (error) {
+      console.error("Error consuming location", error);
+      alert("Error consuming location");
+    } finally {
+      setShowLoading(false);
     }
+  };
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+
+    const initializeAR = async () => {
+      try {
+        setIsInitializing(true);
+        setInitializationError(null);
+
+        // Initialize camera with optimized settings
+        const camera = initializeCamera();
+        cameraRef.current = camera;
+
+        // Initialize renderer with AR optimizations
+        const renderer = initializeRenderer();
+        document.body.appendChild(renderer.domElement);
+        rendererRef.current = renderer;
+
+        // Create scene
+        const scene = new THREE.Scene();
+        sceneRef.current = scene;
+
+        // Setup optimized lighting
+        setupLighting(scene);
+
+        // Initialize location-based AR
+        const locar = new LocationBased(scene, camera);
+        locarRef.current = locar;
+
+        // Initialize webcam and device controls
+        const cam = new WebcamRenderer(renderer);
+        const clickHandler = new ClickHandler(renderer);
+        const deviceOrientationControls = new DeviceOrientationControls(camera);
+
+        // Handle window resize
+        const handleResize = () => {
+          renderer.setSize(window.innerWidth, window.innerHeight);
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+        };
+
+        window.addEventListener("resize", handleResize);
+        window.addEventListener("orientationchange", () => {
+          setTimeout(handleResize, 100);
+        });
+
+        let firstLocation = true;
+
+        // Handle GPS updates and coin loading
+        locar.on("gpsupdate", (pos: GeolocationPosition) => {
+          if (firstLocation) {
+            const { latitude, longitude } = pos.coords;
+
+            const coinsPositions = data.nearbyPins;
+            console.log("Loading coins:", coinsPositions?.length ?? 0);
+
+            if (!coinsPositions) {
+              setIsInitializing(false);
+              return;
+            }
+
+            let loadedCoins = 0;
+
+            // Create AR coins for each location
+            for (const coinData of coinsPositions) {
+              // Calculate distance from current position to coin
+              const distance = calculateDistance(latitude, longitude, coinData.lat, coinData.lng);
+
+              // Only add coins within reasonable distance (500 meters)
+              if (distance > 500) {
+                continue;
+              }
+
+              // Create ARCoin instance
+              const consumedLocation: ConsumedLocation = {
+                ...coinData,
+                modal_url: coinData.url || "",
+                viewed: false,
+              };
+
+              try {
+                const arCoin = new ARCoin(consumedLocation);
+                const coinMesh = arCoin.getMesh();
+                const billboardGroup = arCoin.getBillboardGroup();
+
+                // Add to scene using location-based positioning
+                locar.add(coinMesh, coinData.lng, coinData.lat);
+                scene.add(billboardGroup);
+
+                // Store references
+                arCoinsRef.current.push(arCoin);
+                coinsRef.current.push(coinMesh);
+                loadedCoins++;
+
+                console.log(`Added AR coin: ${coinData.brand_name}`);
+              } catch (error) {
+                console.error(`Failed to create AR coin for ${coinData.brand_name}:`, error);
+              }
+            }
+
+            setCoinsLoaded(loadedCoins);
+            setIsInitializing(false);
+            firstLocation = false;
+          }
+        });
+
+        // Start GPS tracking
+        locar.startGps();
+
+        // Mouse/touch interaction for hover effects
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        const onMouseMove = (event: MouseEvent) => {
+          mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+          mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+          raycaster.setFromCamera(mouse, camera);
+          const intersects = raycaster.intersectObjects(coinsRef.current);
+
+          if (intersects.length > 0 && intersects[0]) {
+            const intersectedCoin = intersects[0].object;
+            const arCoin = arCoinsRef.current.find((coin) => coin.getMesh() === intersectedCoin);
+
+            if (arCoin && hoveredCoinRef.current !== arCoin) {
+              // Hide previous hover
+              if (hoveredCoinRef.current) {
+                hoveredCoinRef.current.hideCard();
+              }
+
+              // Show new hover
+              arCoin.showCard(camera);
+              hoveredCoinRef.current = arCoin;
+            }
+          } else {
+            // No intersection, hide any visible card
+            if (hoveredCoinRef.current) {
+              hoveredCoinRef.current.hideCard();
+              hoveredCoinRef.current = null;
+            }
+          }
+        };
+
+        window.addEventListener("mousemove", onMouseMove);
+
+        // Main animation loop
+        renderer.setAnimationLoop(() => {
+          const deltaTime = clockRef.current.getDelta();
+
+          // Update webcam and device orientation
+          cam.update();
+          deviceOrientationControls.update();
+
+          // Update AR coin animations and billboards
+          arCoinsRef.current.forEach((arCoin) => {
+            try {
+              // arCoin.update(deltaTime);
+              arCoin.updateBillboard(camera);
+            } catch (error) {
+              console.error("Error updating AR coin:", error);
+            }
+          });
+
+          // Render the scene
+          renderer.render(scene, camera);
+
+          // Handle click interactions
+          const [intersect] = clickHandler.raycast(camera, scene);
+
+          if (intersect) {
+            const objectData = intersect.object.userData as ConsumedLocation;
+
+            // Set the info box content and position
+            setInfoText(objectData);
+            setInfoBoxVisible(true);
+
+            // Calculate screen position of the intersected object
+            const vector = new THREE.Vector3();
+            intersect.object.getWorldPosition(vector);
+            vector.project(camera);
+
+            const left = ((vector.x + 1) / 2) * window.innerWidth;
+            const top = (-(vector.y - 1) / 2) * window.innerHeight;
+            setInfoBoxPosition({ left, top });
+
+            previousIntersectedObject.current = intersect.object;
+
+            // Hide info box after 3 seconds
+            setTimeout(() => setInfoBoxVisible(false), 3000);
+
+            // Set selected pin
+            setPin(objectData);
+          }
+        });
+
+        // Cleanup function
+        cleanup = () => {
+          window.removeEventListener("resize", handleResize);
+          window.removeEventListener("mousemove", onMouseMove);
+
+          // Dispose AR coins
+          arCoinsRef.current.forEach((arCoin) => {
+            try {
+              arCoin.dispose();
+            } catch (error) {
+              console.error("Error disposing AR coin:", error);
+            }
+          });
+          arCoinsRef.current = [];
+          coinsRef.current = [];
+
+          // Clean up renderer
+          renderer.dispose();
+          if (document.body.contains(renderer.domElement)) {
+            document.body.removeChild(renderer.domElement);
+          }
+        };
+
+      } catch (error) {
+        console.error("AR initialization failed:", error);
+        setInitializationError(`Failed to initialize AR: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setIsInitializing(false);
+      }
+    };
+
+    initializeAR();
 
     return () => {
-      observer.disconnect()
-      clearTimeout(timeoutId)
-    }
-  }, [showWalkthrough])
+      if (cleanup) cleanup();
+    };
+  }, [data.nearbyPins]);
 
-  const checkFirstTimeSignIn = async () => {
-    try {
-      if (walkthroughData?.showWalkThrough) {
-        setTimeout(() => {
-          setShowWalkthrough(true)
-        }, 1000)
-      } else {
-        setShowWalkthrough(false)
-      }
-    } catch (error) {
-      console.error("Error checking walkthrough data:", error)
-      setShowWalkthrough(false)
-    }
-  }
-
-  useEffect(() => {
-    checkFirstTimeSignIn()
-  }, [walkthroughData])
-
-  useEffect(() => {
-    if (data.mode && locations) {
-      const autoCollectPins = getAutoCollectPins(userLocation, locations, 50)
-      if (autoCollectPins.length > 0) {
-        collectPinsSequentially(autoCollectPins)
-      }
-    }
-  }, [data.mode, locations])
-
-  useEffect(() => {
-    autoCollectModeRef.current = data.mode
-  }, [data.mode])
-
-  if (response.isLoading) {
-    return <Loading />
-  }
-
-  if (!locationPermissionGranted) {
+  // Loading screen
+  if (isInitializing) {
     return (
-      <LocationPermissionHandler
-        onLocationGranted={handleLocationGranted}
-        onLocationDenied={handleLocationDenied}
-      />
-    )
-  }
-
-  if (!userLocation) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
-          <p className="text-slate-600 dark:text-slate-400">Loading map...</p>
+      <div className="fixed inset-0 bg-slate-900 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 m-4 max-w-sm text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-bold mb-2">Initializing AR</h2>
+          <p className="text-gray-600 mb-4">Setting up your augmented reality experience...</p>
+          <div className="text-sm text-gray-500">
+            {coinsLoaded > 0 && `Loaded ${coinsLoaded} coins`}
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => router.back()}
+            className="w-full mt-4"
+          >
+            Cancel
+          </Button>
         </div>
       </div>
-    )
+    );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 relative">
-      {/* Header Toggle Button */}
-      {!headerVisible && (
-        <motion.div
-          className="fixed top-4 right-4 z-50"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-        >
-          <Button
-            onClick={() => setHeaderVisible(true)}
-            className="w-12 h-12 rounded-full "
-          >
-            <ChevronDown className="h-5 w-5" />
-          </Button>
-        </motion.div>
-      )}
-
-      {/* Compact Header */}
-      <AnimatePresence>
-        {headerVisible && (
-          <motion.div
-            className="bg-white dark:bg-slate-900 shadow-sm border-b border-slate-200 dark:border-slate-700 relative z-30"
-            initial={{ opacity: 0, y: -100 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -100 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-          >
-            <div className="px-4 pt-2 pb-4">
-              {/* Title and Balance Row */}
-              <div className="flex items-center justify-between mb-3">
-                <div ref={welcomeRef} className="flex-1">
-                  <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-                    Discover
-                  </h1>
-                  <p className="text-slate-600 dark:text-slate-400 text-xs">
-                    AR experiences nearby
-                  </p>
-                </div>
-
-                {/* Compact Balance */}
-                <motion.div
-                  ref={balanceRef}
-                  className="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl px-3 py-2 min-w-[80px]"
-                  whileHover={{ scale: 1.05 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="text-center">
-                    <p className="text-white/80 text-xs">Balance</p>
-                    <p className="text-white text-sm font-bold">
-                      {Number(balanceRes.data).toFixed(0) ?? 0}
-                    </p>
-                  </div>
-                </motion.div>
-              </div>
-
-              {/* Search and Controls Row */}
-              <div className="flex items-center gap-2 mb-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <Input
-                    placeholder="Search locations..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 h-9 bg-slate-100 dark:bg-slate-800 border-0 rounded-xl text-sm"
-                  />
-                </div>
-                <Button
-                  onClick={() => setHeaderVisible(false)}
-                  className="h-9 w-9 p-0 rounded-lg"
-
-                >
-                  <ChevronUp className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* View Toggle */}
-              <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-                <Button
-                  variant={showMap ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setShowMap(true)}
-                  className="flex-1 h-8 text-xs rounded-lg"
-                >
-                  Map
-                </Button>
-                <Button
-                  variant={!showMap ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setShowMap(false)}
-                  className="flex-1 h-8 text-xs rounded-lg"
-                >
-                  List
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Content */}
-      <div className={`flex-1 `}>
-        <AnimatePresence mode="wait">
-          {showMap ? (
-            <motion.div
-              key="map"
-              className="relative h-[calc(100vh-140px)]"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.05 }}
-              transition={{ duration: 0.3 }}
+  // Error screen
+  if (initializationError) {
+    return (
+      <div className="fixed inset-0 bg-slate-900 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 m-4 max-w-sm text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-xl font-bold mb-2">AR Setup Failed</h2>
+          <p className="text-gray-600 mb-4">{initializationError}</p>
+          <div className="space-y-2">
+            <Button
+              onClick={() => window.location.reload()}
+              className="w-full"
             >
-              {userLocation && (
-                <Map
-                  mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_API}
-                  initialViewState={{
-                    latitude: userLocation.lat,
-                    longitude: userLocation.lng,
-                    zoom: 14,
-                  }}
-                  latitude={center?.lat}
-                  longitude={center?.lng}
-                  onDrag={(e) => {
-                    setCenter({
-                      lat: e.viewState.latitude ?? 0,
-                      lng: e.viewState.longitude ?? 0,
-                    })
-                  }}
-                  style={{ width: "100%", height: "100%" }}
-                  mapStyle="mapbox://styles/suppport-10/cmcntcaoj010m01sb66oiddp8"
-                >
-                  {/* User Location Marker */}
-                  <Marker
-                    longitude={userLocation.lng}
-                    latitude={userLocation.lat}
-                    anchor="center"
-                  >
-                    <div className="relative">
-                      <div className="w-6 h-6 bg-blue-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
-                        <div className="w-2 h-2 bg-white rounded-full"></div>
-                      </div>
-                      <div className="absolute -inset-2 bg-blue-500/20 rounded-full animate-ping"></div>
-                    </div>
-                  </Marker>
-
-                  {/* Location Pins */}
-                  <MyPins locations={filteredLocations} />
-                </Map>
-              )}
-
-              {/* Map Controls - Fixed positioning */}
-              <div className={`absolute right-4 flex flex-col gap-3 z-20 ${!headerVisible ? "bottom-40 " : "bottom-56 "}`}>
-                {/* AR Scan Button - Main Action */}
-                <motion.button
-                  ref={arButtonRef}
-                  onClick={() => handleARPress(userLocation, locations)}
-                  className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full shadow-xl flex items-center justify-center border-4 border-white dark:border-slate-800"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-
-                >
-                  <ScanLine className="w-7 h-7 text-white" />
-                </motion.button>
-
-                {/* Recenter Button */}
-                <motion.button
-                  ref={recenterButtonRef}
-                  onClick={handleRecenter}
-                  className="w-12 h-12 bg-white dark:bg-slate-800 rounded-full shadow-lg flex items-center justify-center border border-slate-200 dark:border-slate-700"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <Crosshair className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                </motion.button>
-
-                {/* Refresh Button */}
-                <motion.button
-                  ref={refreshButtonRef}
-                  onClick={() => response.refetch()}
-                  className="w-12 h-12 bg-white dark:bg-slate-800 rounded-full shadow-lg flex items-center justify-center border border-slate-200 dark:border-slate-700"
-                  whileHover={{ scale: 1.1, rotate: 180 }}
-                  whileTap={{ scale: 0.9 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <RefreshCcw className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                </motion.button>
-              </div>
-
-              {/* Map Info Panel */}
-              <div className="absolute top-4 left-4 right-4 z-20">
-                <motion.div
-                  className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-xl p-3 shadow-lg border border-white/20 dark:border-slate-700/20"
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
-                >
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-slate-700 dark:text-slate-300 font-medium">
-                        {filteredLocations.length} locations found
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                      <Navigation className="w-3 h-3" />
-                      <span className="text-xs">Live tracking</span>
-                    </div>
-                  </div>
-                </motion.div>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="list"
-              className="px-4 pb-32 pt-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              Try Again
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.back()}
+              className="w-full"
             >
-              <div className="space-y-3">
-                {filteredLocations.map((location: ConsumedLocation, index: number) => (
-                  <motion.div
-                    key={location.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: 0.05 * index }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Card
-                      className="overflow-hidden bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer border-slate-200 dark:border-slate-700"
-                      onClick={() =>
-                        onOpen("LocationInformation", {
-                          Collection: location,
-                        })
-                      }
-                    >
-                      <CardContent className="p-0">
-                        <div className="flex">
-                          <div className="w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center relative">
-                            <Image
-                              height={40}
-                              width={40}
-                              alt="Pin"
-                              src={location.brand_image_url || "/placeholder.svg"}
-                              className="w-10 h-10 rounded-lg object-cover"
-                            />
-                            {location.collection_limit_remaining > 0 && !location.collected && (
-                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                                <span className="text-xs font-bold text-white">
-                                  {location.collection_limit_remaining}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex-1 p-3">
-                            <div className="flex items-start justify-between mb-1">
-                              <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold text-slate-900 dark:text-white text-sm truncate">
-                                  {location.title}
-                                </h3>
-                                <p className="text-xs text-slate-600 dark:text-slate-400 truncate">
-                                  {location.brand_name}
-                                </p>
-                              </div>
-                              {location.collection_limit_remaining > 0 && !location.collected && (
-                                <Badge className="bg-green-100 text-green-700 text-xs ml-2 shrink-0">
-                                  Available
-                                </Badge>
-                              )}
-                            </div>
-
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 line-clamp-1">
-                              {location.description}
-                            </p>
-
-                            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                              <div className="flex items-center gap-1">
-                                <Navigation className="w-3 h-3" />
-                                <span>
-                                  {userLocation ?
-                                    (getDistanceFromLatLonInMeters(
-                                      userLocation.lat,
-                                      userLocation.lng,
-                                      location.lat,
-                                      location.lng
-                                    ) / 1000).toFixed(1) + " km"
-                                    : "-- km"
-                                  }
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                <span>Active</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-
-              {filteredLocations.length === 0 && (
-                <motion.div
-                  className="text-center py-12"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.6 }}
-                >
-                  <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Search className="w-8 h-8 text-slate-400" />
-                  </div>
-                  <h3 className="font-medium mb-2 text-slate-900 dark:text-white">No locations found</h3>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Try adjusting your search or check back later
-                  </p>
-                </motion.div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              Go Back
+            </Button>
+          </div>
+        </div>
       </div>
-
-      {/* Pin Collection Animation */}
-      <AnimatePresence>
-        {pinCollected && collectedPinData && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.div
-              className="bg-white dark:bg-slate-800 rounded-3xl p-8 mx-4 max-w-sm shadow-2xl"
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Trophy className="w-8 h-8 text-white" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-                  Pin Collected!
-                </h3>
-                <p className="text-lg font-semibold text-green-600 mb-1">
-                  {collectedPinData.title}
-                </p>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  From {collectedPinData.brand_name}
-                </p>
-                <Badge className="bg-green-100 text-green-700">
-                  <Star className="w-3 h-3 mr-1" />
-                  Auto Collected
-                </Badge>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {showWalkthrough && (
-        <Walkthrough steps={steps} onFinish={() => setShowWalkthrough(false)} />
-      )}
-    </div>
-  )
-}
-
-function MyPins({ locations }: { locations: ConsumedLocation[] }) {
-  const { onOpen } = useModal()
+    );
+  }
 
   return (
     <>
-      {locations.map((location: ConsumedLocation, index: number) => (
-        <Marker
-          key={index}
-          latitude={location.lat}
-          longitude={location.lng}
-          anchor="center"
-          onClick={() =>
-            onOpen("LocationInformation", {
-              Collection: location,
-            })
-          }
-        >
-          <motion.div
-            className="cursor-pointer"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ duration: 0.3, delay: 0.05 * index }}
+      {/* Back Button */}
+      <Button
+        className="absolute left-4 top-4 z-50 bg-black/50 text-white border-none hover:bg-black/70"
+        onClick={() => router.back()}
+      >
+        <ArrowLeft className="h-6 w-6" /> Back
+      </Button>
+
+      {/* Coins Counter */}
+      <div className="absolute top-4 right-4 z-50 bg-black/70 text-white px-3 py-2 rounded-lg">
+        <div className="flex items-center space-x-2">
+          <Coins className="w-5 h-5 text-yellow-400" />
+          <span className="font-semibold">{coinsLoaded} coins nearby</span>
+        </div>
+      </div>
+
+      {/* Navigation Controls */}
+      <div className="absolute top-20 right-4 z-50 space-y-2">
+        {!showPathToNearest ? (
+          <Button
+            onClick={showPathToNearestCoin}
+            className="bg-green-500/80 hover:bg-green-600/80 text-white border-none"
+            size="sm"
           >
-            <div className="relative">
-              <div className="w-12 h-12 bg-white rounded-full shadow-lg border-2 border-white overflow-hidden">
-                <Image
-                  height={48}
-                  width={48}
-                  alt="Pin"
-                  src={location.brand_image_url || "/placeholder.svg"}
-                  className="w-full h-full object-cover"
-                />
+            <Navigation className="w-4 h-4 mr-2" />
+            Show Path
+          </Button>
+        ) : (
+          <Button
+            onClick={clearPath}
+            className="bg-red-500/80 hover:bg-red-600/80 text-white border-none"
+            size="sm"
+          >
+            <X className="w-4 h-4 mr-2" />
+            Clear Path
+          </Button>
+        )}
+      </div>
+
+      {/* Crosshair for aiming */}
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
+        <div className="w-8 h-8 border-2 border-white rounded-full opacity-70">
+          <div className="w-2 h-2 bg-white rounded-full absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"></div>
+        </div>
+      </div>
+
+      {/* Instructions */}
+      <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50 bg-black/80 text-white px-4 py-2 rounded-lg text-center max-w-xs">
+        <p className="text-sm font-bold">Look around to find coins!</p>
+        <p className="text-xs text-gray-300">Tap on coins to collect them</p>
+        {showPathToNearest && (
+          <p className="text-xs text-green-300">Following path to nearest coin</p>
+        )}
+      </div>
+
+      {/* Info Card */}
+      {infoBoxVisible && infoText && (
+        <ArCard
+          brandName={infoText.brand_name}
+          description={infoText.description}
+          position={{
+            left: Math.max(10, Math.min(winDim.width - 220, infoBoxPosition.left - 110)),
+            top: Math.max(100, infoBoxPosition.top - 50),
+          }}
+        />
+      )}
+
+      {/* Bottom UI */}
+      {selectedPin && (
+        <div className="absolute bottom-0 left-0 right-0 w-full bg-black/90 backdrop-blur-sm z-40">
+          <div className="flex items-stretch" style={{ width: winDim.width }}>
+            <div className="flex flex-1 items-center space-x-4 p-4">
+
+              <div className="text-white">
+                <p className="text-sm font-semibold text-yellow-400">{selectedPin.title}</p>
+                <p className="text-lg font-bold">{selectedPin.brand_name}</p>
               </div>
-              {location.collection_limit_remaining > 0 && !location.collected && (
-                <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
-                  <span className="text-xs font-bold text-white">
-                    {location.collection_limit_remaining}
-                  </span>
-                </div>
-              )}
             </div>
-          </motion.div>
-        </Marker>
-      ))}
+
+            <div className="my-2 w-px self-stretch bg-gray-700" aria-hidden="true"></div>
+
+            <div className="flex flex-1 items-center space-x-4 p-4">
+              <div className="text-white">
+                <p className="text-sm font-semibold text-yellow-400">Remaining:</p>
+                <p className="text-lg font-bold">{selectedPin.collection_limit_remaining}</p>
+              </div>
+            </div>
+
+            <div className="my-2 w-px self-stretch bg-gray-700" aria-hidden="true"></div>
+
+            {!data.singleAR && (
+              <div className="flex items-center p-4">
+                <button
+                  onClick={simulateApiCall}
+                  className="rounded-lg bg-blue-500 px-6 py-2 font-semibold text-white transition-colors duration-200 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50"
+                >
+                  Capture
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Collection Animation */}
+      {showCollectionAnimation && collectedPin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
+          <div className="relative flex flex-col items-center">
+            <div className="relative mb-8">
+              <div className="animate-bounce">
+                <div className="relative mx-auto h-32 w-32">
+                  <div className="animate-spin-slow absolute inset-0 rotate-12 transform rounded-full bg-gradient-to-br from-yellow-300 via-yellow-400 to-yellow-600 shadow-2xl">
+                    <div className="absolute inset-2 overflow-hidden rounded-full border-4 border-yellow-200">
+                      <img
+                        src={collectedPin.brand_image_url ?? "/placeholder.svg?height=200&width=200"}
+                        alt={collectedPin.brand_name}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = "/placeholder.svg?height=200&width=200&text=" + encodeURIComponent(collectedPin.brand_name);
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="absolute -left-2 -top-2 h-4 w-4 animate-ping rounded-full bg-yellow-300"></div>
+                  <div className="animation-delay-200 absolute -right-3 -top-1 h-3 w-3 animate-ping rounded-full bg-white"></div>
+                  <div className="animation-delay-400 absolute -bottom-2 -left-3 h-2 w-2 animate-ping rounded-full bg-yellow-400"></div>
+                  <div className="animation-delay-600 absolute -bottom-1 -right-2 h-3 w-3 animate-ping rounded-full bg-yellow-200"></div>
+                  <div className="absolute inset-0 scale-110 animate-pulse rounded-full bg-yellow-400 opacity-30"></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-center text-white">
+              <div className="animate-bounce text-6xl">🎉</div>
+              <h2 className="animate-pulse text-4xl font-bold text-yellow-400">Coin Collected!</h2>
+              <div className="max-w-md rounded-lg bg-black bg-opacity-50 p-6">
+                <h3 className="mb-2 text-2xl font-semibold text-white">{collectedPin.brand_name}</h3>
+                <p className="mb-2 text-lg text-yellow-300">{collectedPin.title}</p>
+                <p className="text-sm text-gray-300">{collectedPin.description}</p>
+                <div className="mt-4 flex items-center justify-center space-x-2">
+                  <Coins className="h-5 w-5 text-yellow-400" />
+                  <span className="font-semibold text-yellow-400">+1 Coin Added to Collection</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 h-2 w-64 rounded-full bg-gray-700">
+              <div className="animate-progress-fill h-2 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600"></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading overlay */}
+      {showLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="rounded-lg bg-white p-6 text-center">
+            <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-t-4 border-blue-500"></div>
+            <p className="text-xl font-bold">Capturing the coin...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Success animation */}
+      {showSuccess && (
+        <div className="absolute inset-0 flex items-center justify-center bg-green-500 bg-opacity-50 z-50">
+          <div className="rounded-lg bg-white p-6 text-center">
+            <div className="mb-4 text-6xl">✅</div>
+            <p className="mb-2 text-2xl font-bold text-green-600">Collection Complete!</p>
+            <p className="text-lg">{collectedPin?.brand_name} added to your collection</p>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes spin-slow {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes progress-fill {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+        .animate-spin-slow {
+          animation: spin-slow 3s linear infinite;
+        }
+        .animate-progress-fill {
+          animation: progress-fill 4s ease-out forwards;
+        }
+        .animation-delay-200 { animation-delay: 0.2s; }
+        .animation-delay-400 { animation-delay: 0.4s; }
+        .animation-delay-600 { animation-delay: 0.6s; }
+      `}</style>
     </>
-  )
-}
+  );
+};
+
+export default ARPage;
