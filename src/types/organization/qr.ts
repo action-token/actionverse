@@ -1,7 +1,14 @@
+export interface QRDescription {
+    id: string
+    title: string
+    content: string
+    order: number
+    qrItemId: string
+}
+
 export interface QRItem {
     id: string
     title: string
-    description: string
     modelUrl: string
     externalLink: string | null
     startDate: Date
@@ -11,7 +18,10 @@ export interface QRItem {
     creatorId: string
     createdAt: Date
     updatedAt: Date
+    // Relations
+    descriptions: QRDescription[]
 }
+
 
 export interface QRItemWithCreator extends QRItem {
     creator: {
@@ -21,39 +31,3 @@ export interface QRItemWithCreator extends QRItem {
     }
 }
 
-export interface QRItemStats {
-    total: number
-    active: number
-    expired: number
-    upcoming: number
-}
-
-export interface CreateQRItemInput {
-    title: string
-    description: string
-    modelUrl?: string
-    externalLink?: string
-    startDate: Date
-    endDate: Date
-}
-
-export interface UpdateQRItemInput {
-    id: string
-    title?: string
-    description?: string
-    modelUrl?: string | null
-    externalLink?: string | null
-    startDate?: Date
-    endDate?: Date
-}
-
-export interface QRCodeData {
-    id: string
-    title: string
-    description: string
-    modelUrl: string | null
-    externalLink: string | null
-    startDate: Date
-    endDate: Date
-    type: "qr-item"
-}

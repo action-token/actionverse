@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, Suspense, useRef, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
 import { Button } from "~/components/shadcn/ui/button"
@@ -12,16 +14,12 @@ import { format } from "date-fns"
 import toast from "react-hot-toast"
 import QRCode from "react-qr-code"
 import * as THREE from "three"
-
-
 import { Canvas, useFrame, useLoader } from "@react-three/fiber"
 import { OrbitControls, Environment, Html, useProgress } from "@react-three/drei"
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { Loader2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
-
 import { QRItem } from "~/types/organization/qr"
-import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader"
 
 interface QRCodeModalProps {
     isOpen: boolean
@@ -37,18 +35,14 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
     const qrData = JSON.stringify({
         id: qrItem.id,
     })
-    console.log("QR Data:", qrData)
 
     const handleDownloadQR = () => {
         const svg = document.getElementById("qr-code-svg")
-
         if (svg) {
             const svgData = new XMLSerializer().serializeToString(svg)
-            console.log("SVG Data:", svgData)
             const canvas = document.createElement("canvas")
             const ctx = canvas.getContext("2d")
             const img = new Image()
-
             canvas.width = 300
             canvas.height = 300
 
@@ -57,7 +51,6 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                     ctx.fillStyle = "white"
                     ctx.fillRect(0, 0, 300, 300)
                     ctx.drawImage(img, 0, 0, 300, 300)
-
                     const link = document.createElement("a")
                     link.download = `qr-${qrItem.title.replace(/\s+/g, "-").toLowerCase()}.png`
                     link.href = canvas.toDataURL()
@@ -65,7 +58,6 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                     toast.success("QR code downloaded!")
                 }
             }
-
             img.src = "data:image/svg+xml;base64," + btoa(svgData)
         }
     }
@@ -80,7 +72,7 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
             try {
                 await navigator.share({
                     title: qrItem.title,
-                    text: qrItem.description,
+                    text: qrItem.descriptions?.[0]?.content ?? "QR Item",
                     url: window.location.origin,
                 })
             } catch (error) {
@@ -135,7 +127,6 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                                 viewBox="0 0 256 256"
                                             />
                                         </div>
-
                                         <div className="flex gap-2 w-full">
                                             <Button onClick={handleDownloadQR} className="flex-1 gap-2">
                                                 <Download className="h-4 w-4" />
@@ -150,7 +141,6 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                 </Card>
                             </div>
 
-                            {/* Item Details Section */}
                             <div className="space-y-4">
                                 <Card>
                                     <CardHeader>
@@ -158,18 +148,39 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                             <FileText className="h-5 w-5" />
                                             Item Details
                                         </CardTitle>
-                                        <CardDescription>{qrItem.description}</CardDescription>
+                                        <CardDescription>
+                                            {qrItem.descriptions?.length
+                                                ? `${qrItem.descriptions.length} description${qrItem.descriptions.length > 1 ? "s" : ""}`
+                                                : "No descriptions"}
+                                        </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
-                                        {/* Date Range */}
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                                            <span>
-                                                {format(new Date(qrItem.startDate), "MMM dd, yyyy 'at' HH:mm")} -{" "}
-                                                {format(new Date(qrItem.endDate), "MMM dd, yyyy 'at' HH:mm")}
-                                            </span>
-                                        </div>
-
+                                        {/* Descriptions */}
+                                        {qrItem.descriptions && qrItem.descriptions.length > 0 && (
+                                            <div className="space-y-3">
+                                                <div className="flex items-center gap-2">
+                                                    <FileText className="h-4 w-4 text-muted-foreground" />
+                                                    <span className="font-medium">Descriptions</span>
+                                                </div>
+                                                <div className="space-y-3 max-h-60 overflow-y-auto">
+                                                    {qrItem.descriptions
+                                                        .sort((a, b) => a.order - b.order)
+                                                        .map((desc) => (
+                                                            <div key={desc.id} className="border rounded-lg p-3 bg-muted/30">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <Badge variant="outline" className="text-xs">
+                                                                        {desc.order}
+                                                                    </Badge>
+                                                                    <span className="font-medium text-sm">{desc.title}</span>
+                                                                </div>
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    {desc.content.length > 150 ? `${desc.content.slice(0, 150)}...` : desc.content}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
                                         <Separator />
 
                                         {/* 3D Model */}
@@ -321,9 +332,26 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                     <div className="space-y-6">
                                         <div>
                                             <h3 className="text-2xl font-bold">{qrItem.title}</h3>
-                                            <p className="text-muted-foreground mt-2">{qrItem.description}</p>
                                         </div>
 
+                                        {/* Descriptions */}
+                                        {qrItem.descriptions && qrItem.descriptions.length > 0 && (
+                                            <div className="space-y-4">
+                                                {qrItem.descriptions
+                                                    .sort((a, b) => a.order - b.order)
+                                                    .map((desc) => (
+                                                        <div key={desc.id} className="bg-white p-4 rounded-lg border">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <Badge variant="outline" className="text-xs">
+                                                                    {desc.order}
+                                                                </Badge>
+                                                                <h4 className="font-semibold">{desc.title}</h4>
+                                                            </div>
+                                                            <p className="text-muted-foreground whitespace-pre-wrap">{desc.content}</p>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        )}
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                             <Calendar className="h-4 w-4" />
                                             <span>
@@ -378,6 +406,7 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
         </Dialog>
     )
 }
+
 interface ModelViewerProps {
     modelUrl: string
     className?: string
@@ -385,28 +414,85 @@ interface ModelViewerProps {
     showControls?: boolean
 }
 
-function GLTFModel({ url }: { url: string }) {
+function GLBModel({ url }: { url: string }) {
     const gltf = useLoader(GLTFLoader, url)
     const meshRef = useRef<THREE.Group>(null)
+    const mixerRef = useRef<THREE.AnimationMixer | null>(null)
 
-    useFrame((state) => {
+    // Gentle rotation animation
+    useFrame((state, delta) => {
         if (meshRef.current) {
             meshRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.3) * 0.1
+        }
+
+        // Update animations if they exist
+        if (mixerRef.current) {
+            mixerRef.current.update(delta)
         }
     })
 
     useEffect(() => {
-        if (gltf.scene) {
-            const box = new THREE.Box3().setFromObject(gltf.scene)
-            const size = box.getSize(new THREE.Vector3()).length()
+        if (gltf) {
+            const scene = gltf.scene
+
+            // Setup animations if they exist
+            if (gltf.animations && gltf.animations.length > 0) {
+                mixerRef.current = new THREE.AnimationMixer(scene)
+                gltf.animations.forEach((clip) => {
+                    const action = mixerRef.current!.clipAction(clip)
+                    action.play()
+                })
+            }
+
+            // Enable shadows
+            scene.traverse((child) => {
+                if (child instanceof THREE.Mesh) {
+                    child.castShadow = true
+                    child.receiveShadow = true
+
+                    // Ensure materials are properly configured
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach((mat) => {
+                                if (mat instanceof THREE.MeshStandardMaterial) {
+                                    mat.needsUpdate = true
+                                }
+                            })
+                        } else if (child.material instanceof THREE.MeshStandardMaterial) {
+                            child.material.needsUpdate = true
+                        }
+                    }
+                }
+            })
+
+            // Calculate bounding box and center the model
+            const box = new THREE.Box3().setFromObject(scene)
+            const size = box.getSize(new THREE.Vector3())
             const center = box.getCenter(new THREE.Vector3())
 
-            gltf.scene.position.x += gltf.scene.position.x - center.x
-            gltf.scene.position.y += gltf.scene.position.y - center.y
-            gltf.scene.position.z += gltf.scene.position.z - center.z
+            // Center the model
+            scene.position.sub(center)
+            scene.position.set(0, 0, 0)
 
-            if (size > 4) {
-                gltf.scene.scale.setScalar(4 / size)
+            // Scale the model to fit in a reasonable size
+            const maxDimension = Math.max(size.x, size.y, size.z)
+            if (maxDimension > 50) {
+                const scale = 20 / maxDimension
+                scene.scale.setScalar(scale)
+            } else if (maxDimension > 20) {
+                const scale = 15 / maxDimension
+                scene.scale.setScalar(scale)
+            } else if (maxDimension < 1) {
+                const scale = 5 / maxDimension
+                scene.scale.setScalar(scale)
+            }
+        }
+
+        // Cleanup function
+        return () => {
+            if (mixerRef.current) {
+                mixerRef.current.stopAllAction()
+                mixerRef.current = null
             }
         }
     }, [gltf])
@@ -418,62 +504,8 @@ function GLTFModel({ url }: { url: string }) {
     )
 }
 
-function OBJModel({ url }: { url: string }) {
-    const obj = useLoader(OBJLoader, url)
-    const meshRef = useRef<THREE.Group>(null)
-
-    useFrame((state) => {
-        if (meshRef.current) {
-            meshRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.3) * 0.1
-        }
-    })
-
-    useEffect(() => {
-        if (obj) {
-            // Add material to OBJ if it doesn't have one
-            obj.traverse((child) => {
-                if (child instanceof THREE.Mesh) {
-                    if (!child.material) {
-                        child.material = new THREE.MeshStandardMaterial({
-                            color: 0x888888,
-                            roughness: 0.4,
-                            metalness: 0.1,
-                        })
-                    }
-                }
-            })
-
-            const box = new THREE.Box3().setFromObject(obj)
-            const size = box.getSize(new THREE.Vector3()).length()
-            const center = box.getCenter(new THREE.Vector3())
-
-            obj.position.x += obj.position.x - center.x
-            obj.position.y += obj.position.y - center.y
-            obj.position.z += obj.position.z - center.z
-
-            if (size > 4) {
-                obj.scale.setScalar(4 / size)
-            }
-        }
-    }, [obj])
-
-    return (
-        <group ref={meshRef}>
-            <primitive object={obj} />
-        </group>
-    )
-}
-
 function Model({ url }: { url: string }) {
-    // Detect file type from URL or content
-    const isOBJ = url.toLowerCase().includes('.obj') ||
-        url.includes('actionverse.s3.amazonaws.com') // Assume S3 files are OBJ for now
-
-    if (isOBJ) {
-        return <OBJModel url={url} />
-    } else {
-        return <GLTFModel url={url} />
-    }
+    return <GLBModel url={url} />
 }
 
 function Loader() {
@@ -506,12 +538,7 @@ function ErrorFallback({ error, onRetry, modelUrl }: { error: string; onRetry: (
     )
 }
 
-export function ModelViewer({
-    modelUrl,
-    className = "",
-    height = "400px",
-    showControls = true,
-}: ModelViewerProps) {
+export function ModelViewer({ modelUrl, className = "", height = "400px", showControls = true }: ModelViewerProps) {
     const [error, setError] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [retryKey, setRetryKey] = useState(0)
@@ -523,7 +550,6 @@ export function ModelViewer({
             setIsLoading(false)
             return
         }
-
         setError(null)
         setIsLoading(true)
     }, [modelUrl, retryKey])
@@ -536,14 +562,14 @@ export function ModelViewer({
 
     const handleZoomIn = () => {
         if (controlsRef.current) {
-            controlsRef.current.dollyIn(0.8)
+            controlsRef.current.dollyIn(0.5)
             controlsRef.current.update()
         }
     }
 
     const handleZoomOut = () => {
         if (controlsRef.current) {
-            controlsRef.current.dollyOut(0.8)
+            controlsRef.current.dollyOut(0.5)
             controlsRef.current.update()
         }
     }
@@ -555,7 +581,9 @@ export function ModelViewer({
 
     const handleError = (event: React.SyntheticEvent<HTMLDivElement, Event>) => {
         console.error("3D Model loading error:", event)
-        setError("Failed to load 3D model. Please check if the file is accessible and in a supported format (OBJ, GLB, GLTF).")
+        setError(
+            "Failed to load 3D model. Please check if the file is accessible and in a supported format (GLB, GLTF).",
+        )
         setIsLoading(false)
     }
 
@@ -571,7 +599,7 @@ export function ModelViewer({
         <div className={`relative ${className}`} style={{ height }}>
             <Canvas
                 key={retryKey}
-                camera={{ position: [0, 0, 5], fov: 50 }}
+                camera={{ fov: 45, position: [0, 0, 25] }}
                 style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}
                 onCreated={() => setIsLoading(false)}
                 gl={{ preserveDrawingBuffer: true }}
@@ -594,8 +622,13 @@ export function ModelViewer({
                     enableRotate={true}
                     autoRotate={false}
                     autoRotateSpeed={0.5}
-                    maxDistance={10}
-                    minDistance={1}
+                    maxDistance={100}
+                    minDistance={0.5}
+                    maxPolarAngle={Math.PI}
+                    minPolarAngle={0}
+                    zoomSpeed={1.2}
+                    panSpeed={1.0}
+                    rotateSpeed={1.0}
                 />
             </Canvas>
 
