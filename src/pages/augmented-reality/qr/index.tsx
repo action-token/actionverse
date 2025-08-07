@@ -16,24 +16,40 @@ export default function QRScannerPage() {
     const [stream, setStream] = useState<MediaStream | null>(null)
     const animationFrameId = useRef<number | null>(null)
     const [isVideoReady, setIsVideoReady] = useState(false)
+    const [isNavigating, setIsNavigating] = useState(false)
 
-    const stopScanner = useCallback(() => {
+    const stopScanner = useCallback(async () => {
+        console.log('Stopping QR scanner...');
+
         if (animationFrameId.current) {
             cancelAnimationFrame(animationFrameId.current)
             animationFrameId.current = null
         }
+
         if (stream) {
+            console.log('Stopping camera stream...');
             stream.getTracks().forEach(track => {
+                console.log('Stopping track:', track.kind, 'readyState:', track.readyState);
                 track.stop()
             })
             setStream(null)
         }
+
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+            videoRef.current.load(); // Force reload to clear the video element
+        }
+
         setScanning(false)
         setIsVideoReady(false)
+
+        // Wait a bit to ensure camera is fully released
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('QR scanner stopped and camera released');
     }, [stream])
 
     const tick = useCallback(() => {
-        if (!videoRef.current || !canvasRef.current || !scanning) {
+        if (!videoRef.current || !canvasRef.current || !scanning || isNavigating) {
             return
         }
 
@@ -54,44 +70,53 @@ export default function QRScannerPage() {
 
                 if (code) {
                     console.log("QR Code detected:", code.data)
+                    setIsNavigating(true);
 
                     // Stop scanning immediately to prevent multiple detections
-                    stopScanner()
+                    stopScanner().then(() => {
+                        console.log("Camera stopped, navigating...");
 
-                    // Attempt to parse JSON data
-                    try {
-                        const parsedData = JSON.parse(code.data) as { id: string };
-                        if (parsedData && typeof parsedData === 'object' && parsedData.id) {
-                            router.push(`/augmented-reality/qr/${parsedData.id}`)
+                        // Navigate after ensuring camera is stopped
+                        try {
+                            const parsedData = JSON.parse(code.data) as { id: string };
+                            if (parsedData && typeof parsedData === 'object' && parsedData.id) {
+                                router.push(`/augmented-reality/qr/${parsedData.id}`)
+                                return
+                            }
+                        } catch (e) {
+                            // Not JSON, treat as plain text
+                        }
+
+                        // Treat as direct ID string
+                        if (code.data) {
+                            router.push(`/augmented-reality/qr/${encodeURIComponent(code.data)}`)
                             return
                         }
-                    } catch (e) {
-                        // Not JSON, treat as plain text
-                    }
+                    });
 
-                    // Treat as direct ID string
-                    if (code.data) {
-                        router.push(`/augmented-reality/qr/${encodeURIComponent(code.data)}`)
-                        return
-                    }
+                    return; // Exit early to prevent further scanning
                 }
             }
         }
 
-        if (scanning) {
+        if (scanning && !isNavigating) {
             animationFrameId.current = requestAnimationFrame(tick)
         }
-    }, [scanning, stopScanner, router])
+    }, [scanning, stopScanner, router, isNavigating])
 
     const startScanner = useCallback(async () => {
         setError(null)
         setIsVideoReady(false)
+        setIsNavigating(false)
 
         try {
             // Stop any existing stream first
             if (stream) {
                 stream.getTracks().forEach(track => track.stop())
+                setStream(null)
             }
+
+            console.log('Requesting camera access for QR scanner...');
 
             // Request camera access with better constraints
             const constraints = {
@@ -103,6 +128,7 @@ export default function QRScannerPage() {
             }
 
             const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+            console.log('Camera access granted for QR scanner');
             setStream(newStream)
 
             if (videoRef.current) {
@@ -120,6 +146,7 @@ export default function QRScannerPage() {
                     const video = videoRef.current
 
                     const onLoadedMetadata = () => {
+                        console.log('QR scanner video metadata loaded');
                         video.removeEventListener("loadedmetadata", onLoadedMetadata)
                         video.removeEventListener("error", onError)
                         setIsVideoReady(true)
@@ -127,6 +154,7 @@ export default function QRScannerPage() {
                     }
 
                     const onError = (e: Event) => {
+                        console.error('QR scanner video error:', e);
                         video.removeEventListener("loadedmetadata", onLoadedMetadata)
                         video.removeEventListener("error", onError)
                         reject(new Error("Video failed to load"))
@@ -137,13 +165,14 @@ export default function QRScannerPage() {
                 })
 
                 await videoRef.current.play()
+                console.log('QR scanner video playing');
                 setScanning(true)
 
                 // Start the scanning loop
                 tick()
             }
         } catch (err) {
-            console.error("Error accessing camera:", err)
+            console.error("Error accessing camera for QR scanner:", err)
             let errorMessage = "Failed to access camera. "
 
             if (err instanceof Error) {
@@ -172,13 +201,14 @@ export default function QRScannerPage() {
 
         // Cleanup on unmount
         return () => {
+            console.log('QR scanner component unmounting, cleaning up...');
             stopScanner()
         }
     }, []) // Remove startScanner and stopScanner from dependencies to avoid infinite loop
 
     // Handle tick animation
     useEffect(() => {
-        if (scanning && isVideoReady) {
+        if (scanning && isVideoReady && !isNavigating) {
             animationFrameId.current = requestAnimationFrame(tick)
         }
 
@@ -187,14 +217,51 @@ export default function QRScannerPage() {
                 cancelAnimationFrame(animationFrameId.current)
             }
         }
-    }, [scanning, isVideoReady, tick])
+    }, [scanning, isVideoReady, tick, isNavigating])
+
+    // Handle page visibility change to pause/resume scanning
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                console.log('Page hidden, pausing QR scanner');
+                // Page is hidden, pause scanning
+                if (animationFrameId.current) {
+                    cancelAnimationFrame(animationFrameId.current)
+                    animationFrameId.current = null
+                }
+            } else {
+                console.log('Page visible, resuming QR scanner');
+                // Page is visible, resume scanning
+                if (scanning && isVideoReady && !isNavigating) {
+                    tick()
+                }
+            }
+        }
+
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }, [scanning, isVideoReady, tick, isNavigating])
+
+    // Handle beforeunload to cleanup camera
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            console.log('Page unloading, stopping camera...');
+            stopScanner();
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [stopScanner]);
 
     return (
         <div className="relative flex h-screen w-full max-w-md flex-col items-center justify-center overflow-hidden bg-slate-950 mx-auto">
             {/* Back Button */}
             <Button
                 className="absolute left-4 top-4 z-50 bg-black/50 text-white border-none hover:bg-black/70"
-                onClick={() => router.back()}
+                onClick={() => {
+                    stopScanner()
+                    router.back()
+                }}
             >
                 <ArrowLeft className="h-6 w-6" />
                 <span className="ml-2">Back</span>
@@ -241,7 +308,7 @@ export default function QRScannerPage() {
                         </div>
 
                         {/* Loading state */}
-                        {!isVideoReady && !error && (
+                        {(!isVideoReady || isNavigating) && !error && (
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
@@ -249,13 +316,13 @@ export default function QRScannerPage() {
                             >
                                 <div className="text-white text-center">
                                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                                    <p>Initializing camera...</p>
+                                    <p>{isNavigating ? "Processing QR code..." : "Initializing camera..."}</p>
                                 </div>
                             </motion.div>
                         )}
 
                         {/* Manual start button if needed */}
-                        {!scanning && !error && isVideoReady && (
+                        {!scanning && !error && isVideoReady && !isNavigating && (
                             <motion.div
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
