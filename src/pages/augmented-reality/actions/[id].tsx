@@ -97,7 +97,7 @@ const SingleBountyItem = () => {
           location.longitude,
           bounty.latitude,
           bounty.longitude,
-          bounty.radius || 500
+          bounty.radius ?? 500
         )
       }
     }
@@ -306,8 +306,8 @@ const SingleBountyItem = () => {
             </CardHeader>
             <CardContent>
               <ScavengerProgress
-                currentStep={bounty.currentStep || 0}
-                totalSteps={bounty.ActionLocation?.length || 0}
+                currentStep={bounty.currentStep ?? 0}
+                totalSteps={bounty.ActionLocation?.length ?? 0}
               />
             </CardContent>
           </Card>

@@ -55,9 +55,8 @@ export const isWithinRadius = (
     userLon: number,
     bountyLat: number,
     bountyLon: number,
-    radiusInMeters: number = 500
+    radiusInMeters: number
 ): boolean => {
     const distance = calculateDistance(userLat, userLon, bountyLat, bountyLon);
-    console.log(`Distance: ${distance} meters, Radius: ${radiusInMeters} meters`);
     return distance <= radiusInMeters;
 };

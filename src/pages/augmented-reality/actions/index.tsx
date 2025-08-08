@@ -244,7 +244,7 @@ export default function BountyScreen() {
             location.longitude,
             bounty.latitude,
             bounty.longitude,
-            bounty.radius || 500
+            bounty.radius ?? 500
           )
           console.log("Location check:", withinRange)
           if (!withinRange) {
@@ -253,7 +253,7 @@ export default function BountyScreen() {
               userLon: location.longitude,
               bountyLat: bounty.latitude,
               bountyLon: bounty.longitude,
-              radius: bounty.radius || 500
+              radius: bounty.radius ?? 500
             })
             toast.error("You must be within 500 meters of the bounty location")
             return
@@ -567,8 +567,8 @@ function BountyCard({ bounty, onAction, joinButtonRef }: BountyCardProps) {
           {/* Scavenger Hunt Progress */}
           {bounty.bountyType === "SCAVENGER_HUNT" && bounty.isJoined && (
             <ScavengerProgress
-              currentStep={bounty.currentStep || 0}
-              totalSteps={bounty.ActionLocation?.length || 0}
+              currentStep={bounty.currentStep ?? 0}
+              totalSteps={bounty.ActionLocation?.length ?? 0}
             />
           )}
 
@@ -588,7 +588,7 @@ function BountyCard({ bounty, onAction, joinButtonRef }: BountyCardProps) {
 
           <Button
             ref={bounty.isJoined ? undefined : joinButtonRef}
-            className={`w-full h-12 rounded-2xl font-semibold transition-all duration-200 ${bounty.isJoined || bounty.isOwner
+            className={`w-full h-12 rounded-2xl font-semibold transition-all duration-200 ${bounty.isJoined ?? bounty.isOwner
               ? "bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-300"
               : isFinished
                 ? "bg-slate-300 text-slate-500 cursor-not-allowed"
@@ -647,7 +647,7 @@ function BountyListItem({ bounty, onAction, joinButtonRef }: BountyCardProps) {
                     <div className="mt-2">
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-slate-600 dark:text-slate-400">Progress:</span>
-                        <span className="font-medium">{bounty.currentStep || 0}/{bounty.ActionLocation?.length || 0}</span>
+                        <span className="font-medium">{bounty.currentStep ?? 0}/{bounty.ActionLocation?.length ?? 0}</span>
                       </div>
                     </div>
                   )}

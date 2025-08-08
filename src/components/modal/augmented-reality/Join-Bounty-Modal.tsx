@@ -108,7 +108,7 @@ const JoinBountyModal = () => {
       location.longitude,
       bounty.latitude,
       bounty.longitude,
-      bounty.radius || 200
+      bounty.radius ?? 200
     );
   };
 
@@ -192,7 +192,7 @@ const JoinBountyModal = () => {
                   <span className="text-sm font-medium text-purple-700 dark:text-purple-400">Scavenger Hunt</span>
                 </div>
                 <p className="text-xs text-purple-600 dark:text-purple-400">
-                  Complete {bounty.ActionLocation?.length || 0} steps to win this bounty. Your progress will be tracked.
+                  Complete {bounty.ActionLocation?.length ?? 0} steps to win this bounty. Your progress will be tracked.
                 </p>
               </div>
             )}

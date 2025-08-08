@@ -37,7 +37,7 @@ export interface ActionLocation {
     id: number;
     bountyId: number;
     bounty: BountyTypeEnum;
-    locationGroupId: String;
+    locationGroupId: string;
     serial: number;
     creatorId: string;
     createdAt: Date;
