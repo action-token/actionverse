@@ -209,6 +209,7 @@ export default function CreateLocationBasedBountyModal() {
             }, 2000)
         },
     })
+    const XLMRate = api.bounty.Bounty.getXLMPrice.useQuery().data
 
     const SendBalanceToBountyMother = api.bounty.Bounty.sendBountyBalanceToMotherAcc.useMutation({
         onSuccess: async (data, { method }) => {
@@ -270,6 +271,10 @@ export default function CreateLocationBasedBountyModal() {
                 signWith: needSign(),
                 prize: prizeAmount,
                 method: paymentMethod,
+                fees: paymentMethod === "asset" ? totalFees :
+                    paymentMethod === "xlm" ? 1 :
+                        paymentMethod === "usdc" ? 3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)) :
+                            0,
             })
         }
     }
@@ -417,24 +422,43 @@ export default function CreateLocationBasedBountyModal() {
                                                     costBreakdown={[
                                                         {
                                                             label: "Bounty Prize",
-                                                            amount: paymentMethod === "asset" ? getValues('brandAmount') : getValues('brandAmount') * 0.7,
+                                                            amount: paymentMethod === "asset"
+                                                                ? Number(getValues("brandAmount") + totalFees)
+                                                                : paymentMethod === "xlm"
+                                                                    ? Number(getValues("usdtAmount") / (XLMRate ?? 1))
+                                                                    : paymentMethod === "usdc"
+                                                                        ? Number(getValues("usdtAmount") / (XLMRate ?? 1))
+                                                                        : 0,
                                                             highlighted: true,
                                                             type: "cost",
                                                         },
                                                         {
                                                             label: "Platform Fee",
-                                                            amount: paymentMethod === "asset" ? totalFees : 2 + 1,
+                                                            amount: paymentMethod === "asset"
+                                                                ? totalFees
+                                                                : paymentMethod === "xlm"
+                                                                    ? 1
+                                                                    : paymentMethod === "usdc"
+                                                                        ? 3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1))
+                                                                        : 0,
                                                             highlighted: false,
                                                             type: "fee",
                                                         },
                                                         {
                                                             label: "Total Cost",
-                                                            amount: paymentMethod === "asset" ? getValues('brandAmount') + totalFees : getValues('brandAmount') * 0.7 + 2 + 1,
+                                                            amount: paymentMethod === "asset"
+                                                                ? Number(getValues("brandAmount")) + totalFees
+                                                                : paymentMethod === "xlm"
+                                                                    ? Number(getValues("usdtAmount") / (XLMRate ?? 1)) + 1
+                                                                    : paymentMethod === "usdc"
+                                                                        ? Number(getValues("usdtAmount") / (XLMRate ?? 1)) + (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))
+                                                                        : 0,
                                                             highlighted: false,
                                                             type: "total",
                                                         },
                                                     ]}
-                                                    XLM_EQUIVALENT={getValues('brandAmount') * 0.7 + 2 + 1}
+                                                    XLM_EQUIVALENT={Number(getValues("usdtAmount") / (XLMRate ?? 1)) + 1}
+                                                    USDC_EQUIVALENT={Number(getValues("usdtAmount") / (XLMRate ?? 1)) + (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))}
                                                     handleConfirm={methods.handleSubmit(onSubmit)}
                                                     loading={isSubmitting}
                                                     requiredToken={getValues('brandAmount') + totalFees}

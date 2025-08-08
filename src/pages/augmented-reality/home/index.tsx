@@ -396,7 +396,7 @@ export default function HomeScreen() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 relative">
+        <div className="min-h-screen  relative">
             {/* Header Toggle Button */}
             {!headerVisible && (
                 <motion.div
@@ -426,42 +426,33 @@ export default function HomeScreen() {
                     >
                         <div className="px-4 pt-2 pb-4">
                             {/* Title and Balance Row */}
-                            <div className="flex items-center justify-between mb-3">
-                                <div ref={welcomeRef} className="flex-1">
-                                    <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-                                        Discover
-                                    </h1>
-                                    <p className="text-slate-600 dark:text-slate-400 text-xs">
-                                        AR experiences nearby
-                                    </p>
-                                </div>
-
-                                {/* Compact Balance */}
-                                <motion.div
-                                    ref={balanceRef}
-                                    className="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl px-3 py-2 min-w-[80px]"
-                                    whileHover={{ scale: 1.05 }}
-                                    transition={{ duration: 0.2 }}
-                                >
-                                    <div className="text-center">
-                                        <p className="text-white/80 text-xs">Balance</p>
-                                        <p className="text-white text-sm font-bold">
-                                            {Number(balanceRes.data).toFixed(0) ?? 0}
-                                        </p>
+                            <div className="flex items-center justify-between gap-4">
+                                {/* Search and Controls Row */}
+                                <div className="flex items-center gap-2 mb-3  flex-1 ">
+                                    <div className="relative w-full">
+                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                                        <Input
+                                            placeholder="Search locations..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="pl-10 h-9 bg-slate-100 dark:bg-slate-800 border-0 rounded-xl text-sm"
+                                        />
                                     </div>
-                                </motion.div>
-                            </div>
+                                    {/* Compact Balance */}
+                                    <motion.div
+                                        ref={balanceRef}
+                                        className="bg-primary rounded-xl px-2 py-1 min-w-[80px]"
+                                        whileHover={{ scale: 1.05 }}
+                                        transition={{ duration: 0.2 }}
+                                    >
+                                        <div className="text-center">
+                                            <p className="text-white/80 text-xs">Balance</p>
+                                            <p className="text-white text-sm font-bold">
+                                                {Number(balanceRes.data).toFixed(0) ?? 0}
+                                            </p>
+                                        </div>
+                                    </motion.div>
 
-                            {/* Search and Controls Row */}
-                            <div className="flex items-center gap-2 mb-3">
-                                <div className="relative flex-1">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                                    <Input
-                                        placeholder="Search locations..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="pl-10 h-9 bg-slate-100 dark:bg-slate-800 border-0 rounded-xl text-sm"
-                                    />
                                 </div>
                                 <Button
                                     onClick={() => setHeaderVisible(false)}
@@ -470,7 +461,10 @@ export default function HomeScreen() {
                                 >
                                     <ChevronUp className="h-4 w-4" />
                                 </Button>
+
                             </div>
+
+
 
                             {/* View Toggle */}
                             <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
@@ -584,28 +578,6 @@ export default function HomeScreen() {
                                 </motion.button>
                             </div>
 
-                            {/* Map Info Panel */}
-                            <div className="absolute top-4 left-4 right-4 z-20">
-                                <motion.div
-                                    className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-xl p-3 shadow-lg border border-white/20 dark:border-slate-700/20"
-                                    initial={{ opacity: 0, y: -20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.5, delay: 0.2 }}
-                                >
-                                    <div className="flex items-center justify-between text-sm">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                            <span className="text-slate-700 dark:text-slate-300 font-medium">
-                                                {filteredLocations.length} locations found
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                                            <Navigation className="w-3 h-3" />
-                                            <span className="text-xs">Live tracking</span>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            </div>
                         </motion.div>
                     ) : (
                         <motion.div

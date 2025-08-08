@@ -98,7 +98,7 @@ export default function ARLayout({
 
     return (
         <div
-            className="flex flex-col  relative overflow-y-auto max-w-md mx-auto"
+            className="flex flex-col  relative overflow-y-auto max-w-md mx-auto bg-secondary"
             style={{
                 height: "calc(var(--vh, 1vh) * 100)",
                 minHeight: "-webkit-fill-available",
@@ -121,7 +121,7 @@ export default function ARLayout({
                 >
                     {isTransitioning && (
                         <motion.div
-                            className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center"
+                            className="absolute inset-0  backdrop-blur-sm z-50 flex items-center justify-center"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}

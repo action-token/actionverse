@@ -11,7 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import PrizeDetailsForm from "~/components/scavenger-hunt/prize-details-form"
 
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Coins, Loader2 } from "lucide-react"
 import { useScavengerHuntModalStore } from "../store/scavenger-hunt-modal-store"
 import { api } from "~/utils/api"
 import { clientsign } from "package/connect_wallet"
@@ -20,10 +20,11 @@ import { clientSelect } from "~/lib/stellar/fan/utils"
 
 import { MediaType } from "@prisma/client"
 import useNeedSign from "~/lib/hook"
-import { usePaymentMethodStore } from "../common/payment-options"
+import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
 import ConfigForm from "../scavenger-hunt/config-form"
 import DefaultInfoForm from "../scavenger-hunt/default-info-form"
 import toast from "react-hot-toast"
+import { PLATFORM_FEE, TrxBaseFeeInPlatformAsset } from "~/lib/stellar/constant"
 
 // Define the location type
 
@@ -206,6 +207,8 @@ export default function ScavengerHuntDialog() {
 
     const { trigger, formState, getValues, watch, setValue } = methods
     //api calling
+    const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
+
     const CreateBountyMutation = api.bounty.ScavengerHunt.createScavengerHunt.useMutation({
         onSuccess: async (data) => {
             toast.success("Bounty Created Successfully! 🎉")
@@ -225,6 +228,8 @@ export default function ScavengerHuntDialog() {
             SetIsScavengerModalOpen(false)
         },
     })
+    const XLMRate = api.bounty.Bounty.getXLMPrice.useQuery().data
+
     const SendBalanceToBountyMother = api.bounty.Bounty.sendBountyBalanceToMotherAcc.useMutation({
         onSuccess: async (data, { method }) => {
             if (data) {
@@ -474,6 +479,10 @@ export default function ScavengerHuntDialog() {
                 signWith: needSign(),
                 prize: data.priceBandcoin,
                 method: paymentMethod,
+                fees: paymentMethod === "asset" ? totalFees :
+                    paymentMethod === "xlm" ? 1 :
+                        paymentMethod === "usdc" ? 3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1)) :
+                            0,
             })
         } catch (error) {
             console.error("Form submission error:", error)
@@ -527,21 +536,69 @@ export default function ScavengerHuntDialog() {
                                     Next <ChevronRight className="ml-2 h-4 w-4" />
                                 </Button>
                             ) : (
-                                <Button
-                                    onClick={
-                                        () =>
-                                            onSubmit(getValues())
+                                <PaymentChoose
+                                    costBreakdown={[
+                                        {
+                                            label: "Bounty Prize",
+                                            amount: paymentMethod === "asset"
+                                                ? Number(getValues("priceBandcoin"))
+                                                : paymentMethod === "xlm"
+                                                    ? Number(getValues("priceUSD") / (XLMRate ?? 1))
+                                                    : paymentMethod === "usdc"
+                                                        ? Number(getValues("priceUSD") / (XLMRate ?? 1))
+                                                        : 0,
+                                            highlighted: true,
+                                            type: "cost",
+                                        },
+                                        {
+                                            label: "Platform Fee",
+                                            amount: paymentMethod === "asset"
+                                                ? totalFees
+                                                : paymentMethod === "xlm"
+                                                    ? 1
+                                                    : paymentMethod === "usdc"
+                                                        ? 3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))
+                                                        : 0,
+                                            highlighted: false,
+                                            type: "fee",
+                                        },
+                                        {
+                                            label: "Total Cost",
+                                            amount: paymentMethod === "asset"
+                                                ? Number(getValues("priceBandcoin")) + totalFees
+                                                : paymentMethod === "xlm"
+                                                    ? Number(getValues("priceUSD") / (XLMRate ?? 1)) + 1
+                                                    : paymentMethod === "usdc"
+                                                        ? Number(getValues("priceUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1)))
+                                                        : 0,
+                                            highlighted: false,
+                                            type: "total",
+                                        },
+                                    ]}
+                                    XLM_EQUIVALENT={Number(getValues("priceUSD") / (XLMRate ?? 1)) + 1}
+                                    USDC_EQUIVALENT={Number(getValues("priceUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1)))}
+                                    handleConfirm={() => onSubmit(getValues())}
+                                    loading={loading}
+                                    requiredToken={Number(getValues("priceBandcoin")) + totalFees}
+                                    trigger={
+                                        <Button disabled={isSubmitDisabled
+                                            || CreateBountyMutation.isLoading
+                                            || SendBalanceToBountyMother.isLoading} className="shadow-sm shadow-foreground">
+                                            {loading ? (
+                                                <>
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    Creating Bounty...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Coins className="mr-2 h-4 w-4" />
+                                                    Create Bounty
+                                                </>
+                                            )}
+                                        </Button>
                                     }
-                                    disabled={
-                                        isSubmitDisabled
-                                        || CreateBountyMutation.isLoading
-                                        || SendBalanceToBountyMother.isLoading
+                                />
 
-                                    }
-                                    type="button"
-                                >
-                                    Create Scavenger Hunt
-                                </Button>
                             )}
                         </div>
                     </form>

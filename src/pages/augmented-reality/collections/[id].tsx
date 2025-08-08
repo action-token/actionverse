@@ -74,7 +74,7 @@ const SingleCollectionItem = () => {
   }
 
   return (
-    <div className="min-h-screen  pb-32 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <div className="min-h-screen  pb-32 ">
       {/* Enhanced Header */}
       <motion.div
         className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50 shadow-lg"

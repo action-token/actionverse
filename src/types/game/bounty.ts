@@ -6,8 +6,13 @@ export type Bounty = {
     priceInBand: number;
     requiredBalance: number;
     currentWinnerCount: number;
+    latitude?: number | null;
+    longitude?: number | null;
+    radius?: number | null;
+
     imageUrls: string[];
     totalWinner: number;
+    bountyType: "GENERAL" | "LOCATION_BASED" | "SCAVENGER_HUNT";
     status: "PENDING" | "APPROVED" | "REJECTED";
     creatorId: string;
     _count: {
@@ -19,8 +24,35 @@ export type Bounty = {
         profileUrl: string;
     },
     BountyWinner: {
-        userId: string;
+        user: {
+            id: string;
+        }
     }[],
     isJoined: boolean;
     isOwner: boolean;
+    currentStep: number | undefined;
+    ActionLocation?: ActionLocation[]
+}
+export interface ActionLocation {
+    id: number;
+    bountyId: number;
+    bounty: BountyTypeEnum;
+    locationGroupId: String;
+    serial: number;
+    creatorId: string;
+    createdAt: Date;
+}
+
+export enum BountyTypeEnum {
+    "ALL" = "ALL",
+    GENERAL = "GENERAL",
+    LOCATION_BASED = "LOCATION_BASED",
+    SCAVENGER_HUNT = "SCAVENGER_HUNT",
+}
+
+export enum sortOptionEnum {
+    DATE_ASC = "DATE_ASC",
+    DATE_DESC = "DATE_DESC",
+    PRICE_ASC = "PRICE_ASC",
+    PRICE_DESC = "PRICE_DESC",
 }
