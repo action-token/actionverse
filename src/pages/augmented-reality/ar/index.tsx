@@ -496,7 +496,7 @@ const ARPage = () => {
   // Loading screen
   if (isInitializing) {
     return (
-      <div className="fixed inset-0  flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-slate-900 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-6 m-4 max-w-sm text-center">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <h2 className="text-xl font-bold mb-2">Initializing AR</h2>
@@ -519,7 +519,7 @@ const ARPage = () => {
   // Error screen
   if (initializationError) {
     return (
-      <div className="fixed inset-0  flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-slate-900 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-6 m-4 max-w-sm text-center">
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-xl font-bold mb-2">AR Setup Failed</h2>

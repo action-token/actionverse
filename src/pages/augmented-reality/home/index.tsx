@@ -155,7 +155,7 @@ export default function HomeScreen() {
         locations: ConsumedLocation[], // Keep for potential future use
     ) => {
         // Old logic (commented out or removed):
-        const nearbyPins = getNearbyPins(userLocation, locations, 50)
+        const nearbyPins = getNearbyPins(userLocation, locations, 75)
         setData({
             nearbyPins: nearbyPins,
             singleAR: false,

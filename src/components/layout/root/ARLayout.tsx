@@ -98,7 +98,7 @@ export default function ARLayout({
 
     return (
         <div
-            className="flex flex-col  relative overflow-y-auto max-w-md mx-auto bg-secondary"
+            className="flex flex-col  relative overflow-y-auto max-w-md mx-auto"
             style={{
                 height: "calc(var(--vh, 1vh) * 100)",
                 minHeight: "-webkit-fill-available",
