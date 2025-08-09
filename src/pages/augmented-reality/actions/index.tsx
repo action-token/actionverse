@@ -280,7 +280,7 @@ export default function BountyScreen() {
   ]
 
   return (
-    <div className="min-h-screen ">
+    <div className="min-h-screen pb-32">
       {/* Header Toggle Button */}
       {!showHeader && (
         <motion.div

@@ -1,14 +1,13 @@
 "use client"
+
 import { useEffect, useRef, useState } from "react"
 import * as THREE from "three"
-
 import {
   ClickHandler,
   DeviceOrientationControls,
   LocationBased,
   WebcamRenderer,
 } from "~/lib/augmented-reality/locationbased-ar"
-
 import { ArrowLeft, Coins, Navigation, X, Camera, Smartphone, MapPin, AlertTriangle, RefreshCw } from "lucide-react"
 import ArCard from "~/components/common/ar-card"
 import { ARCoin } from "~/components/common/AR-Coin"
@@ -30,7 +29,6 @@ const ARPage = () => {
   const [infoText, setInfoText] = useState<ConsumedLocation>()
   const rendererRef = useRef<THREE.WebGLRenderer>()
   const previousIntersectedObject = useRef<THREE.Object3D | undefined>(undefined)
-
   const [showLoading, setShowLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [showCollectionAnimation, setShowCollectionAnimation] = useState(false)
@@ -126,7 +124,6 @@ const ARPage = () => {
       permissionButton.onclick = async () => {
         try {
           console.log("User clicked permission button, requesting device orientation...")
-
           // Create temporary camera and controls for permission request
           const tempCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000)
           const tempControls = new DeviceOrientationControls(tempCamera)
@@ -134,7 +131,6 @@ const ARPage = () => {
           if (tempControls.requiresPermission()) {
             const granted = await tempControls.requestPermissions()
             tempControls.dispose()
-
             document.body.removeChild(permissionButton)
 
             if (granted) {
@@ -166,13 +162,11 @@ const ARPage = () => {
       setIsInitializing(true)
       setInitializationError(null)
       setPermissionStep("requesting")
-
       console.log("Starting permission request process...")
 
       // Step 1: Request camera permission
       setPermissionStep("camera")
       console.log("Requesting camera permission...")
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "environment",
@@ -180,7 +174,6 @@ const ARPage = () => {
           height: { ideal: 720 },
         },
       })
-
       // Stop the stream immediately as we just needed permission
       stream.getTracks().forEach((track) => track.stop())
       console.log("Camera permission granted")
@@ -188,19 +181,15 @@ const ARPage = () => {
       // Step 2: Request device orientation permission with user interaction
       setPermissionStep("orientation")
       console.log("Requesting device orientation permission...")
-
       const orientationGranted = await requestDeviceOrientationPermission()
-
       if (!orientationGranted) {
         throw new Error("Device orientation permission denied")
       }
-
       console.log("Device orientation permission granted")
 
       // Step 3: Request location permission (optional)
       setPermissionStep("location")
       console.log("Requesting location permission...")
-
       try {
         const position = await new Promise<GeolocationPosition>((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -216,10 +205,8 @@ const ARPage = () => {
 
       setPermissionStep("complete")
       console.log("All permissions granted successfully")
-
       // Small delay to show completion
       await new Promise((resolve) => setTimeout(resolve, 500))
-
       return true
     } catch (error) {
       console.error("Permission request failed:", error)
@@ -252,14 +239,11 @@ const ARPage = () => {
       0.1, // Near clipping plane
       1000, // Far clipping plane
     )
-
     // Set camera at eye level
     camera.position.set(0, 1.6, 0)
     camera.rotation.set(0, 0, 0)
-
     // Ensure proper matrix updates
     camera.updateMatrixWorld()
-
     return camera
   }
 
@@ -270,15 +254,12 @@ const ARPage = () => {
       antialias: true,
       powerPreference: "high-performance",
     })
-
     renderer.setSize(window.innerWidth, window.innerHeight)
     renderer.setClearColor(0x000000, 0) // Transparent background for AR
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)) // Optimize for performance
-
     // Enable proper depth testing
     renderer.sortObjects = true
     renderer.autoClear = true
-
     return renderer
   }
 
@@ -338,7 +319,6 @@ const ARPage = () => {
     // Create curved path using quadratic bezier
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end)
     const points = curve.getPoints(20)
-
     const geometry = new THREE.BufferGeometry().setFromPoints(points)
     const material = new THREE.LineBasicMaterial({
       color: 0x00ff88,
@@ -377,8 +357,8 @@ const ARPage = () => {
     sprite.position.copy(mid)
     sprite.scale.set(4, 2, 1)
     sceneRef.current.add(sprite)
-
     pathLabelsRef.current.push(sprite)
+
     setShowPathToNearest(true)
   }
 
@@ -400,9 +380,9 @@ const ARPage = () => {
 
   const simulateApiCall = async () => {
     if (!selectedPin) return
+
     try {
       setShowLoading(true)
-
       const response = await fetch(new URL("api/game/locations/consume", BASE_URL).toString(), {
         method: "POST",
         credentials: "include",
@@ -424,6 +404,7 @@ const ARPage = () => {
       setTimeout(() => {
         setShowCollectionAnimation(false)
         setShowSuccess(true)
+
         // Navigate back after success
         setTimeout(() => {
           setShowSuccess(false)
@@ -487,7 +468,6 @@ const ARPage = () => {
     }
 
     initializationRef.current = true
-
     let cleanup: (() => void) | undefined
 
     try {
@@ -525,7 +505,6 @@ const ARPage = () => {
       // Initialize webcam and device controls
       const cam = new WebcamRenderer(renderer)
       webcamRendererRef.current = cam
-
       const clickHandler = new ClickHandler(renderer)
 
       // Initialize device orientation controls
@@ -561,8 +540,8 @@ const ARPage = () => {
       locar.on("gpsupdate", (pos: GeolocationPosition) => {
         if (firstLocation) {
           const { latitude, longitude } = pos.coords
-
           const coinsPositions = data.nearbyPins
+
           console.log("Loading coins:", coinsPositions?.length ?? 0)
 
           if (!coinsPositions) {
@@ -594,6 +573,12 @@ const ARPage = () => {
               const coinMesh = arCoin.getMesh()
               const billboardGroup = arCoin.getBillboardGroup()
 
+              // **FIX: Set userData on the coin mesh with the coin data**
+              coinMesh.userData = consumedLocation
+
+              // Also set userData on billboard group for consistency
+              billboardGroup.userData = consumedLocation
+
               // Add to scene using location-based positioning
               locar.add(coinMesh, coinData.lng, coinData.lat)
               scene.add(billboardGroup)
@@ -601,8 +586,8 @@ const ARPage = () => {
               // Store references
               arCoinsRef.current.push(arCoin)
               coinsRef.current.push(coinMesh)
-              loadedCoins++
 
+              loadedCoins++
               console.log(`Added AR coin: ${coinData.brand_name}`)
             } catch (error) {
               console.error(`Failed to create AR coin for ${coinData.brand_name}:`, error)
@@ -622,9 +607,25 @@ const ARPage = () => {
       const raycaster = new THREE.Raycaster()
       const mouse = new THREE.Vector2()
 
-      const onMouseMove = (event: MouseEvent) => {
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1
+      // Handle click/tap events
+      // Handle mouse/touch move for hover effects
+      const onMouseMove = (event: MouseEvent | TouchEvent) => {
+        let clientX, clientY
+
+        if (event instanceof TouchEvent) {
+          if (event.touches.length > 0 && event.touches[0]) {
+            clientX = event.touches[0].clientX
+            clientY = event.touches[0].clientY
+          } else {
+            return
+          }
+        } else {
+          clientX = event.clientX
+          clientY = event.clientY
+        }
+
+        mouse.x = (clientX / window.innerWidth) * 2 - 1
+        mouse.y = -(clientY / window.innerHeight) * 2 + 1
 
         raycaster.setFromCamera(mouse, camera)
         const intersects = raycaster.intersectObjects(coinsRef.current)
@@ -638,7 +639,6 @@ const ARPage = () => {
             if (hoveredCoinRef.current) {
               hoveredCoinRef.current.hideCard()
             }
-
             // Show new hover
             arCoin.showCard(camera)
             hoveredCoinRef.current = arCoin
@@ -652,7 +652,98 @@ const ARPage = () => {
         }
       }
 
+      const onMouseClick = (event: MouseEvent | TouchEvent) => {
+        event.preventDefault()
+
+        let clientX, clientY
+
+        if (event instanceof TouchEvent) {
+          if (event.changedTouches && event.changedTouches.length > 0 && event.changedTouches[0]) {
+            clientX = event.changedTouches[0].clientX
+            clientY = event.changedTouches[0].clientY
+          } else {
+            return
+          }
+        } else {
+          clientX = event.clientX
+          clientY = event.clientY
+        }
+
+        console.log("🎯 Click/tap detected at:", clientX, clientY)
+
+        mouse.x = (clientX / window.innerWidth) * 2 - 1
+        mouse.y = -(clientY / window.innerHeight) * 2 + 1
+
+        console.log("🎯 Mouse coordinates:", mouse.x, mouse.y)
+
+        raycaster.setFromCamera(mouse, camera)
+        const intersects = raycaster.intersectObjects(coinsRef.current, true) // Include children
+
+        console.log("🎯 Raycast intersects:", intersects.length)
+        console.log("🎯 Available coins for intersection:", coinsRef.current.length)
+
+        if (intersects.length > 0 && intersects[0]) {
+          const intersect = intersects[0]
+          console.log("🎯 Intersected object:", intersect.object)
+          console.log("🎯 Object userData:", intersect.object.userData)
+
+          // Try to find the userData in the intersected object or its parent
+          let objectData = intersect.object.userData as ConsumedLocation
+
+          // If no userData on the intersected object, check parent
+          if (!objectData) {
+            let parent = intersect.object.parent
+            while (parent && (!parent.userData)) {
+              parent = parent.parent
+            }
+            if (parent) {
+              objectData = parent.userData as ConsumedLocation
+            }
+          }
+
+          if (objectData) {
+            console.log("🎯 Coin clicked:", objectData.brand_name)
+            console.log("🎯 Full object data:", objectData)
+
+            // Set the info box content and position
+            setInfoText(objectData)
+            setInfoBoxVisible(true)
+
+            // Calculate screen position of the intersected object
+            const vector = new THREE.Vector3()
+            intersect.object.getWorldPosition(vector)
+            vector.project(camera)
+            const left = ((vector.x + 1) / 2) * window.innerWidth
+            const top = (-(vector.y - 1) / 2) * window.innerHeight
+            setInfoBoxPosition({ left, top })
+
+            previousIntersectedObject.current = intersect.object
+
+            // Hide info box after 5 seconds (increased from 3)
+            setTimeout(() => setInfoBoxVisible(false), 5000)
+
+            // Set selected pin - this should show the capture button
+            console.log("🎯 Setting selected pin to:", objectData.brand_name)
+            setPin(objectData)
+
+            // Add visual feedback
+            document.body.style.cursor = "pointer"
+            setTimeout(() => {
+              document.body.style.cursor = "default"
+            }, 200)
+          } else {
+            console.log("🎯 No valid userData found on intersected object")
+          }
+        } else {
+          console.log("🎯 No intersections found")
+          console.log("🎯 Camera position:", camera.position)
+          console.log("🎯 Camera rotation:", camera.rotation)
+        }
+      }
+
+      // Add event listeners for both mouse and touch
       window.addEventListener("mousemove", onMouseMove)
+      window.addEventListener("click", onMouseClick)
 
       // Main animation loop
       renderer.setAnimationLoop(() => {
@@ -677,30 +768,37 @@ const ARPage = () => {
 
         // Handle click interactions
         const [intersect] = clickHandler.raycast(camera, scene)
-
         if (intersect) {
           const objectData = intersect.object.userData as ConsumedLocation
 
-          // Set the info box content and position
-          setInfoText(objectData)
-          setInfoBoxVisible(true)
+          console.log("Clicked object userData:", objectData) // Debug log
 
-          // Calculate screen position of the intersected object
-          const vector = new THREE.Vector3()
-          intersect.object.getWorldPosition(vector)
-          vector.project(camera)
+          // **FIX: Add validation to ensure userData exists**
+          if (objectData) {
+            // Set the info box content and position
+            setInfoText(objectData)
+            setInfoBoxVisible(true)
 
-          const left = ((vector.x + 1) / 2) * window.innerWidth
-          const top = (-(vector.y - 1) / 2) * window.innerHeight
-          setInfoBoxPosition({ left, top })
+            // Calculate screen position of the intersected object
+            const vector = new THREE.Vector3()
+            intersect.object.getWorldPosition(vector)
+            vector.project(camera)
 
-          previousIntersectedObject.current = intersect.object
+            const left = ((vector.x + 1) / 2) * window.innerWidth
+            const top = (-(vector.y - 1) / 2) * window.innerHeight
 
-          // Hide info box after 3 seconds
-          setTimeout(() => setInfoBoxVisible(false), 3000)
+            setInfoBoxPosition({ left, top })
+            previousIntersectedObject.current = intersect.object
 
-          // Set selected pin
-          setPin(objectData)
+            // Hide info box after 3 seconds
+            setTimeout(() => setInfoBoxVisible(false), 3000)
+
+            // Set selected pin
+            setPin(objectData)
+            console.log("Selected pin set:", objectData) // Debug log
+          } else {
+            console.warn("Clicked object has no userData or invalid data:", intersect.object)
+          }
         }
       })
 
@@ -892,19 +990,7 @@ const ARPage = () => {
         )}
       </div>
 
-      {/* Crosshair for aiming */}
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
-        <div className="w-8 h-8 border-2 border-white rounded-full opacity-70">
-          <div className="w-2 h-2 bg-white rounded-full absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"></div>
-        </div>
-      </div>
 
-      {/* Instructions */}
-      <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50 bg-black/80 text-white px-4 py-2 rounded-lg text-center max-w-xs">
-        <p className="text-sm font-bold">Look around to find coins!</p>
-        <p className="text-xs text-gray-300">Tap on coins to collect them</p>
-        {showPathToNearest && <p className="text-xs text-green-300">Following path to nearest coin</p>}
-      </div>
 
       {/* Info Card */}
       {infoBoxVisible && infoText && (
@@ -920,7 +1006,7 @@ const ARPage = () => {
 
       {/* Bottom UI */}
       {selectedPin && (
-        <div className="absolute bottom-0 left-0 right-0 w-full bg-black/90 backdrop-blur-sm z-40">
+        <div className="absolute bottom-48 left-0 right-0 w-full bg-black/90 backdrop-blur-sm z-40">
           <div className="flex items-stretch" style={{ width: winDim.width }}>
             <div className="flex flex-1 items-center space-x-4 p-4">
               <div className="text-white">
@@ -928,18 +1014,14 @@ const ARPage = () => {
                 <p className="text-lg font-bold">{selectedPin.brand_name}</p>
               </div>
             </div>
-
             <div className="my-2 w-px self-stretch bg-gray-700" aria-hidden="true"></div>
-
             <div className="flex flex-1 items-center space-x-4 p-4">
               <div className="text-white">
                 <p className="text-sm font-semibold text-yellow-400">Remaining:</p>
                 <p className="text-lg font-bold">{selectedPin.collection_limit_remaining}</p>
               </div>
             </div>
-
             <div className="my-2 w-px self-stretch bg-gray-700" aria-hidden="true"></div>
-
             {!data.singleAR && (
               <div className="flex items-center p-4">
                 <button
@@ -982,7 +1064,6 @@ const ARPage = () => {
                 </div>
               </div>
             </div>
-
             <div className="space-y-4 text-center text-white">
               <div className="animate-bounce text-6xl">🎉</div>
               <h2 className="animate-pulse text-4xl font-bold text-yellow-400">Coin Collected!</h2>
@@ -996,7 +1077,6 @@ const ARPage = () => {
                 </div>
               </div>
             </div>
-
             <div className="mt-8 h-2 w-64 rounded-full bg-gray-700">
               <div className="animate-progress-fill h-2 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600"></div>
             </div>

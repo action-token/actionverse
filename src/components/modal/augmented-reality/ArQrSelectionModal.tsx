@@ -82,9 +82,7 @@ export default function ArQrSelectionModal() {
                                 {/* Header */}
                                 <div className="flex items-center justify-between mb-8">
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-                                            <Sparkles className="h-5 w-5 text-primary-foreground" />
-                                        </div>
+
                                         <h2 className="text-2xl font-bold text-foreground">Choose Experience</h2>
                                     </div>
                                     <Button
@@ -99,19 +97,20 @@ export default function ArQrSelectionModal() {
                                 </div>
 
                                 {/* Options Container */}
-                                <div className="space-y-4">
+                                <div className="space-y-4 ">
                                     {/* AR Option */}
                                     <motion.div
                                         whileHover={{ scale: 1.02 }}
                                         whileTap={{ scale: 0.98 }}
+
                                         transition={{ type: "spring", stiffness: 400, damping: 25 }}
                                     >
                                         <Button
                                             onClick={handleGoToAR}
                                             disabled={loadingForAR || loadingForQR}
-                                            className="w-full h-auto p-6 bg-gradient-to-br from-primary/10 to-primary/5 hover:from-primary/20 hover:to-primary/10 border-2 border-primary/20 hover:border-primary/40 rounded-2xl transition-all duration-300 text-foreground group disabled:opacity-70"
+                                            className="w-full h-auto p-6 bg-secondary"
                                         >
-                                            <div className="flex flex-col items-center space-y-4">
+                                            <div className="flex flex-col items-center space-y-4 ">
                                                 {/* Icon Container */}
                                                 <motion.div
                                                     className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg group-hover:shadow-primary/25 transition-shadow duration-300"
@@ -125,10 +124,10 @@ export default function ArQrSelectionModal() {
                                                 <h3 className="text-xl font-bold text-foreground">Augmented Reality</h3>
 
                                                 {/* Description */}
-                                                <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
+                                                <p className="text-sm text-muted-foreground text-center  max-w-xs line-clamp-6">
                                                     {loadingForAR
                                                         ? "Initializing AR camera and sensors..."
-                                                        : "Explore the world through AR pins and collect exclusive rewards"}
+                                                        : "Explore the world through AR pins."}
                                                 </p>
 
                                                 {/* Loading indicator */}
@@ -156,7 +155,7 @@ export default function ArQrSelectionModal() {
                                         <Button
                                             onClick={handleGoToQR}
                                             disabled={loadingForAR || loadingForQR}
-                                            className="w-full h-auto p-6 bg-gradient-to-br from-accent/10 to-accent/5 hover:from-accent/20 hover:to-accent/10 border-2 border-accent/20 hover:border-accent/40 rounded-2xl transition-all duration-300 text-foreground group disabled:opacity-70"
+                                            className="w-full h-auto p-6 bg-secondary"
                                         >
                                             <div className="flex flex-col items-center space-y-4">
                                                 {/* Icon Container */}
@@ -175,7 +174,7 @@ export default function ArQrSelectionModal() {
                                                 <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
                                                     {loadingForQR
                                                         ? "Preparing camera for QR scanning..."
-                                                        : "Scan QR codes around you to collect pins and unlock special rewards"}
+                                                        : "Scan QR codes around you."}
                                                 </p>
 
                                                 {/* Loading indicator */}
