@@ -567,7 +567,8 @@ model LocationGroup {
 
     image String?
 
-    link String?
+    hidden Boolean @default(false)
+    link   String?
 
     multiPin Boolean @default(false)
 
@@ -582,8 +583,8 @@ model Location {
     latitude  Float
     longitude Float
 
-    autoCollect Boolean
-
+    autoCollect     Boolean
+    hidden          Boolean        @default(false)
     locationGroupId String?
     locationGroup   LocationGroup? @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
 
@@ -615,6 +616,7 @@ model ActionLocation {
     locationGroupId String
     locationGroup   LocationGroup @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
     serial          Int
+    hidden          Boolean       @default(false)
     creatorId       String
     creator         Creator       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
     createdAt       DateTime      @default(now())
