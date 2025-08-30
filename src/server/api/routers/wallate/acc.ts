@@ -3,6 +3,7 @@ import {
   accountBalances,
   accountDetailsWithHomeDomain,
   getAccountInfos,
+  getCreatorPageAssetBalance,
 } from "~/lib/stellar/marketplace/test/acc";
 
 import {
@@ -68,6 +69,7 @@ export const accRouter = createTRPCRouter({
       where: { id: creatorId },
       select: { storagePub: true, storageSecret: true },
     });
+    console.log("creatorId", storage, creatorId);
     if (!storage?.storagePub) {
       throw new Error("storage does not exist");
     }
@@ -106,4 +108,32 @@ export const accRouter = createTRPCRouter({
         },
       });
     }),
+  getCreatorPageAssetBallances: creatorProcedure.query(
+    async ({ ctx, input }) => {
+      const creatorId = ctx.session.user.id;
+      const storage = await ctx.db.creator.findUniqueOrThrow({
+        where: { id: creatorId },
+        include: {
+          pageAsset: true,
+        },
+      });
+      let assetCode = "";
+      let assetIssuer = "";
+      if (storage.pageAsset) {
+        assetCode = storage.pageAsset.code;
+        assetIssuer = storage.pageAsset.issuer;
+      } else if (storage.customPageAssetCodeIssuer) {
+        const [code, issuer] = storage.customPageAssetCodeIssuer.split(":");
+        if (code && issuer) {
+          assetCode = code;
+          assetIssuer = issuer;
+        }
+      }
+      return await getCreatorPageAssetBalance({
+        pubkey: storage.storagePub,
+        code: assetCode,
+        issuer: assetIssuer,
+      });
+    },
+  ),
 });

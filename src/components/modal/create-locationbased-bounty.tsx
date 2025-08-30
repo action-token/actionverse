@@ -25,7 +25,7 @@ import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
 import { Label } from "~/components/shadcn/ui/label"
 import { Progress } from "~/components/shadcn/ui/progress"
-import { Card, CardContent } from "~/components/shadcn/ui/card"
+import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { cn } from "~/lib/utils"
@@ -40,8 +40,27 @@ import { clientsign } from "package/connect_wallet"
 import useNeedSign from "~/lib/hook"
 import { useSession } from "next-auth/react"
 import toast from "react-hot-toast"
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectLabel,
+    SelectTrigger,
+    SelectValue,
+} from "~/components/shadcn/ui/select";
 import { clientSelect } from "~/lib/stellar/fan/utils"
-
+enum assetType {
+    PAGEASSET = "PAGEASSET",
+    PLATFORMASSET = "PLATFORMASSET",
+    SHOPASSET = "SHOPASSET",
+}
+type selectedAssetType = {
+    assetCode: string;
+    assetIssuer: string;
+    balance: number;
+    assetType: assetType;
+};
 
 // Define the schema for the bounty form
 export const BountyFormSchema = z
@@ -78,6 +97,8 @@ export const BountyFormSchema = z
             })
             .min(0.00001, { message: "Prize can't be less than 0.00001" }),
         winners: z.number().int().min(1, "Must have at least 1 winner").max(100, "Cannot have more than 100 winners"),
+        requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
+        requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
         requiredBalance: z
             .number({
                 required_error: "Required Balance must be a number",
@@ -86,6 +107,7 @@ export const BountyFormSchema = z
             .nonnegative({ message: "Required Balance can't be less than 0" })
 
     })
+
     .refine((data) => data.brandAmount ?? data.usdtAmount, {
         message: "You must specify at least one currency amount",
         path: ["brandAmount"],
@@ -234,6 +256,8 @@ export default function CreateLocationBasedBountyModal() {
                             usdtAmount: getValues("usdtAmount"),
                             winners: getValues("winners"),
                             requiredBalance: getValues("requiredBalance"),
+                            requiredBalanceCode: getValues("requiredBalanceCode"),
+                            requiredBalanceIssuer: getValues("requiredBalanceIssuer"),
                         })
                         setIsSubmitting(false)
                         reset()
@@ -273,8 +297,7 @@ export default function CreateLocationBasedBountyModal() {
                 method: paymentMethod,
                 fees: paymentMethod === "asset" ? totalFees :
                     paymentMethod === "xlm" ? 1 :
-                        paymentMethod === "usdc" ? 3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)) :
-                            0,
+                        (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))
             })
         }
     }
@@ -426,9 +449,7 @@ export default function CreateLocationBasedBountyModal() {
                                                                 ? Number(getValues("brandAmount") + totalFees)
                                                                 : paymentMethod === "xlm"
                                                                     ? Number(getValues("usdtAmount") / (XLMRate ?? 1))
-                                                                    : paymentMethod === "usdc"
-                                                                        ? Number(getValues("usdtAmount") / (XLMRate ?? 1))
-                                                                        : 0,
+                                                                    : Number(getValues("usdtAmount") / (XLMRate ?? 1)),
                                                             highlighted: true,
                                                             type: "cost",
                                                         },
@@ -438,9 +459,7 @@ export default function CreateLocationBasedBountyModal() {
                                                                 ? totalFees
                                                                 : paymentMethod === "xlm"
                                                                     ? 1
-                                                                    : paymentMethod === "usdc"
-                                                                        ? 3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1))
-                                                                        : 0,
+                                                                    : (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1))),
                                                             highlighted: false,
                                                             type: "fee",
                                                         },
@@ -450,9 +469,8 @@ export default function CreateLocationBasedBountyModal() {
                                                                 ? Number(getValues("brandAmount")) + totalFees
                                                                 : paymentMethod === "xlm"
                                                                     ? Number(getValues("usdtAmount") / (XLMRate ?? 1)) + 1
-                                                                    : paymentMethod === "usdc"
-                                                                        ? Number(getValues("usdtAmount") / (XLMRate ?? 1)) + (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))
-                                                                        : 0,
+                                                                    : Number(getValues("usdtAmount") / (XLMRate ?? 1)) + (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))
+                                                            ,
                                                             highlighted: false,
                                                             type: "total",
                                                         },
@@ -687,8 +705,12 @@ function RewardStep() {
         setValue,
         formState: { errors },
     } = useFormContext<BountyFormType>()
-    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
+    const [selectedAsset, setSelectedAsset] = useState<selectedAssetType | null>(null)
 
+    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
+    const pageAssetbal = api.fan.creator.getCreatorPageAssetBalance.useQuery()
+    const shopAssetbal = api.fan.creator.getCreatorShopAssetBalance.useQuery()
+    const { platformAssetBalance } = useUserStellarAcc()
     const winners = watch("winners")
     const brandAmount = watch("brandAmount")
     const usdtAmount = watch("usdtAmount")
@@ -770,7 +792,177 @@ function RewardStep() {
                     </div>
                 </CardContent>
             </Card>
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-indigo-50">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100">
+                            <Users className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-purple-900">Participation Requirements</h3>
+                            <p className="text-sm text-purple-700">Set minimum balance requirements for participants (optional)</p>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    {/* Asset Selection First */}
+                    <div className="space-y-3">
+                        <Label className="text-sm font-medium text-purple-800">Select Required Asset</Label>
+                        <Select
+                            onValueChange={(value) => {
+                                const parts = value.split(" ")
+                                if (parts.length === 4) {
+                                    setValue("requiredBalanceCode", parts[0] ?? "")
+                                    setValue("requiredBalanceIssuer", parts[1] ?? "")
+                                    setSelectedAsset({
+                                        assetCode: parts[0] ?? "",
+                                        assetIssuer: parts[1] ?? "",
+                                        balance: Number.parseFloat(parts[2] ?? "0"),
+                                        assetType: (parts[3] as assetType) ?? "defaultAssetType",
+                                    })
+                                } else {
+                                    setSelectedAsset(null)
+                                    setValue("requiredBalance", 0)
+                                }
+                            }}
+                        >
+                            <SelectTrigger className="bg-white/70 focus-visible:ring-2 focus-visible:ring-purple-500/20">
+                                <SelectValue placeholder="Choose an asset for minimum balance requirement" />
+                            </SelectTrigger>
+                            <SelectContent className="w-full">
+                                <SelectGroup>
+                                    <SelectLabel className="text-center font-semibold text-purple-600 py-2">PAGE ASSET</SelectLabel>
+                                    {
+                                        pageAssetbal.data && (
+                                            <>
+                                                <SelectItem
+                                                    value={
+                                                        pageAssetbal?.data?.assetCode +
+                                                        " " +
+                                                        pageAssetbal?.data.assetCode +
+                                                        " " +
+                                                        pageAssetbal?.data.balance +
+                                                        " " +
+                                                        "PAGEASSET"
+                                                    }
+                                                    className="my-1"
+                                                >
+                                                    <div className="flex w-full items-center justify-between">
+                                                        <span className="font-medium">{pageAssetbal?.data.assetCode}</span>
+                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
+                                                            {pageAssetbal?.data.balance}
+                                                        </Badge>
+                                                    </div>
+                                                </SelectItem>
 
+                                                <SelectLabel className="text-center font-semibold text-purple-600 py-2 mt-3">
+                                                    PLATFORM ASSET
+                                                </SelectLabel>
+                                                <SelectItem
+                                                    value={
+                                                        PLATFORM_ASSET.code +
+                                                        " " +
+                                                        PLATFORM_ASSET.issuer +
+                                                        " " +
+                                                        platformAssetBalance +
+                                                        " " +
+                                                        "PLATFORMASSET"
+                                                    }
+                                                    className="my-1"
+                                                >
+                                                    <div className="flex w-full items-center justify-between">
+                                                        <span className="font-medium">{PLATFORM_ASSET.code}</span>
+                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
+                                                            {platformAssetBalance}
+                                                        </Badge>
+                                                    </div>
+                                                </SelectItem></>
+                                        )
+                                    }
+
+                                    <SelectLabel className="text-center font-semibold text-purple-600 py-2 mt-3">SHOP ASSETS</SelectLabel>
+                                    {!shopAssetbal.data ? (
+                                        <div className="flex w-full items-center justify-center p-3 text-sm text-muted-foreground">
+                                            <span>No Shop Assets Available</span>
+                                        </div>
+                                    ) : (
+                                        shopAssetbal.data.map((asset) =>
+                                            asset.asset_type === "credit_alphanum4" ||
+                                                (asset.asset_type === "credit_alphanum12" &&
+                                                    asset.asset_code !== pageAssetbal.data?.assetCode &&
+                                                    asset.asset_issuer !== pageAssetbal.data?.assetIssuer) ? (
+                                                <SelectItem
+                                                    key={asset.asset_code}
+                                                    value={asset.asset_code + " " + asset.asset_issuer + " " + asset.balance + " " + "SHOPASSET"}
+                                                    className="my-1"
+                                                >
+                                                    <div className="flex w-full items-center justify-between">
+                                                        <span className="font-medium">{asset.asset_code}</span>
+                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
+                                                            {asset.balance}
+                                                        </Badge>
+                                                    </div>
+                                                </SelectItem>
+                                            ) : null,
+                                        )
+                                    )}
+                                </SelectGroup>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Required Balance Input - Only visible after asset selection */}
+                    {selectedAsset && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="space-y-3"
+                        >
+                            <Label htmlFor="requiredBalance" className="text-sm font-medium text-purple-800">
+                                Minimum Balance Required
+                            </Label>
+                            <div className="relative max-w-sm">
+                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                    <Coins className="h-4 w-4 text-purple-500" />
+                                </div>
+                                <Input
+                                    id="requiredBalance"
+                                    type="number"
+                                    step={0.00001}
+                                    min={0}
+                                    {...register("requiredBalance", {
+                                        valueAsNumber: true,
+                                    })}
+                                    className="pl-10 bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-purple-500/20"
+                                    placeholder={`Min ${selectedAsset.assetCode} balance`}
+                                />
+                            </div>
+                            {errors.requiredBalance && (
+                                <p className="text-sm text-red-500 flex items-center gap-1">
+                                    <span className="h-1 w-1 rounded-full bg-red-500"></span>
+                                    {errors.requiredBalance.message}
+                                </p>
+                            )}
+                            <div className="rounded-lg bg-white/60 p-3 border border-purple-200">
+                                <p className="text-xs text-purple-700">
+                                    Participants must hold at least this amount of{" "}
+                                    <span className="font-semibold">{selectedAsset.assetCode}</span> to be eligible for this bounty.
+                                </p>
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {!selectedAsset && (
+                        <div className="rounded-lg bg-white/60 p-4 border border-purple-200 text-center">
+                            <p className="text-sm text-purple-600">
+                                Select an asset above to set minimum balance requirements for participants
+                            </p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
             <div className="space-y-2">
                 <div className="flex justify-between">
                     <Label htmlFor="winners" className="flex items-center gap-2">
@@ -793,28 +985,7 @@ function RewardStep() {
                 />
                 <p className="text-xs text-muted-foreground">The reward will be split equally among all winners</p>
             </div>
-            <div className="space-y-2">
-                <Label htmlFor="requiredBalance" className="flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Required Balance
-                </Label>
-                <div className="relative">
-                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        id="requiredBalance"
-                        type="number"
-                        step={0.00001}
-                        min={0}
-                        {...register("requiredBalance", {
-                            valueAsNumber: true,
-                        })}
-                        className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                        placeholder={`Min balance in ${PLATFORM_ASSET.code}`}
-                    />
-                </div>
-                {errors.requiredBalance && <p className="text-sm text-destructive">{errors.requiredBalance.message}</p>}
-                <p className="text-xs text-muted-foreground">Minimum balance users need to claim this bounty (optional)</p>
-            </div>
+
             {(brandAmount ?? usdtAmount) && (
                 <Card className="bg-amber-50 border-amber-200">
                     <CardContent className="p-4">
@@ -860,7 +1031,7 @@ function ReviewStep() {
     const usdtAmount = watch("usdtAmount")
     const winners = watch("winners")
     const requiredBalance = watch("requiredBalance")
-
+    const requiredBalanceCode = watch("requiredBalanceCode")
 
 
     return (
@@ -953,7 +1124,7 @@ function ReviewStep() {
                     <div>
                         <p className="text-sm font-medium">Required Balance</p>
                         <p className="text-sm text-muted-foreground">
-                            {requiredBalance ? `${requiredBalance} ${PLATFORM_ASSET.code}` : "No minimum balance required"}
+                            {requiredBalance ? `${requiredBalance} ${requiredBalanceCode}` : "No minimum balance required"}
                         </p>
                     </div>
 

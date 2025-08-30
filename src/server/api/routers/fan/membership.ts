@@ -115,6 +115,7 @@ const selectedColumn = {
   creatorId: true,
   creator: {
     select: {
+      customPageAssetCodeIssuer: true,
       pageAsset: {
         select: {
           code: true,

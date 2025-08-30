@@ -1,0 +1,456 @@
+"use client"
+
+import { useParams } from "next/navigation"
+import { Button } from "~/components/shadcn/ui/button"
+import { Badge } from "~/components/shadcn/ui/badge"
+import { Card, CardContent, CardFooter } from "~/components/shadcn/ui/card"
+import { Skeleton } from "~/components/shadcn/ui/skeleton"
+import { Play, Eye, ShoppingCart, User, Calendar, Hash, Copy, TrendingUp, Clock } from "lucide-react"
+import Image from "next/image"
+import { useState } from "react"
+import { useCreatorStorageAcc, useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
+import { api } from "~/utils/api"
+import { NFTVideoPlayer } from "~/components/player/nft-video-player"
+import { useBuyModalStore } from "~/components/store/buy-modal-store"
+import { PLATFORM_ASSET } from "~/lib/stellar/constant"
+import { useBottomPlayer } from "~/components/player/context/bottom-player-context"
+import { useSession } from "next-auth/react"
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from "~/components/shadcn/ui/dialog";
+import { MediaType } from "@prisma/client"
+import ShowThreeDModel from "~/components/3d-model/model-show"
+import { useRouter } from "next/router"
+import { MyCollectionMenu, useMyCollectionTabs } from "~/components/store/tabs/mycollection-tabs"
+import Link from "next/link"
+const SingleAssetView = () => {
+    const router = useRouter()
+
+    const { id } = router.query as { id: string }
+    const { selectedMenu, setSelectedMenu } = useMyCollectionTabs();
+    const { getAssetBalance: creatorAssetBalance } = useUserStellarAcc();
+    const {
+        getAssetBalance: creatorStorageAssetBalance,
+        setBalance,
+        balances,
+    } = useCreatorStorageAcc();
+    const [isLiked, setIsLiked] = useState(false)
+    const [showFullDescription, setShowFullDescription] = useState(false)
+    const [isVideoPlayerOpen, setIsVideoPlayerOpen] = useState(false)
+    const [isVideoMinimized, setIsVideoMinimized] = useState(false)
+    const { setIsOpen, setData } = useBuyModalStore()
+    const assetId = Number.parseInt(id)
+    const { showPlayer } = useBottomPlayer()
+    const session = useSession()
+    const [previewMedia, setPreviewMedia] = useState<{
+        url: string;
+        type: "IMAGE" | "VIDEO" | "MUSIC" | "THREE_D";
+    } | null>(null)
+    const [isOpenPreview, setIsOpenPreview] = useState(false)
+
+    const { data, isLoading, error } = api.fan.asset.getAssetById.useQuery({
+        assetId,
+    })
+    const copyCreatorAssetBalance = data
+        ? selectedMenu === MyCollectionMenu.COLLECTION
+            ? creatorAssetBalance({
+                code: data.code,
+                issuer: data.issuer,
+            })
+            : creatorStorageAssetBalance({
+                code: data.code,
+                issuer: data.issuer,
+            })
+        : "-1";
+
+
+
+    const isVideo = data?.mediaType === "VIDEO"
+    const isAudio = data?.mediaType === "MUSIC"
+    const isThreeD = data?.mediaType === "THREE_D"
+    const isImage = data?.mediaType === "IMAGE"
+
+    const handlePlayVideo = () => {
+        setIsVideoPlayerOpen(true)
+        setIsVideoMinimized(false)
+    }
+
+    const handleCloseVideo = () => {
+        setIsVideoPlayerOpen(false)
+        setIsVideoMinimized(false)
+    }
+
+    const handleToggleMinimize = () => {
+        setIsVideoMinimized(!isVideoMinimized)
+    }
+
+
+    if (isLoading) {
+        return (
+            <div className="max-w-6xl mx-auto p-4 md:p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                        <Skeleton className="aspect-square rounded-2xl" />
+                        <div className="flex justify-center">
+                            <Skeleton className="h-6 w-20" />
+                        </div>
+                    </div>
+                    <div className="space-y-6">
+                        <div>
+                            <Skeleton className="h-8 w-3/4 mb-2" />
+                            <Skeleton className="h-4 w-full mb-1" />
+                            <Skeleton className="h-4 w-2/3" />
+                        </div>
+                        <div className="space-y-3">
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-3/4" />
+                            <Skeleton className="h-4 w-1/2" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    if (error ?? !data) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <Card className="p-8 text-center">
+                    <CardContent>
+                        <h2 className="text-xl font-semibold text-gray-900 mb-2">Asset Not Found</h2>
+                        <p className="text-gray-600">The requested asset could not be loaded.</p>
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
+    if (!copyCreatorAssetBalance) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <Card className="p-8 text-center">
+                    <CardContent>
+                        <h2 className="text-xl font-semibold text-gray-900 mb-2">Insufficient Funds</h2>
+                        <p className="text-gray-600">You do not have enough funds to view this asset.</p>
+                    </CardContent>
+                    <CardFooter className="flex justify-center">
+                        <Link href="/" >
+                            <Button variant="outline">
+                                Go To Home
+                            </Button>
+                        </Link>
+                    </CardFooter>
+                </Card>
+            </div>
+        )
+    }
+
+    const copyAddress = (text: string | null | undefined) => {
+        if (text) {
+            navigator.clipboard.writeText(text)
+        }
+    }
+    const handlePlaySong = (song: {
+
+        title: string;
+        artist: string;
+        thumbnail: string
+        url: string
+    }) => {
+
+
+        showPlayer(song.title, song.artist, song.url, song.thumbnail)
+
+    }
+    return (
+        <div className="max-w-6xl mx-auto p-4 md:p-6">
+            <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <span>/</span>
+                    <span>Assets</span>
+                    <span>/</span>
+                    <span className="text-gray-900 font-medium">{data.id}</span>
+                </div>
+                {/* <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsLiked(!isLiked)}
+                        className={`transition-colors ${isLiked ? "text-red-500 border-red-200" : ""}`}
+                    >
+                        <Heart className={`w-4 h-4 ${isLiked ? "fill-current" : ""}`} />
+                    </Button>
+                    <Button variant="outline" size="sm">
+                        <Share2 className="w-4 h-4" />
+                    </Button>
+                </div> */}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+                <div className="space-y-6">
+                    <div className="relative group">
+                        <div className="relative aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-100 shadow-lg">
+                            <Image
+                                src={data?.thumbnail || "/placeholder.svg?height=600&width=600&query=digital asset thumbnail"}
+                                alt={data.name}
+                                fill
+                                className="object-cover transition-transform duration-300 group-hover:scale-105"
+                            />
+                            {isVideo && (
+                                <button
+                                    onClick={handlePlayVideo}
+                                    className="absolute inset-0 flex items-center justify-center group cursor-pointer"
+                                >
+                                    <div className="bg-black/60 backdrop-blur-sm rounded-full p-6 transition-all duration-300 group-hover:bg-black/70 group-hover:scale-110">
+                                        <Play className="w-10 h-10 text-white fill-current" />
+                                    </div>
+                                </button>
+                            )}
+                            {isAudio && data.mediaUrl && (
+                                <button
+                                    onClick={() => handlePlaySong({
+
+                                        title: data.name,
+                                        artist: data.creatorId ?? "ADMIN",
+                                        thumbnail: data.thumbnail,
+                                        url: data.mediaUrl
+                                    })}
+
+                                    className="absolute inset-0 flex items-center justify-center group cursor-pointer"
+                                >
+                                    <div className="bg-black/60 backdrop-blur-sm rounded-full p-6 transition-all duration-300 group-hover:bg-black/70 group-hover:scale-110">
+                                        <Play className="w-10 h-10 text-white fill-current" />
+                                    </div>
+                                </button>
+                            )}
+
+                            <div className="absolute top-4 left-4 flex gap-2">
+                                <Badge className="bg-white/90 text-gray-900 shadow-sm">{data.mediaType}</Badge>
+                            </div>
+
+                            <div className="absolute top-4 right-4">
+                                <Badge className="bg-black/60 text-white shadow-sm">{(Number(copyCreatorAssetBalance) ?? 0).toFixed(0)} available</Badge>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </div>
+
+                <div className="space-y-8">
+                    <div>
+                        <h1 className="text-4xl font-bold text-gray-900 mb-4 leading-tight">{data.name}</h1>
+                        <div className="relative">
+                            <p className={`text-gray-600 leading-relaxed text-lg ${!showFullDescription ? "line-clamp-3" : ""}`}>
+                                {data.description}
+                            </p>
+                            {data.description && data.description.length > 150 && (
+                                <button
+                                    onClick={() => setShowFullDescription(!showFullDescription)}
+                                    className="text-blue-600 hover:text-blue-700 font-medium mt-2 text-sm"
+                                >
+                                    {showFullDescription ? "Show less" : "Read more"}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-900">Asset Information</h3>
+
+                        <Card className="p-4 hover:shadow-md transition-shadow">
+                            <CardContent className="p-0 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <User className="w-5 h-5 text-gray-400" />
+                                        <div>
+                                            <div className="text-sm text-gray-500">Placer</div>
+                                            <div className="font-mono text-sm">
+                                                {data?.creatorId?.slice(0, 12) ?? ""}...{data?.creatorId?.slice(-12) ?? ""}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => copyAddress(data?.creatorId)}>
+                                        <Copy className="w-4 h-4" />
+                                    </Button>
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <Hash className="w-5 h-5 text-gray-400" />
+                                        <div>
+                                            <div className="text-sm text-gray-500">Asset Code</div>
+                                            <div className="font-semibold">{data.code}</div>
+                                        </div>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => copyAddress(data.code)}>
+                                        <Copy className="w-4 h-4" />
+                                    </Button>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <Calendar className="w-5 h-5 text-gray-400" />
+                                    <div>
+                                        <div className="text-sm text-gray-500">Created</div>
+                                        <div className="font-medium">
+                                            {new Date(data.createdAt).toLocaleDateString("en-US", {
+                                                year: "numeric",
+                                                month: "long",
+                                                day: "numeric",
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <Card className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+                        <CardContent className="p-0">
+                            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                <TrendingUp className="w-5 h-5 text-blue-600" />
+                                Availability Status
+                            </h3>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                                    <span className="text-sm font-medium">Available Copies</span>
+                                    <Badge variant={Number(copyCreatorAssetBalance) > 0 ? "default" : "secondary"}>
+                                        {(Number(copyCreatorAssetBalance) ?? 0).toFixed(0) ?? 0}
+                                    </Badge>
+                                </div>
+                                {/* <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                                    <span className="text-sm font-medium">Trust Status</span>
+                                    <Badge variant={hasTrustonAsset ? "default" : "destructive"}>
+                                        {hasTrustonAsset ? "✓ Trusted" : "✗ Not Trusted"}
+                                    </Badge>
+                                </div> */}
+
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <div className="space-y-4">
+                        {/* Play Video Button */}
+                        {isVideo && (
+                            <Button
+                                onClick={handlePlayVideo}
+                                className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5"
+                                size="lg"
+                            >
+                                <Play className="w-5 h-5 mr-2 fill-current" />
+                                Play Video
+                            </Button>
+                        )}
+
+                        {/* Play Audio Button */}
+                        {isAudio && data.mediaUrl && (
+                            <Button
+                                onClick={() =>
+                                    handlePlaySong({
+                                        title: data.name,
+                                        artist: data.creatorId ?? "ADMIN",
+                                        thumbnail: data.thumbnail,
+                                        url: data.mediaUrl,
+                                    })
+                                }
+                                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5"
+                                size="lg"
+                            >
+                                <Play className="w-5 h-5 mr-2" />
+                                Play Audio
+                            </Button>
+                        )}
+
+                        {/* View Image Button */}
+                        {isImage && (
+                            <Button
+                                onClick={() => {
+                                    setPreviewMedia({
+                                        url: data.thumbnail,
+                                        type: MediaType.IMAGE,
+                                    });
+                                    setIsOpenPreview(true);
+                                }}
+                                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5"
+                                size="lg"
+                            >
+                                <Eye className="w-5 h-5 mr-2" />
+                                View Image
+                            </Button>
+                        )}
+
+                        {/* View 3D Asset Button */}
+                        {isThreeD && (
+                            <Button
+                                onClick={() => {
+                                    setPreviewMedia({
+                                        url: data.mediaUrl,
+                                        type: MediaType.THREE_D,
+                                    });
+                                    setIsOpenPreview(true);
+                                }}
+                                className="w-full bg-gradient-to-r from-pink-600 to-pink-700 hover:from-pink-700 hover:to-pink-800 text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5"
+                                size="lg"
+                            >
+                                <Eye className="w-5 h-5 mr-2" />
+                                View 3D Asset
+                            </Button>
+                        )}
+
+
+
+                    </div>
+                </div>
+            </div>
+
+            {
+                isVideo && data.mediaUrl && (
+                    <NFTVideoPlayer
+                        src={data.mediaUrl}
+                        title={data.name}
+                        isOpen={isVideoPlayerOpen}
+                        onClose={handleCloseVideo}
+                        isMinimized={isVideoMinimized}
+                        onToggleMinimize={handleToggleMinimize}
+                        autoPlay={true}
+                    />
+                )
+            }
+            <Dialog open={isOpenPreview} onOpenChange={
+                (isOpen) => {
+                    if (!isOpen) {
+                        setPreviewMedia(null)
+                        setIsOpenPreview(false)
+                    }
+                }}>
+                <DialogContent className="sm:max-w-[800px] p-0 overflow-hidden ">
+                    <div className="relative">
+                        {previewMedia?.type === MediaType.IMAGE && (
+                            <div className="flex items-center justify-center p-4 h-[80vh] max-h-[600px]">
+                                <Image
+                                    src={previewMedia.url ?? "/placeholder.svg"}
+                                    alt="Media preview"
+                                    width={800}
+                                    height={600}
+                                    className="max-h-full max-w-full object-contain"
+                                />
+                            </div>
+                        )}
+                        {previewMedia?.type === MediaType.THREE_D && (
+                            <div className="flex items-center justify-center p-4 h-[80vh] max-h-[600px]">
+                                <ShowThreeDModel
+                                    url={previewMedia.url}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+        </div >
+    )
+}
+
+export default SingleAssetView

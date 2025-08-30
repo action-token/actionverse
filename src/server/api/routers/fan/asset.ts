@@ -1,9 +1,15 @@
 import { ItemPrivacy, MediaType } from "@prisma/client";
 import { Horizon } from "@stellar/stellar-sdk";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { STELLAR_URL } from "~/lib/stellar/constant";
 import { AccountSchema } from "~/lib/stellar/fan/utils";
 import { StellarAccount } from "~/lib/stellar/marketplace/test/Account";
+import {
+  GetPageAssetBuyXDRInPlatform,
+  GetPageAssetBuyXDRInXLM,
+} from "~/lib/stellar/marketplace/trx/page-asset-sell";
+import { SignUser } from "~/lib/stellar/utils";
 
 import {
   createTRPCRouter,
@@ -11,6 +17,8 @@ import {
   protectedProcedure,
 } from "~/server/api/trpc";
 import { BADWORDS } from "~/utils/banned-word";
+import { AssetSelectAllProperty } from "../marketplace/marketplace";
+import { UpdateSellPageAssetSchema } from "~/components/sell-page-asset-update";
 export const updateAssetFormShema = z.object({
   assetId: z.number(),
   price: z.number().nonnegative(),
@@ -20,6 +28,10 @@ export const updateAssetFormShema = z.object({
 export const ExtraSongInfo = z.object({
   artist: z.string(),
   albumId: z.number(),
+});
+export const updateMusicAssetShema = z.object({
+  assetId: z.number(),
+  musicUrl: z.string().url(),
 });
 export const NftFormSchema = z.object({
   name: z.string().refine(
@@ -142,7 +154,17 @@ export const shopRouter = createTRPCRouter({
         data: { price, priceUSD },
       });
     }),
-
+  updateMusicURL: protectedProcedure
+    .input(updateMusicAssetShema)
+    .mutation(async ({ ctx, input }) => {
+      const { assetId, musicUrl } = input;
+      return await ctx.db.asset.update({
+        where: { id: assetId },
+        data: {
+          mediaUrl: musicUrl,
+        },
+      });
+    }),
   deleteAsset: protectedProcedure // fix the logic
     .input(z.number())
     .mutation(async ({ ctx, input }) => {
@@ -284,7 +306,6 @@ export const shopRouter = createTRPCRouter({
       thumbnail: "",
     };
 
-
     if (!pageAsset) {
       const customPageAssetCodeIssuer = await ctx.db.creator.findUnique({
         where: { id: ctx.session.user.id },
@@ -292,7 +313,8 @@ export const shopRouter = createTRPCRouter({
       });
       if (customPageAssetCodeIssuer) {
         if (customPageAssetCodeIssuer.customPageAssetCodeIssuer) {
-          const [code, issuer] = customPageAssetCodeIssuer.customPageAssetCodeIssuer.split("-");
+          const [code, issuer] =
+            customPageAssetCodeIssuer.customPageAssetCodeIssuer.split("-");
           if (code && issuer) {
             customPageAsset = {
               code,
@@ -303,66 +325,103 @@ export const shopRouter = createTRPCRouter({
           }
         }
       }
-
     }
 
     return { shopAsset, pageAsset: pageAsset ?? customPageAsset };
-
   }),
-  getCreatorPageAsset: creatorProcedure.input(z.object({
-    creatorId: z.string(),
 
-  })).query(async ({ ctx, input }) => {
-    const { creatorId } = input;
-    const creator = await ctx.db.creator.findUnique({
-      where: { id: creatorId },
-      select: { customPageAssetCodeIssuer: true },
-    });
-    if (!creator) {
-      return null;
-    }
-    const shopAsset = await ctx.db.asset.findMany({
-      where: { creatorId: creatorId },
-      select: { code: true, issuer: true, thumbnail: true, id: true },
-    });
+  getMarketAssetById: protectedProcedure
+    .input(z.object({
 
-    const pageAsset = await ctx.db.creatorPageAsset.findUnique({
-      where: { creatorId: creatorId },
-      select: { code: true, issuer: true, creatorId: true, thumbnail: true },
-    });
-
-    let customPageAsset = {
-      code: "",
-      issuer: "",
-      creatorId: creatorId,
-      thumbnail: "",
-    };
+      marketId: z.number().optional()
+    }))
+    .query(async ({ ctx, input }) => {
+      const { marketId } = input;
 
 
-    if (!pageAsset) {
-      const customPageAssetCodeIssuer = await ctx.db.creator.findUnique({
+      return await ctx.db.marketAsset.findUnique({
+        where: { id: marketId },
+        include: {
+          asset: {
+            select: {
+              ...AssetSelectAllProperty,
+              tier: {
+                select: {
+                  price: true,
+                },
+              },
+              creator: {
+                select: {
+                  pageAsset: {
+                    select: {
+                      code: true,
+                      issuer: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+    }),
+
+  getCreatorPageAsset: creatorProcedure
+    .input(
+      z.object({
+        creatorId: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { creatorId } = input;
+      const creator = await ctx.db.creator.findUnique({
         where: { id: creatorId },
         select: { customPageAssetCodeIssuer: true },
       });
-      if (customPageAssetCodeIssuer) {
-        if (customPageAssetCodeIssuer.customPageAssetCodeIssuer) {
-          const [code, issuer] = customPageAssetCodeIssuer.customPageAssetCodeIssuer.split("-");
-          if (code && issuer) {
-            customPageAsset = {
-              code,
-              issuer,
-              creatorId: creatorId,
-              thumbnail: "",
-            };
+      if (!creator) {
+        return null;
+      }
+      const shopAsset = await ctx.db.asset.findMany({
+        where: { creatorId: creatorId },
+        select: { code: true, issuer: true, thumbnail: true, id: true },
+      });
+
+      const pageAsset = await ctx.db.creatorPageAsset.findUnique({
+        where: { creatorId: creatorId },
+        select: { code: true, issuer: true, creatorId: true, thumbnail: true },
+      });
+
+      let customPageAsset = {
+        code: "",
+        issuer: "",
+        creatorId: creatorId,
+        thumbnail: "",
+      };
+
+      if (!pageAsset) {
+        const customPageAssetCodeIssuer = await ctx.db.creator.findUnique({
+          where: { id: creatorId },
+          select: { customPageAssetCodeIssuer: true },
+        });
+        if (customPageAssetCodeIssuer) {
+          if (customPageAssetCodeIssuer.customPageAssetCodeIssuer) {
+            const [code, issuer] =
+              customPageAssetCodeIssuer.customPageAssetCodeIssuer.split("-");
+            if (code && issuer) {
+              customPageAsset = {
+                code,
+                issuer,
+                creatorId: creatorId,
+                thumbnail: "",
+              };
+            }
           }
         }
       }
 
-    }
-
-    return { shopAsset, pageAsset: pageAsset ?? customPageAsset };
-
-  }),
+      return { shopAsset, pageAsset: pageAsset ?? customPageAsset };
+    }),
   getCreatorAsset: protectedProcedure
     .input(z.object({ creatorId: z.string() }))
     .query(async ({ input, ctx }) => {
@@ -372,11 +431,129 @@ export const shopRouter = createTRPCRouter({
         select: { code: true, issuer: true },
       });
     }),
+  sellPageAsset: creatorProcedure
+    .input(UpdateSellPageAssetSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { title, description, amountToSell, price, priceUSD, priceXLM } =
+        input;
+      const creatorId = ctx.session.user.id;
+
+      return await ctx.db.sellPageAsset.create({
+        data: {
+          title: title ?? "",
+          description,
+          amountToSell,
+          price,
+          priceUSD,
+          priceXLM,
+          placerId: creatorId,
+        },
+      });
+    }),
+  getMyAssets: creatorProcedure.query(async ({ ctx }) => {
+    const creatorId = ctx.session.user.id;
+    return await ctx.db.sellPageAsset.findMany({
+      where: { placerId: creatorId },
+    });
+  }),
+  deleteSoldPageAsset: creatorProcedure
+    .input(
+      z.object({
+        id: z.number({
+          required_error: "Sell Pageasset id must be needed",
+        }),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const findSoldPageAsset = await ctx.db.sellPageAsset.findFirst({
+        where: {
+          id: input.id,
+        },
+      });
+      if (!findSoldPageAsset) {
+        throw new Error("Sell Pageasset not found");
+      }
+      return await ctx.db.sellPageAsset.delete({
+        where: {
+          id: input.id,
+        },
+      });
+    }),
+  updateSellPageAsset: creatorProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        amountToSell: z.number().optional(),
+        price: z.number().optional(),
+        priceUSD: z.number().optional(),
+        priceXLM: z.number().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { title, description, amountToSell, price, priceUSD, priceXLM } =
+        input;
+      const creatorId = ctx.session.user.id;
+
+      return await ctx.db.sellPageAsset.update({
+        where: { id: input.id },
+        data: {
+          title,
+          description,
+          amountToSell,
+          price,
+          priceUSD,
+          priceXLM,
+          placerId: creatorId,
+        },
+      });
+    }),
+  getAllAvailable: protectedProcedure.query(async ({ ctx }) => {
+    return ctx.db.sellPageAsset.findMany({
+      where: {
+        isSold: false,
+      },
+      include: {
+        placer: {
+          select: {
+            id: true,
+            name: true,
+            profileUrl: true,
+            customPageAssetCodeIssuer: true,
+            pageAsset: {
+              select: {
+                code: true,
+                issuer: true,
+                thumbnail: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        placedAt: "desc",
+      },
+    });
+  }),
+  getAssetById: protectedProcedure
+    .input(z.object({ assetId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      return await ctx.db.asset.findUnique({
+        where: { id: input.assetId },
+        select: {
+          ...AssetSelectAllProperty
+        }
+      });
+    }),
   getAssetBalance: protectedProcedure
-    .input(z.object({
-      code: z.string(), issuer: z.string(),
-      creatorId: z.string()
-    }))
+    .input(
+      z.object({
+        code: z.string(),
+        issuer: z.string(),
+        creatorId: z.string(),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       const { code, issuer } = input;
       const creator = await ctx.db.creator.findUnique({
@@ -392,14 +569,189 @@ export const shopRouter = createTRPCRouter({
       const server = new Horizon.Server(STELLAR_URL);
       const account = await server.loadAccount(creator.storagePub);
       console.log("Code, issuer", code, issuer);
-      const tokens = (await StellarAccount.create(creator.storagePub)).getTokenBalance(code, issuer);
+      const tokens = (
+        await StellarAccount.create(creator.storagePub)
+      ).getTokenBalance(code, issuer);
       console.log("Balances.............:", tokens);
 
       if (tokens) {
         return tokens;
       }
       return 0;
+    }),
+  buyWithBandcoin: protectedProcedure
+    .input(
+      z.object({
+        assetId: z.number(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const asset = await ctx.db.sellPageAsset.findUnique({
+        where: { id: input.assetId },
+        include: { placer: true },
+      });
 
+      if (!asset || asset.isSold) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Asset not found or already sold",
+        });
+      }
 
+      if (asset.placerId === ctx.session.user.id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot buy your own asset",
+        });
+      }
+
+      // Add your payment logic here
+      // Check user balance, process payment, transfer asset, etc.
+
+      // Update asset as sold
+      await ctx.db.sellPageAsset.update({
+        where: { id: input.assetId },
+        data: {
+          isSold: true,
+          soldAt: new Date(),
+        },
+      });
+
+      return { success: true };
+    }),
+
+  buyWithXLM: protectedProcedure
+    .input(
+      z.object({
+        assetId: z.number(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const asset = await ctx.db.sellPageAsset.findUnique({
+        where: { id: input.assetId },
+        include: { placer: true },
+      });
+
+      if (!asset || asset.isSold) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Asset not found or already sold",
+        });
+      }
+
+      if (asset.priceXLM <= 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "XLM payment not available for this asset",
+        });
+      }
+
+      if (asset.placerId === ctx.session.user.id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot buy your own asset",
+        });
+      }
+
+      // Add your XLM payment logic here
+      // Process Stellar transaction, verify payment, transfer asset, etc.
+
+      // Update asset as sold
+      await ctx.db.sellPageAsset.update({
+        where: { id: input.assetId },
+        data: {
+          isSold: true,
+          soldAt: new Date(),
+        },
+      });
+
+      return { success: true };
+    }),
+  getXDR: protectedProcedure
+    .input(
+      z.object({
+        assetId: z.number(),
+        paymentOption: z.enum(["bandcoin", "xlm"]),
+        signWith: SignUser,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const asset = await ctx.db.sellPageAsset.findUnique({
+        where: { id: input.assetId },
+        include: {
+          placer: {
+            select: {
+              customPageAssetCodeIssuer: true,
+              pageAsset: true,
+              storageSecret: true,
+            },
+          },
+        },
+      });
+
+      if (!asset || asset.isSold) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Asset not found or already sold",
+        });
+      }
+
+      if (!asset.placer) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Placer does not have a  page asset code issuer",
+        });
+      }
+      let code = "";
+      let issuer = "";
+      if (asset.placer.customPageAssetCodeIssuer) {
+        const [assetCode, assetIssuer] =
+          asset.placer.customPageAssetCodeIssuer.split("-");
+        if (assetCode && assetIssuer) {
+          code = assetCode;
+          issuer = assetIssuer;
+        }
+      }
+      if (asset.placer.pageAsset) {
+        if (asset.placer.pageAsset.code && asset.placer.pageAsset.issuer) {
+          code = asset.placer.pageAsset.code;
+          issuer = asset.placer.pageAsset.issuer;
+        }
+      }
+
+      if (!code || !issuer) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid custom page asset code issuer format",
+        });
+      }
+
+      // Generate XDR for the asset transfer
+      if (input.paymentOption === "bandcoin") {
+        return await GetPageAssetBuyXDRInPlatform({
+          code,
+          issuer,
+          amountToSell: asset.amountToSell,
+          price: asset.price,
+          storageSecret: asset.placer.storageSecret,
+          userId: ctx.session.user.id,
+          signWith: input.signWith,
+        });
+      } else if (input.paymentOption === "xlm") {
+        return await GetPageAssetBuyXDRInXLM({
+          code,
+          issuer,
+          amountToSell: asset.amountToSell,
+          priceXLM: asset.priceXLM,
+          storageSecret: asset.placer.storageSecret,
+          userId: ctx.session.user.id,
+          signWith: input.signWith,
+        });
+      } else {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid payment option",
+        });
+      }
     }),
 });

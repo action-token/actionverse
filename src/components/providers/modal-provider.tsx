@@ -20,6 +20,7 @@ import CreateLocationBasedBountyModal from "../modal/create-locationbased-bounty
 import { CreatePostModal } from "../modal/create-post-modal";
 import AddSubscriptionModal from "../modal/create-subscription-modal";
 import ScavengerHuntModal from "../modal/scavenger-hunt-modal";
+import SellPageAssetModal from "../modal/sell-page-asset-modal";
 
 const ModalProvider = () => {
   const [isMounted, setIsMounted] = useState(false);
@@ -52,7 +53,7 @@ const ModalProvider = () => {
       <CreatePostModal />
       <AddSubscriptionModal />
       <ScavengerHuntModal />
-
+      <SellPageAssetModal />
     </>
   );
 };

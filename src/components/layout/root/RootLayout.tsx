@@ -27,6 +27,8 @@ import {
 } from "~/components/shadcn/ui/card";
 import ARLayout from "./ARLayout";
 import ARModalProvider from "~/components/providers/augmented-reality/augmented-modal-provider";
+import { BottomPlayerProvider } from "~/components/player/context/bottom-player-context";
+import { StemPlayer } from "~/components/player/bottom-player";
 export default function Layout({
   children,
   className,
@@ -90,46 +92,51 @@ export default function Layout({
       defaultTheme="light"
       disableTransitionOnChange
     >
-      <MiniPlayerProvider>
-        <div className={clsx("flex  w-full flex-col", className)}>
-          {router.pathname !== "/" && <Header />}
-          <div className="flex w-full scrollbar-hide ">
-            <div className="relative  bg-secondary shadow-sm shadow-primary">
-              <Sidebar />
-              <ChevronLeft
-                className={cn(
-                  "fixed left-[17rem] top-24 z-50 hidden cursor-pointer rounded-full border-2 bg-background text-3xl text-foreground shadow-sm shadow-black transition-all duration-500 ease-in-out md:block",
-                  isMinimized && "left-[4.5rem] rotate-180",
-                  isHomeRoute ? "top-0" : "top-24",
-                )}
-                onClick={handleToggle}
-              />
-            </div>
 
-            {session.status === "authenticated" ? (
-              <div className="w-full  overflow-y-auto    scrollbar-hide ">
-                {isArtistRoutes ? (
-                  <>
-                    <CreatorLayout>{children}</CreatorLayout>
-                  </>
-                ) : (
+      <MiniPlayerProvider>
+        <BottomPlayerProvider>
+
+          <div className={clsx("flex  w-full flex-col", className)}>
+            {router.pathname !== "/" && <Header />}
+            <div className="flex w-full scrollbar-hide ">
+              <div className="relative  bg-secondary shadow-sm shadow-primary">
+                <Sidebar />
+                <ChevronLeft
+                  className={cn(
+                    "fixed left-[17rem] top-24 z-50 hidden cursor-pointer rounded-full border-2 bg-background text-3xl text-foreground shadow-sm shadow-black transition-all duration-500 ease-in-out md:block",
+                    isMinimized && "left-[4.5rem] rotate-180",
+                    isHomeRoute ? "top-0" : "top-24",
+                  )}
+                  onClick={handleToggle}
+                />
+              </div>
+
+              {session.status === "authenticated" ? (
+                <div className="w-full  overflow-y-auto    scrollbar-hide ">
+                  {isArtistRoutes ? (
+                    <>
+                      <CreatorLayout>{children}</CreatorLayout>
+                    </>
+                  ) : (
+                    <>{children}</>
+                  )}
+                  <ModalProvider />
+                  <Toaster />
+                </div>
+              ) : isPublicRoute ? (
+                <div className="w-full   overflow-y-auto    scrollbar-hide ">
                   <>{children}</>
-                )}
-                <ModalProvider />
-                <Toaster />
-              </div>
-            ) : isPublicRoute ? (
-              <div className="w-full   overflow-y-auto    scrollbar-hide ">
-                <>{children}</>
-                <LoginRequiredModal />
-              </div>
-            ) : (
-              <div className="flex h-screen w-full items-center justify-center ">
-                <ConnectWalletButton />
-              </div>
-            )}
+                  <LoginRequiredModal />
+                </div>
+              ) : (
+                <div className="flex h-screen w-full items-center justify-center ">
+                  <ConnectWalletButton />
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+          <StemPlayer />
+        </BottomPlayerProvider>
       </MiniPlayerProvider>
     </ThemeProvider>
   );

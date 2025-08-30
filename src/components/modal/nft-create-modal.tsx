@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { zodResolver } from "@hookform/resolvers/zod"
-import { MediaType } from "@prisma/client"
-import { motion, AnimatePresence } from "framer-motion"
+import { zodResolver } from "@hookform/resolvers/zod";
+import { MediaType } from "@prisma/client";
+import { motion, AnimatePresence } from "framer-motion";
 import {
     PlusIcon,
     Upload,
@@ -19,15 +19,15 @@ import {
     DollarSign,
     Coins,
     PlusCircle,
-} from "lucide-react"
-import { useSession } from "next-auth/react"
-import Image from "next/image"
-import { clientsign } from "package/connect_wallet"
-import { WalletType } from "package/connect_wallet/src/lib/enums"
-import { type ChangeEvent, useRef, useState } from "react"
-import { useForm } from "react-hook-form"
-import toast from "react-hot-toast"
-import { z } from "zod"
+} from "lucide-react";
+import { useSession } from "next-auth/react";
+import Image from "next/image";
+import { clientsign } from "package/connect_wallet";
+import { WalletType } from "package/connect_wallet/src/lib/enums";
+import { type ChangeEvent, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
+import toast from "react-hot-toast";
+import { z } from "zod";
 import {
     Dialog,
     DialogContent,
@@ -36,17 +36,24 @@ import {
     DialogTrigger,
     DialogFooter,
     DialogDescription,
-} from "~/components/shadcn/ui/dialog"
-import useNeedSign from "~/lib/hook"
-import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
-import { PLATFORM_ASSET, PLATFORM_FEE, TrxBaseFeeInPlatformAsset } from "~/lib/stellar/constant"
-import { AccountSchema, clientSelect } from "~/lib/stellar/fan/utils"
-import { api } from "~/utils/api"
-import { BADWORDS } from "~/utils/banned-word"
+} from "~/components/shadcn/ui/dialog";
+import useNeedSign from "~/lib/hook";
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
+import {
+    PLATFORM_ASSET,
+    PLATFORM_FEE,
+    PLATFORM_FEE_IN_XLM,
+    SIMPLIFIED_FEE_IN_XLM,
+    TrxBaseFeeInPlatformAsset,
+    trxBaseFeeInXLM,
+} from "~/lib/stellar/constant";
+import { AccountSchema, clientSelect } from "~/lib/stellar/fan/utils";
+import { api } from "~/utils/api";
+import { BADWORDS } from "~/utils/banned-word";
 
-import * as React from "react"
+import * as React from "react";
 
-import { Button } from "../shadcn/ui/button"
+import { Button } from "../shadcn/ui/button";
 
 import {
     Select,
@@ -56,36 +63,44 @@ import {
     SelectLabel,
     SelectTrigger,
     SelectValue,
-} from "~/components/shadcn/ui/select"
+} from "~/components/shadcn/ui/select";
 
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
-import { ipfsHashToUrl } from "~/utils/ipfs"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "~/components/shadcn/ui/tooltip";
+import { ipfsHashToPinataGatewayUrl } from "~/utils/ipfs";
 
-import { Label } from "../shadcn/ui/label"
-import { Input } from "../shadcn/ui/input"
-import { Textarea } from "../shadcn/ui/textarea"
-import { Card, CardContent } from "../shadcn/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shadcn/ui/tabs"
-import { Badge } from "../shadcn/ui/badge"
-import { Separator } from "../shadcn/ui/separator"
-import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
-import { UploadS3Button } from "../common/upload-button"
-import { Alert, AlertDescription } from "../shadcn/ui/alert"
-import RechargeLink from "../payment/recharge-link"
-import { useNFTCreateModalStore } from "../store/nft-create-modal-store"
-import { cn } from "~/lib/utils"
-import { Progress } from "../shadcn/ui/progress"
+import { Label } from "../shadcn/ui/label";
+import { Input } from "../shadcn/ui/input";
+import { Textarea } from "../shadcn/ui/textarea";
+import { Card, CardContent } from "../shadcn/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shadcn/ui/tabs";
+import { Badge } from "../shadcn/ui/badge";
+import { Separator } from "../shadcn/ui/separator";
+import {
+    PaymentChoose,
+    usePaymentMethodStore,
+} from "../common/payment-options";
+import { UploadS3Button } from "../common/upload-button";
+import { Alert, AlertDescription } from "../shadcn/ui/alert";
+import RechargeLink from "../payment/recharge-link";
+import { useNFTCreateModalStore } from "../store/nft-create-modal-store";
+import { cn } from "~/lib/utils";
+import { Progress } from "../shadcn/ui/progress";
 
 export const ExtraSongInfo = z.object({
     artist: z.string(),
     albumId: z.number(),
-})
+});
 
-const FORM_STEPS = ["media", "details", "pricing"]
+const FORM_STEPS = ["details", "media", "pricing"];
 export const NftFormSchema = z.object({
     name: z.string().refine(
         (value) => {
-            return !BADWORDS.some((word) => value.includes(word))
+            return !BADWORDS.some((word) => value.includes(word));
         },
         {
             message: "Input contains banned words.",
@@ -126,48 +141,54 @@ export const NftFormSchema = z.object({
     songInfo: ExtraSongInfo.optional(),
     isAdmin: z.boolean().optional(),
     tier: z.string().optional(),
-})
+});
 
 export default function NftCreateModal() {
-    const { isOpen: isNFTModalOpen, setIsOpen: setNFTModalOpen } = useNFTCreateModalStore()
-    const requiredToken = api.fan.trx.getRequiredPlatformAsset.useQuery({
-        xlm: 2,
-    })
+    // cost in xlm
+    const requiredXlm = 2;
+    const feeInXLM = SIMPLIFIED_FEE_IN_XLM; //Number(trxBaseFeeInXLM) + Number(PLATFORM_FEE_IN_XLM);
+    const totalXlmCost = requiredXlm + feeInXLM;
 
-    const session = useSession()
-    const { platformAssetBalance } = useUserStellarAcc()
-    const [isOpen, setIsOpen] = useState(false)
-    const [parentIsOpen, setParentIsOpen] = useState(false)
+    const { isOpen: isNFTModalOpen, setIsOpen: setNFTModalOpen } =
+        useNFTCreateModalStore();
+    const requiredToken = api.fan.trx.getRequiredPlatformAsset.useQuery({
+        xlm: requiredXlm,
+    });
+
+    const session = useSession();
+    const { platformAssetBalance } = useUserStellarAcc();
+    const [isOpen, setIsOpen] = useState(false);
+    const [parentIsOpen, setParentIsOpen] = useState(false);
     // pinta upload
-    const [file, setFile] = useState<File>()
-    const [ipfs, setCid] = useState<string>()
-    const [uploading, setUploading] = useState(false)
-    const [mediaUpload, setMediaUpload] = useState(false)
-    const inputFile = useRef(null)
+    const [file, setFile] = useState<File>();
+    const [ipfs, setCid] = useState<string>();
+    const [uploading, setUploading] = useState(false);
+    const [mediaUpload, setMediaUpload] = useState(false);
+    const inputFile = useRef(null);
 
     // tier options
-    const [tier, setTier] = useState<string>()
+    const [tier, setTier] = useState<string>();
 
     // other
-    const modalRef = useRef<HTMLDialogElement>(null)
-    const [submitLoading, setSubmitLoading] = useState(false)
-    const [mediaUploadSuccess, setMediaUploadSuccess] = useState(false)
-    const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE)
-    const [activeStep, setActiveStep] = useState<string>("media")
-    const [formProgress, setFormProgress] = useState(25)
+    const modalRef = useRef<HTMLDialogElement>(null);
+    const [submitLoading, setSubmitLoading] = useState(false);
+    const [mediaUploadSuccess, setMediaUploadSuccess] = useState(false);
+    const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE);
+    const [activeStep, setActiveStep] = useState<string>("details");
+    const [formProgress, setFormProgress] = useState(25);
 
-    const [mediaUrl, setMediaUrl] = useState<string>()
-    const [coverUrl, setCover] = useState<string>()
-    const { needSign } = useNeedSign()
+    const [mediaUrl, setMediaUrl] = useState<string>();
+    const [coverUrl, setCover] = useState<string>();
+    const { needSign } = useNeedSign();
 
-    const walletType = session.data?.user.walletType ?? WalletType.none
-
-    const [uploadProgress, setUploadProgress] = useState<number>(0)
+    const walletType = session.data?.user.walletType ?? WalletType.none;
 
     // Wait for the required token data to be loaded
-    const requiredTokenAmount = requiredToken.data ?? 0
-    const totalFeees = Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
-    const { paymentMethod, setIsOpen: setPaymentModalOpen } = usePaymentMethodStore()
+    const requiredTokenAmount = requiredToken.data ?? 0;
+    const totalFees = Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE);
+
+    const { paymentMethod, setIsOpen: setPaymentModalOpen } =
+        usePaymentMethodStore();
 
     const {
         register,
@@ -186,35 +207,35 @@ export default function NftCreateModal() {
             price: 2,
             priceUSD: 1,
         },
-    })
+    });
 
-    const tiers = api.fan.member.getAllMembership.useQuery()
+    const tiers = api.fan.member.getAllMembership.useQuery();
 
     const addAsset = api.fan.asset.createAsset.useMutation({
         onSuccess: () => {
             toast.success("NFT Created", {
                 position: "top-center",
                 duration: 4000,
-            })
-            setParentIsOpen(false)
-            setPaymentModalOpen(false)
-            setIsOpen(false)
-            setMediaUploadSuccess(false)
-            setMediaUrl(undefined)
-            setCover(undefined)
-            handleClose()
+            });
+            setParentIsOpen(false);
+            setPaymentModalOpen(false);
+            setIsOpen(false);
+            setMediaUploadSuccess(false);
+            setMediaUrl(undefined);
+            setCover(undefined);
+            handleClose();
         },
         onError: (error) => {
-            toast.error(error.message)
-        }
-    })
+            toast.error(error.message);
+        },
+    });
 
     const xdrMutation = api.fan.trx.createUniAssetTrx.useMutation({
         onSuccess(data, variables, context) {
-            const { issuer, xdr } = data
-            setValue("issuer", issuer)
+            const { issuer, xdr } = data;
+            setValue("issuer", issuer);
 
-            setSubmitLoading(true)
+            setSubmitLoading(true);
 
             toast.promise(
                 clientsign({
@@ -225,12 +246,12 @@ export default function NftCreateModal() {
                 })
                     .then((res) => {
                         if (res) {
-                            setValue("tier", tier)
-                            const data = getValues()
+                            setValue("tier", tier);
+                            const data = getValues();
 
-                            addAsset.mutate({ ...data })
+                            addAsset.mutate({ ...data });
                         } else {
-                            toast.error("Transaction Failed")
+                            toast.error("Transaction Failed");
                         }
                     })
                     .catch((e) => console.log(e))
@@ -240,11 +261,12 @@ export default function NftCreateModal() {
                     success: "",
                     error: "Signing Transaction Failed",
                 },
-            )
+            );
         },
-    })
+    });
 
     const onSubmit = () => {
+        console.log("vlaues", getValues());
         if (ipfs) {
             xdrMutation.mutate({
                 code: getValues("code"),
@@ -252,133 +274,136 @@ export default function NftCreateModal() {
                 signWith: needSign(),
                 ipfsHash: ipfs,
                 native: paymentMethod === "xlm",
-            })
+            });
         } else {
-            toast.error("Please upload a thumbnail image.")
+            toast.error("Please upload a thumbnail image.");
         }
-    }
+    };
 
     function getEndpoint(mediaType: MediaType) {
         switch (mediaType) {
             case MediaType.IMAGE:
-                return "imageUploader"
+                return "imageUploader";
             case MediaType.MUSIC:
-                return "musicUploader"
+                return "musicUploader";
             case MediaType.VIDEO:
-                return "videoUploader"
+                return "videoUploader";
             case MediaType.THREE_D:
-                return "modelUploader"
+                return "modelUploader";
             default:
-                return "imageUploader"
+                return "imageUploader";
         }
     }
 
     function handleMediaChange(media: MediaType) {
-        setMediaType(media)
-        setValue("mediaType", media)
-        setMediaUrl(undefined)
+        setMediaType(media);
+        setValue("mediaType", media);
+        setMediaUrl(undefined);
     }
 
     const uploadFile = async (fileToUpload: File) => {
         try {
-            setUploading(true)
-            const formData = new FormData()
-            formData.append("file", fileToUpload, fileToUpload.name)
+            setUploading(true);
+            const formData = new FormData();
+            formData.append("file", fileToUpload, fileToUpload.name);
             const res = await fetch("/api/file", {
                 method: "POST",
                 body: formData,
-            })
-            const ipfsHash = await res.text()
-            const thumbnail = ipfsHashToUrl(ipfsHash)
-            setCover(thumbnail)
-            setValue("coverImgUrl", thumbnail)
-            setCid(ipfsHash)
-            toast.success("Thumbnail uploaded successfully")
-            await trigger()
+            });
+            const ipfsHash = await res.text();
+            const thumbnail = ipfsHashToPinataGatewayUrl(ipfsHash);
+            setCover(thumbnail);
+            setValue("coverImgUrl", thumbnail);
+            setCid(ipfsHash);
+            toast.success("Thumbnail uploaded successfully");
+            await trigger();
 
-            setUploading(false)
+            setUploading(false);
         } catch (e) {
-            setUploading(false)
-            toast.error("Failed to upload file")
+            setUploading(false);
+            toast.error("Failed to upload file");
         }
-    }
+    };
 
     const handleChange = async (e: ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files
+        const files = e.target.files;
 
         if (files) {
             if (files.length > 0) {
-                const file = files[0]
+                const file = files[0];
                 if (file) {
                     if (file.size > 1024 * 1024) {
-                        toast.error("File size should be less than 1MB")
-                        return
+                        toast.error("File size should be less than 1MB");
+                        return;
                     }
-                    setFile(file)
-                    await uploadFile(file)
+                    setFile(file);
+                    await uploadFile(file);
                 }
             }
         }
-    }
+    };
 
-
-    const loading = xdrMutation.isLoading ?? addAsset.isLoading ?? submitLoading ?? requiredToken.isLoading
+    const loading =
+        xdrMutation.isLoading ??
+        addAsset.isLoading ??
+        submitLoading ??
+        requiredToken.isLoading;
 
     const getMediaIcon = (type: MediaType) => {
         switch (type) {
             case MediaType.IMAGE:
-                return <ImageIcon className="h-4 w-4" />
+                return <ImageIcon className="h-4 w-4" />;
             case MediaType.MUSIC:
-                return <Music className="h-4 w-4" />
+                return <Music className="h-4 w-4" />;
             case MediaType.VIDEO:
-                return <Video className="h-4 w-4" />
+                return <Video className="h-4 w-4" />;
             case MediaType.THREE_D:
-                return <Cube className="h-4 w-4" />
+                return <Cube className="h-4 w-4" />;
             default:
-                return <ImageIcon className="h-4 w-4" />
+                return <ImageIcon className="h-4 w-4" />;
         }
-    }
+    };
 
     const nextStep = () => {
-        const currentIndex = FORM_STEPS.indexOf(activeStep)
+        const currentIndex = FORM_STEPS.indexOf(activeStep);
         if (currentIndex < FORM_STEPS.length - 1) {
-            const nextStep = FORM_STEPS[currentIndex + 1]
+            const nextStep = FORM_STEPS[currentIndex + 1];
             if (nextStep) {
-                setActiveStep(nextStep)
+                setActiveStep(nextStep);
             }
         }
-    }
+    };
 
     const prevStep = () => {
-        const currentIndex = FORM_STEPS.indexOf(activeStep)
+        const currentIndex = FORM_STEPS.indexOf(activeStep);
         if (currentIndex > 0) {
-            const previousStep = FORM_STEPS[currentIndex - 1]
+            const previousStep = FORM_STEPS[currentIndex - 1];
             if (previousStep) {
-                setActiveStep(previousStep)
+                setActiveStep(previousStep);
             }
         }
-    }
+    };
 
     // Update progress based on active step
     React.useEffect(() => {
-        const stepIndex = FORM_STEPS.indexOf(activeStep)
-        setFormProgress((stepIndex + 1) * (100 / FORM_STEPS.length))
-    }, [activeStep])
+        const stepIndex = FORM_STEPS.indexOf(activeStep);
+        setFormProgress((stepIndex + 1) * (100 / FORM_STEPS.length));
+    }, [activeStep]);
 
     const handleClose = () => {
-        setNFTModalOpen(false)
-        setMediaUploadSuccess(false)
-        setMediaUrl(undefined)
-        setCover(undefined)
-        reset()
-    }
+        setActiveStep("details");
+        setNFTModalOpen(false);
+        setMediaUploadSuccess(false);
+        setMediaUrl(undefined);
+        setCover(undefined);
+        reset();
+    };
 
     return (
         <Dialog open={isNFTModalOpen} onOpenChange={handleClose}>
-
             <DialogContent
                 onInteractOutside={(e) => {
-                    e.preventDefault()
+                    e.preventDefault();
                 }}
                 className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-0"
             >
@@ -387,13 +412,15 @@ export default function NftCreateModal() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.3 }}
-                    className="flex flex-col h-full"
+                    className="flex h-full flex-col"
                 >
                     <DialogHeader className=" px-6 py-4">
                         <DialogTitle className="flex items-center gap-2 text-xl">
-                            Create Stored Item
+                            Create Store Item
                         </DialogTitle>
-                        <DialogDescription>Create you nft  and place it to marketplace.</DialogDescription>
+                        <DialogDescription>
+                            Create you nft and place it to marketplace.
+                        </DialogDescription>
                         <Progress value={formProgress} className="mt-2 h-2" />
 
                         <div className="w-full px-6 ">
@@ -402,8 +429,10 @@ export default function NftCreateModal() {
                                     <div key={step} className="flex flex-col items-center">
                                         <div
                                             className={cn(
-                                                "w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm mb-1 ",
-                                                activeStep === step ? "bg-primary text-primary-foreground shadow-sm shadow-foreground" : "bg-muted text-muted-foreground",
+                                                "mb-1 flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium ",
+                                                activeStep === step
+                                                    ? "bg-primary  shadow-sm shadow-foreground"
+                                                    : "bg-muted text-muted-foreground",
                                             )}
                                         >
                                             {index + 1}
@@ -411,19 +440,102 @@ export default function NftCreateModal() {
                                         <span
                                             className={cn(
                                                 "text-xs",
-                                                activeStep === step ? " font-medium" : "text-muted-foreground",
+                                                activeStep === step
+                                                    ? " font-medium"
+                                                    : "text-muted-foreground",
                                             )}
                                         >
-                                            {step === "media" ? "Media Info" : step === "details" ? "Asset Info" : "Price & Payment"}
+                                            {step === "media"
+                                                ? "Media Info"
+                                                : step === "details"
+                                                    ? "Asset Info"
+                                                    : "Price & Payment"}
                                         </span>
                                     </div>
                                 ))}
-
                             </div>
                         </div>
                     </DialogHeader>
-                    <div className="px-6 py-4 overflow-y-auto">
-                        <form id="nft-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                    <div className="overflow-y-auto px-6 py-4">
+                        <form
+                            id="nft-form"
+                            onSubmit={handleSubmit(onSubmit)}
+                            className="space-y-4"
+                        >
+
+                            {activeStep === "details" && (
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                >
+                                    <Card>
+                                        <CardContent className="space-y-4 pt-6">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="name">Item name</Label>
+                                                <Input
+                                                    id="name"
+                                                    {...register("name")}
+                                                    placeholder="Enter a name for your item"
+                                                />
+                                                {errors.name && (
+                                                    <p className="text-sm text-destructive">
+                                                        {errors.name.message}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label htmlFor="description">Description</Label>
+                                                <Textarea
+                                                    id="description"
+                                                    {...register("description")}
+                                                    placeholder="Describe your NFT"
+                                                    className="min-h-24 resize-none"
+                                                />
+                                                {errors.description && (
+                                                    <p className="text-sm text-destructive">
+                                                        {errors.description.message}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label htmlFor="code">Asset Code</Label>
+                                                <Input
+                                                    id="code"
+                                                    {...register("code")}
+                                                    placeholder="Enter asset code (4-12 characters)"
+                                                />
+                                                {errors.code && (
+                                                    <p className="text-sm text-destructive">
+                                                        {errors.code.message}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label htmlFor="limit">Supply Limit</Label>
+                                                <Input
+                                                    id="limit"
+                                                    type="number"
+                                                    {...register("limit", { valueAsNumber: true })}
+                                                    placeholder="Enter supply limit (default: 1)"
+                                                />
+                                                {errors.limit && (
+                                                    <p className="text-sm text-destructive">
+                                                        {errors.limit.message}
+                                                    </p>
+                                                )}
+                                                <p className="text-xs text-muted-foreground">
+                                                    This determines how many copies of this Item can exist
+                                                </p>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </motion.div>
+                            )}
                             {activeStep === "media" && (
                                 <motion.div
                                     initial={{ opacity: 0 }}
@@ -435,18 +547,24 @@ export default function NftCreateModal() {
                                         <CardContent className="pt-6">
                                             <div className="space-y-4">
                                                 <div>
-                                                    <Label className="text-sm font-medium mb-2 block">Media Type</Label>
+                                                    <Label className="mb-2 block text-sm font-medium">
+                                                        Media Type
+                                                    </Label>
                                                     <div className="grid grid-cols-4 gap-2">
                                                         {Object.values(MediaType).map((media, i) => (
                                                             <Button
                                                                 key={i}
                                                                 type="button"
-                                                                variant={media === mediaType ? "destructive" : "muted"}
+                                                                variant={
+                                                                    media === mediaType ? "destructive" : "muted"
+                                                                }
                                                                 onClick={() => handleMediaChange(media)}
                                                                 className={`flex items-center gap-2 ${media === mediaType ? "shadow-sm shadow-foreground" : ""} `}
                                                             >
                                                                 {getMediaIcon(media)}
-                                                                <span>{media === MediaType.THREE_D ? "3D" : media}</span>
+                                                                <span>
+                                                                    {media === MediaType.THREE_D ? "3D" : media}
+                                                                </span>
                                                             </Button>
                                                         ))}
                                                     </div>
@@ -454,10 +572,12 @@ export default function NftCreateModal() {
 
                                                 {tiers.data && (
                                                     <div>
-                                                        <Label className="text-sm font-medium mb-2 block">Access Tier</Label>
+                                                        <Label className="mb-2 block text-sm font-medium">
+                                                            Access Tier
+                                                        </Label>
                                                         <TiersOptions
                                                             handleTierChange={(value: string) => {
-                                                                setTier(value)
+                                                                setTier(value);
                                                             }}
                                                             tiers={tiers.data}
                                                         />
@@ -465,20 +585,29 @@ export default function NftCreateModal() {
                                                 )}
 
                                                 <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Thumbnail Image</Label>
+                                                    <Label className="text-sm font-medium flex items-center gap-2">
+                                                        Thumbnail Image
+                                                        <span className="text-xs text-muted-foreground">
+                                                            (This will be your NFT image and item Thumbnail)
+                                                        </span>
+                                                    </Label>
                                                     <AnimatePresence>
                                                         {!coverUrl ? (
                                                             <Button
                                                                 type="button"
                                                                 variant="outline"
-                                                                onClick={() => document.getElementById("coverImg")?.click()}
-                                                                className="h-36 w-full relative border-dashed  flex flex-col items-center justify-center gap-2"
+                                                                onClick={() =>
+                                                                    document.getElementById("coverImg")?.click()
+                                                                }
+                                                                className="relative flex h-36 w-full  flex-col items-center justify-center gap-2 border-dashed"
                                                             >
                                                                 <Upload className="h-6 w-6 text-muted-foreground" />
-                                                                <span className="text-sm text-muted-foreground">Upload Thumbnail</span>
+                                                                <span className="text-sm text-muted-foreground">
+                                                                    Upload Thumbnail
+                                                                </span>
                                                                 {uploading && (
-                                                                    <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
-                                                                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                                                                    <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+                                                                        <Loader2 className="h-6 w-6 animate-spin " />
                                                                     </div>
                                                                 )}
                                                             </Button>
@@ -487,30 +616,33 @@ export default function NftCreateModal() {
                                                                 initial={{ opacity: 0, scale: 0.9 }}
                                                                 animate={{ opacity: 1, scale: 1 }}
                                                                 exit={{ opacity: 0, scale: 0.9 }}
-                                                                className="relative h-36 rounded-md overflow-hidden"
+                                                                className="relative h-36 overflow-hidden rounded-md"
                                                             >
                                                                 <Image
                                                                     fill
                                                                     alt="preview image"
-                                                                    src={coverUrl ?? "/images/action/logo.png"}
+                                                                    src={coverUrl ?? "/placeholder.svg"}
                                                                     className="object-cover"
                                                                 />
                                                                 <Button
                                                                     type="button"
                                                                     variant="destructive"
                                                                     size="icon"
-                                                                    className="absolute top-1 right-1 h-6 w-6"
+                                                                    className="absolute right-1 top-1 h-6 w-6"
                                                                     onClick={() => {
-                                                                        setCover(undefined)
-                                                                        setValue("coverImgUrl", "")
-                                                                        setCid(undefined)
+                                                                        setCover(undefined);
+                                                                        setValue("coverImgUrl", "");
+                                                                        setCid(undefined);
                                                                     }}
                                                                 >
                                                                     <X className="h-3 w-3" />
                                                                 </Button>
-                                                                <div className="absolute bottom-0 left-0 right-0 bg-background/80 py-1 px-2">
-                                                                    <Badge variant="outline" className="bg-green-100 text-green-800">
-                                                                        <Check className="h-3 w-3 mr-1" /> Uploaded
+                                                                <div className="absolute bottom-0 left-0 right-0 bg-background/80 px-2 py-1">
+                                                                    <Badge
+                                                                        variant="outline"
+                                                                        className="bg-green-100 text-green-800"
+                                                                    >
+                                                                        <Check className="mr-1 h-3 w-3" /> Uploaded
                                                                     </Badge>
                                                                 </div>
                                                             </motion.div>
@@ -525,12 +657,16 @@ export default function NftCreateModal() {
                                                     />
 
                                                     {errors.coverImgUrl && (
-                                                        <p className="text-destructive text-sm">{errors.coverImgUrl.message}</p>
+                                                        <p className="text-sm text-destructive">
+                                                            {errors.coverImgUrl.message}
+                                                        </p>
                                                     )}
                                                 </div>
 
                                                 <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Locked Content</Label>
+                                                    <Label className="text-sm font-medium">
+                                                        Locked Content
+                                                    </Label>
                                                     <div className="flex flex-col gap-2">
                                                         <UploadS3Button
                                                             endpoint={getEndpoint(mediaType)}
@@ -538,25 +674,26 @@ export default function NftCreateModal() {
                                                             label={`UPLOAD ${mediaType !== "THREE_D" ? mediaType : "3D"} CONTENT`}
                                                             className="w-full"
                                                             onClientUploadComplete={(res) => {
-                                                                const data = res
+                                                                const data = res;
                                                                 if (data?.url) {
-                                                                    setMediaUrl(data.url)
-                                                                    setValue("mediaUrl", data.url)
-                                                                    setMediaUpload(false)
-                                                                    setMediaUploadSuccess(true)
+                                                                    setMediaUrl(data.url);
+                                                                    setValue("mediaUrl", data.url);
+                                                                    setMediaUpload(false);
+                                                                    setMediaUploadSuccess(true);
+                                                                    trigger("mediaUrl")
                                                                 }
                                                             }}
                                                             onUploadError={(error: Error) => {
-                                                                toast.error(`ERROR! ${error.message}`)
+                                                                toast.error(`ERROR! ${error.message}`);
                                                             }}
                                                         />
 
                                                         {mediaType === "THREE_D" && (
-                                                            <Alert
-                                                                variant='info'
-                                                            >
+                                                            <Alert variant="info">
                                                                 <AlertDescription>
-                                                                    <p className="text-xs text-muted-foreground text-center">Only .obj files are accepted</p>
+                                                                    <p className="text-center text-xs text-muted-foreground">
+                                                                        Only .obj files are accepted
+                                                                    </p>
                                                                 </AlertDescription>
                                                             </Alert>
                                                         )}
@@ -572,68 +709,23 @@ export default function NftCreateModal() {
                                                                 >
                                                                     <Card className="overflow-hidden">
                                                                         <CardContent className="p-3">
-                                                                            <PlayableMedia mediaType={mediaType} mediaUrl={mediaUrl} />
+                                                                            <PlayableMedia
+                                                                                mediaType={mediaType}
+                                                                                mediaUrl={mediaUrl}
+                                                                            />
                                                                         </CardContent>
                                                                     </Card>
                                                                 </motion.div>
                                                             )}
                                                         </AnimatePresence>
 
-                                                        {errors.mediaUrl && <p className="text-destructive text-sm">{errors.mediaUrl.message}</p>}
+                                                        {errors.mediaUrl && (
+                                                            <p className="text-sm text-destructive">
+                                                                {errors.mediaUrl.message}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                </motion.div>
-                            )}
-
-                            {activeStep === "details" && (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    transition={{ duration: 0.3 }}
-                                >
-                                    <Card>
-                                        <CardContent className="pt-6 space-y-4">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="name">NFT Name</Label>
-                                                <Input id="name" {...register("name")} placeholder="Enter a name for your NFT" />
-                                                {errors.name && <p className="text-destructive text-sm">{errors.name.message}</p>}
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <Label htmlFor="description">Description</Label>
-                                                <Textarea
-                                                    id="description"
-                                                    {...register("description")}
-                                                    placeholder="Describe your NFT"
-                                                    className="min-h-24 resize-none"
-                                                />
-                                                {errors.description && (
-                                                    <p className="text-destructive text-sm">{errors.description.message}</p>
-                                                )}
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <Label htmlFor="code">Asset Code</Label>
-                                                <Input id="code" {...register("code")} placeholder="Enter asset code (4-12 characters)" />
-                                                {errors.code && <p className="text-destructive text-sm">{errors.code.message}</p>}
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <Label htmlFor="limit">Supply Limit</Label>
-                                                <Input
-                                                    id="limit"
-                                                    type="number"
-                                                    {...register("limit", { valueAsNumber: true })}
-                                                    placeholder="Enter supply limit (default: 1)"
-                                                />
-                                                {errors.limit && <p className="text-destructive text-sm">{errors.limit.message}</p>}
-                                                <p className="text-xs text-muted-foreground">
-                                                    This determines how many copies of this NFT can exist
-                                                </p>
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -648,9 +740,12 @@ export default function NftCreateModal() {
                                     transition={{ duration: 0.3 }}
                                 >
                                     <Card>
-                                        <CardContent className="pt-6 space-y-4">
+                                        <CardContent className="space-y-4 pt-6">
                                             <div className="space-y-2">
-                                                <Label htmlFor="priceUSD" className="flex items-center gap-2">
+                                                <Label
+                                                    htmlFor="priceUSD"
+                                                    className="flex items-center gap-2"
+                                                >
                                                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                                                     Price in USD
                                                 </Label>
@@ -660,11 +755,18 @@ export default function NftCreateModal() {
                                                     {...register("priceUSD", { valueAsNumber: true })}
                                                     placeholder="Enter price in USD"
                                                 />
-                                                {errors.priceUSD && <p className="text-destructive text-sm">{errors.priceUSD.message}</p>}
+                                                {errors.priceUSD && (
+                                                    <p className="text-sm text-destructive">
+                                                        {errors.priceUSD.message}
+                                                    </p>
+                                                )}
                                             </div>
 
                                             <div className="space-y-2">
-                                                <Label htmlFor="price" className="flex items-center gap-2">
+                                                <Label
+                                                    htmlFor="price"
+                                                    className="flex items-center gap-2"
+                                                >
                                                     <Coins className="h-4 w-4 text-muted-foreground" />
                                                     Price in {PLATFORM_ASSET.code}
                                                 </Label>
@@ -674,16 +776,24 @@ export default function NftCreateModal() {
                                                     {...register("price", { valueAsNumber: true })}
                                                     placeholder={`Enter price in ${PLATFORM_ASSET.code}`}
                                                 />
-                                                {errors.price && <p className="text-destructive text-sm">{errors.price.message}</p>}
+                                                {errors.price && (
+                                                    <p className="text-sm text-destructive">
+                                                        {errors.price.message}
+                                                    </p>
+                                                )}
                                             </div>
 
                                             <Separator className="my-4" />
 
                                             <Alert
-                                                variant={requiredTokenAmount > platformAssetBalance ? "destructive" : "default"} >
-
+                                                variant={
+                                                    requiredTokenAmount > platformAssetBalance
+                                                        ? "destructive"
+                                                        : "default"
+                                                }
+                                            >
                                                 <AlertDescription>
-                                                    {`You need minimum ${requiredTokenAmount} ${PLATFORM_ASSET.code}`}
+                                                    {`You'll need ${requiredTokenAmount} ${PLATFORM_ASSET.code} in your wallet to create an NFT`}
                                                 </AlertDescription>
                                             </Alert>
 
@@ -692,8 +802,6 @@ export default function NftCreateModal() {
                                                     <RechargeLink />
                                                 </div>
                                             )}
-
-
                                         </CardContent>
                                     </Card>
                                 </motion.div>
@@ -701,9 +809,8 @@ export default function NftCreateModal() {
                         </form>
                     </div>
 
-
-                    <DialogFooter className="px-6 py-4 border-t ">
-                        <div className="flex justify-between w-full items-center">
+                    <DialogFooter className="border-t px-6 py-4 ">
+                        <div className="flex w-full items-center justify-between">
                             <Button
                                 type="button"
                                 variant="outline"
@@ -715,40 +822,54 @@ export default function NftCreateModal() {
                             </Button>
 
                             {activeStep !== "pricing" ? (
-                                <Button type="button" onClick={nextStep} className="flex items-center gap-1 shadow-sm shadow-foreground">
+                                <Button
+                                    type="button"
+                                    onClick={nextStep}
+                                    className="flex items-center gap-1 shadow-sm shadow-foreground"
+                                >
                                     Next
-                                    <ArrowRight className="h-4 w-4 ml-1" />
+                                    <ArrowRight className="ml-1 h-4 w-4" />
                                 </Button>
                             ) : (
                                 <PaymentChoose
                                     costBreakdown={[
                                         {
-                                            label: "Cost",
-                                            amount: paymentMethod === "asset" ? requiredTokenAmount - totalFeees : 2,
+                                            label: "Stellar Fee",
+                                            amount:
+                                                paymentMethod === "asset"
+                                                    ? requiredTokenAmount - totalFees
+                                                    : requiredXlm,
                                             type: "cost",
                                             highlighted: true,
                                         },
                                         {
                                             label: "Platform Fee",
-                                            amount: paymentMethod === "asset" ? totalFeees : 2,
+                                            amount: paymentMethod === "asset" ? totalFees : feeInXLM,
                                             highlighted: false,
                                             type: "fee",
                                         },
                                         {
                                             label: "Total Cost",
-                                            amount: paymentMethod === "asset" ? requiredTokenAmount : 4,
+                                            amount:
+                                                paymentMethod === "asset"
+                                                    ? requiredTokenAmount
+                                                    : totalXlmCost,
                                             highlighted: false,
                                             type: "total",
                                         },
                                     ]}
-                                    XLM_EQUIVALENT={4}
+                                    XLM_EQUIVALENT={totalXlmCost}
                                     handleConfirm={handleSubmit(onSubmit)}
                                     loading={loading}
                                     requiredToken={requiredTokenAmount}
                                     trigger={
                                         <Button
                                             variant="default"
-                                            disabled={loading ?? requiredTokenAmount > platformAssetBalance ?? !isValid}
+                                            disabled={
+                                                loading ||
+                                                requiredTokenAmount > platformAssetBalance ||
+                                                !isValid
+                                            }
                                             className="flex items-center gap-1 shadow-sm shadow-foreground"
                                         >
                                             {loading ? (
@@ -765,19 +886,18 @@ export default function NftCreateModal() {
                             )}
                         </div>
                     </DialogFooter>
-
                 </motion.div>
             </DialogContent>
-        </Dialog >
-    )
+        </Dialog>
+    );
 }
 
 function TiersOptions({
     tiers,
     handleTierChange,
 }: {
-    tiers: { id: number; name: string; price: number }[]
-    handleTierChange: (value: string) => void
+    tiers: { id: number; name: string; price: number }[];
+    handleTierChange: (value: string) => void;
 }) {
     return (
         <Select onValueChange={handleTierChange}>
@@ -791,7 +911,7 @@ function TiersOptions({
                     <SelectItem value="private">Only Followers</SelectItem>
                     {tiers.map((model) => (
                         <SelectItem key={model.id} value={model.id.toString()}>
-                            <div className="flex items-center justify-between w-full">
+                            <div className="flex w-full items-center justify-between">
                                 <span>{model.name}</span>
                                 <Badge variant="outline">{model.price}</Badge>
                             </div>
@@ -800,51 +920,58 @@ function TiersOptions({
                 </SelectGroup>
             </SelectContent>
         </Select>
-    )
+    );
 }
 
 function PlayableMedia({
     mediaUrl,
     mediaType,
 }: {
-    mediaUrl?: string
-    mediaType: MediaType
+    mediaUrl?: string;
+    mediaType: MediaType;
 }) {
-    return mediaUrl && <MediaComponent mediaType={mediaType} mediaUrl={mediaUrl} />
+    return (
+        mediaUrl && <MediaComponent mediaType={mediaType} mediaUrl={mediaUrl} />
+    );
 
     function MediaComponent({
         mediaType,
         mediaUrl,
     }: {
-        mediaType: MediaType
-        mediaUrl: string
+        mediaType: MediaType;
+        mediaUrl: string;
     }) {
-        const [isLoading, setIsLoading] = useState(true)
+        const [isLoading, setIsLoading] = useState(true);
 
         React.useEffect(() => {
             // Simulate loading
             const timer = setTimeout(() => {
-                setIsLoading(false)
-            }, 1000)
+                setIsLoading(false);
+            }, 1000);
 
-            return () => clearTimeout(timer)
-        }, [])
+            return () => clearTimeout(timer);
+        }, []);
 
         if (isLoading) {
             return (
                 <div className="flex items-center justify-center p-4">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <Loader2 className="h-8 w-8 animate-spin " />
                 </div>
-            )
+            );
         }
 
         switch (mediaType) {
             case MediaType.IMAGE:
                 return (
                     <div className="relative aspect-square w-full overflow-hidden rounded-md">
-                        <Image alt="NFT preview" src={mediaUrl ?? "/images/action/logo.png"} fill className="object-cover" />
+                        <Image
+                            alt="NFT preview"
+                            src={mediaUrl ?? "/placeholder.svg"}
+                            fill
+                            className="object-cover"
+                        />
                     </div>
-                )
+                );
             case MediaType.MUSIC:
                 return (
                     <div className="w-full">
@@ -853,37 +980,42 @@ function PlayableMedia({
                             Your browser does not support the audio element.
                         </audio>
                     </div>
-                )
+                );
             case MediaType.VIDEO:
                 return (
-                    <div className="w-full aspect-video rounded-md overflow-hidden">
-                        <video controls className="w-full h-full">
+                    <div className="aspect-video w-full overflow-hidden rounded-md">
+                        <video controls className="h-full w-full">
                             <source src={mediaUrl} type="video/mp4" />
                             Your browser does not support the video element.
                         </video>
                     </div>
-                )
+                );
             case MediaType.THREE_D:
                 return (
-                    <div className="flex items-center justify-center p-4 bg-green-50 rounded-md">
+                    <div className="flex items-center justify-center rounded-md bg-green-50 p-4">
                         <div className="flex items-center gap-2 text-green-600">
                             <Check className="h-5 w-5" />
-                            <span className="font-medium">3D Model Uploaded Successfully</span>
+                            <span className="font-medium">
+                                3D Model Uploaded Successfully
+                            </span>
                         </div>
                     </div>
-                )
+                );
             default:
-                return null
+                return null;
         }
     }
 }
 
 interface VisibilityToggleProps {
-    isVisible: boolean
-    toggleVisibility: () => void
+    isVisible: boolean;
+    toggleVisibility: () => void;
 }
 
-export function VisibilityToggle({ isVisible, toggleVisibility }: VisibilityToggleProps) {
+export function VisibilityToggle({
+    isVisible,
+    toggleVisibility,
+}: VisibilityToggleProps) {
     return (
         <TooltipProvider>
             <Tooltip>
@@ -894,7 +1026,11 @@ export function VisibilityToggle({ isVisible, toggleVisibility }: VisibilityTogg
                         onClick={toggleVisibility}
                         aria-label={isVisible ? "Set to private" : "Set to visible"}
                     >
-                        {isVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                        {isVisible ? (
+                            <Eye className="h-4 w-4" />
+                        ) : (
+                            <EyeOff className="h-4 w-4" />
+                        )}
                     </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -902,6 +1038,5 @@ export function VisibilityToggle({ isVisible, toggleVisibility }: VisibilityTogg
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>
-    )
+    );
 }
-

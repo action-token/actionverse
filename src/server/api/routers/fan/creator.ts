@@ -43,18 +43,60 @@ export const CreatorAboutShema = z.object({
 export const creatorRouter = createTRPCRouter({
 
   requestForBrandCreation: protectedProcedure
-    .input(RequestBrandCreateFormSchema).mutation(async ({ ctx, input }) => {
+    .input(RequestBrandCreateFormSchema)
+    .mutation(async ({ ctx, input }) => {
+      const customAsset = `${input.assetCode}-${input.issuer}`;
       const creator = await ctx.db.creator.findUnique({
         where: { id: ctx.session.user.id },
       });
 
       if (creator) {
-        throw new Error("Creator already exists");
+        const justStorageCreated = creator.justStorageCreated;
+        const aprovalSend = creator.aprovalSend;
+
+        if (justStorageCreated && !aprovalSend) {
+          // only storage is created
+          await ctx.db.creator.update({
+            data: {
+              profileUrl: input.profileUrl,
+              coverUrl: input.coverUrl,
+              bio: input.bio,
+              name: input.displayName,
+              aprovalSend: true,
+            },
+            where: {
+              id: creator.id,
+            },
+          });
+
+          if (input.assetType === "custom")
+            await ctx.db.creator.update({
+              data: {
+                customPageAssetCodeIssuer: customAsset,
+              },
+              where: {
+                id: creator.id,
+              },
+            });
+
+          if (input.assetType === "new")
+            await ctx.db.creator.update({
+              data: {
+                pageAsset: {
+                  create: {
+                    code: input.assetName,
+                    issuer: BLANK_KEYWORD,
+                    thumbnail: input.assetImage,
+                    limit: 0,
+                  },
+                },
+              },
+              where: { id: creator.id },
+            });
+        }
       }
 
-      if (input.assetType === 'custom') {
-
-
+      if (input.assetType === "custom") {
         await ctx.db.creator.create({
           data: {
             id: ctx.session.user.id,
@@ -65,13 +107,11 @@ export const creatorRouter = createTRPCRouter({
             storageSecret: BLANK_KEYWORD,
             name: input.displayName,
             aprovalSend: true,
-            customPageAssetCodeIssuer: `${input.assetCode}-${input.issuer}`,
-
+            customPageAssetCodeIssuer: customAsset,
           },
         });
       }
-      if (input.assetType === 'new') {
-
+      if (input.assetType === "new") {
         await ctx.db.creator.create({
           data: {
             id: ctx.session.user.id,
@@ -88,8 +128,8 @@ export const creatorRouter = createTRPCRouter({
                 issuer: BLANK_KEYWORD,
                 thumbnail: input.assetImage,
                 limit: 0,
-              }
-            }
+              },
+            },
           },
         });
       }
@@ -100,7 +140,6 @@ export const creatorRouter = createTRPCRouter({
       //   amount: 0,
       //   vanityURL: input.vanityUrl.toLocaleLowerCase(),
       // });
-
     }),
 
   getCreator: protectedProcedure

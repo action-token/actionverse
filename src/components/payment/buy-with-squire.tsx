@@ -31,6 +31,7 @@ export default function BuyWithSquire({
               }
             })
             .catch((e) => {
+
               toast.error("Payment failed");
             })
             .finally(() => {
@@ -43,11 +44,12 @@ export default function BuyWithSquire({
     },
     onError: (e) => {
       toast.error("Something went wrong. Please try again.");
+
     },
   });
 
   return (
-    <div className="max-w-sm">
+    <div className="w-full">
       <PaymentForm
         applicationId={env.NEXT_PUBLIC_SQUARE_APP_ID}
         cardTokenizeResponseReceived={(token, verifiedBuyer) =>

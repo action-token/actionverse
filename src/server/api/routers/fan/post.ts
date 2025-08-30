@@ -158,6 +158,11 @@ export const postRouter = createTRPCRouter({
               pageAsset: { select: { code: true, issuer: true } },
               profileUrl: true,
               customPageAssetCodeIssuer: true,
+              followers: {
+                where: {
+                  userId: ctx.session.user.id,
+                },
+              },
             },
           },
           medias: true,

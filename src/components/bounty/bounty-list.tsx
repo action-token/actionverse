@@ -52,12 +52,16 @@ const getBountyTypeLabel = (type: BountyTypeEnum) => {
 export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
 
     const router = useRouter()
-    const { platformAssetBalance } = useUserStellarAcc()
+    const { getAssetBalance } = useUserStellarAcc();
 
     const isEligible = (bounty: BountyTypes) => {
-        return bounty.currentWinnerCount < bounty.totalWinner && bounty.requiredBalance <= platformAssetBalance
+        const balance = getAssetBalance({
+            code: bounty.requiredBalanceCode,
+            issuer: bounty.requiredBalanceIssuer
+        })
+        console.log("bounty.currentWinnerCount < bounty.totalWinner && bounty.requiredBalance <= getAssetBalance(bounty.requiredBalanceCode, bounty.requiredBalanceIssuer);")
+        return bounty.currentWinnerCount < bounty.totalWinner && (bounty.requiredBalance <= Number(balance));
     }
-
     const joinBountyMutation = api.bounty.Bounty.joinBounty.useMutation({
         onSuccess: async (data, variables) => {
             toast({
@@ -207,20 +211,18 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
                                     </Button>
 
                                     {!isEligible(bounty) ? (
-                                        <p className="mt-2 text-center text-xs text-destructive">
-                                            {bounty.currentWinnerCount >= bounty.totalWinner
-                                                ? "No spots left"
-                                                : `${bounty.requiredBalance.toFixed(1)} ${PLATFORM_ASSET.code.toLocaleUpperCase()} required`}
+                                        <p className="text-xs text-red-500 mt-2">
+                                            {bounty.currentWinnerCount >= bounty.totalWinner ? "No spots left" : `${bounty.requiredBalance.toFixed(1)} ${bounty.requiredBalanceCode.toLocaleUpperCase()} required`}
                                         </p>
-                                    ) : (
-                                        <p className="mt-2 text-center text-xs text-green-600">
-                                            {bounty.isOwner
-                                                ? "You are the owner"
-                                                : bounty.isJoined
-                                                    ? "You have already joined"
-                                                    : "You are eligible to join"}
+                                    ) :
+                                        <p className="text-xs text-green-500 mt-2">
+                                            {bounty.currentWinnerCount >= bounty.totalWinner ? "No spots left" :
+
+                                                bounty.isOwner ? "You are the owner" : bounty.isJoined ? "You have already joined" : "You are eligible to join"
+                                            }
                                         </p>
-                                    )}
+
+                                    }
                                 </div>
                             )}
                         </CardFooter>

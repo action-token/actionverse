@@ -154,6 +154,7 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
                             <LockedContent
                                 price={post.subscription?.price ?? 0}
                                 assetCode={creator.pageAsset?.code ?? creator.customPageAssetCodeIssuer?.split("-")[0] ?? ""}
+                                creatorId={creator.id}
                             />
                         ) : (
                             <>
@@ -271,26 +272,27 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
         </motion.div>
     )
 }
-
 // Component to display when content is locked
-function LockedContent({ price, assetCode }: { price: number; assetCode: string }) {
+function LockedContent({ price, assetCode, creatorId }: { price: number; assetCode: string; creatorId: string }) {
     return (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-                <div className="rounded-full bg-amber-100 dark:bg-amber-900/30 p-3">
-                    <Lock className="h-6 w-6 text-amber-600 dark:text-amber-500" />
+        <Link href={`/marketplace?tab=Page%20Assets`}>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-6">
+                <div className="flex flex-col items-center text-center space-y-4">
+                    <div className="rounded-full bg-amber-100 dark:bg-amber-900/30 p-3">
+                        <Lock className="h-6 w-6 text-amber-600 dark:text-amber-500" />
+                    </div>
+                    <div className="space-y-2">
+                        <h3 className="text-lg font-semibold">Locked Content</h3>
+                        <p className="text-gray-500 dark:text-gray-400">
+                            This content requires {price} {assetCode} to view.
+                        </p>
+                    </div>
+                    <Button className="gap-2">
+                        <CreditCard className="h-4 w-4" />
+                        Get Access
+                    </Button>
                 </div>
-                <div className="space-y-2">
-                    <h3 className="text-lg font-semibold">Locked Content</h3>
-                    <p className="text-gray-500 dark:text-gray-400">
-                        This content requires {price} {assetCode} to view.
-                    </p>
-                </div>
-                <Button className="gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    Get Access
-                </Button>
             </div>
-        </div>
+        </Link>
     )
 }
