@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowUpDown, Users, Trophy, Clock, Star, Zap, Filter, Search, Grid3X3, List, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowUpDown, Users, Trophy, Clock, Star, Zap, Filter, Search, Grid3X3, List, ChevronDown, ChevronUp, MapPin, Navigation } from 'lucide-react'
 import { Button } from "~/components/shadcn/ui/button"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Input } from "~/components/shadcn/ui/input"
@@ -26,6 +26,10 @@ import { getUserPlatformAsset } from "~/lib/augmented-reality/get-user-platformA
 import { Walkthrough } from "~/components/common/walkthrough"
 import { Preview } from "~/components/common/quill-preview"
 import { motion, AnimatePresence } from "framer-motion"
+import { BountyTypeIndicator } from "~/components/bounty/bounty-type-indicator"
+import { ScavengerProgress } from "~/components/bounty/scavenger-progress"
+import { useLocation } from "~/hooks/use-location"
+import { isWithinRadius } from "~/utils/location"
 
 type ButtonLayout = {
   x: number
@@ -49,6 +53,9 @@ export default function BountyScreen() {
   const filterButtonRef = useRef<HTMLButtonElement>(null)
   const joinButtonRef = useRef<HTMLButtonElement>(null)
 
+  // Add location hook
+  const { location, loading: locationLoading, requestLocation } = useLocation()
+
   const { data: walkthroughData } = useWalkThrough()
 
   const { data: bountyData, isLoading } = useQuery({
@@ -65,19 +72,19 @@ export default function BountyScreen() {
 
   const dummyBounties: Bounty[] = [
     {
-      title: "Bounty 1",
-      description: "This is a bounty description",
+      title: "Digital Collectible 1",
+      description: "<p>This is a digital collectible description</p>",
       priceInUSD: 100,
       priceInBand: 100,
       status: "APPROVED",
       isJoined: false,
+      currentWinnerCount: 1,
       _count: {
         participants: 10,
         BountyWinner: 1,
       },
-      currentWinnerCount: 1,
       imageUrls: ["https://app.action-tokens.com/images/action/logo.png"],
-      totalWinner: 4,
+      totalWinner: 5,
       BountyWinner: [],
       creator: {
         name: "Creator 1",
@@ -87,7 +94,73 @@ export default function BountyScreen() {
       creatorId: "0x1234567890",
       requiredBalance: 100,
       isOwner: false,
+      currentStep: 0,
+      ActionLocation: [],
+      bountyType: "GENERAL",
+      latitude: 37.7749,
+      longitude: -122.4194,
+      radius: 200,
     },
+    {
+      title: "Location Based Bounty",
+      description: "<p>This is a location based bounty description</p>",
+      priceInUSD: 100,
+      priceInBand: 100,
+      status: "APPROVED",
+      isJoined: false,
+      currentWinnerCount: 1,
+      _count: {
+        participants: 10,
+        BountyWinner: 1,
+      },
+      imageUrls: ["https://app.action-tokens.com/images/action/logo.png"],
+      totalWinner: 5,
+      BountyWinner: [],
+      creator: {
+        name: "Creator 1",
+        profileUrl: "https://app.action-tokens.com/images/action/logo.png",
+      },
+      id: "2",
+      creatorId: "0x1234567890",
+      requiredBalance: 100,
+      isOwner: false,
+      currentStep: 0,
+      ActionLocation: [],
+      bountyType: "LOCATION_BASED",
+      latitude: 37.7749,
+      longitude: -122.4194,
+      radius: 200,
+    },
+    {
+      title: "Scavenger Hunt Bounty",
+      description: "<p>This is a scavenger hunt bounty description</p>",
+      priceInUSD: 100,
+      priceInBand: 100,
+      status: "APPROVED",
+      isJoined: true,
+      currentWinnerCount: 1,
+      _count: {
+        participants: 10,
+        BountyWinner: 1,
+      },
+      imageUrls: ["https://app.action-tokens.com/images/action/logo.png"],
+      totalWinner: 5,
+      BountyWinner: [],
+      creator: {
+        name: "Creator 1",
+        profileUrl: "https://app.action-tokens.com/images/action/logo.png",
+      },
+      id: "3",
+      creatorId: "0x1234567890",
+      requiredBalance: 100,
+      isOwner: false,
+      currentStep: 1,
+      ActionLocation: [],
+      bountyType: "SCAVENGER_HUNT",
+      latitude: 37.7749,
+      longitude: -122.4194,
+      radius: 200,
+    }
   ]
 
   useEffect(() => {
@@ -157,20 +230,38 @@ export default function BountyScreen() {
     } else if (bounty.totalWinner === bounty.currentWinnerCount) {
       toast.error("Bounty is already finished")
     } else {
-      onOpen("JoinBounty", { bounty: bounty, balance: balanceData })
-    }
-  }
+      // Check location requirements for location-based bounties
+      if (bounty.bountyType === "LOCATION_BASED") {
+        if (!location) {
+          toast.error("Location access required for this bounty")
+          requestLocation()
+          return
+        }
 
-  const getStatusColor = (status: Bounty["status"]) => {
-    switch (status) {
-      case "APPROVED":
-        return "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25"
-      case "PENDING":
-        return "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/25"
-      case "REJECTED":
-        return "bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/25"
-      default:
-        return "bg-gradient-to-r from-gray-500 to-slate-500 text-white shadow-lg shadow-gray-500/25"
+        if (bounty.latitude && bounty.longitude) {
+          const withinRange = isWithinRadius(
+            location.latitude,
+            location.longitude,
+            bounty.latitude,
+            bounty.longitude,
+            bounty.radius ?? 500
+          )
+          console.log("Location check:", withinRange)
+          if (!withinRange) {
+            console.log("Location not within radius:", {
+              userLat: location.latitude,
+              userLon: location.longitude,
+              bountyLat: bounty.latitude,
+              bountyLon: bounty.longitude,
+              radius: bounty.radius ?? 500
+            })
+            toast.error("You must be within 500 meters of the bounty location")
+            return
+          }
+        }
+      }
+
+      onOpen("JoinBounty", { bounty: bounty, balance: balanceData, userLocation: location })
     }
   }
 
@@ -189,7 +280,7 @@ export default function BountyScreen() {
   ]
 
   return (
-    <div className="min-h-screen  bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen pb-32">
       {/* Header Toggle Button */}
       {!showHeader && (
         <motion.div
@@ -302,7 +393,7 @@ export default function BountyScreen() {
       </AnimatePresence>
 
       {/* Content */}
-      <div className="px-6 py-6 pb-32">
+      <div className="px-6 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
             {viewMode === 'grid' ? (
@@ -320,7 +411,6 @@ export default function BountyScreen() {
                       key={bounty.id}
                       bounty={bounty}
                       onAction={handleBountyAction}
-                      getStatusColor={getStatusColor}
                       joinButtonRef={joinButtonRef}
                     />
                   ))
@@ -344,7 +434,6 @@ export default function BountyScreen() {
                       key={bounty.id}
                       bounty={bounty}
                       onAction={handleBountyAction}
-                      getStatusColor={getStatusColor}
                       joinButtonRef={joinButtonRef}
                     />
                   ))
@@ -365,7 +454,6 @@ export default function BountyScreen() {
                       key={bounty.id}
                       bounty={bounty}
                       onAction={handleBountyAction}
-                      getStatusColor={getStatusColor}
                       joinButtonRef={joinButtonRef}
                     />
                   ))
@@ -389,7 +477,6 @@ export default function BountyScreen() {
                       key={bounty.id}
                       bounty={bounty}
                       onAction={handleBountyAction}
-                      getStatusColor={getStatusColor}
                       joinButtonRef={joinButtonRef}
                     />
                   ))
@@ -408,11 +495,10 @@ export default function BountyScreen() {
 interface BountyCardProps {
   bounty: Bounty
   onAction: (bounty: Bounty) => void
-  getStatusColor: (status: Bounty["status"]) => string
   joinButtonRef?: React.RefObject<HTMLButtonElement>
 }
 
-function BountyCard({ bounty, onAction, getStatusColor, joinButtonRef }: BountyCardProps) {
+function BountyCard({ bounty, onAction, joinButtonRef }: BountyCardProps) {
   const isFinished = bounty.totalWinner === bounty.currentWinnerCount
 
   return (
@@ -424,9 +510,7 @@ function BountyCard({ bounty, onAction, getStatusColor, joinButtonRef }: BountyC
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
     >
-      {/* Card with Glassmorphism */}
       <div className="relative overflow-hidden rounded-3xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-white/20 shadow-xl shadow-black/10 transition-all duration-500 hover:shadow-2xl hover:shadow-black/20">
-        {/* Image with Overlay */}
         <div className="relative h-48 overflow-hidden">
           <Image
             src={bounty.imageUrls[0] ?? "https://app.action-tokens.com/images/action/logo.png"}
@@ -436,14 +520,22 @@ function BountyCard({ bounty, onAction, getStatusColor, joinButtonRef }: BountyC
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
 
-          {/* Status Badge */}
-          <div className="absolute top-4 right-4">
-            <Badge className={`${getStatusColor(bounty.status)} border-0 px-3 py-1 font-semibold`}>
-              {bounty.status}
-            </Badge>
+          {/* Status and Type Badges */}
+          <div className="absolute top-4 right-4 space-y-2">
+
+            <BountyTypeIndicator bountyType={bounty.bountyType} />
           </div>
 
-          {/* Prize Highlight */}
+          {/* Location indicator for location-based bounties */}
+          {bounty.bountyType === "LOCATION_BASED" && (
+            <div className="absolute top-4 left-4">
+              <div className="flex items-center space-x-1 bg-green-500/90 backdrop-blur-sm rounded-full px-3 py-1">
+                <MapPin className="h-3 w-3 text-white" />
+                <span className="text-xs text-white font-medium">Location Required</span>
+              </div>
+            </div>
+          )}
+
           <div className="absolute bottom-4 left-4">
             <div className="flex items-center space-x-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg">
               <Zap className="h-4 w-4 text-amber-500" />
@@ -452,12 +544,10 @@ function BountyCard({ bounty, onAction, getStatusColor, joinButtonRef }: BountyC
           </div>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-4">
           <div>
             <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2 line-clamp-1">{bounty.title}</h3>
 
-            {/* Stats Row */}
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center space-x-4 text-slate-600 dark:text-slate-400">
                 <div className="flex items-center space-x-1">
@@ -474,12 +564,18 @@ function BountyCard({ bounty, onAction, getStatusColor, joinButtonRef }: BountyC
             </div>
           </div>
 
-          {/* Description */}
+          {/* Scavenger Hunt Progress */}
+          {bounty.bountyType === "SCAVENGER_HUNT" && bounty.isJoined && (
+            <ScavengerProgress
+              currentStep={bounty.currentStep ?? 0}
+              totalSteps={bounty.ActionLocation?.length ?? 0}
+            />
+          )}
+
           <div className="bg-slate-50/80 dark:bg-slate-700/50 rounded-2xl p-4 max-h-20 overflow-y-auto">
             <Preview value={bounty.description} />
           </div>
 
-          {/* Prize Info */}
           <div className="flex items-center justify-between p-4 bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20 rounded-2xl">
             <div>
               <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">Total Prize</p>
@@ -490,10 +586,9 @@ function BountyCard({ bounty, onAction, getStatusColor, joinButtonRef }: BountyC
             <Trophy className="h-8 w-8 text-violet-500" />
           </div>
 
-          {/* Action Button */}
           <Button
             ref={bounty.isJoined ? undefined : joinButtonRef}
-            className={`w-full h-12 rounded-2xl font-semibold transition-all duration-200 ${bounty.isJoined || bounty.isOwner
+            className={`w-full h-12 rounded-2xl font-semibold transition-all duration-200 ${bounty.isJoined ?? bounty.isOwner
               ? "bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-300"
               : isFinished
                 ? "bg-slate-300 text-slate-500 cursor-not-allowed"
@@ -510,7 +605,7 @@ function BountyCard({ bounty, onAction, getStatusColor, joinButtonRef }: BountyC
   )
 }
 
-function BountyListItem({ bounty, onAction, getStatusColor, joinButtonRef }: BountyCardProps) {
+function BountyListItem({ bounty, onAction, joinButtonRef }: BountyCardProps) {
   const isFinished = bounty.totalWinner === bounty.currentWinnerCount
 
   return (
@@ -540,13 +635,22 @@ function BountyListItem({ bounty, onAction, getStatusColor, joinButtonRef }: Bou
                     {bounty.title}
                   </h3>
                   <div className="flex items-center gap-2 mb-2">
-                    <Badge className={`${getStatusColor(bounty.status)} border-0 px-2 py-0.5 text-xs`}>
-                      {bounty.status}
-                    </Badge>
+
+                    <BountyTypeIndicator bountyType={bounty.bountyType} className="text-xs px-2 py-0.5" />
                     <span className="text-xs text-slate-600 dark:text-slate-400">
                       ${bounty.priceInUSD}
                     </span>
                   </div>
+
+                  {/* Scavenger Hunt Progress in List View */}
+                  {bounty.bountyType === "SCAVENGER_HUNT" && bounty.isJoined && (
+                    <div className="mt-2">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-slate-600 dark:text-slate-400">Progress:</span>
+                        <span className="font-medium">{bounty.currentStep ?? 0}/{bounty.ActionLocation?.length ?? 0}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <Button
@@ -578,6 +682,12 @@ function BountyListItem({ bounty, onAction, getStatusColor, joinButtonRef }: Bou
                   <Clock className="w-3 h-3" />
                   <span>{isFinished ? "Finished" : `${bounty.totalWinner - bounty.currentWinnerCount} left`}</span>
                 </div>
+                {bounty.bountyType === "LOCATION_BASED" && (
+                  <div className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    <span>Location</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -18,6 +18,7 @@ import { Button } from "../shadcn/ui/button";
 import { Editor } from "../common/quill-editor";
 import { MultiUploadS3Button } from "../common/upload-button";
 import { useBountySubmissionModalStore } from "../store/bounty-submission-store";
+import { motion, AnimatePresence } from "framer-motion"
 
 export const SubmissionMediaInfo = z.object({
     url: z.string(),
@@ -261,39 +262,47 @@ const BountyFileUploadModal = () => {
                                 <span className="text-center text-xs text-red-400">
                                     You can only upload a maximum of 5 files at a time.
                                 </span>
-                                <MultiUploadS3Button
-                                    endpoint="multiBlobUploader"
-                                    variant="button"
-                                    onUploadProgress={(progressValue) => {
-                                        setProgress((prevProgress) => {
-                                            // Assuming progress for the first file in the uploadingFiles list is updated
-                                            const newProgress = [...prevProgress];
-                                            newProgress[0] = progressValue; // Update the progress for the first file (or manage index accordingly)
-                                            return newProgress;
-                                        });
-                                    }}
-                                    onClientUploadComplete={(res) => {
-                                        toast.success("Media uploaded");
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="flex flex-col bg-primary items-center justify-center border-2 border-dashed rounded-lg p-6 transition-all "
+                                >
+                                    <MultiUploadS3Button
+                                        endpoint="multiBlobUploader"
+                                        variant="button"
+                                        className="w-full"
+                                        onUploadProgress={(progressValue) => {
+                                            setProgress((prevProgress) => {
+                                                // Assuming progress for the first file in the uploadingFiles list is updated
+                                                const newProgress = [...prevProgress];
+                                                newProgress[0] = progressValue; // Update the progress for the first file (or manage index accordingly)
+                                                return newProgress;
+                                            });
+                                        }}
+                                        onClientUploadComplete={(res) => {
+                                            toast.success("Media uploaded");
 
-                                        // Handle the uploaded file(s)
-                                        res.forEach((data) => {
-                                            // console.log(data);
-                                            if (data?.url) {
-                                                addMediaItem(data.url, data.name, data.size, data.type);
-                                            }
-                                        });
+                                            // Handle the uploaded file(s)
+                                            res.forEach((data) => {
+                                                // console.log(data);
+                                                if (data?.url) {
+                                                    addMediaItem(data.url, data.name, data.size, data.type);
+                                                }
+                                            });
 
-                                        // Clear the uploading files and progress state after completion
-                                        setUploadingFiles([]);
-                                        setProgress([]);
-                                        setLoading(false);
-                                    }}
+                                            // Clear the uploading files and progress state after completion
+                                            setUploadingFiles([]);
+                                            setProgress([]);
+                                            setLoading(false);
+                                        }}
 
-                                    onUploadError={(error: Error) => {
-                                        setLoading(false);
-                                        toast.error(error.message);
-                                    }}
-                                />
+                                        onUploadError={(error: Error) => {
+                                            setLoading(false);
+                                            toast.error(error.message);
+                                        }}
+                                    />
+                                </motion.div>
                                 <Button
                                     disabled={
                                         createBountyAttachmentMutation.isLoading ||

@@ -10,26 +10,48 @@ import type { MarketAssetType } from "~/lib/state/augmented-reality/use-modal-st
 import { useBuyModalStore } from "../store/buy-modal-store"
 import AssetView from "./asset"
 import { useLoginRequiredModalStore } from "../store/login-required-modal-store"
+import { useRouter } from "next/navigation"
 
 function MarketAssetComponent({ item }: { item: MarketAssetType }) {
     const { asset } = item
+    const router = useRouter()
+
     const { setIsOpen, setData } = useBuyModalStore()
     const session = useSession()
     const { isOpen: isLoginModalOpen, setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore()
-    const handleAssetClick = () => {
+
+    const handleBuyAsset = () => {
         if (session.status === "unauthenticated") {
             console.log("User not logged in, opening login modal")
             setLoginModalOpen(true)
         } else {
-            setIsOpen(true)
             setData(item)
+            setIsOpen(true)
         }
     }
+    const handleViewAsset = () => {
+        if (session.status === "unauthenticated") {
+            console.log("User not logged in, opening login modal")
+            setLoginModalOpen(true)
+        } else {
 
+            // Navigate to single asset page instead of opening buy modal
+            router.push(`/market-asset/${item.id}`)
+
+        }
+    }
     return (
-        <div onClick={handleAssetClick}>
-            <AssetView code={asset.name} thumbnail={asset.thumbnail} creatorId={asset.creatorId} price={item.price} />
-
+        <div className="cursor-pointer">
+            <AssetView
+                code={asset.name}
+                thumbnail={asset.thumbnail}
+                creatorId={asset.creatorId}
+                price={item.price}
+                priceInUSD={item.priceUSD}
+                mediaType={asset.mediaType}
+                onBuy={handleBuyAsset}
+                onView={handleViewAsset}
+            />
 
         </div>
     )

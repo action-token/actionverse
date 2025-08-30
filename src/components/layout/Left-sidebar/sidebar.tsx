@@ -29,11 +29,12 @@ export const LeftNavigation: NavItem[] = [
   { href: "/my-collection", icon: "collection", title: "MY COLLECTION" },
   // Search: { path: "/search", icon: Search, text: "Search" },
   // { href: "/music", icon: "music", title: "MUSIC" },
-  // { href: "/marketplace", icon: "store", title: "MARKETPLACE" },
+  { href: "/marketplace", icon: "store", title: "MARKETPLACE" },
   { href: "/bounty", icon: "bounty", title: "ACTION" },
-  { href: "/organization/home", icon: "creator", title: "ORGANIZATIONS" },
 
   { href: "/reward-checker", icon: "setting", title: "REWARD CHEKCER" },
+  { href: "/organization/home", icon: "creator", title: "ORGANIZATIONS" },
+
   { href: "/settings", icon: "setting", title: "SETTINGS" },
 ];
 

@@ -11,7 +11,8 @@ export interface BountyTypes {
     latitude?: number | null;
     longitude?: number | null;
     radius?: number | null;
-
+    requiredBalanceCode: string;
+    requiredBalanceIssuer: string;
     imageUrls: string[];
     totalWinner: number;
     bountyType: "GENERAL" | "LOCATION_BASED" | "SCAVENGER_HUNT";

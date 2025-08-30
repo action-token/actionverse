@@ -9,6 +9,7 @@ import {
     CheckCircle,
     ChevronDown,
     Clock,
+    Coins,
     Crown,
     DollarSign,
     Edit,
@@ -18,6 +19,7 @@ import {
     FilePlus,
     FileText,
     FileX,
+    Gift,
     ListChecks,
     Loader2,
     MapPin,
@@ -148,6 +150,7 @@ const UserBountyPage = () => {
     const [input, setInput] = useState("")
     const [messages, setMessages] = useState<Message[]>([])
     const messagesEndRef: MutableRefObject<HTMLDivElement | null> = useRef<HTMLDivElement | null>(null)
+    const { getAssetBalance } = useUserStellarAcc();
 
     const inputLength = input.trim().length
     const utils = api.useUtils()
@@ -207,41 +210,106 @@ const UserBountyPage = () => {
             setLoading(false)
         },
     })
-    const swapAssetToUSDC = api.bounty.Bounty.swapAssetToUSDC.useMutation({
+    const isEligible = ({
+        currentWinnerCount,
+        totalWinner,
+        requiredBalance,
+        requiredBalanceCode,
+        requiredBalanceIssuer
+    }: {
+        currentWinnerCount: number;
+        totalWinner: number;
+        requiredBalance: number;
+        requiredBalanceCode: string;
+        requiredBalanceIssuer: string;
+    }
+    ) => {
+        const balance = getAssetBalance({
+            code: requiredBalanceCode,
+            issuer: requiredBalanceIssuer
+        })
+
+        return currentWinnerCount < totalWinner && (requiredBalance <= Number(balance));
+    }
+    const UpdateWinnerInformation = api.bounty.Bounty.updateWinnerInformation.useMutation(
+        {
+            onSuccess: async () => {
+                toast.success("Winner information updated");
+                await utils.bounty.Bounty.getBountyByID.refetch();
+                setIsDialogOpen(false);
+            },
+            onError: (error) => {
+                toast.error(`Failed to update winner information: ${error.message}`);
+            },
+        }
+    );
+
+    const ClaimBandCoinReward = api.bounty.Bounty.claimBandCoinReward.useMutation({
         onSuccess: async (data, variables) => {
             if (data) {
-                setLoading(true)
-                const clientResponse = await clientsign({
-                    presignedxdr: data.xdr,
-                    walletType: session.data?.user?.walletType,
-                    pubkey: data.pubKey,
-                    test: clientSelect(),
-                })
-                if (clientResponse) {
-                    setLoading(true)
-                    MakeSwapUpdateMutation.mutate({
-                        bountyId: variables.bountyId,
+                try {
+                    const result = await clientsign({
+                        presignedxdr: data,
+                        pubkey: session.data?.user.id,
+                        walletType: session.data?.user.walletType,
+                        test: clientSelect(),
                     })
+
+                    if (result) {
+                        toast.success("Payments processed successfully")
+                        UpdateWinnerInformation.mutate({
+                            winnerId: variables.winnerId,
+                            bountyId: variables.bountyId
+                        })
+
+                    } else {
+                        toast.error("Transaction signing failed")
+                    }
+                } catch (error) {
+                    console.error(error)
+                    toast.error("Payment processing failed")
+                } finally {
+                    await utils.bounty.Bounty.getBountyByID.refetch();
                 }
             }
         },
         onError: (error) => {
-            setLoading(false)
-            toast.error(error.message)
+            toast.error(`Claim failed: ${error.message}`);
         },
-    })
+    });
+    const ClaimUSDCReward = api.bounty.Bounty.claimUSDCReward.useMutation({
+        onSuccess: async (data, variables) => {
+            if (data) {
+                try {
+                    const result = await clientsign({
+                        presignedxdr: data,
+                        pubkey: session.data?.user.id,
+                        walletType: session.data?.user.walletType,
+                        test: clientSelect(),
+                    })
 
-    const handleSwap = (id: number, priceInBand: number, priceInUSD: number) => {
-        setLoading(true)
+                    if (result) {
+                        toast.success("Payments processed successfully")
+                        UpdateWinnerInformation.mutate({
+                            winnerId: variables.winnerId,
+                            bountyId: variables.bountyId
+                        })
 
-        swapAssetToUSDC.mutate({
-            bountyId: id,
-            priceInBand: priceInBand,
-            priceInUSD: priceInUSD,
-            signWith: needSign(),
-        })
-        setLoading(false)
-    }
+                    } else {
+                        toast.error("Transaction signing failed")
+                    }
+                } catch (error) {
+                    console.error(error)
+                    toast.error("Payment processing failed")
+                } finally {
+                    await utils.bounty.Bounty.getBountyByID.refetch();
+                }
+            }
+        },
+        onError: (error) => {
+            toast.error(`Claim failed: ${error.message}`);
+        },
+    });
 
     const { data: Owner } = api.bounty.Bounty.isOwnerOfBounty.useQuery(
         {
@@ -823,150 +891,192 @@ const UserBountyPage = () => {
                             </CardContent>
 
                             {/* Card Footer with Actions */}
-                            <CardFooter className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row gap-4 items-center justify-between">
+                            <CardFooter className="flex flex-col items-center justify-between gap-4 border-t border-slate-200 px-6 py-4 dark:border-slate-700 sm:flex-row">
                                 <div className="w-full sm:w-auto">
-                                    {data.BountyWinner.some((winner) => winner.user.id === session.data?.user.id) && (
-                                        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                                            <DialogTrigger asChild>
-                                                <Button
-                                                    className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-md"
-                                                    disabled={
-                                                        loading ||
-                                                        data.BountyWinner.some(
-                                                            (winner) => winner.user.id === session.data?.user.id && winner?.isSwaped === true,
-                                                        ) ||
-                                                        swapAssetToUSDC.isLoading ||
-                                                        MakeSwapUpdateMutation.isLoading
-                                                    }
-                                                >
-                                                    <motion.div
-                                                        className="flex items-center gap-2"
-                                                        whileHover={{ scale: 1.05 }}
-                                                        whileTap={{ scale: 0.95 }}
+                                    {data.BountyWinner.some(
+                                        (winner) => winner.user.id === session.data?.user.id,
+                                    ) && (
+                                            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                                                <DialogTrigger asChild>
+                                                    <Button
+                                                        className="group relative overflow-hidden bg-gradient-to-r from-primary to-slate-400 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 sm:w-auto"
+                                                        disabled={
+                                                            loading || data.BountyWinner.some((winner) => winner.user.id === session.data?.user.id && winner.isClaimed)
+                                                        }
                                                     >
-                                                        <span>Swap</span>
-                                                        <span>{PLATFORM_ASSET.code}</span>
-                                                        <ArrowRight size={16} />
-                                                        <span>USDC</span>
-                                                    </motion.div>
-                                                </Button>
-                                            </DialogTrigger>
-                                            <DialogContent className="sm:max-w-md">
-                                                <DialogHeader>
-                                                    <DialogTitle className="text-center text-xl">Swap Assets</DialogTitle>
-                                                    <DialogDescription className="text-center">
-                                                        Convert your bounty reward from {PLATFORM_ASSET.code} to USDC
-                                                    </DialogDescription>
-                                                </DialogHeader>
+                                                        <motion.div className="flex items-center gap-3" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                                                            <Gift className="h-5 w-5" />
+                                                            <span className="font-semibold">Claim Rewards</span>
+                                                        </motion.div>
+                                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                                                    </Button>
+                                                </DialogTrigger>
 
-                                                {!getMotherTrustLine.data ? (
-                                                    <Alert
-                                                        className="flex items-center justify-center"
-                                                        variant="destructive"
-                                                        content="Please contact Admin at support@action-tokens.com"
-                                                    />
-                                                ) : (
-                                                    <>
-                                                        <div className="p-6 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                                                            <div className="space-y-5">
-                                                                <div className="flex justify-between items-center">
-                                                                    <div className="text-sm text-slate-500 dark:text-slate-400">You{"'ll"} swap</div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                                                            <Trophy size={16} className="text-primary" />
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <div className="font-semibold">
-                                                                                {(data?.priceInBand / data.totalWinner).toFixed(3)}
+                                                <DialogContent className="border-0 backdrop-blur-sm">
+                                                    <DialogHeader className="space-y-4">
+
+                                                        <DialogTitle className="text-center text-2xl font-bold ">
+                                                            Claim Your Rewards
+                                                        </DialogTitle>
+                                                        <DialogDescription className="text-center text-base text-muted-foreground leading-relaxed">
+                                                            Choose how you{"'"}d like to receive your rewards. Both options are secure and processed instantly.
+                                                        </DialogDescription>
+                                                    </DialogHeader>
+
+                                                    {!getMotherTrustLine.data ? (
+                                                        <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
+                                                            <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
+                                                                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                                                                    <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                                                                </div>
+                                                                <div className="space-y-2">
+                                                                    <h3 className="font-semibold text-amber-800 dark:text-amber-200">Manual Processing Required</h3>
+                                                                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                                                                        Please contact our support team to process your rewards
+                                                                    </p>
+                                                                    <Badge
+                                                                        variant="outline"
+                                                                        className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300"
+                                                                    >
+                                                                        support@action-tokens.com
+                                                                    </Badge>
+                                                                </div>
+                                                            </CardContent>
+                                                        </Card>
+                                                    ) : (
+                                                        <div className="space-y-6">
+                                                            <div className="grid gap-4">
+                                                                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                                                                    <Button
+                                                                        className="group relative h-16 w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md hover:shadow-lg transition-all duration-300"
+                                                                        size="lg"
+                                                                        onClick={() => {
+                                                                            ClaimUSDCReward.mutate({
+                                                                                bountyId: Number(id),
+                                                                                rewardAmount: data.priceInUSD,
+                                                                                signWith: needSign(),
+                                                                                winnerId: data.BountyWinner.find(
+                                                                                    (winner) => winner.user.id === session.data?.user.id
+                                                                                )?.id ?? -1
+                                                                            });
+                                                                        }}
+                                                                    >
+                                                                        <div className="flex items-center gap-4">
+                                                                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+                                                                                <DollarSign className="h-5 w-5" />
                                                                             </div>
-                                                                            <div className="text-xs text-slate-500">{PLATFORM_ASSET.code}</div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="flex justify-center">
-                                                                    <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                                                                        <ArrowDown size={20} className="text-slate-500" />
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="flex justify-between items-center">
-                                                                    <div className="text-sm text-slate-500 dark:text-slate-400">You{"'ll"} receive</div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                                                                            <DollarSign size={16} className="text-green-500" />
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <div className="font-semibold">
-                                                                                {(data.priceInUSD / data.totalWinner).toFixed(2)}
+                                                                            <div className="text-left">
+                                                                                {
+                                                                                    ClaimUSDCReward.isLoading ? (
+                                                                                        <>
+                                                                                            <div className="font-semibold">Claiming USDC Rewards</div>
+                                                                                            <div className="text-sm text-emerald-100">Stable digital currency</div>
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            <div className="font-semibold">Claim {data.priceInUSD} USDC  Rewards</div>
+                                                                                            <div className="text-sm text-emerald-100">Stable digital currency</div>
+                                                                                        </>
+                                                                                    )
+                                                                                }
                                                                             </div>
-                                                                            <div className="text-xs text-slate-500">USDC</div>
                                                                         </div>
+                                                                    </Button>
+                                                                </motion.div>
+
+                                                                <div className="relative flex items-center justify-center py-2">
+                                                                    <div className="absolute inset-0 flex items-center">
+                                                                        <div className="w-full border-t border-border" />
+                                                                    </div>
+                                                                    <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-muted border border-border">
+                                                                        <span className="text-xs font-medium text-muted-foreground">OR</span>
                                                                     </div>
                                                                 </div>
+
+                                                                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                                                                    <Button
+                                                                        className="group relative h-16 w-full bg-gradient-to-r from-accent to-purple-600 hover:from-accent/90 hover:to-purple-700 text-white shadow-md hover:shadow-lg transition-all duration-300"
+                                                                        size="lg"
+                                                                        disabled={ClaimBandCoinReward.isLoading || UpdateWinnerInformation.isLoading}
+                                                                        onClick={() => ClaimBandCoinReward.mutate({
+                                                                            bountyId: Number(id),
+                                                                            rewardAmount: data.priceInBand,
+                                                                            signWith: needSign(),
+                                                                            winnerId: data.BountyWinner.find(
+                                                                                (winner) => winner.user.id === session.data?.user.id
+                                                                            )?.id ?? -1
+                                                                        })}
+                                                                    >
+                                                                        <div className="flex items-center gap-4">
+                                                                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+                                                                                <Coins className="h-5 w-5" />
+                                                                            </div>
+                                                                            <div className="text-left">
+                                                                                {
+                                                                                    (
+                                                                                        ClaimBandCoinReward.isLoading || UpdateWinnerInformation.isLoading) ? (
+                                                                                        <>
+                                                                                            <div className="font-semibold">Claiming {PLATFORM_ASSET.code} Rewards</div>
+                                                                                            <div className="text-sm text-purple-100">Platform native token</div>
+                                                                                        </>
+
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            <div className="font-semibold">Claim {data.priceInBand} {PLATFORM_ASSET.code} Rewards</div>
+                                                                                            <div className="text-sm text-purple-100">Platform native token</div>
+                                                                                        </>
+                                                                                    )
+                                                                                }
+                                                                            </div>
+                                                                        </div>
+                                                                    </Button>
+                                                                </motion.div>
                                                             </div>
 
-                                                            <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
-                                                                <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center">
-                                                                    <AlertTriangle size={12} className="mr-1" />
-                                                                    This is a one-time operation and cannot be undone.
-                                                                </p>
-                                                            </div>
+                                                            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/10">
+                                                                <CardContent className="flex items-start gap-3 p-4">
+                                                                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Important Notice</p>
+                                                                        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                                                                            This is a one-time operation and cannot be undone. Please choose your preferred reward type
+                                                                            carefully.
+                                                                        </p>
+                                                                    </div>
+                                                                </CardContent>
+                                                            </Card>
                                                         </div>
-
-                                                        <DialogFooter className="flex flex-col sm:flex-row gap-3 mt-4">
-                                                            <Button
-                                                                variant="outline"
-                                                                className="flex-1 border-slate-200 dark:border-slate-700"
-                                                                onClick={() => setIsDialogOpen(false)}
-                                                            >
-                                                                Cancel
-                                                            </Button>
-                                                            <Button
-                                                                disabled={
-                                                                    loading ||
-                                                                    data.BountyWinner.some(
-                                                                        (winner) => winner.user.id === session.data?.user.id && winner?.isSwaped === true,
-                                                                    ) ||
-                                                                    swapAssetToUSDC.isLoading ||
-                                                                    MakeSwapUpdateMutation.isLoading
-                                                                }
-                                                                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
-                                                                onClick={() =>
-                                                                    handleSwap(
-                                                                        data.id,
-                                                                        data.priceInBand / data.totalWinner,
-                                                                        data.priceInUSD / data.totalWinner,
-                                                                    )
-                                                                }
-                                                            >
-                                                                {loading || swapAssetToUSDC.isLoading || MakeSwapUpdateMutation.isLoading ? (
-                                                                    <div className="flex items-center gap-2">
-                                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                                        <span>Processing...</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    "Confirm Swap"
-                                                                )}
-                                                            </Button>
-                                                        </DialogFooter>
-                                                    </>
-                                                )}
-                                            </DialogContent>
-                                        </Dialog>
-                                    )}
+                                                    )}
+                                                </DialogContent>
+                                            </Dialog>
+                                        )}
                                 </div>
 
-                                <div className="w-full sm:w-auto flex justify-center">
-                                    <div className="flex flex-wrap gap-3 justify-center">
-                                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                            <Badge variant="outline" className="py-2 px-3 gap-1 border-slate-200 dark:border-slate-700">
+                                <div className="flex w-full justify-center sm:w-auto">
+                                    <div className="flex flex-wrap justify-center gap-3">
+                                        <motion.div
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                        >
+                                            <Badge
+                                                variant="outline"
+                                                className="gap-1 border-slate-200 px-3 py-2 dark:border-slate-700"
+                                            >
                                                 <Calendar className="h-4 w-4 text-slate-500" />
-                                                <span>Created {format(new Date(data.createdAt), "MMM dd, yyyy")}</span>
+                                                <span>
+                                                    Created{" "}
+                                                    {format(new Date(data.createdAt), "MMM dd, yyyy")}
+                                                </span>
                                             </Badge>
                                         </motion.div>
-                                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                            <Badge variant="outline" className="py-2 px-3 gap-1 border-slate-200 dark:border-slate-700">
+                                        <motion.div
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                        >
+                                            <Badge
+                                                variant="outline"
+                                                className="gap-1 border-slate-200 px-3 py-2 dark:border-slate-700"
+                                            >
                                                 <Trophy className="h-4 w-4 text-amber-500" />
                                                 <span>
                                                     {data.currentWinnerCount}/{data.totalWinner} Winners
@@ -1053,23 +1163,41 @@ const UserBountyPage = () => {
                                     </p>
                                 </div>
                                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full">
-                                    <Button
-                                        className="w-full bg-primary hover:bg-primary/90 h-12 text-base shadow-md"
-                                        disabled={joinBountyMutation.isLoading || isAlreadyJoin.isLoading}
-                                        onClick={() => handleJoinBounty(data.id)}
-                                    >
-                                        {joinBountyMutation.isLoading ? (
-                                            <div className="flex items-center gap-2">
-                                                <Loader2 className="h-5 w-5 animate-spin" />
-                                                <span>Joining...</span>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center gap-2">
-                                                <UserPlus className="h-5 w-5" />
-                                                <span>Join Bounty</span>
-                                            </div>
-                                        )}
-                                    </Button>
+                                    {
+                                        isEligible({
+                                            requiredBalance: data.requiredBalance,
+                                            currentWinnerCount: data.currentWinnerCount,
+                                            totalWinner: data.totalWinner,
+                                            requiredBalanceCode: data.requiredBalanceCode,
+                                            requiredBalanceIssuer: data.requiredBalanceIssuer
+                                        }) ?
+                                            <>
+                                                <Button
+                                                    className="h-12 w-full bg-primary text-base shadow-md hover:bg-primary/90"
+                                                    disabled={
+                                                        joinBountyMutation.isLoading || isAlreadyJoin.isLoading
+                                                    }
+                                                    onClick={() => handleJoinBounty(data.id)}
+                                                >
+                                                    {joinBountyMutation.isLoading ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <Loader2 className="h-5 w-5 animate-spin" />
+                                                            <span>Joining...</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2">
+                                                            <UserPlus className="h-5 w-5" />
+                                                            <span>Join Bounty</span>
+                                                        </div>
+                                                    )}
+                                                </Button>
+                                            </> :
+                                            <>
+                                                <p className="text-xs text-red-500 mt-2">
+                                                    {data.currentWinnerCount >= data.totalWinner ? "No spots left" : `${data.requiredBalance.toFixed(1)} ${data.requiredBalanceCode.toLocaleUpperCase()} required`}
+                                                </p>
+                                            </>
+                                    }
                                 </motion.div>
                             </CardContent>
                         </Card>

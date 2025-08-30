@@ -365,6 +365,7 @@ async function updateLocationGroup() {
       image: {
         contains: "https://utfs.io",
       },
+
     },
   });
 

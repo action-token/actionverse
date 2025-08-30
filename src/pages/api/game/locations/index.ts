@@ -129,6 +129,7 @@ export default async function handler(
             endDate: { gte: new Date() },
             subscriptionId: null,
             remaining: { gt: 0 },
+            hidden: false,
           },
           {
             // Include only:

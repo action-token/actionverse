@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { Bounty } from "~/types/game/bounty";
 import { ConsumedLocation } from "~/types/game/location";
+import { LocationCoords } from "~/utils/location";
 
 export type ModalType =
   | "Delete"
@@ -16,6 +17,7 @@ export interface ModalData {
   userCurrentBalance?: number;
   balance?: number;
   bounty?: Bounty;
+  userLocation?: LocationCoords | null;
 }
 
 interface ModalStore {

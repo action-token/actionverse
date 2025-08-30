@@ -221,7 +221,143 @@ export async function SendBountyBalanceToUserAccount({
   buildTrx.sign(motherAcc);
   return buildTrx.toXDR();
 }
+export async function claimBandCoinReward({
+  pubKey,
+  rewardAmount,
+  signWith,
+}: {
+  pubKey: string;
+  rewardAmount: number;
+  signWith: SignUserType;
+}) {
+  const server = new Horizon.Server(STELLAR_URL);
+  const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
+  const account = await server.loadAccount(motherAcc.publicKey());
 
+  const platformAssetBalance = account.balances.find((balance) => {
+    if (
+      balance.asset_type === "credit_alphanum4" ||
+      balance.asset_type === "credit_alphanum12"
+    ) {
+      return (
+        balance.asset_code === PLATFORM_ASSET.code &&
+        balance.asset_issuer === PLATFORM_ASSET.issuer
+      );
+    }
+    return false;
+  });
+  //console.log("platformAssetBalance.............", platformAssetBalance);
+
+  if (
+    !platformAssetBalance ||
+    parseFloat(platformAssetBalance.balance) < rewardAmount
+  ) {
+    throw new Error("Balance is not enough to send the asset.");
+  }
+
+  const XLMBalance = await NativeBalance({ userPub: motherAcc.publicKey() });
+
+  if (!XLMBalance?.balance || parseFloat(XLMBalance.balance) < 1.0) {
+    throw new Error(
+      "Please make sure you have at least 1 XLM in your account.",
+    );
+  }
+
+  const transaction = new TransactionBuilder(account, {
+    fee: BASE_FEE.toString(),
+    networkPassphrase,
+  });
+
+  transaction.addOperation(
+    Operation.payment({
+      destination: pubKey,
+      source: motherAcc.publicKey(),
+      asset: PLATFORM_ASSET,
+      amount: rewardAmount.toFixed(7).toString(),
+    }),
+  );
+  transaction.setTimeout(0);
+
+  const buildTrx = transaction.build();
+  buildTrx.sign(motherAcc);
+  const xdr = buildTrx.toXDR()
+  return xdr;
+}
+export async function claimUSDCReward({
+  pubKey,
+  rewardAmount,
+  signWith,
+}: {
+  pubKey: string;
+  rewardAmount: number;
+  signWith: SignUserType;
+}) {
+  const server = new Horizon.Server(STELLAR_URL);
+  const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
+  const account = await server.loadAccount(motherAcc.publicKey());
+  const asset = new Asset(assetCode, assetIssuer);
+  const userAcc = await server.loadAccount(pubKey);
+
+  const platformAssetBalance = account.balances.find((balance) => {
+    if (
+      balance.asset_type === "credit_alphanum4" ||
+      balance.asset_type === "credit_alphanum12"
+    ) {
+      return (
+        balance.asset_code === PLATFORM_ASSET.code &&
+        balance.asset_issuer === PLATFORM_ASSET.issuer
+      );
+    }
+    return false;
+  });
+  //console.log("platformAssetBalance.............", platformAssetBalance);
+
+  if (
+    !platformAssetBalance ||
+    parseFloat(platformAssetBalance.balance) < rewardAmount
+  ) {
+    throw new Error("Balance is not enough to send the asset.");
+  }
+
+  const XLMBalance = await NativeBalance({ userPub: motherAcc.publicKey() });
+
+  if (!XLMBalance?.balance || parseFloat(XLMBalance.balance) < 1.0) {
+    throw new Error(
+      "Please make sure you have at least 1 XLM in your account.",
+    );
+  }
+  const userHasTrustOnUSDC = userAcc.balances.some((balance) => {
+    //console.log(balance);
+    return (
+      (balance.asset_type === "credit_alphanum4" ||
+        balance.asset_type === "credit_alphanum12") &&
+      balance.asset_code === assetCode &&
+      balance.asset_issuer === assetIssuer
+    );
+  });
+  if (!userHasTrustOnUSDC) {
+    throw new Error("User does not have trust on USDC.");
+  }
+  const transaction = new TransactionBuilder(account, {
+    fee: BASE_FEE.toString(),
+    networkPassphrase,
+  });
+
+  transaction.addOperation(
+    Operation.payment({
+      destination: pubKey,
+      source: motherAcc.publicKey(),
+      asset: asset,
+      amount: rewardAmount.toFixed(7).toString(),
+    }),
+  );
+  transaction.setTimeout(0);
+
+  const buildTrx = transaction.build();
+  buildTrx.sign(motherAcc);
+  const xdr = buildTrx.toXDR()
+  return xdr;
+}
 export async function SendBountyBalanceToUserAccountViaXLM({
   prizeInXLM,
   userPubKey,

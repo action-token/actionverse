@@ -23,11 +23,12 @@ import { clientSelect } from "~/lib/stellar/fan/utils";
 import { addrShort } from "~/utils/utils";
 import { z } from "zod";
 import clsx from "clsx";
-import { AssetType } from "~/lib/state/augmented-reality/use-modal-store";
 import { Card, CardContent } from "~/components/shadcn/ui/card";
 import BuyWithSquire from "./buy-with-squire";
 import RechargeLink from "./recharge-link";
 import { Badge } from "../shadcn/ui/badge";
+import { Asset, MarketType } from "@prisma/client";
+export type AssetType = Omit<Asset, "issuerPrivate">;
 
 type PaymentProcessProps = {
   item: AssetType;
@@ -36,8 +37,9 @@ type PaymentProcessProps = {
   priceUSD: number;
   marketItemId?: number;
   setClose: () => void;
+  type?: MarketType;
 };
-export const PaymentMethodEnum = z.enum(["asset", "xlm", "usdc", "card"]);
+export const PaymentMethodEnum = z.enum(["asset", "xlm", "card", "usdc"]);
 export type PaymentMethod = z.infer<typeof PaymentMethodEnum>;
 
 export default function PaymentProcessItem({
@@ -47,6 +49,7 @@ export default function PaymentProcessItem({
   priceUSD,
   marketItemId,
   setClose,
+  type,
 }: PaymentProcessProps) {
   const session = useSession();
   const { needSign } = useNeedSign();
@@ -96,7 +99,13 @@ export default function PaymentProcessItem({
       method,
     });
   }
-
+  const buyerUpdate = api.marketplace.market.createAssetBuyerInfo.useMutation({
+    onSuccess: () => {
+      toast.success("Item purchased successfully");
+      setPaymentSuccess(true);
+      setIsBuyDialogOpen(false);
+    }
+  });
   const changePaymentMethod = async (method: PaymentMethod) => {
     setPaymentMethod(method);
     await handleXDR(method);
@@ -116,6 +125,9 @@ export default function PaymentProcessItem({
     })
       .then((res) => {
         if (res) {
+          buyerUpdate.mutate({
+            assetId: item.id
+          })
           toast.success("Payment Successful");
           setClose();
           setPaymentSuccess(true);
@@ -132,79 +144,78 @@ export default function PaymentProcessItem({
   if (!active) return null;
 
   return (
-    <>
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid gap-4 ">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold">Checkout</h2>
-              <p className="text-sm text-gray-500">
-                Complete your purchase for{" "}
-                <span className=" font-bold   ">{item.name}</span>
-              </p>
-            </div>
-            <div className="grid gap-2  rounded-md bg-secondary p-4">
-              <div className="flex justify-between ">
-                <span>Price:</span>
-                <span className="font-semibold">
-                  {price} {PLATFORM_ASSET.code}
-                </span>
-              </div>
-              {showUSDPrice && (
-                <div className="flex justify-between">
-                  <span>Price in USD:</span>
-                  <span className="font-semibold">${priceUSD}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between">
-                <span>Copies available:</span>
-                <span>{copy.data ?? "loading..."}</span>
-              </div>
-              <div className="flex justify-between ">
-                <span>Issuer:</span>
-                <span>{addrShort(issuer, 7)}</span>
-              </div>
-            </div>
-            {copy.data && copy.data < 1 ? (
-              <Alert variant="default" content={"No copies available!"} />
-            ) : !copy.data ? (
-              <Alert variant="destructive" content={"No copies available!"} />
-            ) : (
-              <></>
-            )}
-            {copy.data && copy.data > 0 ? (
-              <>
-                <PaymentOptions
-                  method={paymentMethod}
-                  setIsWallet={changePaymentMethod}
-                />
-                <MethodDetails
-                  paymentMethod={paymentMethod}
-                  xdrMutation={xdrMutation}
-                  requiredFee={requiredFee.data}
-                  price={price}
-                  priceUSD={priceUSD}
-                  platformAssetBalance={platformAssetBalance}
-                  getXLMBalance={getXLMBalance}
-                  hasTrust={hasTrust}
-                  code={code}
-                  issuer={issuer}
-                  item={item}
-                  onConfirmPayment={handlePaymentConfirmation}
-                  submitLoading={submitLoading}
-                  paymentSuccess={paymentSuccess}
-                />
-              </>
-            ) : (
-              <></>
-            )}
+    <div className="w-full mx-auto">
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-6 space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-1">
+            <h2 className="text-xl font-semibold">Checkout</h2>
+            <p className="text-sm text-muted-foreground">
+              {item.name}
+            </p>
           </div>
+
+          {/* Item Details */}
+          <div className="space-y-3 p-4 bg-muted rounded-lg">
+            <div className="flex justify-between text-sm">
+              <span>Price</span>
+              <span className="font-medium">{price} {PLATFORM_ASSET.code}</span>
+            </div>
+            {showUSDPrice && (
+              <div className="flex justify-between text-sm">
+                <span>USD Price</span>
+                <span className="font-medium">${priceUSD}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm">
+              <span>Available</span>
+              <span className="font-medium">{copy.data ?? "..."}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Issuer</span>
+              <span className="font-mono text-xs">{addrShort(issuer, 7)}</span>
+            </div>
+          </div>
+
+          {/* Availability Check */}
+          {copy.data !== undefined && copy.data < 1 && (
+            <Alert variant="destructive" className="text-sm">
+              No copies available
+            </Alert>
+          )}
+
+          {/* Payment Section */}
+          {copy.data && copy.data > 0 && (
+            <div className="space-y-4">
+              <PaymentOptions
+                method={paymentMethod}
+                setIsWallet={changePaymentMethod}
+              />
+              <MethodDetails
+                paymentMethod={paymentMethod}
+                xdrMutation={xdrMutation}
+                requiredFee={requiredFee.data}
+                price={price}
+                priceUSD={priceUSD}
+                platformAssetBalance={platformAssetBalance}
+                getXLMBalance={getXLMBalance}
+                hasTrust={hasTrust}
+                code={code}
+                issuer={issuer}
+                item={item}
+                marketItemId={marketItemId ?? -1}
+                onConfirmPayment={handlePaymentConfirmation}
+                submitLoading={submitLoading}
+                paymentSuccess={paymentSuccess}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
-    </>
+    </div>
   );
 }
+
 function PaymentOptions({
   method,
   setIsWallet,
@@ -213,37 +224,38 @@ function PaymentOptions({
   setIsWallet: (method: PaymentMethod) => void;
 }) {
   const session = useSession();
-  if (session.status == "authenticated") {
-    const walletType = session.data.user.walletType;
-    const showCardOption =
-      walletType == WalletType.emailPass ||
-      walletType == WalletType.google ||
-      walletType == WalletType.facebook;
-    return (
-      <div>
-        <h2 className="text-center font-semibold">Choose payment option</h2>
-        <div className="my-2 flex gap-2">
+  if (session.status !== "authenticated") return null;
+
+  const walletType = session.data.user.walletType;
+  const showCardOption =
+    walletType == WalletType.emailPass ||
+    walletType == WalletType.google ||
+    walletType == WalletType.facebook;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium text-center">Payment Method</p>
+      <div className="grid grid-cols-3 gap-2">
+        <Option
+          text={PLATFORM_ASSET.code}
+          onClick={() => setIsWallet("asset")}
+          selected={method === "asset"}
+        />
+        <Option
+          text="XLM"
+          onClick={() => setIsWallet("xlm")}
+          selected={method === "xlm"}
+        />
+        {showCardOption && (
           <Option
-            text={PLATFORM_ASSET.code}
-            onClick={() => setIsWallet("asset")}
-            selected={method === "asset"}
+            text="Card"
+            onClick={() => setIsWallet("card")}
+            selected={method === "card"}
           />
-          <Option
-            text="XLM"
-            onClick={() => setIsWallet("xlm")}
-            selected={method === "xlm"}
-          />
-          {showCardOption && (
-            <Option
-              text="Credit Card"
-              onClick={() => setIsWallet("card")}
-              selected={method === "card"}
-            />
-          )}
-        </div>
+        )}
       </div>
-    );
-  }
+    </div>
+  );
 
   function Option({
     text,
@@ -256,10 +268,12 @@ function PaymentOptions({
   }) {
     return (
       <Button
-        onClick={() => onClick()}
-        variant={selected ? "destructive" : "default"}
+        onClick={onClick}
+        variant={selected ? "default" : "outline"}
+        size="sm"
         className={clsx(
-          "flex w-full items-center justify-center shadow-sm shadow-black ",
+          "w-full justify-center",
+          selected ? "scale-102 shadow-sm " : ""
         )}
       >
         {text}
@@ -267,7 +281,9 @@ function PaymentOptions({
     );
   }
 }
+
 type MethodDetailsProps = {
+  marketItemId: number;
   paymentMethod?: PaymentMethod;
   xdrMutation: ReturnType<
     typeof api.marketplace.steller.buyFromMarketPaymentXDR.useMutation
@@ -287,6 +303,7 @@ type MethodDetailsProps = {
 };
 
 export function MethodDetails({
+  marketItemId,
   paymentMethod,
   xdrMutation,
   requiredFee,
@@ -302,113 +319,105 @@ export function MethodDetails({
   submitLoading,
   paymentSuccess,
 }: MethodDetailsProps) {
-  if (xdrMutation.isLoading) return <Loader className="w-full animate-spin" />;
-
-  if (xdrMutation.isError) {
+  if (xdrMutation.isLoading) {
     return (
-      <Alert
-        variant={"destructive"}
-        content={
-          xdrMutation.error instanceof Error
-            ? xdrMutation.error.message
-            : "Error"
-        }
-      />
+      <div className="flex justify-center py-4">
+        <Loader className="h-5 w-5 animate-spin" />
+      </div>
     );
   }
 
-  if (xdrMutation.isSuccess && requiredFee) {
+  if (xdrMutation.isError) {
+    return (
+      <Alert variant="destructive" className="text-sm">
+        {xdrMutation.error instanceof Error
+          ? xdrMutation.error.message
+          : "Error processing payment"}
+      </Alert>
+    );
+  }
+
+  if (xdrMutation.isSuccess && requiredFee && paymentMethod) {
     if (paymentMethod === "asset") {
       const requiredAssetBalance = price + requiredFee;
-      const isSufficientAssetBalance =
-        platformAssetBalance >= requiredAssetBalance;
+      const isSufficient = platformAssetBalance >= requiredAssetBalance;
 
       return (
         <div className="space-y-4">
-          <div className="rounded-lg bg-primary p-4">
-            <h3 className="mb-2 font-semibold">Payment Summary</h3>
-            <div className="space-y-1">
-              <div className="flex justify-between">
-                <span>Item Price:</span>
-                <span>
-                  {price} {PLATFORM_ASSET.code}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Transaction Fee:</span>
-                <span>
-                  {requiredFee} {PLATFORM_ASSET.code}
-                </span>
-              </div>
-              <div className="flex justify-between font-semibold">
-                <span>Total:</span>
-                <span>
-                  {requiredAssetBalance} {PLATFORM_ASSET.code}
-                </span>
-              </div>
+          <div className="p-3 bg-muted/30 rounded-lg space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Item Price</span>
+              <span>{price} {PLATFORM_ASSET.code}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Network Fee</span>
+              <span>{requiredFee} {PLATFORM_ASSET.code}</span>
+            </div>
+            <div className="flex justify-between text-sm font-medium border-t pt-2">
+              <span>Total</span>
+              <span>{requiredAssetBalance} {PLATFORM_ASSET.code}</span>
             </div>
           </div>
-          {isSufficientAssetBalance ? (
+
+          {isSufficient ? (
             <Button
-              disabled={paymentSuccess}
-              className="w-full shadow-sm shadow-black"
               onClick={onConfirmPayment}
+              disabled={paymentSuccess || submitLoading}
+              className="w-full"
             >
-              {submitLoading && (
-                <Loader className="mr-2 h-4 w-4 animate-spin" />
-              )}
+              {submitLoading && <Loader className="mr-2 h-4 w-4 animate-spin" />}
               Confirm Payment
             </Button>
           ) : (
-            <Card className="">
-              <CardContent className="flex w-full flex-col items-center gap-2 p-4">
-                <p>
-                  Your balance:{" "}
-                  <Badge className="rounded-sm p-2" variant="destructive">
-                    {platformAssetBalance} {PLATFORM_ASSET.code}
-                  </Badge>
-                </p>
-                <p className="text-sm text-red-500">Insufficient Balance</p>
-                <RechargeLink />
-              </CardContent>
-            </Card>
+            <div className="space-y-3">
+              <div className="text-center space-y-1">
+                <p className="text-sm text-muted-foreground">Your balance</p>
+                <Badge variant="outline">
+                  {platformAssetBalance} {PLATFORM_ASSET.code}
+                </Badge>
+              </div>
+              <Alert variant="destructive" className="text-sm">
+                Insufficient balance
+              </Alert>
+              <RechargeLink />
+            </div>
           )}
         </div>
       );
     }
 
     if (paymentMethod === "xlm") {
-      const requiredXlmBalance =
-        priceUSD + 2 + (hasTrust(code, issuer) ? 0 : 0.5);
-      const isSufficientAssetBalance =
-        getXLMBalance() ?? 0 >= requiredXlmBalance;
+      const requiredXlm = priceUSD + 2 + (hasTrust(code, issuer) ? 0 : 0.5);
+      const currentXlm = parseFloat(getXLMBalance() ?? "0");
+      const isSufficient = currentXlm >= requiredXlm;
 
       return (
         <div className="space-y-4">
-          <div className="rounded-lg bg-primary  p-4">
-            <h3 className="mb-2 font-semibold">Payment Summary</h3>
-            <div className="space-y-1">
-              <div className="flex justify-between">
-                <span>Total in XLM:</span>
-                <span>{requiredXlmBalance} XLM</span>
-              </div>
+          <div className="p-3 bg-muted/30 rounded-lg">
+            <div className="flex justify-between text-sm font-medium">
+              <span>Total</span>
+              <span>{requiredXlm} XLM</span>
             </div>
           </div>
-          {isSufficientAssetBalance ? (
+
+          {isSufficient ? (
             <Button
-              disabled={paymentSuccess}
-              className="w-full shadow-sm shadow-black"
               onClick={onConfirmPayment}
+              disabled={paymentSuccess || submitLoading}
+              className="w-full"
             >
-              {submitLoading && (
-                <Loader className="mr-2 h-4 w-4 animate-spin" />
-              )}
+              {submitLoading && <Loader className="mr-2 h-4 w-4 animate-spin" />}
               Confirm Payment
             </Button>
           ) : (
-            <div className="space-y-2">
-              <p>Your balance: {getXLMBalance()} XLM</p>
-              <p className="text-sm text-red-500">Insufficient Balance</p>
+            <div className="space-y-3">
+              <div className="text-center space-y-1">
+                <p className="text-sm text-muted-foreground">Your balance</p>
+                <Badge variant="outline">{getXLMBalance()} XLM</Badge>
+              </div>
+              <Alert variant="destructive" className="text-sm">
+                Insufficient balance
+              </Alert>
               <RechargeLink />
             </div>
           )}
@@ -418,12 +427,11 @@ export function MethodDetails({
 
     if (paymentMethod === "card") {
       return (
-        <div className="space-y-4">
-          <div className="rounded-lg bg-gray-100 p-4">
-            <h3 className="mb-2 font-semibold">Credit Card Payment</h3>
-            <p>Proceed to pay with your credit card.</p>
+        <div className="space-y-4 w-full">
+          <div className="p-3 bg-muted/30 rounded-lg">
+            <p className="text-sm text-center">Pay with credit card</p>
           </div>
-          <BuyWithSquire marketId={item.id} xdr={xdrMutation.data} />
+          <BuyWithSquire marketId={marketItemId} xdr={xdrMutation.data} />
         </div>
       );
     }

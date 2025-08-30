@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage"
-import { ArrowLeft, Upload, FileText, Trophy, Users, DollarSign, Award } from "lucide-react"
+import { ArrowLeft, Upload, FileText, Trophy, Users, DollarSign, Award, MapPin, Navigation, Target } from 'lucide-react'
 import { toast } from "react-hot-toast"
 import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
@@ -22,6 +22,10 @@ import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 import { UploadSubmission } from "~/lib/augmented-reality/upload-submission"
 import { Preview } from "~/components/common/quill-preview"
 import { motion, AnimatePresence } from "framer-motion"
+import { BountyTypeIndicator } from "~/components/bounty/bounty-type-indicator"
+import { ScavengerProgress } from "~/components/bounty/scavenger-progress"
+import { useLocation } from "~/hooks/use-location"
+import { isWithinRadius } from "~/utils/location"
 
 type UploadProgress = Record<string, number>
 
@@ -46,6 +50,9 @@ const SingleBountyItem = () => {
   const queryClient = useQueryClient()
   const { data } = useBounty()
   const { item: bounty } = data
+
+  // Add location hook
+  const { location, loading: locationLoading, requestLocation } = useLocation()
 
   const addMediaItem = (url: string, name: string, size?: number, type?: string) => {
     if (size && type) {
@@ -79,6 +86,23 @@ const SingleBountyItem = () => {
   })
 
   if (!bounty) return null
+
+  // Check if user can participate based on bounty type
+  const canParticipate = () => {
+    if (bounty.bountyType === "LOCATION_BASED") {
+      if (!location) return false
+      if (bounty.latitude && bounty.longitude) {
+        return isWithinRadius(
+          location.latitude,
+          location.longitude,
+          bounty.latitude,
+          bounty.longitude,
+          bounty.radius ?? 500
+        )
+      }
+    }
+    return true
+  }
 
   const handleSubmitSolution = () => {
     createBountyAttachmentMutation.mutate({
@@ -159,12 +183,12 @@ const SingleBountyItem = () => {
 
   return (
     <motion.div
-      className="min-h-screen pb-32 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950"
+      className="min-h-screen pb-32 "
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
-      {/* Modern Header */}
+      {/* Header remains the same */}
       <motion.div
         className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50 shadow-lg"
         initial={{ opacity: 0, y: -20 }}
@@ -181,15 +205,19 @@ const SingleBountyItem = () => {
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white line-clamp-1">{bounty.title}</h1>
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white line-clamp-1">{bounty.title}</h1>
+                <BountyTypeIndicator bountyType={bounty.bountyType} />
+              </div>
               <p className="text-sm text-slate-600 dark:text-slate-400">Bounty Details</p>
             </div>
           </div>
         </div>
       </motion.div>
+
       <div className="px-6 py-8 max-w-4xl mx-auto space-y-8">
-        {/* Hero Image */}
+        {/* Hero Image with type-specific overlays */}
         <motion.div
           className="relative overflow-hidden rounded-3xl shadow-2xl"
           initial={{ opacity: 0, scale: 0.95 }}
@@ -197,21 +225,96 @@ const SingleBountyItem = () => {
           transition={{ duration: 0.5 }}
         >
           <Image
-            src={bounty.imageUrls[0] ?? "/placeholder.svg?height=400&width=800&query=abstract pattern for bounty hero"}
+            src={bounty.imageUrls[0] ?? "https://app.action-tokens.com/images/action/logo.png"}
             alt={bounty.title}
             width={800}
             height={400}
             className="h-64 w-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-          <div className="absolute bottom-6 left-6">
+          <div className="absolute bottom-6 left-6 flex items-center gap-3">
             <Badge className={`${getStatusColor(bounty.status)} border-0 px-4 py-2 text-sm font-semibold`}>
               {bounty.status}
             </Badge>
+            {bounty.bountyType === "LOCATION_BASED" && (
+              <div className="flex items-center space-x-2 bg-green-500/90 backdrop-blur-sm rounded-full px-4 py-2">
+                <MapPin className="h-4 w-4 text-white" />
+                <span className="text-sm text-white font-medium">Location Required</span>
+              </div>
+            )}
           </div>
         </motion.div>
-        {/* Bounty Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+        {/* Location Requirements Card for Location-based Bounties */}
+        {bounty.bountyType === "LOCATION_BASED" && (
+          <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg">
+                    <MapPin className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Location Required</h3>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      You must be within 500 meters of the bounty location to participate
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={requestLocation}
+                  disabled={locationLoading}
+                  className="bg-green-500 hover:bg-green-600 text-white"
+                >
+                  <Navigation className="h-4 w-4 mr-2" />
+                  {locationLoading ? "Getting Location..." : "Check Location"}
+                </Button>
+              </div>
+              {location && bounty.latitude && bounty.longitude && (
+                <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-xl">
+                  <div className="flex items-center space-x-2">
+                    {canParticipate() ? (
+                      <>
+                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <span className="text-green-700 dark:text-green-400 font-medium">
+                          You are within range!
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                        <span className="text-red-700 dark:text-red-400 font-medium">
+                          You are too far from the bounty location
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Scavenger Hunt Progress Card */}
+        {bounty.bountyType === "SCAVENGER_HUNT" && bounty.isJoined && (
+          <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Target className="h-5 w-5 text-purple-500" />
+                <span>Scavenger Hunt Progress</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScavengerProgress
+                currentStep={bounty.currentStep ?? 0}
+                totalSteps={bounty.ActionLocation?.length ?? 0}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bounty Stats - same as before */}
+        <div className="flex flex-col gap-6">
           <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
             <CardContent className="p-6">
               <div className="flex items-center space-x-3">
@@ -259,6 +362,7 @@ const SingleBountyItem = () => {
             </CardContent>
           </Card>
         </div>
+
         {/* Upload Progress */}
         {uploadFiles.length > 0 && (
           <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
@@ -380,7 +484,7 @@ const SingleBountyItem = () => {
                                 <Trophy className="h-4 w-4 text-white" />
                               </div>
                               <div>
-                                <p className="font-bold text-green-700 dark:text-green-400">{winner.userId}</p>
+                                <p className="font-bold text-green-700 dark:text-green-400">{winner.user.id}</p>
                                 <p className="text-sm text-green-600 dark:text-green-500">Winner #{index + 1}</p>
                               </div>
                             </div>

@@ -254,7 +254,7 @@ export default function QRScannerPage() {
     }, [stopScanner]);
 
     return (
-        <div className="relative flex h-screen w-full max-w-md flex-col items-center justify-center overflow-hidden bg-slate-950 mx-auto">
+        <div className="relative flex h-screen w-full max-w-md flex-col items-center justify-center overflow-hidden mx-auto">
             {/* Back Button */}
             <Button
                 className="absolute left-4 top-4 z-50 bg-black/50 text-white border-none hover:bg-black/70"
