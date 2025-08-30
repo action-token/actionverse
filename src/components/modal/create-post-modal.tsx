@@ -237,7 +237,7 @@ export function CreatePostModal() {
                                     <SelectItem
                                         key={model.id}
                                         value={model.id.toString()}
-                                    >{`${model.name} : ${model.price} ${model.creator.pageAsset?.code}`}</SelectItem>
+                                    >{`${model.name} : ${model.price} ${model.creator.pageAsset?.code ? model.creator.pageAsset.code : model.creator?.customPageAssetCodeIssuer?.split("-")[0]}`}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>

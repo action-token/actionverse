@@ -13,6 +13,8 @@ import { MediaType } from "@prisma/client";
 
 import {
   checkXDRSubmitted,
+  claimBandCoinReward,
+  claimUSDCReward,
   getHasMotherTrustOnUSDC,
   getHasUserHasTrustOnUSDC,
   SendBountyBalanceToMotherAccountViaAsset,
@@ -145,7 +147,8 @@ export const BountyRoute = createTRPCRouter({
         content: z.string().min(2, { message: "Description can't be empty" }),
 
         priceInXLM: z.number().optional(),
-
+        requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
+        requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
         medias: z.array(MediaInfo).optional(),
       }),
     )
@@ -161,6 +164,8 @@ export const BountyRoute = createTRPCRouter({
           priceInXLM: input.priceInXLM,
           totalWinner: input.totalWinner,
           requiredBalance: input.requiredBalance,
+          requiredBalanceCode: input.requiredBalanceCode,
+          requiredBalanceIssuer: input.requiredBalanceIssuer,
           imageUrls: input.medias ? input.medias.map((media) => media.url) : [],
         },
       });
@@ -213,6 +218,8 @@ export const BountyRoute = createTRPCRouter({
           latitude: Number(input.latitude),
           longitude: Number(input.longitude),
           radius: Number(input.radius),
+          requiredBalanceCode: input.requiredBalanceCode,
+          requiredBalanceIssuer: input.requiredBalanceIssuer,
           bountyType: BountyType.LOCATION_BASED,
         },
       });
@@ -570,7 +577,8 @@ export const BountyRoute = createTRPCRouter({
                   id: true,
                 },
               },
-              isSwaped: true,
+              isClaimed: true,
+              id: true,
             },
           },
 
@@ -1363,6 +1371,85 @@ export const BountyRoute = createTRPCRouter({
             },
           },
         },
+      });
+    }),
+  claimBandCoinReward: protectedProcedure.input(
+    z.object({
+      bountyId: z.number(),
+      rewardAmount: z.number(),
+      signWith: SignUser,
+      winnerId: z.number(),
+    }),
+  ).mutation(async ({ input, ctx }) => {
+    const userId = ctx.session.user.id;
+    const bounty = await ctx.db.bounty.findUnique({
+      where: { id: input.bountyId },
+    });
+    if (!bounty) throw new Error("Bounty not found");
+    // check if already rewarded
+    const existingReward = await ctx.db.bountyWinner.findFirst({
+      where: {
+        bountyId: input.bountyId,
+        userId,
+        isClaimed: true
+      },
+    });
+    if (existingReward) throw new Error("Reward already claimed");
+    return await claimBandCoinReward({
+      pubKey: userId,
+      rewardAmount: input.rewardAmount,
+      signWith: input.signWith,
+    });
+  }),
+  claimUSDCReward: protectedProcedure.input(
+    z.object({
+      bountyId: z.number(),
+      rewardAmount: z.number(),
+      signWith: SignUser,
+      winnerId: z.number(),
+    }),
+  ).mutation(async ({ input, ctx }) => {
+    const userId = ctx.session.user.id;
+    const bounty = await ctx.db.bounty.findUnique({
+      where: { id: input.bountyId },
+    });
+    if (!bounty) throw new Error("Bounty not found");
+    // check if already rewarded
+    const existingReward = await ctx.db.bountyWinner.findFirst({
+      where: {
+        bountyId: input.bountyId,
+        userId,
+        isClaimed: true
+      },
+    });
+    if (existingReward) throw new Error("Reward already claimed");
+    return await claimUSDCReward({
+      pubKey: userId,
+      rewardAmount: input.rewardAmount,
+      signWith: input.signWith,
+    });
+  }),
+  updateWinnerInformation: protectedProcedure
+    .input(
+      z.object({
+        winnerId: z.number(),
+        bountyId: z.number()
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { winnerId, bountyId } = input;
+      const userId = ctx.session.user.id;
+      const bounty = await ctx.db.bounty.findUnique({
+        where: { id: bountyId },
+      });
+      if (!bounty) throw new Error("Bounty not found");
+      return await ctx.db.bountyWinner.update({
+        where: {
+          id: winnerId
+        },
+        data: {
+          isClaimed: true,
+        }
       });
     }),
   hasMotherTrustOnUSDC: protectedProcedure.query(async ({ ctx }) => {

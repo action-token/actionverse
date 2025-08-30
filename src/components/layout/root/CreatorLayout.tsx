@@ -398,7 +398,7 @@ const CreatorNavigation: DockerItem[] = [
     color: "bg-blue-500",
   },
 
-  // { href: "/organization/store", icon: "pins", label: "STORE", color: "bg-pink-500" },
+  { href: "/organization/store", icon: "pins", label: "STORE", color: "bg-pink-500" },
   {
     href: "/organization/gift",
     icon: "creator",

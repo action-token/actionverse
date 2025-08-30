@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Tabs, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
 import { Button } from "~/components/shadcn/ui/button"
-import { Lock, Globe, ChevronUp, ChevronDown, Users, Bell, Bookmark, Home, Search } from "lucide-react"
+import { Lock, Globe, ChevronUp, ChevronDown, Users, Bell, Bookmark, Home, Search, User } from "lucide-react"
 import { api } from "~/utils/api"
 import { getAssetBalanceFromBalance } from "~/lib/stellar/marketplace/test/acc"
 
@@ -21,6 +21,7 @@ enum TabEnum {
     All = "all",
     Public = "public",
     Locker = "locker",
+    Followed = "followed",
 }
 
 export default function UserNewsFeedContent() {
@@ -89,6 +90,9 @@ export default function UserNewsFeedContent() {
                             <TabsTrigger value="locker" className="flex items-center gap-1">
                                 <Lock className="w-4 h-4" /> Locked
                             </TabsTrigger>
+                            <TabsTrigger value="followed" className="flex items-center gap-1">
+                                <User className="w-4 h-4" /> Followed Only
+                            </TabsTrigger>
                         </TabsList>
                     </Tabs>
                 </motion.div>
@@ -133,6 +137,7 @@ export default function UserNewsFeedContent() {
                                         if (activeTab === TabEnum.All) return true
                                         if (activeTab === TabEnum.Public) return !post.subscription
                                         if (activeTab === TabEnum.Locker) return !!post.subscription
+                                        if (activeTab === TabEnum.Followed) return post.creator.followers.length > 0
                                         return true
                                     })
                                     .map((post, index) => {

@@ -194,8 +194,9 @@ model Creator {
     storagePub    String
     storageSecret String
 
-    aprovalSend Boolean
-    approved    Boolean? // if undefined than it is sended for aproval, false means banned, true means aproved
+    justStorageCreated Boolean?
+    aprovalSend        Boolean
+    approved           Boolean? // if undefined than it is sended for aproval, false means banned, true means aproved
 
     // pageAsset
     pageAssetId Int?
@@ -222,6 +223,7 @@ model Creator {
     Appearance         Appearance[]
 
     ActionLocation ActionLocation[]
+    SellPageAsset  SellPageAsset[]
 
     @@index([bio, name])
 }
@@ -623,33 +625,35 @@ model ActionLocation {
 }
 
 model Bounty {
-    id                 Int                 @id @default(autoincrement())
-    title              String
-    description        String
-    latitude           Float?
-    longitude          Float?
-    radius             Float?
-    priceInUSD         Float
-    priceInBand        Float
-    totalWinner        Int
-    currentWinnerCount Int                 @default(0)
-    priceInXLM         Float?
-    requiredBalance    Float
-    imageUrls          String[]
-    createdAt          DateTime            @default(now())
-    endDate            DateTime?
-    status             BountyStatus        @default(PENDING)
-    creatorId          String
-    creator            Creator             @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    participants       BountyParticipant[] // Users who join the bounty
-    comments           BountyComment[] // Comments on the bounty
-    submissions        BountySubmission[] // Submissions to the bounty
-    doubts             BountyDoubt[]
-    BountyWinner       BountyWinner[]
-    User               User?               @relation(fields: [userId], references: [id])
-    userId             String?
-    bountyType         BountyType          @default(GENERAL)
-    ActionLocation     ActionLocation[]
+    id                    Int                 @id @default(autoincrement())
+    title                 String
+    description           String
+    latitude              Float?
+    longitude             Float?
+    radius                Float?
+    priceInUSD            Float
+    priceInBand           Float
+    totalWinner           Int
+    currentWinnerCount    Int                 @default(0)
+    priceInXLM            Float?
+    requiredBalance       Float
+    requiredBalanceCode   String
+    requiredBalanceIssuer String
+    imageUrls             String[]
+    createdAt             DateTime            @default(now())
+    endDate               DateTime?
+    status                BountyStatus        @default(PENDING)
+    creatorId             String
+    creator               Creator             @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    participants          BountyParticipant[] // Users who join the bounty
+    comments              BountyComment[] // Comments on the bounty
+    submissions           BountySubmission[] // Submissions to the bounty
+    doubts                BountyDoubt[]
+    BountyWinner          BountyWinner[]
+    User                  User?               @relation(fields: [userId], references: [id])
+    userId                String?
+    bountyType            BountyType          @default(GENERAL)
+    ActionLocation        ActionLocation[]
 
     @@index([title, description])
 }
@@ -659,6 +663,7 @@ model BountyWinner {
     bountyId  Int
     xdr       String?
     isSwaped  Boolean? @default(false)
+    isClaimed Boolean? @default(false)
     bounty    Bounty   @relation(fields: [bountyId], references: [id], onDelete: Cascade)
     userId    String
     user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -869,4 +874,22 @@ model QRDescription {
 model AppConfig {
     id              Int   @id @default(autoincrement())
     nearbyPinRadius Float
+}
+
+model SellPageAsset {
+    id           Int      @id @default(autoincrement())
+    title        String
+    description  String?
+    amountToSell Int
+    price        Float
+    priceUSD     Float    @default(1)
+    priceXLM     Float    @default(0)
+    isSold       Boolean  @default(false)
+    placedAt     DateTime @default(now())
+
+    placerId String? // admin placing this assets
+    placer   Creator?  @relation(fields: [placerId], references: [id], onDelete: Cascade)
+    soldAt   DateTime? @default(now())
+
+    @@unique([id, placerId])
 }

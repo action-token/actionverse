@@ -18,6 +18,8 @@ export const ScavengerHuntRoute = createTRPCRouter({
             coverImageUrl,
             useSameInfoForAllSteps,
             defaultLocationInfo,
+            requiredBalanceCode,
+            requiredBalanceIssuer
         } = input
 
         const userId = ctx.session.user.id
@@ -41,6 +43,8 @@ export const ScavengerHuntRoute = createTRPCRouter({
             priceInBand: priceBandcoin,
             requiredBalance,
             creatorId: userId,
+            requiredBalanceCode,
+            requiredBalanceIssuer,
             bountyType: BountyType.SCAVENGER_HUNT,
             imageUrls: coverImageUrl ? coverImageUrl.map((media) => media.url) : [],
         }

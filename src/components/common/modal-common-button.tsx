@@ -13,16 +13,18 @@ import {
     DialogTrigger,
 } from "~/components/shadcn/ui/dialog";
 
-import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
-
-
-import { useMarketRightStore } from "~/lib/state/marketplace/right";
-import { AssetType } from "~/lib/state/augmented-reality/use-modal-store";
 import toast from "react-hot-toast";
-import StorageCreateDialog from "../modal/place-nft-to-storage-modal";
+import { useMarketRightStore } from "~/lib/state/marketplace/right";
+
 import EnableInMarket from "../modal/Enable-nft-in-market";
 import NftBackModal from "../modal/nft-back-modal";
-import { MyCollectionMenu, useMyCollectionTabs } from "../store/tabs/mycollection-tabs";
+import StorageCreateDialog from "../modal/place-nft-to-storage-modal";
+import {
+    MyCollectionMenu,
+    useMyCollectionTabs,
+} from "../store/tabs/mycollection-tabs";
+import { Asset } from "@prisma/client";
+export type AssetType = Omit<Asset, "issuerPrivate">;
 
 export function DisableFromMarketButton({
     code,
@@ -43,9 +45,11 @@ export function DisableFromMarketButton({
         <div className="flex w-full flex-col gap-2">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                    <Button variant={"glow"} className="w-full shadow-sm shadow-foreground ">
+                    <Button
+                        className="w-full shadow-sm shadow-foreground "
+                    >
                         {disable.isLoading && <span className="loading loading-spinner" />}
-                        DISABLE
+                        Disable from market
                     </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
@@ -145,10 +149,12 @@ export function DeleteAssetByAdmin({
             <>
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                     <DialogTrigger asChild>
-                        <Button variant={"destructive"} className="w-full shadow-sm shadow-foreground "
+                        <Button
+                            variant={"destructive"}
+                            className="w-full shadow-sm shadow-foreground "
                         >
                             {del.isLoading && <span className="loading loading-spinner" />}
-                            Remove from market
+                            Delete from {assetId ? "Asset" : "Market"} (admin)
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px]">
@@ -164,7 +170,10 @@ export function DeleteAssetByAdmin({
                         <DialogFooter className=" w-full">
                             <div className="flex w-full gap-4  ">
                                 <DialogClose className="w-full">
-                                    <Button variant="outline" className="w-full shadow-sm shadow-foreground ">
+                                    <Button
+                                        variant="outline"
+                                        className="w-full shadow-sm shadow-foreground "
+                                    >
                                         Cancel
                                     </Button>
                                 </DialogClose>
@@ -191,9 +200,11 @@ export function DeleteAssetByAdmin({
 export function OtherButtons({
     currentData,
     copies,
+    isShowDisableButton,
 }: {
     currentData: AssetType;
     copies: number | undefined;
+    isShowDisableButton?: boolean;
 }) {
     const { selectedMenu, setSelectedMenu } = useMyCollectionTabs();
     if (currentData && copies) {
@@ -207,6 +218,7 @@ export function OtherButtons({
                     code={currentData.code}
                     issuer={currentData.issuer}
                     name={currentData.name}
+                    isShowDisableButton={isShowDisableButton}
                 />
             );
         }
@@ -218,28 +230,37 @@ export function MarketButtons({
     issuer,
     copy,
     name,
+    isShowDisableButton,
 }: {
     code: string;
     issuer: string;
     copy: number;
     name: string;
+    isShowDisableButton?: boolean;
 }) {
     const inMarket = api.wallate.acc.getAStorageAssetInMarket.useQuery({
         code,
         issuer,
     });
-    if (inMarket.isLoading) return <div>Loading...</div>;
-    if (inMarket.error) return <div>Error...</div>;
+    if (inMarket.isLoading) return <div>Loading...</div>
+    if (inMarket.error) return <div>Error...</div>
 
     if (inMarket.data) {
         return (
             <div>
-                <span className="text-center text-xs text-red-50">
-                    {" "}
-                    Item has been placed in market
-                </span>
-                <NftBackModal copy={copy} item={{ code, issuer }} />
+
+                {isShowDisableButton && (
+                    <>
+                        <DisableFromMarketButton code={code} issuer={issuer} />
+                    </>
+                )}
             </div>
-        );
-    } else return <EnableInMarket copy={copy} item={{ code, issuer, name }} />;
+        )
+    } else
+        return (
+            <div>
+                <NftBackModal copy={copy} item={{ code, issuer }} />
+                <EnableInMarket copy={copy} item={{ code, issuer, name }} />
+            </div>
+        )
 }

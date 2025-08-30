@@ -113,6 +113,8 @@ export const scavengerHuntSchema = z
         priceUSD: z.coerce.number().nonnegative({ message: "Price must be a positive number" }),
         priceBandcoin: z.coerce.number().nonnegative({ message: "Price must be a positive number" }),
         requiredBalance: z.coerce.number().nonnegative({ message: "Required balance must be a positive number" }),
+        requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
+        requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
         locations: z
             .array(
                 z.object({
@@ -256,6 +258,8 @@ export default function ScavengerHuntDialog() {
                             numberOfSteps: getValues("numberOfSteps"),
                             locations: getValues("locations"),
                             coverImageUrl: getValues("coverImageUrl"),
+                            requiredBalanceCode: getValues("requiredBalanceCode"),
+                            requiredBalanceIssuer: getValues("requiredBalanceIssuer"),
                         })
                         setLoading(false)
                     } else {
@@ -481,8 +485,7 @@ export default function ScavengerHuntDialog() {
                 method: paymentMethod,
                 fees: paymentMethod === "asset" ? totalFees :
                     paymentMethod === "xlm" ? 1 :
-                        paymentMethod === "usdc" ? 3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1)) :
-                            0,
+                        (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
             })
         } catch (error) {
             console.error("Form submission error:", error)
@@ -544,9 +547,7 @@ export default function ScavengerHuntDialog() {
                                                 ? Number(getValues("priceBandcoin"))
                                                 : paymentMethod === "xlm"
                                                     ? Number(getValues("priceUSD") / (XLMRate ?? 1))
-                                                    : paymentMethod === "usdc"
-                                                        ? Number(getValues("priceUSD") / (XLMRate ?? 1))
-                                                        : 0,
+                                                    : Number(getValues("priceUSD") / (XLMRate ?? 1)),
                                             highlighted: true,
                                             type: "cost",
                                         },
@@ -556,9 +557,7 @@ export default function ScavengerHuntDialog() {
                                                 ? totalFees
                                                 : paymentMethod === "xlm"
                                                     ? 1
-                                                    : paymentMethod === "usdc"
-                                                        ? 3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))
-                                                        : 0,
+                                                    : (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
                                             highlighted: false,
                                             type: "fee",
                                         },
@@ -568,9 +567,7 @@ export default function ScavengerHuntDialog() {
                                                 ? Number(getValues("priceBandcoin")) + totalFees
                                                 : paymentMethod === "xlm"
                                                     ? Number(getValues("priceUSD") / (XLMRate ?? 1)) + 1
-                                                    : paymentMethod === "usdc"
-                                                        ? Number(getValues("priceUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1)))
-                                                        : 0,
+                                                    : Number(getValues("priceUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
                                             highlighted: false,
                                             type: "total",
                                         },
