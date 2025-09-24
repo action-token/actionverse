@@ -8,7 +8,7 @@ import {
 
 import { env } from "~/env";
 import { networkPassphrase, STELLAR_URL, TrxBaseFee } from "../constant";
-import { SignUserType } from "../utils";
+import { SignUserType, WithSing } from "../utils";
 import { AccountType } from "./utils";
 import { Key } from "lucide-react";
 
@@ -17,13 +17,18 @@ const log = console;
 export async function creatorAprovalTrx({
     pageAsset,
     storage,
+    signWith,
+
 }: {
     pageAsset: {
         code: string;
         ipfs: string;
         limit: string;
+
     };
     storage?: AccountType;
+    signWith?: SignUserType;
+
 }) {
     const server = new Horizon.Server(STELLAR_URL);
     const storageAcc = storage
@@ -110,7 +115,7 @@ export async function creatorAprovalTrx({
 
     Tx2.sign(motherAcc, storageAcc, issuerAcc);
 
-    const xdr = Tx2.toXDR();
+    const xdr = await WithSing({ xdr: Tx2.toXDR(), signWith });
 
     const storageInfo: AccountType = {
         publicKey: storageAcc.publicKey(),
@@ -128,9 +133,12 @@ export async function creatorAprovalTrx({
 export async function creatorAprovalTrustlineTrx({
     storage,
     customPageAssetCodeIssuer,
+    signWith,
+
 }: {
     storage?: AccountType;
     customPageAssetCodeIssuer: string;
+    signWith?: SignUserType;
 }) {
     const server = new Horizon.Server(STELLAR_URL);
     const storageAcc = storage
@@ -171,6 +179,48 @@ export async function creatorAprovalTrustlineTrx({
     const buildTrx = Tx1.build();
 
     buildTrx.sign(motherAcc, storageAcc);
+
+    const xdr = await WithSing({ xdr: buildTrx.toXDR(), signWith });
+
+    const storageInfo: AccountType = {
+        publicKey: storageAcc.publicKey(),
+        secretKey: storageAcc.secret(),
+    };
+
+    return { xdr, storage: storage ? undefined : storageInfo, escrow: undefined };
+}
+
+export async function creatorAprovalTrustlineWithoutPageAsset({
+    storage,
+}: {
+    storage?: AccountType;
+}) {
+    const server = new Horizon.Server(STELLAR_URL);
+    const storageAcc = storage
+        ? Keypair.fromSecret(storage.secretKey)
+        : Keypair.random();
+    const motherAcc = Keypair.fromSecret(env.MOTHER_SECRET);
+
+    const transactionInitializer = await server.loadAccount(
+        motherAcc.publicKey(),
+    );
+
+    const Tx1 = new TransactionBuilder(transactionInitializer, {
+        fee: TrxBaseFee,
+        networkPassphrase,
+    });
+
+
+    Tx1.addOperation(
+        Operation.createAccount({
+            destination: storageAcc.publicKey(),
+            startingBalance: "1.5", //
+        }),
+    ).setTimeout(0);
+
+    const buildTrx = Tx1.build();
+
+    buildTrx.sign(motherAcc);
 
     const xdr = buildTrx.toXDR();
 

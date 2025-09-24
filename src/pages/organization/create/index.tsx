@@ -62,9 +62,12 @@ const CustomAssetSchema = z.object({
     issuer: z.string().length(56, "Issuer must be exactly 56 characters"),
 })
 
-const AssetSchema = z.discriminatedUnion("assetType", [NewAssetSchema, CustomAssetSchema])
+const SkipAssetSchema = z.object({
+    assetType: z.literal("skip"),
+})
 
-// Fix the FormSchema to make fields required and fix the assetType type
+const AssetSchema = z.discriminatedUnion("assetType", [NewAssetSchema, CustomAssetSchema, SkipAssetSchema])
+
 export const RequestBrandCreateFormSchema = z
     .object({
         profileUrl: z.string().url().optional(),
@@ -73,7 +76,7 @@ export const RequestBrandCreateFormSchema = z
         coverImagePreview: z.string().optional(),
         displayName: z.string().min(1, "Display name is required").max(99, "Display name must be less than 100 characters"),
         bio: z.string().optional(),
-        assetType: z.enum(["new", "custom"]),
+        assetType: z.enum(["new", "custom", "skip"]),
         assetName: z.string().default(""),
         assetImage: z.string().url().optional(),
         assetImagePreview: z.string().optional(),
@@ -87,6 +90,7 @@ export const RequestBrandCreateFormSchema = z
                 return !!data.assetImage
             }
             // If assetType is "custom", assetCode and issuer are required
+            // If assetType is "skip", no validation needed
             return true
         },
         {
@@ -109,7 +113,7 @@ export default function ArtistOnboarding() {
         coverImagePreview: "",
         displayName: "",
         bio: "",
-        assetType: "new", // "new" or "custom"
+        assetType: "new", // "new" or "custom" or "skip"
         assetName: "", //new asset name
         assetImage: "", //new asset image
         assetImagePreview: "", //new asset image preview
@@ -279,13 +283,13 @@ export default function ArtistOnboarding() {
     }
 
     // Fix the handleRadioChange function to properly type the value
-    const handleRadioChange = (value: "new" | "custom") => {
+    const handleRadioChange = (value: "new" | "custom" | "skip") => {
         setFormData({
             ...formData,
             assetType: value,
         })
         // Reset trust status when switching asset types
-        if (value === "new") {
+        if (value === "new" || value === "skip") {
             setIsTrusted(false)
         }
     }
@@ -325,7 +329,9 @@ export default function ArtistOnboarding() {
                     }
                     break
                 case 3:
-                    if (formData.assetType === "new") {
+                    if (formData.assetType === "skip") {
+                        isValid = true
+                    } else if (formData.assetType === "new") {
                         // For new asset, require valid name and image
                         const validName =
                             formData.assetName.length >= 4 &&
@@ -350,7 +356,7 @@ export default function ArtistOnboarding() {
                 setCurrentStep(currentStep + 1)
             } else {
                 // Show a toast message to inform the user what's missing
-                if (currentStep === 3) {
+                if (currentStep === 3 && formData.assetType !== "skip") {
                     if (formData.assetType === "new") {
                         if (!formData.assetName || formData.assetName.length < 4 || formData.assetName.length > 12) {
                             toast.error("Please enter a valid asset name (4-12 letters)")
@@ -369,13 +375,21 @@ export default function ArtistOnboarding() {
         } else {
             // Validate entire form before submission
             try {
-                // Prepare the data based on asset type
                 const submissionData = {
                     ...formData,
                     // Only include relevant fields based on asset type
                     ...(formData.assetType === "new"
                         ? { assetCode: undefined, issuer: undefined }
-                        : { assetName: undefined, assetImage: undefined, assetImagePreview: undefined }),
+                        : formData.assetType === "custom"
+                            ? { assetName: undefined, assetImage: undefined, assetImagePreview: undefined }
+                            : {
+                                // Skip case - exclude all asset fields
+                                assetName: undefined,
+                                assetImage: undefined,
+                                assetImagePreview: undefined,
+                                assetCode: undefined,
+                                issuer: undefined,
+                            }),
                 }
                 RequestForBrandCreation.mutate(submissionData)
             } catch (error) {
@@ -420,7 +434,9 @@ export default function ArtistOnboarding() {
                     return true
                 }
             case 3:
-                if (formData.assetType === "new") {
+                if (formData.assetType === "skip") {
+                    return false
+                } else if (formData.assetType === "new") {
                     // For new asset, require valid name and image
                     const validName =
                         formData.assetName.length >= 4 && formData.assetName.length <= 12 && /^[a-zA-Z]+$/.test(formData.assetName)
@@ -1007,13 +1023,13 @@ export default function ArtistOnboarding() {
                                                     <div className="space-y-2">
                                                         <h2 className="text-3xl font-bold">Create Your Asset</h2>
                                                         <p className="text-muted-foreground">
-                                                            Choose between creating a new asset or using a custom one.
+                                                            Choose between creating a new asset, using a custom one, or skip this step for now.
                                                         </p>
                                                     </div>
                                                     <RadioGroup
                                                         value={formData.assetType}
                                                         onValueChange={handleRadioChange}
-                                                        className="grid gap-4 md:grid-cols-2"
+                                                        className="grid gap-4 md:grid-cols-3"
                                                     >
                                                         <motion.div
                                                             whileHover={{ scale: 1.02 }}
@@ -1067,6 +1083,34 @@ export default function ArtistOnboarding() {
                                                                     </Label>
                                                                     <p className="text-sm text-muted-foreground mt-1">
                                                                         Use an existing asset code and asset issuer.
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </motion.div>
+                                                        <motion.div
+                                                            whileHover={{ scale: 1.02 }}
+                                                            transition={{ duration: 0.2 }}
+                                                            className={cn(
+                                                                "relative overflow-hidden rounded-xl border p-6 cursor-pointer transition-all duration-300",
+                                                                formData.assetType === "skip"
+                                                                    ? "border-primary bg-primary/5 shadow-md"
+                                                                    : "hover:border-primary hover:bg-primary/5",
+                                                            )}
+                                                            onClick={() => handleRadioChange("skip")}
+                                                        >
+                                                            <div className="absolute top-4 right-4">
+                                                                <RadioGroupItem value="skip" id="skip-asset" />
+                                                            </div>
+                                                            <div className="flex flex-col gap-3">
+                                                                <div className="rounded-full bg-muted/20 p-3 w-fit text-muted-foreground">
+                                                                    <ArrowRight className="h-5 w-5" />
+                                                                </div>
+                                                                <div>
+                                                                    <Label htmlFor="skip-asset" className="text-lg font-medium cursor-pointer">
+                                                                        Skip for Now
+                                                                    </Label>
+                                                                    <p className="text-sm text-muted-foreground mt-1">
+                                                                        Continue without creating an asset. You can add one later.
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -1230,7 +1274,7 @@ export default function ArtistOnboarding() {
                                                                     </ul>
                                                                 </div>
                                                             </motion.div>
-                                                        ) : (
+                                                        ) : formData.assetType === "custom" ? (
                                                             <motion.div
                                                                 key="custom-asset"
                                                                 initial={{ opacity: 0, y: 20 }}
@@ -1397,7 +1441,48 @@ export default function ArtistOnboarding() {
                                                                     )}
                                                                 </div>
                                                             </motion.div>
-                                                        )}
+                                                        ) : formData.assetType === "skip" ? (
+                                                            <motion.div
+                                                                key="skip-asset"
+                                                                initial={{ opacity: 0, y: 20 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                exit={{ opacity: 0, y: -20 }}
+                                                                transition={{ duration: 0.3 }}
+                                                                className="space-y-6 pt-4"
+                                                            >
+                                                                <div className="rounded-lg bg-muted/30 p-6 border border-border text-center">
+                                                                    <div className="flex flex-col items-center gap-4">
+                                                                        <div className="rounded-full bg-primary/10 p-4">
+                                                                            <CheckCircle2 className="h-8 w-8 text-primary" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <h3 className="font-medium text-lg">Asset Creation Skipped</h3>
+                                                                            <p className="text-sm text-muted-foreground mt-2">
+                                                                                You can create and manage assets later from your organization dashboard. This
+                                                                                won{"'"}t affect your ability to use the platform.
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="rounded-lg bg-primary/10 p-4 border border-primary/20 max-w-md">
+                                                                            <h4 className="font-medium text-sm">What you can do later:</h4>
+                                                                            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                                                                <li className="flex items-start gap-2">
+                                                                                    <CheckCircle2 className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                                                                                    <span>Create new assets from your dashboard</span>
+                                                                                </li>
+                                                                                <li className="flex items-start gap-2">
+                                                                                    <CheckCircle2 className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                                                                                    <span>Import existing custom assets</span>
+                                                                                </li>
+                                                                                <li className="flex items-start gap-2">
+                                                                                    <CheckCircle2 className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                                                                                    <span>Manage all your assets in one place</span>
+                                                                                </li>
+                                                                            </ul>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </motion.div>
+                                                        ) : null}
                                                     </AnimatePresence>
                                                 </div>
                                             </div>
@@ -1478,7 +1563,6 @@ export default function ArtistOnboarding() {
                                                             )}
                                                         </motion.div>
 
-                                                        {/* Asset Details Section */}
                                                         <motion.div
                                                             initial={{ opacity: 0, y: 20 }}
                                                             animate={{ opacity: 1, y: 0 }}
@@ -1500,47 +1584,63 @@ export default function ArtistOnboarding() {
                                                                 </Button>
                                                             </div>
                                                             <div>
-                                                                <Badge className="mb-2">
-                                                                    {formData.assetType === "new" ? "New Asset" : "Custom Asset"}
-                                                                </Badge>
-                                                                {formData.assetType === "new" ? (
-                                                                    <div className="space-y-3">
-                                                                        <div className="flex items-center gap-3">
-                                                                            {formData.assetImagePreview ? (
-                                                                                <div className="relative h-12 w-12 overflow-hidden rounded-md border border-border">
-                                                                                    <Image
-                                                                                        src={formData.assetImagePreview || "/placeholder.svg"}
-                                                                                        alt="Asset"
-                                                                                        fill
-                                                                                        className="object-cover"
-                                                                                    />
-                                                                                </div>
-                                                                            ) : (
-                                                                                <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted">
-                                                                                    <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                                                                                </div>
-                                                                            )}
-                                                                            <div>
-                                                                                <h4 className="font-medium">{formData.assetName || "Asset Name"}</h4>
-                                                                                <p className="text-xs text-muted-foreground">New asset</p>
-                                                                            </div>
+                                                                {formData.assetType === "skip" ? (
+                                                                    <div className="text-center py-8">
+                                                                        <div className="rounded-full bg-muted/20 p-4 w-fit mx-auto mb-3">
+                                                                            <ArrowRight className="h-6 w-6 text-muted-foreground" />
                                                                         </div>
+                                                                        <Badge variant="outline" className="mb-2">
+                                                                            Asset Creation Skipped
+                                                                        </Badge>
+                                                                        <p className="text-sm text-muted-foreground">
+                                                                            You chose to skip asset creation. You can create assets later from your dashboard.
+                                                                        </p>
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="space-y-3">
-                                                                        <div>
-                                                                            <h4 className="text-sm font-medium">Asset Name</h4>
-                                                                            <p className="text-sm text-muted-foreground truncate">
-                                                                                {formData.assetCode || "Not provided"}
-                                                                            </p>
-                                                                        </div>
-                                                                        <div>
-                                                                            <h4 className="text-sm font-medium">Issuer</h4>
-                                                                            <p className="text-sm text-muted-foreground truncate">
-                                                                                {formData.issuer || "Not provided"}
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
+                                                                    <>
+                                                                        <Badge className="mb-2">
+                                                                            {formData.assetType === "new" ? "New Asset" : "Custom Asset"}
+                                                                        </Badge>
+                                                                        {formData.assetType === "new" ? (
+                                                                            <div className="space-y-3">
+                                                                                <div className="flex items-center gap-3">
+                                                                                    {formData.assetImagePreview ? (
+                                                                                        <div className="relative h-12 w-12 overflow-hidden rounded-md border border-border">
+                                                                                            <Image
+                                                                                                src={formData.assetImagePreview || "/placeholder.svg"}
+                                                                                                alt="Asset"
+                                                                                                fill
+                                                                                                className="object-cover"
+                                                                                            />
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted">
+                                                                                            <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                                                                                        </div>
+                                                                                    )}
+                                                                                    <div>
+                                                                                        <h4 className="font-medium">{formData.assetName || "Asset Name"}</h4>
+                                                                                        <p className="text-xs text-muted-foreground">New asset</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="space-y-3">
+                                                                                <div>
+                                                                                    <h4 className="text-sm font-medium">Asset Name</h4>
+                                                                                    <p className="text-sm text-muted-foreground truncate">
+                                                                                        {formData.assetCode || "Not provided"}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <h4 className="text-sm font-medium">Issuer</h4>
+                                                                                    <p className="text-sm text-muted-foreground truncate">
+                                                                                        {formData.issuer || "Not provided"}
+                                                                                    </p>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </>
                                                                 )}
                                                             </div>
                                                         </motion.div>

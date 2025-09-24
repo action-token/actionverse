@@ -78,6 +78,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "~/components/shadcn/ui/tooltip";
+import AssetCreationModal from "~/components/modal/asset-creation-modal";
 const isValidUrl = (string: string) => {
     try {
         const url = new URL(string);
@@ -89,7 +90,7 @@ const isValidUrl = (string: string) => {
 
 export default function ArtistDashboard() {
     const session = useSession();
-
+    const [isAssetCreationModalOpen, setIsAssetCreationModalOpen] = useState<boolean>(false)
     const [activeTab, setActiveTab] = useState("posts");
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [expandedPackage, setExpandedPackage] = useState<number | null>(null);
@@ -920,44 +921,54 @@ export default function ArtistDashboard() {
                                         <CardTitle className="text-sm font-medium text-muted-foreground">
                                             PageAsset
                                         </CardTitle>
-                                        <Dialog>
-                                            <DialogTrigger asChild>
+                                        {
+                                            code && issuer ? (
+                                                <Dialog>
+                                                    <DialogTrigger asChild>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="border-2"
+                                                        >
+                                                            <Info className="" />
+                                                        </Button>
+                                                    </DialogTrigger>
+                                                    <DialogContent className="max-w-md">
+                                                        <DialogHeader>
+                                                            <DialogTitle className="flex items-center gap-2">
+                                                                <Info className="h-5 w-5" />
+                                                                Wallet Information
+                                                            </DialogTitle>
+                                                        </DialogHeader>
+
+                                                        <div className="mt-4 space-y-4">
+                                                            Please deposit {code} to the following wallet for your
+                                                            custom asset
+                                                            <CopyableField
+                                                                label="Wallet Address"
+                                                                value={walletAddress ?? ""}
+                                                                description="Public Key"
+                                                            />
+                                                            <CopyableField label="Issuer" value={issuer ?? ""} />
+                                                            <CopyableField label="Code" value={code ?? ""} />
+                                                        </div>
+
+                                                        <div className="mt-6 rounded-lg bg-muted/50 p-3">
+                                                            <p className="text-center text-xs text-muted-foreground">
+                                                                Hover over any field and click the copy icon to copy
+                                                                to clipboard
+                                                            </p>
+                                                        </div>
+                                                    </DialogContent>
+                                                </Dialog>
+                                            ) : (
                                                 <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="border-2"
+                                                    onClick={() => setIsAssetCreationModalOpen(true)}
                                                 >
-                                                    <Info className="" />
+                                                    Create
                                                 </Button>
-                                            </DialogTrigger>
-                                            <DialogContent className="max-w-md">
-                                                <DialogHeader>
-                                                    <DialogTitle className="flex items-center gap-2">
-                                                        <Info className="h-5 w-5" />
-                                                        Wallet Information
-                                                    </DialogTitle>
-                                                </DialogHeader>
-
-                                                <div className="mt-4 space-y-4">
-                                                    Please deposit {code} to the following wallet for your
-                                                    custom asset
-                                                    <CopyableField
-                                                        label="Wallet Address"
-                                                        value={walletAddress ?? ""}
-                                                        description="Public Key"
-                                                    />
-                                                    <CopyableField label="Issuer" value={issuer ?? ""} />
-                                                    <CopyableField label="Code" value={code ?? ""} />
-                                                </div>
-
-                                                <div className="mt-6 rounded-lg bg-muted/50 p-3">
-                                                    <p className="text-center text-xs text-muted-foreground">
-                                                        Hover over any field and click the copy icon to copy
-                                                        to clipboard
-                                                    </p>
-                                                </div>
-                                            </DialogContent>
-                                        </Dialog>
+                                            )
+                                        }
                                     </CardHeader>
                                     <CardContent>
                                         <div className="flex items-center gap-2">
@@ -997,29 +1008,49 @@ export default function ArtistDashboard() {
                                     {subscriptionPackages.isLoading && (
                                         <SubscriptionPackagesSkeleton />
                                     )}
-                                    {subscriptionPackages.data?.length === 0 && (
-                                        <div className="rounded-lg bg-muted/30 py-12 text-center">
-                                            <ImageIcon className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                                            <h3 className="mb-2 text-lg font-medium">
-                                                No Subscription Packages Found
-                                            </h3>
-                                            <p className="mb-4 text-muted-foreground">
-                                                Start creating subscription packages for your followers
-                                            </p>
-                                            <Button
-                                                onClick={() =>
-                                                    openForCreate({
-                                                        customPageAsset:
-                                                            creator.data?.customPageAssetCodeIssuer,
-                                                        pageAsset: creator.data?.pageAsset,
-                                                    })
-                                                }
-                                            >
-                                                <Plus className="mr-2 h-4 w-4" />
-                                                Create New Package
-                                            </Button>
-                                        </div>
-                                    )}
+                                    {
+                                        code && issuer ?
+                                            subscriptionPackages.data?.length === 0 && (
+                                                <div className="rounded-lg bg-muted/30 py-12 text-center">
+                                                    <ImageIcon className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                                                    <h3 className="mb-2 text-lg font-medium">
+                                                        No Subscription Packages Found
+                                                    </h3>
+                                                    <p className="mb-4 text-muted-foreground">
+                                                        Start creating subscription packages for your followers
+                                                    </p>
+                                                    <Button
+                                                        onClick={() =>
+                                                            openForCreate({
+                                                                customPageAsset:
+                                                                    creator.data?.customPageAssetCodeIssuer,
+                                                                pageAsset: creator.data?.pageAsset,
+                                                            })
+                                                        }
+                                                    >
+                                                        <Plus className="mr-2 h-4 w-4" />
+                                                        Create New Package
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <div className="rounded-lg bg-muted/30 py-12 text-center">
+                                                    <ImageIcon className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                                                    <h3 className="mb-2 text-lg font-medium">
+                                                        Create Page asset first
+                                                    </h3>
+                                                    <p className="mb-4 text-muted-foreground">
+                                                        Start creating subscription packages for your followers
+                                                    </p>
+                                                    <Button
+                                                        onClick={() =>
+                                                            setIsAssetCreationModalOpen(true)
+                                                        }
+                                                    >
+                                                        <Plus className="mr-2 h-4 w-4" />
+                                                        Create Page asset
+                                                    </Button>
+                                                </div>
+                                            )}
                                     {subscriptionPackages.data?.map((pkg) => (
                                         <Card
                                             key={pkg.id}
@@ -1289,6 +1320,11 @@ export default function ArtistDashboard() {
                     </div>
                 </div>
             </div>
+            <AssetCreationModal
+                isOpen={isAssetCreationModalOpen}
+                onClose={() => setIsAssetCreationModalOpen(false)}
+
+            />
         </div>
     );
 }

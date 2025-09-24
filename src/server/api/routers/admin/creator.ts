@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { creatorAprovalTrustlineTrx, creatorAprovalTrx } from "~/lib/stellar/fan/creator-aproval";
+import { creatorAprovalTrustlineTrx, creatorAprovalTrustlineWithoutPageAsset, creatorAprovalTrx } from "~/lib/stellar/fan/creator-aproval";
 import { AccountSchema, AccountType } from "~/lib/stellar/fan/utils";
 import {
   adminProcedure,
@@ -120,8 +120,11 @@ export const creatorRouter = createTRPCRouter({
       }
     }),
 
-  creatorRequestXdr: adminProcedure
-    .input(z.object({ creatorId: z.string() }))
+  creatorRequestXdr: protectedProcedure
+    .input(z.object({
+      creatorId: z.string(),
+
+    }))
     .mutation(async ({ ctx, input }) => {
       // here two type of request will be made
       // 1. create storage account
@@ -162,6 +165,11 @@ export const creatorRouter = createTRPCRouter({
         return await creatorAprovalTrustlineTrx({
           storage: validStorage ? storage : undefined,
           customPageAssetCodeIssuer: customPageAssetCodeIssuer,
+        })
+      }
+      else {
+        return await creatorAprovalTrustlineWithoutPageAsset({
+          storage: validStorage ? storage : undefined,
         })
       }
 
