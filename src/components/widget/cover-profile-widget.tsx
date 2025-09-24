@@ -805,11 +805,11 @@ export default function CoverProfileWidget({
                                     <Button
                                         disabled={
                                             UpdateCreatorProfileInfo.isLoading ??
-                                            !!formErrors.name ??
-                                            !!formErrors.bio ??
-                                            !!formErrors.website ??
-                                            !!formErrors.twitter ??
-                                            !!formErrors.instagram
+                                            formErrors.name ??
+                                            formErrors.bio ??
+                                            formErrors.website ??
+                                            formErrors.twitter ??
+                                            formErrors.instagram
                                         }
                                         size="sm"
                                         onClick={handleSaveProfile}
@@ -1001,11 +1001,11 @@ export default function CoverProfileWidget({
                                     <Button
                                         disabled={
                                             UpdateCreatorProfileInfo.isLoading ??
-                                            !!formErrors.name ??
-                                            !!formErrors.bio ??
-                                            !!formErrors.website ??
-                                            !!formErrors.twitter ??
-                                            !!formErrors.instagram
+                                            formErrors.name ??
+                                            formErrors.bio ??
+                                            formErrors.website ??
+                                            formErrors.twitter ??
+                                            formErrors.instagram
                                         }
                                         onClick={handleSaveProfile}
                                     >
@@ -1243,11 +1243,11 @@ export default function CoverProfileWidget({
                                 <Button
                                     disabled={
                                         UpdateCreatorProfileInfo.isLoading ??
-                                        !!formErrors.name ??
-                                        !!formErrors.bio ??
-                                        !!formErrors.website ??
-                                        !!formErrors.twitter ??
-                                        !!formErrors.instagram
+                                        formErrors.name ??
+                                        formErrors.bio ??
+                                        formErrors.website ??
+                                        formErrors.twitter ??
+                                        formErrors.instagram
                                     }
                                     onClick={handleSaveProfile}
                                 >
@@ -1433,11 +1433,11 @@ export default function CoverProfileWidget({
                             <Button
                                 disabled={
                                     UpdateCreatorProfileInfo.isLoading ??
-                                    !!formErrors.name ??
-                                    !!formErrors.bio ??
-                                    !!formErrors.website ??
-                                    !!formErrors.twitter ??
-                                    !!formErrors.instagram
+                                    formErrors.name ??
+                                    formErrors.bio ??
+                                    formErrors.website ??
+                                    formErrors.twitter ??
+                                    formErrors.instagram
                                 }
                                 size="sm"
                                 onClick={handleSaveProfile}
@@ -1686,11 +1686,11 @@ export default function CoverProfileWidget({
                                 <Button
                                     disabled={
                                         UpdateCreatorProfileInfo.isLoading ??
-                                        !!formErrors.name ??
-                                        !!formErrors.bio ??
-                                        !!formErrors.website ??
-                                        !!formErrors.twitter ??
-                                        !!formErrors.instagram
+                                        formErrors.name ??
+                                        formErrors.bio ??
+                                        formErrors.website ??
+                                        formErrors.twitter ??
+                                        formErrors.instagram
                                     }
                                     onClick={handleSaveProfile}
                                 >
