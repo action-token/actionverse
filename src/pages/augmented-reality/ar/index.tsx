@@ -8,7 +8,7 @@ import {
   LocationBased,
   WebcamRenderer,
 } from "~/lib/augmented-reality/locationbased-ar"
-import { ArrowLeft, Coins, Navigation, X, Camera, Smartphone, MapPin, AlertTriangle, RefreshCw } from "lucide-react"
+import { ArrowLeft, Coins, Navigation, X, Camera, Smartphone, MapPin, AlertTriangle, RefreshCw, Circle } from "lucide-react"
 import ArCard from "~/components/common/ar-card"
 import { ARCoin } from "~/components/common/AR-Coin"
 import { BASE_URL } from "~/lib/common"
@@ -17,6 +17,7 @@ import useWindowDimensions from "~/lib/state/augmented-reality/useWindowWidth"
 import type { ConsumedLocation } from "~/types/game/location"
 import { Button } from "~/components/shadcn/ui/button"
 import { useRouter } from "next/router"
+import Image from "next/image"
 
 const ARPage = () => {
   const router = useRouter()
@@ -714,7 +715,7 @@ const ARPage = () => {
             intersect.object.getWorldPosition(vector)
             vector.project(camera)
             const left = ((vector.x + 1) / 2) * window.innerWidth
-            const top = (-(vector.y - 1) / 2) * window.innerHeight
+            const top = 120
             setInfoBoxPosition({ left, top })
 
             previousIntersectedObject.current = intersect.object
@@ -1004,81 +1005,211 @@ const ARPage = () => {
         />
       )}
 
-      {/* Bottom UI */}
       {selectedPin && (
-        <div className="absolute bottom-48 left-0 right-0 w-full bg-black/90 backdrop-blur-sm z-40">
-          <div className="flex items-stretch" style={{ width: winDim.width }}>
-            <div className="flex flex-1 items-center space-x-4 p-4">
-              <div className="text-white">
-                <p className="text-sm font-semibold text-yellow-400">{selectedPin.title}</p>
-                <p className="text-lg font-bold">{selectedPin.brand_name}</p>
-              </div>
-            </div>
-            <div className="my-2 w-px self-stretch bg-gray-700" aria-hidden="true"></div>
-            <div className="flex flex-1 items-center space-x-4 p-4">
-              <div className="text-white">
-                <p className="text-sm font-semibold text-yellow-400">Remaining:</p>
-                <p className="text-lg font-bold">{selectedPin.collection_limit_remaining}</p>
-              </div>
-            </div>
-            <div className="my-2 w-px self-stretch bg-gray-700" aria-hidden="true"></div>
+        <div className="fixed bottom-0 left-0 right-0 w-full z-40">
+          <div className="flex justify-center pb-8 pt-4">
             {!data.singleAR && (
-              <div className="flex items-center p-4">
-                <button
-                  onClick={simulateApiCall}
-                  className="rounded-lg bg-blue-500 px-6 py-2 font-semibold text-white transition-colors duration-200 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50"
-                >
-                  Capture
-                </button>
-              </div>
+              <button
+                onClick={simulateApiCall}
+                disabled={showLoading}
+                className="group relative flex items-center justify-center w-20 h-20 bg-white rounded-full shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                <Image
+
+                  src="/augmented-reality/assets/images/capture.png"
+                  alt={selectedPin.brand_name}
+                  width={80}
+                  height={80}
+                  className="h-20 w-20 object-cover rounded-full" />
+              </button>
             )}
+          </div>
+
+          {/* Optional capture hint */}
+          <div className="text-center pb-4">
+            <p className="text-white text-sm opacity-75">{showLoading ? "Collecting..." : "Tap to Collect"}</p>
           </div>
         </div>
       )}
-
-      {/* Collection Animation */}
+      {/* Enhanced Collection Animation with Brand Logo Rain */}
       {showCollectionAnimation && collectedPin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm">
+
+          {/* Enhanced Brand Logo Rain Animation */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {Array.from({ length: 50 }).map((_, i) => (
+              <div
+                key={`rain-${i}`}
+                className="absolute animate-brand-rain opacity-90"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `-20%`,
+                  animationDelay: `${i * 0.1}s`,
+                  animationDuration: `${2 + Math.random() * 3}s`,
+                }}
+              >
+                <div className="relative">
+                  {/* Glow effect behind logo */}
+                  <div className="absolute inset-0 w-12 h-12 rounded-full bg-gradient-to-br from-yellow-300/50 to-yellow-500/50 blur-sm scale-110" />
+
+                  {/* Brand logo container */}
+                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-yellow-400/70 shadow-xl bg-white/90 backdrop-blur-sm relative z-10">
+                    <img
+                      src={collectedPin.brand_image_url ?? "/placeholder.svg?height=48&width=48"}
+                      alt={collectedPin.brand_name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = "/placeholder.svg?height=48&width=48&text=" + encodeURIComponent(collectedPin.brand_name)
+                      }}
+                    />
+                  </div>
+
+                  {/* Small sparkle trail */}
+                  <div className="absolute top-1/2 left-1/2 w-1 h-1 bg-yellow-300 rounded-full animate-sparkle-trail"
+                    style={{ animationDelay: `${i * 0.1}s` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Side Rain Curtains for more dramatic effect */}
+          <div className="absolute left-0 top-0 w-1/4 h-full pointer-events-none overflow-hidden">
+            {Array.from({ length: 15 }).map((_, i) => (
+              <div
+                key={`left-rain-${i}`}
+                className="absolute animate-brand-rain-side opacity-80"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `-15%`,
+                  animationDelay: `${i * 0.2}s`,
+                  animationDuration: `${1.5 + Math.random() * 2}s`,
+                }}
+              >
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-yellow-400/50 shadow-lg bg-white/80">
+                  <img
+                    src={collectedPin.brand_image_url ?? "/placeholder.svg?height=32&width=32"}
+                    alt={collectedPin.brand_name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = "/placeholder.svg?height=32&width=32&text=" + encodeURIComponent(collectedPin.brand_name)
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="absolute right-0 top-0 w-1/4 h-full pointer-events-none overflow-hidden">
+            {Array.from({ length: 15 }).map((_, i) => (
+              <div
+                key={`right-rain-${i}`}
+                className="absolute animate-brand-rain-side opacity-80"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `-15%`,
+                  animationDelay: `${i * 0.15}s`,
+                  animationDuration: `${1.8 + Math.random() * 2.5}s`,
+                }}
+              >
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-yellow-400/50 shadow-lg bg-white/80">
+                  <img
+                    src={collectedPin.brand_image_url ?? "/placeholder.svg?height=32&width=32"}
+                    alt={collectedPin.brand_name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = "/placeholder.svg?height=32&width=32&text=" + encodeURIComponent(collectedPin.brand_name)
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div className="relative flex flex-col items-center">
+            {/* Enhanced floating particles */}
+            <div className="absolute inset-0 pointer-events-none">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute animate-float-particle opacity-70"
+                  style={{
+                    left: `${20 + ((i * 60) % 80)}%`,
+                    top: `${10 + ((i * 40) % 70)}%`,
+                    animationDelay: `${i * 0.3}s`,
+                    animationDuration: `${3 + (i % 3)}s`,
+                  }}
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full ${i % 4 === 0
+                      ? "bg-yellow-300"
+                      : i % 4 === 1
+                        ? "bg-yellow-400"
+                        : i % 4 === 2
+                          ? "bg-white"
+                          : "bg-yellow-200"
+                      } animate-pulse`}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Main coin with enhanced effects */}
             <div className="relative mb-8">
-              <div className="animate-bounce">
-                <div className="relative mx-auto h-32 w-32">
-                  <div className="animate-spin-slow absolute inset-0 rotate-12 transform rounded-full bg-gradient-to-br from-yellow-300 via-yellow-400 to-yellow-600 shadow-2xl">
-                    <div className="absolute inset-2 overflow-hidden rounded-full border-4 border-yellow-200">
+              <div className="animate-bounce-gentle">
+                <div className="relative mx-auto h-40 w-40">
+                  {/* Outer glow ring */}
+                  <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-300 opacity-30 animate-pulse-slow" />
+
+                  {/* Main spinning coin */}
+                  <div className="animate-spin-elegant absolute inset-0 rotate-12 transform rounded-full bg-gradient-to-br from-yellow-300 via-yellow-400 to-yellow-600 shadow-2xl">
+                    <div className="absolute inset-3 overflow-hidden rounded-full border-4 border-yellow-200 shadow-inner">
                       <img
                         src={collectedPin.brand_image_url ?? "/placeholder.svg?height=200&width=200"}
                         alt={collectedPin.brand_name}
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-cover transition-transform duration-1000 hover:scale-110"
                         onError={(e) => {
-                          e.currentTarget.src =
-                            "/placeholder.svg?height=200&width=200&text=" + encodeURIComponent(collectedPin.brand_name)
+                          e.currentTarget.src = "/placeholder.svg?height=200&width=200&text=" + encodeURIComponent(collectedPin.brand_name)
                         }}
                       />
                     </div>
                   </div>
-                  <div className="absolute -left-2 -top-2 h-4 w-4 animate-ping rounded-full bg-yellow-300"></div>
-                  <div className="animation-delay-200 absolute -right-3 -top-1 h-3 w-3 animate-ping rounded-full bg-white"></div>
-                  <div className="animation-delay-400 absolute -bottom-2 -left-3 h-2 w-2 animate-ping rounded-full bg-yellow-400"></div>
-                  <div className="animation-delay-600 absolute -bottom-1 -right-2 h-3 w-3 animate-ping rounded-full bg-yellow-200"></div>
-                  <div className="absolute inset-0 scale-110 animate-pulse rounded-full bg-yellow-400 opacity-30"></div>
+
+                  {/* Enhanced sparkle effects */}
+                  <div className="absolute -left-3 -top-3 h-6 w-6 animate-sparkle-1 rounded-full bg-yellow-300 opacity-80"></div>
+                  <div className="absolute -right-4 -top-2 h-4 w-4 animate-sparkle-2 rounded-full bg-white opacity-90"></div>
+                  <div className="absolute -bottom-3 -left-4 h-3 w-3 animate-sparkle-3 rounded-full bg-yellow-400 opacity-75"></div>
+                  <div className="absolute -bottom-2 -right-3 h-5 w-5 animate-sparkle-4 rounded-full bg-yellow-200 opacity-85"></div>
+
+                  {/* Pulsing aura */}
+                  <div className="absolute inset-0 scale-125 animate-pulse-aura rounded-full bg-yellow-400 opacity-20"></div>
+
+                  {/* Rotating light rays */}
+                  <div className="absolute inset-0 animate-rotate-rays">
+                    <div className="absolute top-0 left-1/2 w-1 h-8 bg-gradient-to-t from-transparent to-yellow-300 transform -translate-x-1/2 -translate-y-4 opacity-60" />
+                    <div className="absolute bottom-0 left-1/2 w-1 h-8 bg-gradient-to-b from-transparent to-yellow-300 transform -translate-x-1/2 translate-y-4 opacity-60" />
+                    <div className="absolute left-0 top-1/2 h-1 w-8 bg-gradient-to-l from-transparent to-yellow-300 transform -translate-y-1/2 -translate-x-4 opacity-60" />
+                    <div className="absolute right-0 top-1/2 h-1 w-8 bg-gradient-to-r from-transparent to-yellow-300 transform -translate-y-1/2 translate-x-4 opacity-60" />
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="space-y-4 text-center text-white">
-              <div className="animate-bounce text-6xl">🎉</div>
-              <h2 className="animate-pulse text-4xl font-bold text-yellow-400">Coin Collected!</h2>
-              <div className="max-w-md rounded-lg bg-black bg-opacity-50 p-6">
-                <h3 className="mb-2 text-2xl font-semibold text-white">{collectedPin.brand_name}</h3>
-                <p className="mb-2 text-lg text-yellow-300">{collectedPin.title}</p>
-                <p className="text-sm text-gray-300">{collectedPin.description}</p>
-                <div className="mt-4 flex items-center justify-center space-x-2">
-                  <Coins className="h-5 w-5 text-yellow-400" />
-                  <span className="font-semibold text-yellow-400">+1 Coin Added to Collection</span>
-                </div>
-              </div>
+
+            {/* Collection Success Text */}
+            <div className="text-center mb-6">
+              <h2 className="text-3xl font-bold text-white animate-title-glow mb-2">
+                {collectedPin.brand_name} Collected!
+              </h2>
+              <p className="text-yellow-300 text-lg animate-pulse">
+                Brand pin added to your collection
+              </p>
             </div>
-            <div className="mt-8 h-2 w-64 rounded-full bg-gray-700">
-              <div className="animate-progress-fill h-2 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600"></div>
+
+            {/* Enhanced progress bar */}
+            <div className="mt-10 relative">
+              <div className="h-3 w-80 rounded-full bg-gray-700/50 backdrop-blur-sm border border-gray-600/30">
+                <div className="animate-progress-fill-enhanced h-3 rounded-full bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 shadow-lg"></div>
+              </div>
+              <div className="absolute -top-1 left-0 w-full h-5 bg-gradient-to-r from-yellow-400/30 to-yellow-600/30 rounded-full animate-progress-glow"></div>
             </div>
           </div>
         </div>
@@ -1086,43 +1217,151 @@ const ARPage = () => {
 
       {/* Loading overlay */}
       {showLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="rounded-lg bg-white p-6 text-center">
-            <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-t-4 border-blue-500"></div>
-            <p className="text-xl font-bold">Capturing the coin...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Success animation */}
-      {showSuccess && (
-        <div className="absolute inset-0 flex items-center justify-center bg-green-500 bg-opacity-50 z-50">
-          <div className="rounded-lg bg-white p-6 text-center">
-            <div className="mb-4 text-6xl">✅</div>
-            <p className="mb-2 text-2xl font-bold text-green-600">Collection Complete!</p>
-            <p className="text-lg">{collectedPin?.brand_name} added to your collection</p>
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm z-50">
+          <div className="rounded-xl bg-white/95 backdrop-blur-sm p-8 text-center shadow-2xl border border-gray-200">
+            <div className="mx-auto mb-6 h-20 w-20 animate-spin rounded-full border-t-4 border-blue-500 border-r-4 border-r-transparent"></div>
+            <p className="text-2xl font-bold text-gray-800">Capturing the pin...</p>
+            <p className="text-sm text-gray-600 mt-2">Please wait while we process your capture</p>
           </div>
         </div>
       )}
 
       <style jsx>{`
-        @keyframes spin-slow {
+        @keyframes brand-rain {
+          0% { 
+            transform: translateY(-120vh) translateX(0px) rotate(0deg) scale(0.8); 
+            opacity: 0; 
+          }
+          5% { 
+            opacity: 1; 
+            transform: translateY(-100vh) translateX(0px) rotate(0deg) scale(1); 
+          }
+          90% { 
+            opacity: 0.9; 
+            transform: translateY(100vh) translateX(${Math.random() * 40 - 20}px) rotate(360deg) scale(1);
+          }
+          100% { 
+            transform: translateY(120vh) translateX(${Math.random() * 60 - 30}px) rotate(720deg) scale(0.6); 
+            opacity: 0; 
+          }
+        }
+        
+        @keyframes brand-rain-side {
+          0% { 
+            transform: translateY(-120vh) translateX(0px) rotate(0deg) scale(0.9); 
+            opacity: 0; 
+          }
+          10% { 
+            opacity: 0.8; 
+            transform: translateY(-80vh) translateX(5px) rotate(45deg) scale(1); 
+          }
+          90% { 
+            opacity: 0.7; 
+            transform: translateY(90vh) translateX(-5px) rotate(315deg) scale(0.8);
+          }
+          100% { 
+            transform: translateY(120vh) translateX(${Math.random() * 30 - 15}px) rotate(360deg) scale(0.5); 
+            opacity: 0; 
+          }
+        }
+
+        @keyframes sparkle-trail {
+          0% { opacity: 0; transform: scale(0); }
+          50% { opacity: 1; transform: scale(1.5); }
+          100% { opacity: 0; transform: scale(0); }
+        }
+
+        @keyframes spin-elegant {
+          from { transform: rotate(0deg) scale(1); }
+          50% { transform: rotate(180deg) scale(1.05); }
+          to { transform: rotate(360deg) scale(1); }
+        }
+        
+        @keyframes bounce-gentle {
+          0%, 100% { transform: translateY(0px) scale(1); }
+          50% { transform: translateY(-10px) scale(1.02); }
+        }
+        
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(1.1); }
+        }
+        
+        @keyframes pulse-aura {
+          0%, 100% { opacity: 0.2; transform: scale(1.25); }
+          50% { opacity: 0.4; transform: scale(1.4); }
+        }
+        
+        @keyframes sparkle-1 {
+          0%, 100% { opacity: 0.8; transform: scale(1) rotate(0deg); }
+          25% { opacity: 1; transform: scale(1.3) rotate(90deg); }
+          50% { opacity: 0.6; transform: scale(0.8) rotate(180deg); }
+          75% { opacity: 1; transform: scale(1.2) rotate(270deg); }
+        }
+        
+        @keyframes sparkle-2 {
+          0%, 100% { opacity: 0.9; transform: scale(1) rotate(0deg); }
+          33% { opacity: 0.5; transform: scale(1.4) rotate(120deg); }
+          66% { opacity: 1; transform: scale(0.7) rotate(240deg); }
+        }
+        
+        @keyframes sparkle-3 {
+          0%, 100% { opacity: 0.75; transform: scale(1) rotate(0deg); }
+          40% { opacity: 1; transform: scale(1.5) rotate(144deg); }
+          80% { opacity: 0.8; transform: scale(0.9) rotate(288deg); }
+        }
+        
+        @keyframes sparkle-4 {
+          0%, 100% { opacity: 0.85; transform: scale(1) rotate(0deg); }
+          20% { opacity: 0.6; transform: scale(1.2) rotate(72deg); }
+          40% { opacity: 1; transform: scale(0.8) rotate(144deg); }
+          60% { opacity: 0.7; transform: scale(1.3) rotate(216deg); }
+          80% { opacity: 0.9; transform: scale(1.1) rotate(288deg); }
+        }
+        
+        @keyframes rotate-rays {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        @keyframes progress-fill {
-          from { width: 0%; }
-          to { width: 100%; }
+        
+        @keyframes float-particle {
+          0%, 100% { transform: translateY(0px) translateX(0px) rotate(0deg); opacity: 0.7; }
+          25% { transform: translateY(-20px) translateX(10px) rotate(90deg); opacity: 1; }
+          50% { transform: translateY(-10px) translateX(-15px) rotate(180deg); opacity: 0.5; }
+          75% { transform: translateY(-30px) translateX(5px) rotate(270deg); opacity: 0.8; }
         }
-        .animate-spin-slow {
-          animation: spin-slow 3s linear infinite;
+        
+        @keyframes title-glow {
+          0%, 100% { text-shadow: 0 0 20px rgba(251, 191, 36, 0.5); }
+          50% { text-shadow: 0 0 30px rgba(251, 191, 36, 0.8), 0 0 40px rgba(251, 191, 36, 0.3); }
         }
-        .animate-progress-fill {
-          animation: progress-fill 4s ease-out forwards;
+        
+        @keyframes progress-fill-enhanced {
+          from { width: 0%; box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+          to { width: 100%; box-shadow: 0 0 20px rgba(251, 191, 36, 0.8); }
         }
-        .animation-delay-200 { animation-delay: 0.2s; }
-        .animation-delay-400 { animation-delay: 0.4s; }
-        .animation-delay-600 { animation-delay: 0.6s; }
+        
+        @keyframes progress-glow {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 0.6; }
+        }
+        
+        .animate-brand-rain { animation: brand-rain 3s ease-in infinite; }
+        .animate-brand-rain-side { animation: brand-rain-side 2.5s ease-in infinite; }
+        .animate-sparkle-trail { animation: sparkle-trail 1s ease-in-out infinite; }
+        .animate-spin-elegant { animation: spin-elegant 4s ease-in-out infinite; }
+        .animate-bounce-gentle { animation: bounce-gentle 2s ease-in-out infinite; }
+        .animate-pulse-slow { animation: pulse-slow 3s ease-in-out infinite; }
+        .animate-pulse-aura { animation: pulse-aura 2s ease-in-out infinite; }
+        .animate-sparkle-1 { animation: sparkle-1 2s ease-in-out infinite; }
+        .animate-sparkle-2 { animation: sparkle-2 2.5s ease-in-out infinite; }
+        .animate-sparkle-3 { animation: sparkle-3 3s ease-in-out infinite; }
+        .animate-sparkle-4 { animation: sparkle-4 2.2s ease-in-out infinite; }
+        .animate-rotate-rays { animation: rotate-rays 8s linear infinite; }
+        .animate-float-particle { animation: float-particle 4s ease-in-out infinite; }
+        .animate-title-glow { animation: title-glow 2s ease-in-out infinite; }
+        .animate-progress-fill-enhanced { animation: progress-fill-enhanced 4s ease-out forwards; }
+        .animate-progress-glow { animation: progress-glow 2s ease-in-out infinite; }
       `}</style>
     </>
   )

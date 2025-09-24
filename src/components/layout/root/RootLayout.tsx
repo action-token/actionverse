@@ -51,6 +51,7 @@ export default function Layout({
     "/reward-checker",
   ];
   const isPublicRoute = publicRoutes.includes(router.pathname);
+  const isAugmentedRealityRoute = router.pathname.startsWith("/augmented-reality/ar");
   const isHomeRoute = router.pathname === "/";
   const handleToggle = () => {
     toggle();
@@ -66,9 +67,21 @@ export default function Layout({
       <>
         {session?.status === "authenticated" ? (
           <div className="h-screen w-full overflow-hidden fixed inset-0">
-            <ARLayout>
-              <ARModalProvider />
-              {children}</ARLayout>
+            {
+              isAugmentedRealityRoute ? (
+
+                <>
+                  <ARModalProvider />
+                  {children}
+                </>
+              ) : (
+                <ARLayout>
+                  <ARModalProvider />
+                  {children}
+                </ARLayout>
+              )
+            }
+
           </div>
         ) : (
           <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
