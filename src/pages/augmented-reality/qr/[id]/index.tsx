@@ -106,7 +106,7 @@ const QRARPage = () => {
             setCurrentMedia(null)
         } else if (qrItem?.mediaType === type) {
             setCurrentMedia({
-                type: qrItem.mediaType as "image" | "video" | "audio",
+                type: qrItem.mediaType,
                 url: qrItem.mediaUrl,
                 title: qrItem.title,
             })
@@ -192,21 +192,36 @@ const QRARPage = () => {
         }
     }
 
+    // Start permissions from a user gesture (called by the UI "Allow Permissions" button)
+    const handleStartPermissions = async () => {
+        setIsInitializing(true)
+        // requestPermissions already updates permissionStep and initializationError
+        await requestPermissions()
+    }
+
     // Fetch QR item data
     useEffect(() => {
         const fetchQRItem = async () => {
             if (!id) return
             try {
+                setFetchError(null)
                 const response = await fetch(new URL("api/game/qr/get-qr-by-id", BASE_URL).toString(), {
                     method: "POST",
                     credentials: "include",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
                     body: JSON.stringify({ qrId: id }),
                 })
-                if (!response.ok) throw new Error("Failed to fetch QR item")
+                if (!response.ok) {
+                    throw new Error("Failed to fetch QR item")
+                }
+                console.log("Response received for QR item fetch")
                 const data = (await response.json()) as QRItemData
+                console.log("QR Item Data:", data)
                 setQrItem(data)
             } catch (err) {
+                console.error("Error fetching QR item:", err)
                 setFetchError("An unexpected error occurred while fetching QR item.")
             }
         }
@@ -461,6 +476,8 @@ const QRARPage = () => {
 
     useEffect(() => {
         if (!qrItem) return
+        // only initialize AR after permissions are complete
+        if (permissionStep !== "complete") return
         let cleanup: (() => void) | undefined
         const init = async () => {
             cleanup = await initializeAR()
@@ -469,7 +486,7 @@ const QRARPage = () => {
         return () => {
             if (cleanup) cleanup()
         }
-    }, [qrItem, debugMode, retryCount])
+    }, [qrItem, debugMode, retryCount, permissionStep])
 
     // Permission screen
     if (isInitializing && permissionStep !== "complete") {
@@ -504,9 +521,17 @@ const QRARPage = () => {
                     <p className="text-gray-600 mb-4">{getStepMessage()}</p>
                     <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                     <p className="text-sm text-gray-500">Please allow all permissions when prompted</p>
-                    <Button variant="outline" onClick={() => router.back()} className="w-full mt-4">
-                        Cancel
-                    </Button>
+                    <div className="mt-4 space-y-2">
+                        <Button onClick={handleStartPermissions} className="w-full">
+                            Allow Permissions
+                        </Button>
+                        <div>
+                            <Button variant="outline" onClick={() => router.back()} className="w-full">
+                                Cancel
+                            </Button>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         )
@@ -607,7 +632,7 @@ const QRARPage = () => {
     }
 
     const availableMedias = [
-        { type: "THREE_D" as MediaType, url: qrItem?.mediaUrl || "", title: "3D" },
+        { type: "THREE_D" as MediaType, url: qrItem?.mediaUrl ?? "", title: "3D" },
         ...(qrItem?.mediaType === "IMAGE" || qrItem?.mediaType === "VIDEO" || qrItem?.mediaType === "MUSIC"
             ? [{ type: qrItem.mediaType as MediaType, url: qrItem.mediaUrl, title: qrItem.title }]
             : []),
@@ -631,8 +656,8 @@ const QRARPage = () => {
 
             {currentMedia && currentMedia.type === "IMAGE" && (
                 <ImageViewer
-                    src={currentMedia.url || "/placeholder.svg"}
-                    alt={currentMedia.title || "Image"}
+                    src={currentMedia.url ?? "/placeholder.svg"}
+                    alt={currentMedia.title ?? "IMAGE"}
                     onClose={() => {
                         setCurrentMediaType("THREE_D")
                         setCurrentMedia(null)
@@ -643,7 +668,7 @@ const QRARPage = () => {
             {currentMedia && currentMedia.type === "VIDEO" && (
                 <VideoPlayer
                     src={currentMedia.url}
-                    title={currentMedia.title || "Video"}
+                    title={currentMedia.title ?? "VIDEO"}
                     onClose={() => {
                         setCurrentMediaType("THREE_D")
                         setCurrentMedia(null)
@@ -654,7 +679,7 @@ const QRARPage = () => {
             {currentMedia && currentMedia.type === "MUSIC" && (
                 <AudioPlayer
                     src={currentMedia.url}
-                    title={currentMedia.title || "Audio"}
+                    title={currentMedia.title ?? "MUSIC"}
                     onClose={() => {
                         setCurrentMediaType("THREE_D")
                         setCurrentMedia(null)
