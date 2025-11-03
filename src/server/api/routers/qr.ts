@@ -68,7 +68,8 @@ export const qrRouter = createTRPCRouter({
                     )
                     .min(1, "At least one description is required")
                     .max(4, "Maximum 4 descriptions allowed"),
-                modelUrl: z.string().url("Invalid model URL"),
+                mediaUrl: z.string().url("Invalid media URL"),
+                mediaType: z.enum(["THREE_D", "IMAGE", "VIDEO", "MUSIC"]),
                 externalLink: z.string().url().optional(),
                 startDate: z.date(),
                 endDate: z.date(),
@@ -96,7 +97,8 @@ export const qrRouter = createTRPCRouter({
                 const qrItem = await tx.qRItem.create({
                     data: {
                         title: input.title,
-                        modelUrl: input.modelUrl,
+                        mediaUrl: input.mediaUrl,
+                        mediaType: input.mediaType,
                         externalLink: input.externalLink,
                         startDate: input.startDate,
                         endDate: input.endDate,
@@ -123,90 +125,7 @@ export const qrRouter = createTRPCRouter({
                 isActive: new Date() >= result.startDate && new Date() <= result.endDate,
             }
         }),
-    // Update a QR item
-    updateQRItem: protectedProcedure
-        .input(
-            z.object({
-                id: z.string(),
-                title: z.string().min(1, "Title is required").max(100, "Title too long").optional(),
-                description: z.string().min(1, "Description is required").max(500, "Description too long").optional(),
-                modelUrl: z.string().url().optional().nullable(),
-                externalLink: z.string().url().optional().nullable(),
-                startDate: z.date().optional(),
-                endDate: z.date().optional(),
-            }),
-        )
-        .mutation(async ({ ctx, input }) => {
-            // Check if the QR item exists and belongs to the user
-            const existingItem = await ctx.db.qRItem.findFirst({
-                where: {
-                    id: input.id,
-                    creatorId: ctx.session.user.id,
-                },
-            })
 
-            if (!existingItem) {
-                throw new TRPCError({
-                    code: "NOT_FOUND",
-                    message: "QR item not found or you don't have permission to edit it",
-                })
-            }
-
-            // Validate dates if provided
-            const startDate = input.startDate ?? existingItem.startDate
-            const endDate = input.endDate ?? existingItem.endDate
-
-            if (startDate >= endDate) {
-                throw new TRPCError({
-                    code: "BAD_REQUEST",
-                    message: "End date must be after start date",
-                })
-            }
-
-            // Update the item
-            const updatedData: {
-                title?: string
-                description?: string
-                modelUrl?: string
-                externalLink?: string | null
-                startDate?: Date
-                endDate?: Date
-                qrCode?: string
-            } = {
-                ...(input.title !== undefined && { title: input.title }),
-                ...(input.description !== undefined && { description: input.description }),
-                ...(input.modelUrl !== undefined && { modelUrl: input.modelUrl ?? undefined }),
-                ...(input.externalLink !== undefined && { externalLink: input.externalLink }),
-                ...(input.startDate !== undefined && { startDate: input.startDate }),
-                ...(input.endDate !== undefined && { endDate: input.endDate }),
-            }
-
-            // Generate new QR code data if content changed
-            if (Object.keys(updatedData).length > 0) {
-                const qrData = JSON.stringify({
-                    title: input.title ?? existingItem.title,
-                    description: input.description ?? null,
-                    modelUrl: input.modelUrl ?? existingItem.modelUrl,
-                    externalLink: input.externalLink ?? existingItem.externalLink,
-                    startDate: startDate,
-                    endDate: endDate,
-                    type: "qr-item",
-                })
-                updatedData.qrCode = qrData
-            }
-
-            const qrItem = await ctx.db.qRItem.update({
-                where: {
-                    id: input.id,
-                },
-                data: updatedData,
-            })
-
-            return {
-                ...qrItem,
-                isActive: new Date() >= qrItem.startDate && new Date() <= qrItem.endDate,
-            }
-        }),
 
     // Delete a QR item
     deleteQRItem: protectedProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {

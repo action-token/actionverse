@@ -1,3 +1,5 @@
+import { MediaType } from "@prisma/client"
+
 export interface QRDescription {
     id: string
     title: string
@@ -9,7 +11,8 @@ export interface QRDescription {
 export interface QRItem {
     id: string
     title: string
-    modelUrl: string
+    mediaUrl: string
+    mediaType: MediaType
     externalLink: string | null
     startDate: Date
     endDate: Date
