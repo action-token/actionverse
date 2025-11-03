@@ -9,7 +9,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
-import { Download, ExternalLink, Calendar, Box, FileText, Copy, Share2, Eye, AlertCircle } from "lucide-react"
+import {
+    Download,
+    ExternalLink,
+    Calendar,
+    Box,
+    FileText,
+    Copy,
+    Share2,
+    Eye,
+    AlertCircle,
+    Music,
+    ImageIcon,
+    Film,
+} from "lucide-react"
 import { format } from "date-fns"
 import toast from "react-hot-toast"
 import QRCode from "react-qr-code"
@@ -19,7 +32,7 @@ import { OrbitControls, Environment, Html, useProgress } from "@react-three/drei
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { Loader2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
-import { QRItem } from "~/types/organization/qr"
+import type { QRItem } from "~/types/organization/qr"
 
 interface QRCodeModalProps {
     isOpen: boolean
@@ -35,6 +48,17 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
     const qrData = JSON.stringify({
         id: qrItem.id,
     })
+
+    const getMediaTabLabel = () => {
+        const mediaType = qrItem.mediaType
+        const labelMap: Record<string, { label: string; icon: React.ReactNode }> = {
+            THREE_D: { label: "3D Model", icon: <Box className="ml-1 h-3 w-3" /> },
+            IMAGE: { label: "Image", icon: <ImageIcon className="ml-1 h-3 w-3" /> },
+            VIDEO: { label: "Video", icon: <Film className="ml-1 h-3 w-3" /> },
+            MUSIC: { label: "Audio", icon: <Music className="ml-1 h-3 w-3" /> },
+        }
+        return labelMap[mediaType]
+    }
 
     const handleDownloadQR = () => {
         const svg = document.getElementById("qr-code-svg")
@@ -89,9 +113,12 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
         return now >= new Date(qrItem.startDate) && now <= new Date(qrItem.endDate)
     }
 
+    const mediaLabel = getMediaTabLabel()
+    const mediaUrl = qrItem.mediaUrl
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         QR Code Details - {qrItem.title}
@@ -102,8 +129,8 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="qr">QR Code</TabsTrigger>
-                        <TabsTrigger value="model" disabled={!qrItem.modelUrl}>
-                            3D Model {qrItem.modelUrl && <Box className="ml-1 h-3 w-3" />}
+                        <TabsTrigger value="media" disabled={!mediaUrl}>
+                            {mediaLabel?.label} {mediaLabel?.icon}
                         </TabsTrigger>
                         <TabsTrigger value="preview">Preview</TabsTrigger>
                     </TabsList>
@@ -155,7 +182,6 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
-                                        {/* Descriptions */}
                                         {qrItem.descriptions && qrItem.descriptions.length > 0 && (
                                             <div className="space-y-3">
                                                 <div className="flex items-center gap-2">
@@ -183,22 +209,28 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                         )}
                                         <Separator />
 
-                                        {/* 3D Model */}
-                                        {qrItem.modelUrl && (
+                                        {mediaUrl && (
                                             <div className="space-y-2">
                                                 <div className="flex items-center gap-2">
-                                                    <Box className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="font-medium">3D Model</span>
+                                                    {qrItem.mediaType === "IMAGE" && (
+                                                        <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                                    )}
+                                                    {qrItem.mediaType === "VIDEO" && <Film className="h-4 w-4 text-muted-foreground" />}
+                                                    {qrItem.mediaType === "MUSIC" && (
+                                                        <Music className="h-4 w-4 text-muted-foreground" />
+                                                    )}
+                                                    {qrItem.mediaType === "THREE_D" && <Box className="h-4 w-4 text-muted-foreground" />}
+                                                    <span className="font-medium">{mediaLabel?.label}</span>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <Button size="sm" variant="outline" onClick={() => setActiveTab("model")} className="gap-1">
+                                                    <Button size="sm" variant="outline" onClick={() => setActiveTab("media")} className="gap-1">
                                                         <Eye className="h-3 w-3" />
-                                                        View Model
+                                                        View {mediaLabel?.label}
                                                     </Button>
                                                     <Button
                                                         size="sm"
                                                         variant="outline"
-                                                        onClick={() => window.open(qrItem.modelUrl, "_blank")}
+                                                        onClick={() => window.open(mediaUrl, "_blank")}
                                                         className="gap-1"
                                                     >
                                                         <ExternalLink className="h-3 w-3" />
@@ -208,8 +240,8 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                                         size="sm"
                                                         variant="ghost"
                                                         onClick={() => {
-                                                            navigator.clipboard.writeText(qrItem.modelUrl)
-                                                            toast.success("Model URL copied!")
+                                                            navigator.clipboard.writeText(mediaUrl)
+                                                            toast.success("Media URL copied!")
                                                         }}
                                                         className="gap-1"
                                                     >
@@ -220,7 +252,6 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                             </div>
                                         )}
 
-                                        {/* External Link */}
                                         {qrItem.externalLink && (
                                             <div className="space-y-2">
                                                 <div className="flex items-center gap-2">
@@ -255,7 +286,6 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
 
                                         <Separator />
 
-                                        {/* QR Data */}
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-2">
                                                 <span className="font-medium">QR Data</span>
@@ -271,23 +301,56 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="model" className="space-y-4">
-                        {qrItem.modelUrl ? (
+                    <TabsContent value="media" className="space-y-4">
+                        {mediaUrl ? (
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
-                                        <Box className="h-5 w-5" />
-                                        3D Model Viewer
+                                        {qrItem.mediaType === "IMAGE" && <ImageIcon className="h-5 w-5" />}
+                                        {qrItem.mediaType === "VIDEO" && <Film className="h-5 w-5" />}
+                                        {qrItem.mediaType === "MUSIC" && <Music className="h-5 w-5" />}
+                                        {qrItem.mediaType === "THREE_D" && <Box className="h-5 w-5" />}
+                                        {mediaLabel?.label} Viewer
                                     </CardTitle>
-                                    <CardDescription>Interactive 3D model - drag to rotate, scroll to zoom</CardDescription>
+                                    <CardDescription>
+                                        {qrItem.mediaType === "IMAGE" && "View the image in full size"}
+                                        {qrItem.mediaType === "VIDEO" && "Interactive video player"}
+                                        {qrItem.mediaType === "MUSIC" && "Audio player"}
+                                        {qrItem.mediaType === "THREE_D" && "Interactive 3D model - drag to rotate, scroll to zoom"}
+                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <ModelViewer modelUrl={qrItem.modelUrl} height="500px" showControls={true} />
+                                    {qrItem.mediaType === "THREE_D" && (
+                                        <ModelViewer modelUrl={mediaUrl} height="500px" showControls={true} />
+                                    )}
+                                    {qrItem.mediaType === "IMAGE" && (
+                                        <div className="flex justify-center bg-gray-100 rounded-lg p-4">
+                                            <img src={mediaUrl || "/placeholder.svg"} alt={qrItem.title} className="max-h-96 rounded-lg" />
+                                        </div>
+                                    )}
+                                    {qrItem.mediaType === "VIDEO" && (
+                                        <video controls className="w-full rounded-lg bg-black" height={400}>
+                                            <source src={mediaUrl} type="video/mp4" />
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    )}
+                                    {qrItem.mediaType === "MUSIC" && (
+                                        <div className="space-y-4">
+                                            <audio controls className="w-full rounded-lg">
+                                                <source src={mediaUrl} type="audio/mpeg" />
+                                                Your browser does not support the audio element.
+                                            </audio>
+                                            <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg p-6 text-white text-center">
+                                                <Music className="h-12 w-12 mx-auto mb-2" />
+                                                <h3 className="text-lg font-semibold">{qrItem.title}</h3>
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="mt-4 flex gap-2">
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => window.open(qrItem.modelUrl, "_blank")}
+                                            onClick={() => window.open(mediaUrl, "_blank")}
                                             className="gap-1"
                                         >
                                             <ExternalLink className="h-3 w-3" />
@@ -297,8 +360,8 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                             size="sm"
                                             variant="outline"
                                             onClick={() => {
-                                                navigator.clipboard.writeText(qrItem.modelUrl)
-                                                toast.success("Model URL copied!")
+                                                navigator.clipboard.writeText(mediaUrl)
+                                                toast.success("Media URL copied!")
                                             }}
                                             className="gap-1"
                                         >
@@ -313,8 +376,8 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                 <CardContent className="flex items-center justify-center h-64">
                                     <div className="text-center">
                                         <Box className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                        <h3 className="text-lg font-medium mb-2">No 3D Model</h3>
-                                        <p className="text-muted-foreground">This QR item doesn{"'"}t have a 3D model attached</p>
+                                        <h3 className="text-lg font-medium mb-2">No Media</h3>
+                                        <p className="text-muted-foreground">This QR item doesn{"'"}t have media attached</p>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -334,7 +397,6 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                             <h3 className="text-2xl font-bold">{qrItem.title}</h3>
                                         </div>
 
-                                        {/* Descriptions */}
                                         {qrItem.descriptions && qrItem.descriptions.length > 0 && (
                                             <div className="space-y-4">
                                                 {qrItem.descriptions
@@ -360,20 +422,43 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                             </span>
                                         </div>
 
-                                        {/* 3D Model Preview */}
-                                        {qrItem.modelUrl && (
+                                        {mediaUrl && (
                                             <div className="bg-white rounded-lg border overflow-hidden">
                                                 <div className="p-4 border-b">
                                                     <div className="flex items-center gap-2">
-                                                        <Box className="h-5 w-5 text-blue-600" />
-                                                        <span className="font-medium">Interactive 3D Model</span>
+                                                        {qrItem.mediaType === "IMAGE" && <ImageIcon className="h-5 w-5 text-blue-600" />}
+                                                        {qrItem.mediaType === "VIDEO" && <Film className="h-5 w-5 text-blue-600" />}
+                                                        {qrItem.mediaType === "MUSIC" && <Music className="h-5 w-5 text-blue-600" />}
+                                                        {qrItem.mediaType === "THREE_D" && <Box className="h-5 w-5 text-blue-600" />}
+                                                        <span className="font-medium">{mediaLabel?.label}</span>
                                                     </div>
                                                 </div>
-                                                <ModelViewer modelUrl={qrItem.modelUrl} height="300px" showControls={false} />
+                                                {qrItem.mediaType === "THREE_D" && (
+                                                    <ModelViewer modelUrl={mediaUrl} height="300px" showControls={false} />
+                                                )}
+                                                {qrItem.mediaType === "IMAGE" && (
+                                                    <img
+                                                        src={mediaUrl || "/placeholder.svg"}
+                                                        alt={qrItem.title}
+                                                        className="w-full h-64 object-cover"
+                                                    />
+                                                )}
+                                                {qrItem.mediaType === "VIDEO" && (
+                                                    <video controls className="w-full bg-black" height={300}>
+                                                        <source src={mediaUrl} type="video/mp4" />
+                                                    </video>
+                                                )}
+                                                {qrItem.mediaType === "MUSIC" && (
+                                                    <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-500">
+                                                        <div className="flex items-center justify-center gap-2 text-white">
+                                                            <Music className="h-6 w-6" />
+                                                            <span className="font-medium">{qrItem.title}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
-                                        {/* External Link Preview */}
                                         {qrItem.externalLink && (
                                             <div className="bg-white p-4 rounded-lg border">
                                                 <div className="flex items-center gap-2 mb-2">
@@ -581,9 +666,7 @@ export function ModelViewer({ modelUrl, className = "", height = "400px", showCo
 
     const handleError = (event: React.SyntheticEvent<HTMLDivElement, Event>) => {
         console.error("3D Model loading error:", event)
-        setError(
-            "Failed to load 3D model. Please check if the file is accessible and in a supported format (GLB, GLTF).",
-        )
+        setError("Failed to load 3D model. Please check if the file is accessible and in a supported format (GLB, GLTF).")
         setIsLoading(false)
     }
 

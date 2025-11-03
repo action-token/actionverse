@@ -68,7 +68,8 @@ export const qrRouter = createTRPCRouter({
                     )
                     .min(1, "At least one description is required")
                     .max(4, "Maximum 4 descriptions allowed"),
-                modelUrl: z.string().url("Invalid model URL"),
+                mediaUrl: z.string().url("Invalid media URL"),
+                mediaType: z.enum(["THREE_D", "IMAGE", "VIDEO", "MUSIC"]),
                 externalLink: z.string().url().optional(),
                 startDate: z.date(),
                 endDate: z.date(),
@@ -96,7 +97,8 @@ export const qrRouter = createTRPCRouter({
                 const qrItem = await tx.qRItem.create({
                     data: {
                         title: input.title,
-                        modelUrl: input.modelUrl,
+                        mediaUrl: input.mediaUrl,
+                        mediaType: input.mediaType,
                         externalLink: input.externalLink,
                         startDate: input.startDate,
                         endDate: input.endDate,

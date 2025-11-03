@@ -838,17 +838,18 @@ model QuarterReward {
 }
 
 model QRItem {
-    id           String   @id @default(cuid())
+    id           String    @id @default(cuid())
     title        String
-    modelUrl     String
+    mediaType    MediaType
+    mediaUrl     String
     externalLink String?
     startDate    DateTime
     endDate      DateTime
-    qrCode       String   @db.Text
-    isActive     Boolean  @default(true)
+    qrCode       String    @db.Text
+    isActive     Boolean   @default(true)
     creatorId    String
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
+    createdAt    DateTime  @default(now())
+    updatedAt    DateTime  @updatedAt
 
     // Relations
     creator      User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)

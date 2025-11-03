@@ -43,7 +43,7 @@ function CreateQrCodeModal({
     onClose: () => void
 }) {
     return (
-        <Dialog open={true} onOpenChange={onClose}>
+        <Dialog open={open} onOpenChange={onClose}>
             <DialogContent className="max-h-[90vh] overflow-auto max-w-2xl">
                 <div className="flex items-center gap-2 mb-4">
 
@@ -57,49 +57,38 @@ function CreateQrCodeModal({
         </Dialog>
     )
 }
-interface DescriptionField {
-    id: string
-    content: string
-    isCollapsed: boolean,
-}
-interface DescriptionField {
+
+interface DescriptionType {
     id: string
     title: string
     content: string
     isCollapsed: boolean
     order: number
 }
-
+interface FormDataType {
+    title: string
+    mediaType: MediaType
+    mediaUrl: string
+    externalLink: string
+    startDate: string
+    endDate: string
+}
 const QrCodeCreate = ({
-
     onClose,
 }: {
-
     onClose: () => void
 }) => {
     const { data: session } = useSession()
     const [progress, setProgress] = useState(0)
 
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<FormDataType>({
         title: "",
-        modelUrl: "",
+        mediaType: "THREE_D",
+        mediaUrl: "",
         externalLink: "",
         startDate: "",
         endDate: "",
     })
-
-    const [descriptions, setDescriptions] = useState<DescriptionField[]>([
-        { id: "temp-1", title: "", content: "", isCollapsed: false, order: 1 },
-    ])
-
-    const [errors, setErrors] = useState<{
-        title?: string
-        descriptions?: Record<string, { title?: string; content?: string }>
-        modelUrl?: string
-        startDate?: string
-        endDate?: string
-    }>({})
-
     const createQRItem = api.qr.createQRItem.useMutation({
         onSuccess: () => {
             toast.success("QR item created successfully!")
@@ -110,11 +99,23 @@ const QrCodeCreate = ({
             toast.error(error.message)
         },
     })
+    const [descriptions, setDescriptions] = useState<DescriptionType[]>([
+        { id: "temp-1", title: "", content: "", isCollapsed: false, order: 1 },
+    ])
+
+    const [errors, setErrors] = useState<{
+        title?: string
+        descriptions?: Record<string, { title?: string; content?: string }>
+        mediaUrl?: string
+        startDate?: string
+        endDate?: string
+    }>({})
 
     const resetForm = () => {
         setFormData({
             title: "",
-            modelUrl: "",
+            mediaType: "THREE_D",
+            mediaUrl: "",
             externalLink: "",
             startDate: "",
             endDate: "",
@@ -147,7 +148,7 @@ const QrCodeCreate = ({
                 descError.title = "Description title must be 50 characters or less"
             }
 
-            // Validate description content - UPDATED TO USE CHARACTER LIMIT
+            // Validate description content
             if (!desc.content.trim()) {
                 descError.content = "Description content cannot be empty"
             } else {
@@ -170,9 +171,14 @@ const QrCodeCreate = ({
             newErrors.descriptions = descriptionErrors
         }
 
-        // Validate model URL
-        if (!formData.modelUrl) {
-            newErrors.modelUrl = "3D Model is required"
+        if (!formData.mediaUrl) {
+            const mediaTypeLabel = {
+                THREE_D: "3D Model",
+                IMAGE: "Image",
+                VIDEO: "Video",
+                MUSIC: "Audio",
+            }[formData.mediaType]
+            newErrors.mediaUrl = `${mediaTypeLabel} is required`
         }
 
         // Validate dates
@@ -211,110 +217,62 @@ const QrCodeCreate = ({
         createQRItem.mutate({
             title: formData.title,
             descriptions: validDescriptions,
-            modelUrl: formData.modelUrl,
+            mediaType: formData.mediaType,
+            mediaUrl: formData.mediaUrl,
             externalLink: formData.externalLink || undefined,
             startDate: new Date(formData.startDate),
             endDate: new Date(formData.endDate),
         })
     }
 
-    const handleModelUpload = () => {
-        const hiddenInput = document.getElementById("qr-model-upload") as HTMLInputElement
+    const handleMediaUpload = () => {
+        const hiddenInput = document.getElementById("qr-media-upload") as HTMLInputElement
         if (hiddenInput) {
             hiddenInput.click()
         }
     }
 
+    const getMediaUploadConfig = () => {
+        switch (formData.mediaType) {
+            case "THREE_D":
+                return { endpoint: "modelUploader" as const, accept: ".glb", label: "3D Model (GLB)" }
+            case "IMAGE":
+                return { endpoint: "imageUploader" as const, accept: ".jpg,.jpeg,.png,.webp", label: "Image" }
+            case "VIDEO":
+                return { endpoint: "videoUploader" as const, accept: ".mp4,.webm,.mov", label: "Video" }
+            case "MUSIC":
+                return { endpoint: "musicUploader" as const, accept: ".mp3,.wav,.m4a,.aac", label: "Audio" }
+        }
+    }
+
+    const mediaConfig = getMediaUploadConfig()
+
     const addDescription = () => {
-        if (descriptions.length >= 4) {
-            toast.error("Maximum 4 descriptions allowed")
-            return
-        }
-
-        // Collapse all existing descriptions
-        const updatedDescriptions = descriptions.map((desc) => ({
-            ...desc,
-            isCollapsed: true,
-        }))
-
-        // Find the next order number
-        const nextOrder = Math.max(...descriptions.map((d) => d.order)) + 1
-
-        // Add new description
-        const newDescription: DescriptionField = {
-            id: `temp-${Date.now()}`,
-            title: "",
-            content: "",
-            isCollapsed: false,
-            order: nextOrder,
-        }
-
-        setDescriptions([...updatedDescriptions, newDescription])
+        setDescriptions((prev) =>
+            prev.concat({
+                id: `temp-${prev.length + 1}`,
+                title: "",
+                content: "",
+                isCollapsed: false,
+                order: prev.length + 1,
+            }),
+        )
     }
 
     const removeDescription = (id: string) => {
-        if (descriptions.length <= 1) {
-            toast.error("At least one description is required")
-            return
-        }
-
-        const remainingDescriptions = descriptions.filter((desc) => desc.id !== id)
-
-        // Reorder remaining descriptions to fill gaps
-        const reorderedDescriptions = remainingDescriptions
-            .sort((a, b) => a.order - b.order)
-            .map((desc, index) => ({
-                ...desc,
-                order: index + 1,
-            }))
-
-        setDescriptions(reorderedDescriptions)
-
-        // Clear errors for removed description
-        if (errors.descriptions) {
-            const newDescriptionErrors = { ...errors.descriptions }
-            delete newDescriptionErrors[id]
-            setErrors({
-                ...errors,
-                descriptions: Object.keys(newDescriptionErrors).length > 0 ? newDescriptionErrors : undefined,
-            })
-        }
+        setDescriptions((prev) => prev.filter((desc) => desc.id !== id))
     }
 
     const updateDescription = (id: string, field: "title" | "content", value: string) => {
-        setDescriptions(descriptions.map((desc) => (desc.id === id ? { ...desc, [field]: value } : desc)))
-
-        // Clear error for this description field if it's now valid
-        if (errors.descriptions?.[id]?.[field]) {
-            const newDescriptionErrors = { ...errors.descriptions }
-            if (field === "title" && value.trim() && value.length <= 50) {
-                delete newDescriptionErrors[id]?.title
-            } else if (field === "content" && value.trim() && value.length <= 600) {
-                // UPDATED TO USE CHARACTER LIMIT
-                delete newDescriptionErrors[id]?.content
-            }
-
-            // Clean up empty error objects
-            if (newDescriptionErrors[id] && !newDescriptionErrors[id]?.title && !newDescriptionErrors[id]?.content) {
-                delete newDescriptionErrors[id]
-            }
-
-            setErrors({
-                ...errors,
-                descriptions: Object.keys(newDescriptionErrors).length > 0 ? newDescriptionErrors : undefined,
-            })
-        }
+        setDescriptions((prev) => prev.map((desc) => (desc.id === id ? { ...desc, [field]: value } : desc)))
     }
 
     const toggleDescriptionCollapse = (id: string) => {
-        setDescriptions(descriptions.map((desc) => (desc.id === id ? { ...desc, isCollapsed: !desc.isCollapsed } : desc)))
+        setDescriptions((prev) => prev.map((desc) => (desc.id === id ? { ...desc, isCollapsed: !desc.isCollapsed } : desc)))
     }
 
-    const getDescriptionDisplayTitle = (desc: DescriptionField): string => {
-        if (desc.title.trim()) {
-            return desc.title.trim()
-        }
-        return `Description ${desc.order}`
+    const getDescriptionDisplayTitle = (desc: DescriptionType) => {
+        return desc.title || `Description ${desc.order}`
     }
 
     return (
@@ -416,7 +374,7 @@ const QrCodeCreate = ({
                                                     placeholder={`Enter content for ${desc.title || `description ${desc.order}`}...`}
                                                     rows={4}
                                                     className={errors.descriptions?.[desc.id]?.content ? "border-red-500" : ""}
-                                                    maxLength={600} // Add HTML maxLength attribute for additional UX
+                                                    maxLength={600}
                                                 />
                                                 {errors.descriptions?.[desc.id]?.content && (
                                                     <p className="text-sm text-red-500">{errors.descriptions[desc.id]?.content}</p>
@@ -440,34 +398,66 @@ const QrCodeCreate = ({
                 </div>
             </div>
 
-            {/* 3D Model Upload */}
             <div className="space-y-2">
-                <Label>3D Model * (GLB)</Label>
+                <Label>Media Type *</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    {(["THREE_D", "IMAGE", "VIDEO", "MUSIC"] as const).map((type) => (
+                        <button
+                            key={type}
+                            type="button"
+                            onClick={() => {
+                                setFormData((prev) => ({ ...prev, mediaType: type, mediaUrl: "" }))
+                                if (errors.mediaUrl) {
+                                    setErrors({ ...errors, mediaUrl: undefined })
+                                }
+                            }}
+                            className={`p-3 rounded-lg border-2 transition-colors capitalize font-medium ${formData.mediaType === type
+                                ? "border-blue-500 bg-blue-50 text-blue-700"
+                                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                                }`}
+                        >
+                            {type === "THREE_D" && "3D Model"}
+                            {type === "IMAGE" && "Image"}
+                            {type === "VIDEO" && "Video"}
+                            {type === "MUSIC" && "Audio"}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <Label>
+                    {mediaConfig.label} * ({mediaConfig.accept.replace(/\./g, "").toUpperCase()})
+                </Label>
                 <div className="flex items-center gap-4">
                     <Button
                         type="button"
                         variant="outline"
-                        onClick={handleModelUpload}
-                        className={`gap-2 bg-transparent ${errors.modelUrl ? "border-red-500" : ""}`}
+                        onClick={handleMediaUpload}
+                        className={`gap-2 bg-transparent ${errors.mediaUrl ? "border-red-500" : ""}`}
                     >
                         <Box className="h-4 w-4" />
-                        {formData.modelUrl ? "Change Model" : "Upload 3D Model"}
+                        {formData.mediaUrl ? `Change ${mediaConfig.label}` : `Upload ${mediaConfig.label}`}
                     </Button>
-                    {formData.modelUrl && (
+                    {formData.mediaUrl && (
                         <div className="flex items-center gap-2 text-sm text-green-600">
                             <Box className="h-4 w-4" />
-                            Model uploaded successfully
+                            {mediaConfig.label} uploaded successfully
                         </div>
                     )}
-
                 </div>
                 <UploadS3Button
-                    id="qr-model-upload"
+                    id="qr-media-upload"
                     variant="hidden"
-                    endpoint="modelUploader"
+                    endpoint={mediaConfig.endpoint}
                     onBeforeUploadBegin={(file) => {
-                        if (!file.name.endsWith(".glb")) {
-                            toast.error("Invalid file type. Please upload a .glb file.")
+                        const validExtensions = mediaConfig.accept.split(",").map((ext) => ext.trim().toLowerCase())
+                        const fileExt = "." + file.name.split(".").pop()?.toLowerCase()
+
+                        if (!validExtensions.includes(fileExt)) {
+                            toast.error(
+                                `Invalid file type. Please upload a ${mediaConfig.accept.replace(/\./g, "").toUpperCase()} file.`,
+                            )
                             return undefined
                         }
                         return file
@@ -477,11 +467,11 @@ const QrCodeCreate = ({
                             toast.error("No file uploaded")
                             return
                         }
-                        setFormData((prev) => ({ ...prev, modelUrl: file.url }))
-                        toast.success("3D Model uploaded successfully!")
+                        setFormData((prev) => ({ ...prev, mediaUrl: file.url }))
+                        toast.success(`${mediaConfig.label} uploaded successfully!`)
                     }}
                 />
-                {errors.modelUrl && <p className="text-sm text-red-500">{errors.modelUrl}</p>}
+                {errors.mediaUrl && <p className="text-sm text-red-500">{errors.mediaUrl}</p>}
             </div>
 
             {/* External Link */}

@@ -101,6 +101,7 @@ export default function StoredItemsView() {
     const [storedViewMode, setStoredViewMode] = useState<"grid" | "list">("grid")
     const [selectedQRItem, setSelectedQRItem] = useState<QRItem | null>(null)
     const [isQRModalOpen, setIsQRModalOpen] = useState(false)
+    const [isQRViewModalOpen, setIsQRViewModalOpen] = useState(false)
     const [selectedStoredItem, setSelectedStoredItem] = useState<MarketAssetType | null>(null)
     const router = useRouter()
     const { data: session } = useSession()
@@ -203,7 +204,7 @@ export default function StoredItemsView() {
     }
     const handleViewQR = (item: QRItem) => {
         setSelectedQRItem(item)
-        setIsQRModalOpen(true)
+        setIsQRViewModalOpen(true)
     }
     const getMediaTypeIcon = (type: MediaType) => {
         switch (type) {
@@ -615,9 +616,9 @@ export default function StoredItemsView() {
                             {/* QR Code Modal */}
                             {selectedQRItem && (
                                 <QRCodeModal
-                                    isOpen={isQRModalOpen}
+                                    isOpen={isQRViewModalOpen}
                                     onClose={() => {
-                                        setIsQRModalOpen(false)
+                                        setIsQRViewModalOpen(false)
                                         setSelectedQRItem(null)
                                     }}
                                     qrItem={selectedQRItem}
