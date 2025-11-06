@@ -69,30 +69,20 @@ export default function QRScannerPage() {
                 })
 
                 if (code) {
-                    console.log("QR Code detected:", code.data)
-                    setIsNavigating(true);
 
-                    // Stop scanning immediately to prevent multiple detections
-                    stopScanner().then(() => {
-                        console.log("Camera stopped, navigating...");
+                    // 2️⃣ If it's a URL: extract `/qr/<id>`
+                    try {
+                        const url = new URL(code.data);
+                        const parts = url.pathname.split("/"); // ["", "augmented-reality", "qr", "<id>"]
 
-                        // Navigate after ensuring camera is stopped
-                        try {
-                            const parsedData = JSON.parse(code.data) as { id: string };
-                            if (parsedData && typeof parsedData === 'object' && parsedData.id) {
-                                router.push(`/augmented-reality/qr/${parsedData.id}`)
-                                return
-                            }
-                        } catch (e) {
-                            // Not JSON, treat as plain text
+                        const qrIndex = parts.indexOf("qr");
+                        if (qrIndex !== -1 && parts[qrIndex + 1]) {
+                            const id = parts[qrIndex + 1];
+                            router.push(`/augmented-reality/qr/${id}`);
+                            return;
                         }
+                    } catch { }
 
-                        // Treat as direct ID string
-                        if (code.data) {
-                            router.push(`/augmented-reality/qr/${encodeURIComponent(code.data)}`)
-                            return
-                        }
-                    });
 
                     return; // Exit early to prevent further scanning
                 }

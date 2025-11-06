@@ -558,7 +558,7 @@ export default function StoredItemsView() {
                                         <CardContent className="space-y-4">
                                             {/* Item Details */}
                                             <div className="space-y-2 text-sm">
-                                                {item.modelUrl && (
+                                                {item.mediaUrl && item.mediaType === 'THREE_D' && (
                                                     <div className="flex items-center gap-2 text-muted-foreground">
                                                         <Box className="h-4 w-4" />
                                                         <span>3D Model included</span>

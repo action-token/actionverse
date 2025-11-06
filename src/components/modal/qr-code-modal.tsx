@@ -33,6 +33,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { Loader2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
 import type { QRItem } from "~/types/organization/qr"
+import { BASE_URL } from "~/lib/common"
 
 interface QRCodeModalProps {
     isOpen: boolean
@@ -148,7 +149,7 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                         <div className="bg-white p-4 rounded-lg shadow-sm border">
                                             <QRCode
                                                 id="qr-code-svg"
-                                                value={qrData}
+                                                value={`${BASE_URL}/augmented-reality/qr/${qrItem?.id}`}
                                                 size={256}
                                                 style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                                                 viewBox="0 0 256 256"
