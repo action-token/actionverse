@@ -13,7 +13,7 @@ interface ImageViewerProps {
 export function ImageViewer({ src, alt, onClose }: ImageViewerProps) {
     const [scale, setScale] = useState(1)
     const [rotation, setRotation] = useState(0)
-
+    console.log("ImageViewer rendered with src:", src)
     const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.2, 3))
     const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.2, 0.5))
     const handleReset = () => {

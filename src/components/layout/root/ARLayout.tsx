@@ -28,7 +28,7 @@ export default function ARLayout({
     const tabBarHeight = 100
     const curveHeight = 50
     const width = 375 // Assuming a fixed width for the SVG, can be dynamic based on screen size
-
+    const isARRoute = router.pathname.includes("/augmented-reality/ar") || router.pathname.includes("/augmented-reality/qr");
     // Fix for mobile viewport height issues
     useEffect(() => {
         const setVH = () => {
@@ -278,10 +278,12 @@ export default function ARLayout({
 
             {/* Curved Bottom Navigation */}
             <motion.div
-                className="fixed bottom-0 left-0 right-0 z-50"
+                className={`${isARRoute ? 'hidden' : ''} fixed bottom-0 left-0 right-0 z-50`}
                 initial={{ y: 100 }}
                 animate={{ y: 0 }}
                 transition={{ duration: 0.5, ease: "easeOut" }}
+
+
             >
                 <div className="max-w-md mx-auto relative">
                     {/* Main Navigation Background with Curve */}

@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useRef, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/router"
 import * as THREE from "three"
 
 import { DeviceOrientationControls, LocationBased, WebcamRenderer } from "~/lib/augmented-reality/locationbased-ar"
@@ -26,11 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Progress } from "~/components/shadcn/ui/progress"
 import { format } from "date-fns"
-import { ImageViewer } from "~/components/player/ar/image-viewer"
-import { VideoPlayer } from "~/components/player/ar/video-player"
-import { AudioPlayer } from "~/components/player/ar/audio-player"
-import { MediaSelector } from "~/components/player/ar/media-selector"
-import { MediaType } from "@prisma/client"
+import type { MediaType } from "@prisma/client"
 
 interface QRItemData {
     id: string
@@ -56,8 +52,10 @@ interface QRItemData {
 
 const QRARPage = () => {
     const router = useRouter()
-    const searchParams = useSearchParams()
-    const id = searchParams.get("id")
+    const { id } = router.query
+
+    const [show3DModal, setShow3DModal] = useState(false)
+    const [mediaLoaded, setMediaLoaded] = useState(false)
 
     // State management
     const [qrItem, setQrItem] = useState<QRItemData | null>(null)
@@ -69,7 +67,6 @@ const QRARPage = () => {
     const [modelError, setModelError] = useState<string | null>(null)
     const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null)
     const [distanceToModel, setDistanceToModel] = useState<number>(0)
-    const [modelPosition, setModelPosition] = useState<{ lat: number; lng: number } | null>(null)
     const [debugMode, setDebugMode] = useState(false)
     const [loadingProgress, setLoadingProgress] = useState<number>(0)
     const [isLoadingModel, setIsLoadingModel] = useState(false)
@@ -78,12 +75,6 @@ const QRARPage = () => {
         "requesting" | "camera" | "orientation" | "location" | "complete" | "error"
     >("requesting")
     const [retryCount, setRetryCount] = useState(0)
-    const [currentMediaType, setCurrentMediaType] = useState<MediaType>("THREE_D")
-    const [currentMedia, setCurrentMedia] = useState<{
-        type: MediaType
-        url: string
-        title?: string
-    } | null>(null)
 
     // Three.js refs
     const rendererRef = useRef<THREE.WebGLRenderer>()
@@ -97,23 +88,10 @@ const QRARPage = () => {
     const deviceOrientationControlsRef = useRef<DeviceOrientationControls | null>(null)
     const webcamRendererRef = useRef<WebcamRenderer | null>(null)
     const initializationRef = useRef<boolean>(false)
+    const mediaGroupRef = useRef<THREE.Group | null>(null)
 
     const modelOffsetDistance = 5
 
-    const handleMediaSelect = (type: MediaType) => {
-        setCurrentMediaType(type)
-        if (type === "THREE_D") {
-            setCurrentMedia(null)
-        } else if (qrItem?.mediaType === type) {
-            setCurrentMedia({
-                type: qrItem.mediaType,
-                url: qrItem.mediaUrl,
-                title: qrItem.title,
-            })
-        }
-    }
-
-    // Request device orientation permission
     const requestDeviceOrientationPermission = async () => {
         return new Promise<boolean>((resolve) => {
             const permissionButton = document.createElement("button")
@@ -153,7 +131,6 @@ const QRARPage = () => {
         })
     }
 
-    // Request all permissions
     const requestPermissions = async () => {
         try {
             setInitializationError(null)
@@ -192,41 +169,10 @@ const QRARPage = () => {
         }
     }
 
-    // Start permissions from a user gesture (called by the UI "Allow Permissions" button)
     const handleStartPermissions = async () => {
         setIsInitializing(true)
-        // requestPermissions already updates permissionStep and initializationError
         await requestPermissions()
     }
-
-    // Fetch QR item data
-    useEffect(() => {
-        const fetchQRItem = async () => {
-            if (!id) return
-            try {
-                setFetchError(null)
-                const response = await fetch(new URL("api/game/qr/get-qr-by-id", BASE_URL).toString(), {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ qrId: id }),
-                })
-                if (!response.ok) {
-                    throw new Error("Failed to fetch QR item")
-                }
-                console.log("Response received for QR item fetch")
-                const data = (await response.json()) as QRItemData
-                console.log("QR Item Data:", data)
-                setQrItem(data)
-            } catch (err) {
-                console.error("Error fetching QR item:", err)
-                setFetchError("An unexpected error occurred while fetching QR item.")
-            }
-        }
-        fetchQRItem()
-    }, [id])
 
     const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
         const R = 6371e3
@@ -240,14 +186,20 @@ const QRARPage = () => {
     }
 
     const calculateOffsetPosition = (lat: number, lng: number, bearing: number, distance: number) => {
-        const R = 6371e3
-        const δ = distance / R
-        const θ = (bearing * Math.PI) / 180
+        const R = 6371e3 // Earth's radius in meters
+        const δ = distance / R // angular distance
+        const θ = (bearing * Math.PI) / 180 // bearing in radians
+
         const φ1 = (lat * Math.PI) / 180
         const λ1 = (lng * Math.PI) / 180
+
         const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ))
         const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2))
-        return { lat: (φ2 * 180) / Math.PI, lng: (λ2 * 180) / Math.PI }
+
+        return {
+            lat: (φ2 * 180) / Math.PI,
+            lng: (λ2 * 180) / Math.PI,
+        }
     }
 
     const initializeCamera = () => {
@@ -278,20 +230,18 @@ const QRARPage = () => {
     }
 
     const increaseModelSize = () => {
-        if (modelRef.current) {
+        if (mediaGroupRef.current) {
             const newScale = Math.min(modelScale * 1.2, 5)
             setModelScale(newScale)
-            const finalScale = originalScaleRef.current * newScale
-            modelRef.current.scale.setScalar(finalScale)
+            mediaGroupRef.current.scale.setScalar(newScale)
         }
     }
 
     const decreaseModelSize = () => {
-        if (modelRef.current) {
+        if (mediaGroupRef.current) {
             const newScale = Math.max(modelScale * 0.8, 0.1)
             setModelScale(newScale)
-            const finalScale = originalScaleRef.current * newScale
-            modelRef.current.scale.setScalar(finalScale)
+            mediaGroupRef.current.scale.setScalar(newScale)
         }
     }
 
@@ -349,6 +299,10 @@ const QRARPage = () => {
             const scene = new THREE.Scene()
             sceneRef.current = scene
 
+            const mediaGroup = new THREE.Group()
+            mediaGroupRef.current = mediaGroup
+            scene.add(mediaGroup)
+
             setupLighting(scene)
 
             const locar = new LocationBased(scene, camera, { gpsMinDistance: 1, gpsMinAccuracy: 100 })
@@ -378,11 +332,9 @@ const QRARPage = () => {
 
             locar.on("gpsupdate", (pos: GeolocationPosition) => {
                 const { latitude, longitude } = pos.coords
-                setCurrentPosition({ lat: latitude, lng: longitude })
 
                 if (firstLocation) {
                     const modelPos = calculateOffsetPosition(latitude, longitude, 0, modelOffsetDistance)
-                    setModelPosition(modelPos)
 
                     void loadMedia(qrItem!, locar, modelPos.lat, modelPos.lng, {
                         onProgress: setLoadingProgress,
@@ -394,11 +346,17 @@ const QRARPage = () => {
                             setModelLoaded(true)
                             setIsLoadingModel(false)
                             setLoadingProgress(100)
+                            setMediaLoaded(true)
+                            if (qrItem?.mediaType === "THREE_D") {
+                                setShow3DModal(true)
+                            }
                         },
                         modelScale,
                         mixerRef,
                         modelRef,
                         originalScaleRef,
+                        sceneRef,
+                        mediaGroupRef,
                     }).catch((error) => {
                         setModelError(`Failed to load media: ${error instanceof Error ? error.message : "Unknown error"}`)
                     })
@@ -407,12 +365,12 @@ const QRARPage = () => {
                     setIsInitializing(false)
                 }
 
-                if (modelRef.current?.userData?.lat && modelRef.current?.userData?.lng) {
+                if (mediaGroupRef.current?.userData?.lat && mediaGroupRef.current?.userData?.lng) {
                     const distance = calculateDistance(
                         latitude,
                         longitude,
-                        modelRef.current.userData.lat as number,
-                        modelRef.current.userData.lng as number,
+                        mediaGroupRef.current.userData.lat as number,
+                        mediaGroupRef.current.userData.lng as number,
                     )
                     setDistanceToModel(distance)
                 }
@@ -431,15 +389,31 @@ const QRARPage = () => {
                 setInitializationError("Failed to start GPS. Please check location permissions.")
                 return
             }
-
-            renderer.setAnimationLoop(() => {
-                const deltaTime = clockRef.current.getDelta()
+            const animate = () => {
                 cam.update()
                 deviceOrientationControls.update()
-                if (mixerRef.current) mixerRef.current.update(deltaTime)
-                if (modelRef.current) modelRef.current.rotation.y += 0.01
+
+                // Keep camera-locked media in front of the camera
+                mediaGroupRef.current?.traverse((object) => {
+                    if (object.userData.cameraLocked && cameraRef.current) {
+                        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                        const distance = object.userData.cameraDistance || 5
+                        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                        const height = object.userData.cameraHeight || 1.6
+
+                        object.position.copy(cameraRef.current.position)
+                        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                        object.position.y = height
+                        object.position.z -= distance
+
+                        object.lookAt(cameraRef.current.position)
+                    }
+                })
+
                 renderer.render(scene, camera)
-            })
+                requestAnimationFrame(animate)
+            }
+            animate()
 
             cleanup = () => {
                 window.removeEventListener("resize", handleResize)
@@ -476,17 +450,44 @@ const QRARPage = () => {
 
     useEffect(() => {
         if (!qrItem) return
-        // only initialize AR after permissions are complete
         if (permissionStep !== "complete") return
         let cleanup: (() => void) | undefined
         const init = async () => {
             cleanup = await initializeAR()
         }
-        init()
+        void init()
         return () => {
             if (cleanup) cleanup()
         }
     }, [qrItem, debugMode, retryCount, permissionStep])
+
+    useEffect(() => {
+        const fetchQRItem = async () => {
+            if (!id) return
+            try {
+                setFetchError(null)
+                const response = await fetch(new URL("api/game/qr/get-qr-by-id", BASE_URL).toString(), {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ qrId: id }),
+                })
+                if (!response.ok) {
+                    throw new Error("Failed to fetch QR item")
+                }
+                console.log("Response received for QR item fetch")
+                const data = (await response.json()) as QRItemData
+                console.log("QR Item Data:", data)
+                setQrItem(data)
+            } catch (err) {
+                console.error("Error fetching QR item:", err)
+                setFetchError("An unexpected error occurred while fetching QR item.")
+            }
+        }
+        void fetchQRItem()
+    }, [id])
 
     // Permission screen
     if (isInitializing && permissionStep !== "complete") {
@@ -531,13 +532,12 @@ const QRARPage = () => {
                             </Button>
                         </div>
                     </div>
-
                 </div>
             </div>
         )
     }
 
-    if (!qrItem && !fetchError) {
+    if (!qrItem) {
         return (
             <div className="fixed inset-0 bg-slate-900 flex items-center justify-center z-50">
                 <div className="bg-white rounded-lg p-6 m-4 max-w-sm text-center">
@@ -577,7 +577,7 @@ const QRARPage = () => {
                     <h2 className="text-xl font-bold mb-2">Initializing AR</h2>
                     <p className="text-gray-600 mb-4">Setting up your augmented reality experience...</p>
                     <div className="text-sm text-gray-500">
-                        {modelLoaded ? "Model loaded successfully" : "Waiting for GPS location..."}
+                        {modelLoaded ? "Media loaded successfully" : "Waiting for GPS location..."}
                     </div>
                     <Button variant="outline" onClick={() => router.back()} className="w-full mt-4">
                         Cancel
@@ -616,7 +616,7 @@ const QRARPage = () => {
             <div className="fixed inset-0 bg-slate-900 flex items-center justify-center z-50">
                 <div className="bg-white rounded-lg p-6 m-4 max-w-sm text-center">
                     <Box className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                    <h2 className="text-xl font-bold mb-2">Model Loading Failed</h2>
+                    <h2 className="text-xl font-bold mb-2">Media Loading Failed</h2>
                     <p className="text-gray-600 mb-4">{modelError}</p>
                     <div className="space-y-2">
                         <Button onClick={() => window.location.reload()} className="w-full">
@@ -630,13 +630,6 @@ const QRARPage = () => {
             </div>
         )
     }
-
-    const availableMedias = [
-        { type: "THREE_D" as MediaType, url: qrItem?.mediaUrl ?? "", title: "3D" },
-        ...(qrItem?.mediaType === "IMAGE" || qrItem?.mediaType === "VIDEO" || qrItem?.mediaType === "MUSIC"
-            ? [{ type: qrItem.mediaType as MediaType, url: qrItem.mediaUrl, title: qrItem.title }]
-            : []),
-    ]
 
     return (
         <>
@@ -654,39 +647,6 @@ const QRARPage = () => {
                 </div>
             )}
 
-            {currentMedia && currentMedia.type === "IMAGE" && (
-                <ImageViewer
-                    src={currentMedia.url ?? "/placeholder.svg"}
-                    alt={currentMedia.title ?? "IMAGE"}
-                    onClose={() => {
-                        setCurrentMediaType("THREE_D")
-                        setCurrentMedia(null)
-                    }}
-                />
-            )}
-
-            {currentMedia && currentMedia.type === "VIDEO" && (
-                <VideoPlayer
-                    src={currentMedia.url}
-                    title={currentMedia.title ?? "VIDEO"}
-                    onClose={() => {
-                        setCurrentMediaType("THREE_D")
-                        setCurrentMedia(null)
-                    }}
-                />
-            )}
-
-            {currentMedia && currentMedia.type === "MUSIC" && (
-                <AudioPlayer
-                    src={currentMedia.url}
-                    title={currentMedia.title ?? "MUSIC"}
-                    onClose={() => {
-                        setCurrentMediaType("THREE_D")
-                        setCurrentMedia(null)
-                    }}
-                />
-            )}
-
             <Button
                 className="absolute left-4 top-4 z-50 bg-black/50 text-white border-none hover:bg-black/70"
                 onClick={() => router.back()}
@@ -701,7 +661,7 @@ const QRARPage = () => {
                 <FileText className="h-6 w-6" />
             </Button>
 
-            {modelLoaded && (
+            {mediaLoaded && qrItem?.mediaType === "THREE_D" && (
                 <div className="absolute bottom-48 right-4 z-50 space-y-2">
                     <div className="bg-black/70 text-white px-2 py-1 rounded text-xs text-center">
                         Scale: {modelScale.toFixed(1)}x
@@ -730,16 +690,12 @@ const QRARPage = () => {
             </div>
 
             <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50 bg-black/80 text-white px-4 py-2 rounded-lg text-center max-w-xs">
-                <p className="text-sm font-bold">Look around to find the media!</p>
+                <p className="text-sm font-bold">
+                    {qrItem?.mediaType === "THREE_D" ? "View the 3D model in the modal" : "Look around to see the media!"}
+                </p>
                 <p className="text-xs text-gray-300">Move closer to see it better</p>
-                {modelLoaded && <p className="text-xs text-green-300">Media loaded successfully</p>}
+                {mediaLoaded && <p className="text-xs text-green-300">Media loaded successfully</p>}
             </div>
-
-            {modelLoaded && availableMedias.length > 1 && (
-                <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 bg-black/80 px-4 py-3 rounded-lg">
-                    <MediaSelector medias={availableMedias} currentType={currentMediaType} onSelect={handleMediaSelect} />
-                </div>
-            )}
 
             {showInfo && qrItem && (
                 <div className="absolute top-16 left-4 right-4 z-40 max-w-md mx-auto">
@@ -760,7 +716,7 @@ const QRARPage = () => {
                                 <span className="text-blue-400 font-medium">{distanceToModel.toFixed(1)} meters away</span>
                             </div>
 
-                            {modelLoaded && (
+                            {mediaLoaded && qrItem?.mediaType !== "THREE_D" && (
                                 <div className="flex items-center gap-2 text-sm">
                                     <Box className="h-4 w-4 text-purple-400" />
                                     <span className="text-purple-400 font-medium">Scale: {modelScale.toFixed(1)}x</span>

@@ -1,8 +1,9 @@
 import type React from "react"
 import * as THREE from "three"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
+import { createImagePlane, createVideoPlane, createAudioIndicator, positionMediaInScene } from "./media-objects"
 import type { LocationBased } from "./locationbased-ar"
-import { MediaType } from "@prisma/client"
+import type { MediaType } from "@prisma/client"
 
 interface QRItemData {
     id: string
@@ -24,7 +25,18 @@ interface QRItemData {
         name: string | null
         image: string | null
     }
+}
 
+interface MediaLoadOptions {
+    onProgress?: (progress: number) => void
+    onError?: (error: Error) => void
+    onSuccess?: () => void
+    modelScale?: number
+    mixerRef?: React.MutableRefObject<THREE.AnimationMixer | null>
+    modelRef?: React.MutableRefObject<THREE.Group | null>
+    originalScaleRef?: React.MutableRefObject<number>
+    sceneRef?: React.MutableRefObject<THREE.Scene | null>
+    mediaGroupRef?: React.MutableRefObject<THREE.Group | null>
 }
 
 export async function loadMedia(
@@ -32,25 +44,170 @@ export async function loadMedia(
     locar: LocationBased,
     modelLat: number,
     modelLng: number,
-    options?: {
-        onProgress?: (progress: number) => void
-        onError?: (error: Error) => void
-        onSuccess?: () => void
-        modelScale?: number
-        mixerRef?: React.MutableRefObject<THREE.AnimationMixer | null>
-        modelRef?: React.MutableRefObject<THREE.Group | null>
-        originalScaleRef?: React.MutableRefObject<number>
-    },
+    options?: MediaLoadOptions,
 ) {
     if (qrItem.mediaType === "THREE_D") {
-        return await loadModel3D(qrItem.mediaUrl, locar, modelLat, modelLng, options)
+        return await load3DModelIntoScene(qrItem.mediaUrl, locar, modelLat, modelLng, options)
     }
-    // For image, video, audio - they will be displayed as overlays in the UI
-    // No need to load them into the 3D scene
-    return { type: qrItem.mediaType, url: qrItem.mediaUrl }
+
+    if (qrItem.mediaType === "IMAGE") {
+        return await loadImageIntoScene(qrItem, options)
+    } else if (qrItem.mediaType === "VIDEO") {
+        return await loadVideoIntoScene(qrItem, options)
+    } else if (qrItem.mediaType === "MUSIC") {
+        return await loadAudioIntoScene(qrItem, options)
+    }
+
+    throw new Error(`Unsupported media type`)
 }
 
-async function loadModel3D(
+async function loadImageIntoScene(qrItem: QRItemData, options?: MediaLoadOptions) {
+    try {
+        console.log(`[v0] Loading image into scene: ${qrItem.mediaUrl}`)
+        options?.onProgress?.(25)
+        const imageMesh = await createImagePlane(qrItem.mediaUrl)
+        positionMediaInScene(imageMesh, 5, 1.6, undefined, true)
+
+        options?.onProgress?.(75)
+
+        if (options?.mediaGroupRef?.current) {
+            options.mediaGroupRef.current.add(imageMesh)
+        }
+
+        options?.onProgress?.(100)
+        options?.onSuccess?.()
+
+        return { type: "IMAGE", mesh: imageMesh }
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error("Unknown error loading image")
+        options?.onError?.(err)
+        throw err
+    }
+}
+
+export async function loadVideoIntoScene(qrItem: QRItemData, options?: MediaLoadOptions) {
+    try {
+        console.log(`[v0] Loading video into scene: ${qrItem.mediaUrl}`)
+        options?.onProgress?.(25)
+        const { mesh, video, texture } = await createVideoPlane(qrItem.mediaUrl)
+
+        positionMediaInScene(mesh as THREE.Object3D<THREE.Object3DEventMap>, 3, 1.6, undefined, true)
+
+        const unmuteButton = document.createElement("button")
+        unmuteButton.innerHTML = "🔊 Tap to Unmute & Play"
+        unmuteButton.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            border: 2px solid white;
+            border-radius: 24px;
+            z-index: 1000;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            display: ${video.muted ? "block" : "none"};
+        `
+
+        unmuteButton.onclick = async () => {
+            try {
+                video.muted = false
+                await video.play()
+                unmuteButton.style.display = "none"
+                console.log("[v0] Video unmuted and playing")
+            } catch (error) {
+                console.error("[v0] Failed to unmute and play:", error)
+                unmuteButton.innerHTML = "❌ Play Failed - Try Refresh"
+            }
+        }
+
+        unmuteButton.onmouseover = () => {
+            unmuteButton.style.background = "rgba(0,0,0,0.95)"
+        }
+        unmuteButton.onmouseout = () => {
+            unmuteButton.style.background = "rgba(0,0,0,0.85)"
+        }
+
+        document.body.appendChild(unmuteButton)
+
+        options?.onProgress?.(75)
+
+        if (options?.mediaGroupRef?.current) {
+            options.mediaGroupRef.current.add(mesh as THREE.Object3D<THREE.Object3DEventMap>)
+        }
+
+        options?.onProgress?.(100)
+        options?.onSuccess?.()
+
+        return { type: "VIDEO", mesh, video, texture }
+    } catch (error) {
+        console.error("[v0] Video loading error:", error)
+        const err = error instanceof Error ? error : new Error("Unknown error loading video")
+        options?.onError?.(err)
+        throw err
+    }
+}
+
+async function loadAudioIntoScene(qrItem: QRItemData, options?: MediaLoadOptions) {
+    try {
+        console.log(`[v0] Loading audio into scene: ${qrItem.mediaUrl}`)
+        options?.onProgress?.(25)
+
+        const proxiedUrl = `/api/proxy-audio?url=${encodeURIComponent(qrItem.mediaUrl)}`
+        const result = createAudioIndicator(qrItem.title)
+        const mesh = result.mesh
+        const audio = result.audio
+
+        positionMediaInScene(mesh as THREE.Object3D<THREE.Object3DEventMap>, 3, 1.6, undefined, true)
+
+        audio.src = proxiedUrl
+        audio.crossOrigin = "anonymous"
+
+        const playButton = document.createElement("button")
+        playButton.innerHTML = "🔊 Tap to Play Audio"
+        playButton.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            z-index: 1000;
+        `
+        playButton.onclick = async () => {
+            try {
+                await audio.play()
+                playButton.style.display = "none"
+            } catch (error) {
+                console.warn("Failed to play audio:", error)
+            }
+        }
+        document.body.appendChild(playButton)
+
+        options?.onProgress?.(75)
+
+        if (options?.mediaGroupRef?.current) {
+            options.mediaGroupRef.current.add(mesh)
+        }
+
+        options?.onProgress?.(100)
+        options?.onSuccess?.()
+
+        return { type: "MUSIC" as const, mesh, audio }
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error("Unknown error loading audio")
+        options?.onError?.(err)
+        throw err
+    }
+}
+
+export async function load3DModelIntoScene(
     modelUrl: string,
     locar: LocationBased,
     modelLat: number,
@@ -63,10 +220,12 @@ async function loadModel3D(
         mixerRef?: React.MutableRefObject<THREE.AnimationMixer | null>
         modelRef?: React.MutableRefObject<THREE.Group | null>
         originalScaleRef?: React.MutableRefObject<number>
+        sceneRef?: React.MutableRefObject<THREE.Scene | null>
+        mediaGroupRef?: React.MutableRefObject<THREE.Group | null>
     },
 ) {
     try {
-        console.log(`Loading 3D model from: ${modelUrl}`)
+        console.log(`[v0] Loading 3D model into scene: ${modelUrl}`)
 
         const loader = new GLTFLoader()
 
@@ -92,20 +251,17 @@ async function loadModel3D(
             options.modelRef.current = model
         }
 
-        console.log("3D model loaded successfully:", model)
+        console.log("[v0] 3D model loaded successfully:", model)
 
-        // Setup animations
         if (gltf.animations && gltf.animations.length > 0 && options?.mixerRef) {
-            console.log(`Found ${gltf.animations.length} animations`)
+            console.log(`[v0] Found ${gltf.animations.length} animations`)
             options.mixerRef.current = new THREE.AnimationMixer(model)
-            gltf.animations.forEach((clip: THREE.AnimationClip, index: number) => {
-                console.log(`Animation ${index}: ${clip.name}, duration: ${clip.duration}s`)
+            gltf.animations.forEach((clip: THREE.AnimationClip) => {
                 const action = options.mixerRef!.current!.clipAction(clip)
                 action.play()
             })
         }
 
-        // Setup materials
         model.traverse((child: THREE.Object3D) => {
             if (child instanceof THREE.Mesh) {
                 child.castShadow = true
@@ -129,12 +285,11 @@ async function loadModel3D(
             }
         })
 
-        // Calculate and apply scale
         const box = new THREE.Box3().setFromObject(model)
         const size = box.getSize(new THREE.Vector3())
         const center = box.getCenter(new THREE.Vector3())
 
-        console.log("Model bounding box:", {
+        console.log("[v0] Model bounding box:", {
             size: { x: size.x, y: size.y, z: size.z },
             center: { x: center.x, y: center.y, z: center.z },
         })
@@ -159,24 +314,28 @@ async function loadModel3D(
         const modelScale = options?.modelScale ?? 1
         const finalScale = scale * modelScale
         model.scale.setScalar(finalScale)
-        console.log(`Applied scale: ${finalScale} (original: ${scale}, multiplier: ${modelScale})`)
 
-        const modelElevation = 1.6
-        locar.add(model, modelLng, modelLat, modelElevation)
+        options?.onProgress?.(90)
 
-        model.userData = {
-            lat: modelLat,
-            lng: modelLng,
-            title: "3D Model",
+        if (options?.mediaGroupRef?.current) {
+            options.mediaGroupRef.current.add(model)
+            console.log("[v0] 3D model added to media group")
+        } else {
+            console.warn("[v0] Media group reference not available, adding to scene directly")
+            if (options?.sceneRef?.current) {
+                options.sceneRef.current.add(model)
+            }
         }
 
-        console.log(`Model positioned at: ${modelLat}, ${modelLng}, elevation: ${modelElevation}`)
-
+        options?.onProgress?.(100)
         options?.onSuccess?.()
+        const modelElevation = 1.6 // Same as camera height
+
+        locar.add(model, modelLng, modelLat, modelElevation)
 
         return { type: "model", model }
     } catch (error) {
-        console.error("Error loading 3D model:", error)
+        console.error("[v0] Error loading 3D model:", error)
         const err = error instanceof Error ? error : new Error("Unknown error loading model")
         options?.onError?.(err)
         throw err
