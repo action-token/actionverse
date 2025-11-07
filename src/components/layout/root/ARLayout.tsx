@@ -7,6 +7,9 @@ import { useRouter } from "next/router"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "~/lib/utils"
 import Image from "next/image"
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
+import { api } from "~/utils/api"
+import { useSession } from "next-auth/react"
 
 interface NavItem {
     id: number
@@ -29,6 +32,8 @@ export default function ARLayout({
     const curveHeight = 50
     const width = 375 // Assuming a fixed width for the SVG, can be dynamic based on screen size
     const isARRoute = router.pathname.includes("/augmented-reality/ar") || router.pathname.includes("/augmented-reality/qr");
+
+
     // Fix for mobile viewport height issues
     useEffect(() => {
         const setVH = () => {

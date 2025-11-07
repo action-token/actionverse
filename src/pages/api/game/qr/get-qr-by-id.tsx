@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getToken } from "next-auth/jwt";
 import { z } from "zod";
 import { EnableCors } from "~/server/api-cors";
+import { AssetSelectAllProperty } from "~/server/api/routers/marketplace/marketplace";
 import { db } from "~/server/db";
 
 export default async function handler(
@@ -9,22 +10,6 @@ export default async function handler(
     res: NextApiResponse,
 ) {
 
-    const token = await getToken({ req });
-
-    // Check if the user is authenticated
-    if (!token) {
-        return res.status(401).json({
-            error: "User is not authenticated",
-        });
-    }
-
-    const pubkey = token.sub;
-
-    if (!pubkey) {
-        return res.status(404).json({
-            error: "pubkey not found",
-        });
-    }
 
     const data = z.object({ qrId: z.string() }).safeParse(req.body);
 
@@ -34,41 +19,33 @@ export default async function handler(
         });
     }
     const qrData = data.data;
+    console.log("Fetching market asset for QR ID:", qrData.qrId);
 
-    const qrItem = await db.qRItem.findUnique({
-        where: { id: qrData.qrId },
+    const item = await db.marketAsset.findUnique({
+        where: { id: qrData.qrId ? Number(qrData.qrId) : 0 },
         include: {
-            creator: {
+            asset: {
                 select: {
-                    id: true,
-                    name: true,
-                    image: true,
+                    ...AssetSelectAllProperty,
+                    tier: {
+                        select: {
+                            price: true,
+                        },
+                    },
+                    creator: {
+                        select: {
+                            pageAsset: {
+                                select: {
+                                    code: true,
+                                    issuer: true,
+                                },
+                            },
+                        },
+                    },
                 },
             },
-            descriptions: true,
         },
     });
-
-    if (!qrItem) {
-        return res.status(404).json({
-            error: "QR item not found",
-        });
-    }
-    console.log("QR Item found:", qrItem);
-    return res.status(200).json({
-        id: qrItem.id,
-        title: qrItem.title,
-        descriptions: qrItem.descriptions,
-        mediaUrl: qrItem.mediaUrl,
-        mediaType: qrItem.mediaType,
-        externalLink: qrItem.externalLink,
-        startDate: qrItem.startDate,
-        endDate: qrItem.endDate,
-        isActive: new Date() >= qrItem.startDate && new Date() <= qrItem.endDate,
-        creator: {
-            id: qrItem.creator.id,
-            name: qrItem.creator.name,
-            image: qrItem.creator.image,
-        },
-    });
+    console.log("marketAsset in getMarketAssetById:", item);
+    return res.status(200).json(item);
 }

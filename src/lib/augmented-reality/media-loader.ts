@@ -3,29 +3,8 @@ import * as THREE from "three"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { createImagePlane, createVideoPlane, createAudioIndicator, positionMediaInScene } from "./media-objects"
 import type { LocationBased } from "./locationbased-ar"
-import type { MediaType } from "@prisma/client"
+import { MarketAssetType } from "~/types/market/market-asset-type"
 
-interface QRItemData {
-    id: string
-    title: string
-    descriptions: Array<{
-        id: string
-        title: string
-        content: string
-        order: number
-    }>
-    mediaType: MediaType
-    mediaUrl: string
-    externalLink: string | null
-    startDate: string
-    endDate: string
-    isActive: boolean
-    creator: {
-        id: string
-        name: string | null
-        image: string | null
-    }
-}
 
 interface MediaLoadOptions {
     onProgress?: (progress: number) => void
@@ -40,32 +19,32 @@ interface MediaLoadOptions {
 }
 
 export async function loadMedia(
-    qrItem: QRItemData,
+    qrItem: MarketAssetType,
     locar: LocationBased,
     modelLat: number,
     modelLng: number,
     options?: MediaLoadOptions,
 ) {
-    if (qrItem.mediaType === "THREE_D") {
-        return await load3DModelIntoScene(qrItem.mediaUrl, locar, modelLat, modelLng, options)
+    if (qrItem.asset.mediaType === "THREE_D") {
+        return await load3DModelIntoScene(qrItem.asset.mediaUrl, locar, modelLat, modelLng, options)
     }
 
-    if (qrItem.mediaType === "IMAGE") {
+    if (qrItem.asset.mediaType === "IMAGE") {
         return await loadImageIntoScene(qrItem, options)
-    } else if (qrItem.mediaType === "VIDEO") {
+    } else if (qrItem.asset.mediaType === "VIDEO") {
         return await loadVideoIntoScene(qrItem, options)
-    } else if (qrItem.mediaType === "MUSIC") {
+    } else if (qrItem.asset.mediaType === "MUSIC") {
         return await loadAudioIntoScene(qrItem, options)
     }
 
     throw new Error(`Unsupported media type`)
 }
 
-async function loadImageIntoScene(qrItem: QRItemData, options?: MediaLoadOptions) {
+async function loadImageIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
     try {
-        console.log(`[v0] Loading image into scene: ${qrItem.mediaUrl}`)
+        console.log(`[v0] Loading image into scene: ${qrItem.asset.mediaUrl}`)
         options?.onProgress?.(25)
-        const imageMesh = await createImagePlane(qrItem.mediaUrl)
+        const imageMesh = await createImagePlane(qrItem.asset.mediaUrl)
         positionMediaInScene(imageMesh, 5, 1.6, undefined, true)
 
         options?.onProgress?.(75)
@@ -85,11 +64,11 @@ async function loadImageIntoScene(qrItem: QRItemData, options?: MediaLoadOptions
     }
 }
 
-export async function loadVideoIntoScene(qrItem: QRItemData, options?: MediaLoadOptions) {
+export async function loadVideoIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
     try {
-        console.log(`[v0] Loading video into scene: ${qrItem.mediaUrl}`)
+        console.log(`[v0] Loading video into scene: ${qrItem.asset.mediaUrl}`)
         options?.onProgress?.(25)
-        const { mesh, video, texture } = await createVideoPlane(qrItem.mediaUrl)
+        const { mesh, video, texture } = await createVideoPlane(qrItem.asset.mediaUrl)
 
         positionMediaInScene(mesh as THREE.Object3D<THREE.Object3DEventMap>, 3, 1.6, undefined, true)
 
@@ -151,19 +130,18 @@ export async function loadVideoIntoScene(qrItem: QRItemData, options?: MediaLoad
     }
 }
 
-async function loadAudioIntoScene(qrItem: QRItemData, options?: MediaLoadOptions) {
+async function loadAudioIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
     try {
-        console.log(`[v0] Loading audio into scene: ${qrItem.mediaUrl}`)
+        console.log(`[v0] Loading audio into scene: ${qrItem.asset.mediaUrl}`)
         options?.onProgress?.(25)
 
-        const proxiedUrl = `/api/proxy-audio?url=${encodeURIComponent(qrItem.mediaUrl)}`
-        const result = createAudioIndicator(qrItem.title)
+        const result = createAudioIndicator(qrItem.asset.name)
         const mesh = result.mesh
         const audio = result.audio
 
         positionMediaInScene(mesh as THREE.Object3D<THREE.Object3DEventMap>, 3, 1.6, undefined, true)
 
-        audio.src = proxiedUrl
+        audio.src = qrItem.asset.mediaUrl
         audio.crossOrigin = "anonymous"
 
         const playButton = document.createElement("button")

@@ -27,38 +27,29 @@ import { Badge } from "~/components/shadcn/ui/badge"
 import { Progress } from "~/components/shadcn/ui/progress"
 import { format } from "date-fns"
 import type { MediaType } from "@prisma/client"
+import { AssetType, MarketAssetType } from "~/types/market/market-asset-type"
+import useWindowDimensions from "~/lib/state/augmented-reality/useWindowWidth"
+import ArCard from "~/components/common/ar-card"
+import { addrShort } from "package/connect_wallet/src/lib/utils"
+import { api } from "~/utils/api"
+import { useSession } from "next-auth/react"
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
+import { useQuery } from "@tanstack/react-query"
+import { getUserPlatformAsset } from "~/lib/augmented-reality/get-user-platformAsset"
+import { getUserBalances } from "~/lib/augmented-reality/get-balances"
 
-interface QRItemData {
-    id: string
-    title: string
-    descriptions: Array<{
-        id: string
-        title: string
-        content: string
-        order: number
-    }>
-    mediaType: MediaType
-    mediaUrl: string
-    externalLink: string | null
-    startDate: string
-    endDate: string
-    isActive: boolean
-    creator: {
-        id: string
-        name: string | null
-        image: string | null
-    }
-}
+
 
 const QRARPage = () => {
     const router = useRouter()
-    const { id } = router.query
+    const { id } = router.query as { id: string }
+    const winDim = useWindowDimensions()
 
     const [show3DModal, setShow3DModal] = useState(false)
     const [mediaLoaded, setMediaLoaded] = useState(false)
+    const [qrItem, setQrItem] = useState<MarketAssetType | null>(null)
 
     // State management
-    const [qrItem, setQrItem] = useState<QRItemData | null>(null)
     const [fetchError, setFetchError] = useState<string | null>(null)
     const [isInitializing, setIsInitializing] = useState(true)
     const [initializationError, setInitializationError] = useState<string | null>(null)
@@ -89,8 +80,24 @@ const QRARPage = () => {
     const webcamRendererRef = useRef<WebcamRenderer | null>(null)
     const initializationRef = useRef<boolean>(false)
     const mediaGroupRef = useRef<THREE.Group | null>(null)
+    const session = useSession();
+    const { setBalance, setActive } = useUserStellarAcc();
 
     const modelOffsetDistance = 5
+
+
+    const balances = useQuery({
+        queryKey: ["balances"],
+        queryFn: getUserBalances,
+        onSuccess: (data) => {
+            console.log("User platform asset data:", data)
+            if (data?.balances) {
+                setBalance(data.balances);
+                setActive(true);
+            }
+        }
+    })
+
 
     const requestDeviceOrientationPermission = async () => {
         return new Promise<boolean>((resolve) => {
@@ -347,7 +354,7 @@ const QRARPage = () => {
                             setIsLoadingModel(false)
                             setLoadingProgress(100)
                             setMediaLoaded(true)
-                            if (qrItem?.mediaType === "THREE_D") {
+                            if (qrItem?.asset?.mediaType === "THREE_D") {
                                 setShow3DModal(true)
                             }
                         },
@@ -461,6 +468,8 @@ const QRARPage = () => {
         }
     }, [qrItem, debugMode, retryCount, permissionStep])
 
+
+
     useEffect(() => {
         const fetchQRItem = async () => {
             if (!id) return
@@ -478,8 +487,7 @@ const QRARPage = () => {
                     throw new Error("Failed to fetch QR item")
                 }
                 console.log("Response received for QR item fetch")
-                const data = (await response.json()) as QRItemData
-                console.log("QR Item Data:", data)
+                const data = (await response.json()) as MarketAssetType
                 setQrItem(data)
             } catch (err) {
                 console.error("Error fetching QR item:", err)
@@ -660,8 +668,17 @@ const QRARPage = () => {
             >
                 <FileText className="h-6 w-6" />
             </Button>
+            {/* Info Card */}
+            {qrItem && (
+                <ArCard
+                    brandName={addrShort(qrItem.asset.creatorId ?? "Unknown")}
+                    description={qrItem.asset.description ?? "No description available."}
+                    marketAsset={qrItem}
 
-            {mediaLoaded && qrItem?.mediaType === "THREE_D" && (
+
+                />
+            )}
+            {mediaLoaded && qrItem?.asset?.mediaType === "THREE_D" && (
                 <div className="absolute bottom-48 right-4 z-50 space-y-2">
                     <div className="bg-black/70 text-white px-2 py-1 rounded text-xs text-center">
                         Scale: {modelScale.toFixed(1)}x
@@ -689,13 +706,13 @@ const QRARPage = () => {
                 </div>
             </div>
 
-            <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50 bg-black/80 text-white px-4 py-2 rounded-lg text-center max-w-xs">
+            {/* <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50 bg-black/80 text-white px-4 py-2 rounded-lg text-center max-w-xs">
                 <p className="text-sm font-bold">
-                    {qrItem?.mediaType === "THREE_D" ? "View the 3D model in the modal" : "Look around to see the media!"}
+                    {qrItem?.asset?.mediaType === "THREE_D" ? "View the 3D model in the modal" : "Look around to see the media!"}
                 </p>
                 <p className="text-xs text-gray-300">Move closer to see it better</p>
                 {mediaLoaded && <p className="text-xs text-green-300">Media loaded successfully</p>}
-            </div>
+            </div> */}
 
             {showInfo && qrItem && (
                 <div className="absolute top-16 left-4 right-4 z-40 max-w-md mx-auto">
@@ -703,12 +720,10 @@ const QRARPage = () => {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Box className="h-5 w-5" />
-                                {qrItem.title}
-                                <Badge variant={qrItem.isActive ? "default" : "secondary"}>
-                                    {qrItem.isActive ? "Active" : "Inactive"}
-                                </Badge>
+                                {qrItem?.asset?.name}
+
                             </CardTitle>
-                            <CardDescription className="text-gray-300">Created by {qrItem.creator.name ?? "Unknown"}</CardDescription>
+                            <CardDescription className="text-gray-300">Created by {addrShort(qrItem?.asset?.creatorId ?? "Unknown")}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex items-center gap-2 text-sm">
@@ -716,57 +731,35 @@ const QRARPage = () => {
                                 <span className="text-blue-400 font-medium">{distanceToModel.toFixed(1)} meters away</span>
                             </div>
 
-                            {mediaLoaded && qrItem?.mediaType !== "THREE_D" && (
+                            {mediaLoaded && qrItem?.asset?.mediaType !== "THREE_D" && (
                                 <div className="flex items-center gap-2 text-sm">
                                     <Box className="h-4 w-4 text-purple-400" />
                                     <span className="text-purple-400 font-medium">Scale: {modelScale.toFixed(1)}x</span>
                                 </div>
                             )}
 
-                            {qrItem.descriptions && qrItem.descriptions.length > 0 && (
+                            {qrItem?.asset?.description && (
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-2">
                                         <FileText className="h-4 w-4 text-gray-400" />
                                         <span className="font-medium text-sm">Descriptions</span>
                                     </div>
                                     <div className="space-y-2 max-h-32 overflow-y-auto">
-                                        {qrItem.descriptions
-                                            .sort((a, b) => a.order - b.order)
-                                            .map((desc) => (
-                                                <div key={desc.id} className="border border-gray-700 rounded p-2 bg-gray-800/50">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <Badge variant="outline" className="text-xs">
-                                                            {desc.order}
-                                                        </Badge>
-                                                        <span className="font-medium text-xs">{desc.title}</span>
-                                                    </div>
-                                                    <p className="text-xs text-gray-300">
-                                                        {desc.content.length > 100 ? `${desc.content.slice(0, 100)}...` : desc.content}
-                                                    </p>
-                                                </div>
-                                            ))}
+
+                                        <div className="border border-gray-700 rounded p-2 bg-gray-800/50">
+
+                                            <p className="text-xs text-gray-300">
+                                                {qrItem?.asset?.description.length > 100 ? `${qrItem?.asset?.description.slice(0, 100)}...` : qrItem?.asset?.description}
+                                            </p>
+                                        </div>
+
                                     </div>
                                 </div>
                             )}
 
-                            <div className="flex items-center gap-2 text-xs text-gray-400">
-                                <Calendar className="h-3 w-3" />
-                                <span>
-                                    {format(new Date(qrItem.startDate), "MMM dd, yyyy")} -{" "}
-                                    {format(new Date(qrItem.endDate), "MMM dd, yyyy")}
-                                </span>
-                            </div>
 
-                            {qrItem.externalLink && (
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => window.open(qrItem.externalLink!, "_blank")}
-                                    className="w-full"
-                                >
-                                    View External Link
-                                </Button>
-                            )}
+
+
                         </CardContent>
                     </Card>
                 </div>

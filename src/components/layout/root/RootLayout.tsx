@@ -29,6 +29,8 @@ import ARLayout from "./ARLayout";
 import ARModalProvider from "~/components/providers/augmented-reality/augmented-modal-provider";
 import { BottomPlayerProvider } from "~/components/player/context/bottom-player-context";
 import { StemPlayer } from "~/components/player/bottom-player";
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
+import { api } from "~/utils/api";
 export default function Layout({
   children,
   className,
@@ -52,20 +54,22 @@ export default function Layout({
   ];
   const isPublicRoute = publicRoutes.includes(router.pathname);
   const isAugmentedRealityRoute = router.pathname.startsWith("/augmented-reality/ar");
+
   const isHomeRoute = router.pathname === "/";
   const handleToggle = () => {
     toggle();
   };
+
   if (router.pathname.includes("/albedo")) {
     return <div>{children}</div>;
   }
   if (router.pathname.includes("/augmented-reality")) {
-    if (router.pathname.includes("/augmented-reality/enter")) {
-      return <>{children}</>;
-    }
+    // if (router.pathname.includes("/augmented-reality/enter")) {
+    //   return <>{children}</>;
+    // }
     return (
       <>
-        {session?.status === "authenticated" ? (
+        {session?.status === "authenticated" || router.pathname.includes("/augmented-reality/qr") ? (
           <div className="h-screen w-full overflow-hidden fixed inset-0">
             {
               isAugmentedRealityRoute ? (

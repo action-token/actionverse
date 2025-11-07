@@ -59,6 +59,7 @@ export const AssetSelectAllProperty = {
   tierId: true,
   tier: true,
   createdAt: true,
+  isQRItem: true,
 };
 
 export const marketRouter = createTRPCRouter({
@@ -245,10 +246,11 @@ export const marketRouter = createTRPCRouter({
                       customPageAssetCodeIssuer: true,
                     },
                   },
+                  isQRItem: true,
                 },
               },
             },
-            where: { placerId: { not: null }, type: { equals: "FAN" } },
+            where: { placerId: { not: null }, type: { equals: "FAN" }, isQRItem: false },
           })
 
           const stellarAcc = await StellarAccount.create(currentUserId)
@@ -683,7 +685,7 @@ export const marketRouter = createTRPCRouter({
             select: AssetSelectAllProperty,
           },
         },
-        where: { asset: { creatorId: creatorId } },
+        where: { asset: { creatorId: creatorId, isQRItem: false } },
       });
 
       let nextCursor: typeof cursor | undefined = undefined;
@@ -720,7 +722,7 @@ export const marketRouter = createTRPCRouter({
             select: AssetSelectAllProperty,
           },
         },
-        where: { asset: { creatorId: creatorId } },
+        where: { asset: { creatorId: creatorId, isQRItem: false, } },
       });
 
       let nextCursor: typeof cursor | undefined = undefined;

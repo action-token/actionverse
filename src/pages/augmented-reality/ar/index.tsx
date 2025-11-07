@@ -675,6 +675,7 @@ const ARPage = () => {
         mouse.x = (clientX / window.innerWidth) * 2 - 1
         mouse.y = -(clientY / window.innerHeight) * 2 + 1
 
+
         console.log("🎯 Mouse coordinates:", mouse.x, mouse.y)
 
         raycaster.setFromCamera(mouse, camera)

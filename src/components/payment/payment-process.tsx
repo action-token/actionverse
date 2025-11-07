@@ -56,6 +56,8 @@ export default function PaymentProcessItem({
   const { code, issuer } = item;
   const { platformAssetBalance, active, getXLMBalance, balances, hasTrust } =
     useUserStellarAcc();
+
+  console.log("Payment Process Props:", { item, price, priceUSD, marketItemId });
   const walletType = session.data?.user.walletType;
 
   const requiredFee = api.fan.trx.getRequiredPlatformAsset.useQuery({
@@ -141,8 +143,25 @@ export default function PaymentProcessItem({
       });
   };
 
-  if (!active) return null;
-
+  if (!active) {
+    return (
+      <div className="w-full mx-auto">
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center justify-center py-8 space-y-4">
+              <Loader className="h-8 w-8 animate-spin text-blue-500" />
+              <div className="text-center space-y-2">
+                <h2 className="text-lg font-semibold">Initializing Wallet</h2>
+                <p className="text-sm text-muted-foreground">
+                  Please wait while we initialize your wallet...
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="w-full mx-auto">
       <Card className="border-0 shadow-sm">

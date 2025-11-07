@@ -24,6 +24,7 @@ import { getUserPlatformAsset } from "~/lib/augmented-reality/get-user-platformA
 import Loading from "~/components/common/loading"
 import { Walkthrough } from "~/components/common/walkthrough"
 import { LocationPermissionHandler } from "~/components/common/location-permission-handler"
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
 
 type UserLocationType = {
     lat: number
@@ -47,6 +48,7 @@ export default function HomeScreen() {
     const [headerVisible, setHeaderVisible] = useState(true)
     const router = useRouter()
     const { setData: setExtraInfo } = useExtraInfo()
+    const { setBalance, setActive } = useUserStellarAcc();
 
     const [center, setCenter] = useState<UserLocationType | null>(null)
     const { setData } = useNearByPin()
@@ -245,6 +247,11 @@ export default function HomeScreen() {
     const balanceRes = useQuery({
         queryKey: ["balance"],
         queryFn: getUserPlatformAsset,
+        onSuccess: (data) => {
+            if (data && data >= 0) {
+                setActive(true);
+            }
+        }
     })
 
     const locations = response.data?.locations ?? []
