@@ -52,7 +52,7 @@ const CreatorCollectionReport = () => {
     const [currentPage, setCurrentPage] = useState(1)
     const [isRefreshing, setIsRefreshing] = useState(false)
 
-    const pins = api.maps.pin.getCreatorPinTConsumedByUser.useQuery(undefined, {
+    const pins = api.maps.pin.getCreatorPinTConsumedByUser.useQuery({}, {
         refetchOnWindowFocus: false,
         onSettled: () => {
             setIsRefreshing(false)
@@ -152,7 +152,7 @@ const CreatorCollectionReport = () => {
 
                     <TabsContent value="table" className="mt-0">
                         <Card>
-                            <CardHeader className="pb-0">
+                            <CardHeader className="pb-2">
                                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                     <div className="relative w-full max-w-sm">
                                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />

@@ -410,7 +410,7 @@ const ARPage = () => {
         setTimeout(() => {
           setShowSuccess(false)
           setCollectedPin(null)
-          router.push("/augmented-reality/home")
+          router.push("/action/home")
         }, 2000)
       }, 4000)
     } catch (error) {

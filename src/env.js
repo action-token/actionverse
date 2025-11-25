@@ -28,6 +28,8 @@ export const env = createEnv({
       // VERCEL_URL doesn't include `https` so it cant be validated as a URL
       process.env.VERCEL ? z.string() : z.string().url(),
     ),
+    OPENAI_API_KEY: z.string(),
+
     STORAGE_SECRET: z.string(),
     MOTHER_SECRET: z.string(),
     PINATA_JWT: z.string(),
@@ -51,6 +53,7 @@ export const env = createEnv({
     NEXT_PUBLIC_DESC: z.string(),
     NEXT_PUBLIC_URL: z.string(),
     NEXT_PUBLIC_STAGE: z.string(),
+
     NEXT_PUBLIC_PLATFORM_CREATOR_TERM: z.string(),
     // NEXT_PUBLIC_CLIENTVAR: z.string(),
     NEXT_PUBLIC_STELLAR_PUBNET: z
@@ -93,6 +96,8 @@ export const env = createEnv({
     MOTHER_SECRET: process.env.MOTHER_SECRET,
     STORAGE_SECRET: process.env.STORAGE_SECRET,
     PINATA_JWT: process.env.PINATA_JWT,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+
     // squire
     SQUARE_ACCESS_TOKEN: process.env.SQUARE_ACCESS_TOKEN,
     SQUARE_ENVIRONMENT: process.env.SQUARE_ENVIRONMENT,

@@ -16,6 +16,14 @@ datasource db {
 }
 
 // ------------------------Generic SCHEMA-------------------------
+// ------------------------NOTIFICATION SCHEMA-------------------------
+enum PinType {
+    EVENT
+    BOUNTY
+    EXPERIENCE
+    LAUNCH
+    OTHER
+}
 
 model Tag {
     name          String          @id
@@ -574,6 +582,7 @@ model LocationGroup {
     link   String?
 
     multiPin Boolean @default(false)
+    type     PinType @default(OTHER) // Added new type field
 
     locations Location[]
 

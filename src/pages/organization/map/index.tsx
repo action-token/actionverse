@@ -1,10 +1,10 @@
 "use client"
 import type React from "react"
-import { APIProvider, AdvancedMarker, Map, type MapMouseEvent } from "@vis.gl/react-google-maps"
+import { APIProvider, AdvancedMarker, Map, Marker, type MapMouseEvent } from "@vis.gl/react-google-maps"
 import { format } from "date-fns"
 import { ClipboardList, MapPin, Plus, Minus, ArrowRightFromLine, ArrowLeftFromLine, Trophy, Copy } from "lucide-react"
 import Link from "next/link"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, memo } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avatar"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Button } from "~/components/shadcn/ui/button"
@@ -15,154 +15,109 @@ import { useSelectedAutoSuggestion } from "~/lib/state/augmented-reality/use-sel
 import { api } from "~/utils/api"
 import { motion, AnimatePresence } from "framer-motion"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import { CustomMapControl } from "~/components/map/custom-control"
-import { useNearbyPinsStore } from "~/components/store/nearby-pin-store"
+import PinDetailAndActionsModal from "~/components/modal/pin-detail-modal"
+
 import { useCreatorMapModalStore } from "~/components/store/creator-map-modal-store"
 import { useMapOptionsModalStore } from "~/components/store/map-options-modal-store"
 import { useToast } from "~/components/shadcn/ui/use-toast"
 import { useCreateLocationBasedBountyStore } from "~/components/store/create-locationbased-bounty-store"
+import { PinType, type Location, type LocationGroup } from "@prisma/client"
+import { useMapInteractionStore, useNearbyPinsStore } from "~/components/store/map-store"
+import { useCreatorStorageAcc } from "~/lib/state/wallete/stellar-balances"
+import { useMapState } from "~/hooks/use-map-state"
+import { useMapInteractions } from "~/hooks/use-map-interactions"
+import { useGeolocation } from "~/hooks/use-geolocation"
+import { usePinsData } from "~/hooks/use-pins-data"
+import { MapControls } from "~/components/map/map-controls"
+import { NearbyLocationsPanel } from "~/components/map/nearby-locations-panel"
+import { MapHeader } from "~/components/map/map-header"
+import CreatePinModal from "~/components/modal/creator-create-pin-modal"
+import Image from "next/image"
+import { getPinIcon } from "~/utils/map-helpers"
+import AgentChat from "~/components/agent/AgentChat"
 
-type UserLocationType = {
-  lat: number
-  lng: number
+// Define Pin type for clarity and consistency with Prisma schema
+type Pin = Location & {
+  locationGroup:
+  | (LocationGroup & {
+    creator: { profileUrl: string | null }
+  })
+  | null
+  _count: {
+    consumers: number
+  }
 }
 
-function CreatorMap() {
-  return (
 
-    <MapSection />
+function MapDashboardContent() {
+  const {
+    duplicate,
+    manual,
+    setManual,
+    position,
+    setPosition,
+    openCreatePinModal,
+    openPinDetailModal,
+    selectedPinForDetail,
+    closePinDetailModal,
+    setPrevData,
+    isPinCopied,
+    isPinCut,
+    copiedPinData,
+    setIsAutoCollect,
+  } = useMapInteractionStore()
 
-  )
-}
+  const { setBalance } = useCreatorStorageAcc()
+  const {
+    mapZoom,
+    setMapZoom,
+    mapCenter,
+    setMapCenter,
+    centerChanged,
+    setCenterChanged,
+    isCordsSearch,
+    setIsCordsSearch,
+    searchCoordinates,
+    setSearchCoordinates,
+    cordSearchCords,
+    setCordSearchCords,
+  } = useMapState()
+  const [showExpired, setShowExpired] = useState<boolean>(false)
 
-function MapSection() {
-  const { toast } = useToast()
-  const { manual, setManual, position, setPosition, setIsOpen, setPrevData } = useCreatorMapModalStore()
-  const [mapZoom, setMapZoom] = useState<number>(3)
-  const [mapCenter, setMapCenter] = useState<google.maps.LatLngLiteral>({
-    lat: 22.54992,
-    lng: 0,
+  const { filterNearbyPins } = useNearbyPinsStore()
+  const { selectedPlace: alreadySelectedPlace } = useSelectedAutoSuggestion()
+
+  // Custom hooks for logic separation
+  useGeolocation(setMapCenter, setMapZoom)
+  usePinsData(showExpired)
+
+  const { handleMapClick, handleZoomIn, handleZoomOut, handleDragEnd } = useMapInteractions({
+    setManual,
+    setPosition,
+    openCreatePinModal,
+    openPinDetailModal,
+    isPinCopied,
+    isPinCut,
+    duplicate,
+    copiedPinData,
+    setMapZoom,
+    mapZoom,
+    filterNearbyPins,
+    centerChanged,
   })
-  const [centerChanged, setCenterChanged] = useState<google.maps.LatLngBoundsLiteral | null>(null)
-  const [loading, setLoading] = useState<boolean>(false)
-  const [isCordsSearch, setIsCordsSearch] = useState<boolean>(false)
-  const [searchCoordinates, setSearchCoordinates] = useState<google.maps.LatLngLiteral>()
-  const [userLocation, setUserLocation] = useState<UserLocationType>({
-    lat: 44.5,
-    lng: -89.5,
+
+  // Fetch creator storage balances
+  api.wallate.acc.getCreatorStorageBallances.useQuery(undefined, {
+    onSuccess: (data) => {
+      setBalance(data)
+    },
+    onError: (error) => {
+      console.error("Failed to fetch creator storage balances:", error)
+    },
+    refetchOnWindowFocus: false,
   })
-  const { selectedPlace: alreadySelectedPlace, setSelectedPlace: setAlreadySelectedPlace } = useSelectedAutoSuggestion()
-  const [cordSearchCords, setCordSearchLocation] = useState<google.maps.LatLngLiteral>()
-  const [selectedPlace, setSelectedPlace] = useState<google.maps.places.PlaceResult | null>(null)
-  const { onOpen, isPinCopied, data, isAutoCollect, isPinCut, setIsAutoCollect } = useModal()
-  const { filterNearbyPins, setAllPins } = useNearbyPinsStore()
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const mapRef = useRef<HTMLDivElement>(null)
-  const [rightClickPosition, setRightClickPosition] = useState<{ lat: number; lng: number } | null>(null)
-  const [showContextMenu, setShowContextMenu] = useState(false)
-  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
 
-  function handleMapClick(event: MapMouseEvent): void {
-    console.log(event)
-    // Close context menu if it's open
-    if (showContextMenu) {
-      setShowContextMenu(false)
-      return
-    }
-
-    setManual(false)
-    const position = event.detail.latLng
-    if (position) {
-      setPosition(position)
-
-      if (!isPinCopied && !isPinCut) {
-        setIsOpen(true)
-      } else if (isPinCopied || isPinCut) {
-        onOpen("copied", {
-          long: position.lng,
-          lat: position.lat,
-          pinId: data.pinId,
-        })
-      }
-    }
-  }
-
-  // Handle direct right-click on map
-  const handleMapRightClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault()
-
-    // Get the map container element
-    const mapContainer = mapRef.current
-    if (!mapContainer) return
-
-    // Calculate relative position within the map container
-    const rect = mapContainer.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
-
-    // Set the position for the context menu
-    setContextMenuPosition({ x: event.clientX, y: event.clientY })
-
-    // Calculate approximate lat/lng based on the map center and zoom level
-    // This is a simplified calculation and may not be perfectly accurate
-    const mapWidth = rect.width
-    const mapHeight = rect.height
-
-    // Calculate the offset from center in pixels
-    const offsetX = x - mapWidth / 2
-    const offsetY = y - mapHeight / 2
-
-    // Convert pixel offset to lat/lng offset (simplified)
-    // The actual conversion depends on the map projection, zoom level, etc.
-    const latPerPixel = 180 / Math.pow(2, mapZoom) / mapHeight
-    const lngPerPixel = 360 / Math.pow(2, mapZoom) / mapWidth
-
-    const lat = mapCenter.lat - offsetY * latPerPixel
-    const lng = mapCenter.lng + offsetX * lngPerPixel
-
-    setRightClickPosition({ lat, lng })
-    setShowContextMenu(true)
-  }
-
-  const handleCopyCoordinates = () => {
-    if (!rightClickPosition) return
-
-    const coordinates = `${rightClickPosition.lat.toFixed(6)},${rightClickPosition.lng.toFixed(6)}`
-    navigator.clipboard
-      .writeText(coordinates)
-      .then(() => {
-        toast({
-          title: "Coordinates copied!",
-          description: `${coordinates} copied to clipboard`,
-          duration: 3000,
-        })
-        setShowContextMenu(false)
-      })
-      .catch((err) => {
-        console.error("Failed to copy coordinates: ", err)
-        toast({
-          title: "Failed to copy",
-          description: "Could not copy coordinates to clipboard",
-          variant: "destructive",
-          duration: 3000,
-        })
-      })
-  }
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showContextMenu) {
-        setShowContextMenu(false)
-      }
-    }
-
-    document.addEventListener("click", handleClickOutside)
-    return () => {
-      document.removeEventListener("click", handleClickOutside)
-    }
-  }, [showContextMenu])
-
+  // Effect for auto-suggestion place selection
   useEffect(() => {
     if (alreadySelectedPlace) {
       const latLng = {
@@ -173,75 +128,45 @@ function MapSection() {
       setMapZoom(13)
       setPosition(latLng)
     }
-  }, [alreadySelectedPlace])
+  }, [alreadySelectedPlace, setMapCenter, setMapZoom, setPosition])
 
-  function handleManualPinClick() {
+  useEffect(() => {
+    if (position) {
+      setMapCenter(position);
+      setMapZoom(14);
+    }
+  }, [position]);
+
+  const handleManualPinClick = () => {
     setManual(true)
     setPosition(undefined)
     setPrevData(undefined)
-    setIsOpen(true)
-  }
-
-  const handleDragEnd = () => {
-    if (centerChanged) {
-      filterNearbyPins(centerChanged)
-    }
-  }
-  useEffect(() => {
-    // Check if geolocation is supported
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser")
-      return
-    }
-
-    // Request location permission and get location
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setUserLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        })
-        setMapCenter({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        })
-
-        setLoading(false)
-      },
-      (error) => {
-        alert("Permission to access location was denied")
-        console.error(error)
-        setLoading(false)
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      },
-    )
-  }, [])
-  const handleZoomIn = () => {
-    setMapZoom((prev) => Math.min(prev + 1, 20))
-  }
-
-  const handleZoomOut = () => {
-    setMapZoom((prev) => Math.max(prev - 1, 3))
+    openCreatePinModal()
   }
 
   return (
     <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAP_API_KEY!}>
-      <CustomMapControl
-        controlPosition={2}
-        onPlaceSelect={setSelectedPlace}
+      <MapHeader
+        showExpired={showExpired}
+        setShowExpired={setShowExpired}
+        onManualPinClick={handleManualPinClick}
+        onPlaceSelect={(place) => {
+          setMapCenter({ lat: place.lat, lng: place.lng })
+          setMapZoom(13)
+          setPosition({ lat: place.lat, lng: place.lng })
+          setIsCordsSearch(false)
+        }}
         onCenterChange={setMapCenter}
         setIsCordsSearch={setIsCordsSearch}
         setSearchCoordinates={setSearchCoordinates}
-        setCordSearchLocation={setCordSearchLocation}
+        setCordSearchLocation={setCordSearchCords}
         setZoom={setMapZoom}
       />
-      <div ref={mapRef} className="relative h-screen w-full" onContextMenu={handleMapRightClick}>
+
+      <div className="relative h-screen w-full overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/5 via-transparent to-transparent pointer-events-none z-10" />
+
         <Map
-          zoomControl={false}
           onCenterChanged={(center) => {
             setMapCenter(center.detail.center)
             setCenterChanged(center.detail.bounds)
@@ -251,7 +176,7 @@ function MapSection() {
           }}
           onClick={handleMapClick}
           mapId={"bf51eea910020fa25a"}
-          className="h-screen w-full"
+          className="h-full w-full transition-all duration-500 ease-out"
           defaultCenter={{ lat: 22.54992, lng: 0 }}
           defaultZoom={3}
           minZoom={3}
@@ -259,397 +184,135 @@ function MapSection() {
           center={mapCenter}
           gestureHandling={"greedy"}
           disableDefaultUI={true}
-          onDragend={() => handleDragEnd()}
+          onDragend={handleDragEnd}
         >
-          {centerChanged && searchCoordinates && (
-            <AdvancedMarker
-              style={{
-                color: "red",
-              }}
-              position={{
-                lat: searchCoordinates.lat,
-                lng: searchCoordinates.lng,
-              }}
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary  shadow-lg">
-                <MapPin className="h-5 w-5" />
+          {position && !isCordsSearch && (
+            <Marker
+              position={{ lat: position.lat, lng: position.lng }}
+
+            />
+          )}
+          {/* Marker for search coordinates */}
+          {isCordsSearch && searchCoordinates && (
+            <AdvancedMarker position={searchCoordinates}>
+              <div className="animate-bounce">
+                <MapPin className="size-8 text-red-500 drop-shadow-lg" />
               </div>
             </AdvancedMarker>
           )}
 
+          {/* Marker for manual coordinate search */}
           {isCordsSearch && cordSearchCords && (
-            <AdvancedMarker
-              style={{
-                color: "red",
-              }}
-              position={{
-                lat: cordSearchCords.lat,
-                lng: cordSearchCords.lng,
-              }}
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary  shadow-lg">
-                <MapPin className="h-5 w-5" />
+            <AdvancedMarker position={cordSearchCords}>
+              <div className="animate-bounce">
+                <MapPin className="size-8 text-red-500 drop-shadow-lg" />
               </div>
             </AdvancedMarker>
           )}
-          <MyPins setIsAutoCollect={setIsAutoCollect} />
-        </Map>
 
-        {/* Custom Context Menu */}
-        {showContextMenu && rightClickPosition && (
-          <div
-            className="fixed z-50 bg-white rounded-md shadow-lg p-2 border border-gray-200 w-64"
-            style={{
-              left: `${contextMenuPosition.x}px`,
-              top: `${contextMenuPosition.y}px`,
+          <MapControls onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} />
+          <MyPins
+            onPinClick={(pin) => {
+              openPinDetailModal(pin)
+              setIsAutoCollect(pin.autoCollect)
             }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-2 text-sm font-medium">Location Coordinates</div>
-            <div className="px-2 pb-2 text-xs text-gray-500">
-              {rightClickPosition.lat.toFixed(6)}, {rightClickPosition.lng.toFixed(6)}
-            </div>
-            <Button
-              variant="default"
-              size="sm"
-              className="w-full mt-2 flex items-center justify-center gap-2"
-              onClick={handleCopyCoordinates}
-            >
-              <Copy className="h-4 w-4" />
-              Copy Coordinates
-            </Button>
-          </div>
-        )}
+            showExpired={showExpired}
+          />
+        </Map>
       </div>
 
-      <ZoomControls onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} />
+      <NearbyLocationsPanel
+        onSelectPlace={(coords) => {
+          setMapCenter(coords)
+          setMapZoom(13)
+          setPosition(coords)
+        }}
+      />
 
-      {/* Sidebar toggle button */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3 }}
-      >
-        <Button
-          variant="outline"
-          size="icon"
-          className="absolute right-4 top-40 z-10 rounded-full bg-white shadow-md"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-        >
-          {sidebarOpen ? <ArrowRightFromLine className="h-4 w-4" /> : <ArrowLeftFromLine className="h-4 w-4" />}
+      <Link href="/organization/map/collection-report">
+        <Button className="absolute bottom-28 right-6">
+          <ClipboardList className="mr-2 h-4 w-4" />
+          Collection Reports
         </Button>
-      </motion.div>
+      </Link>
 
-      {/* Sidebar */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: 300 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 300 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="absolute bottom-20 right-4 top-52 z-10  "
-          >
-            <SideMapItem setAlreadySelectedPlace={setAlreadySelectedPlace} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <div className="absolute bottom-40  right-2  z-10 ">
-        <CreateBounty />
-      </div>
-      <div className="absolute bottom-52  right-2  z-10 ">
-        <ManualPinButton handleClick={handleManualPinClick} />
-      </div>
-      <div className="absolute bottom-24 right-2 z-10 flex flex-col gap-2 md:bottom-28">
-        <ReportCollection />
-      </div>
-
-      {/* Tooltip for right-click instruction */}
-      <div className="absolute left-4 top-4 z-10 rounded-md bg-white/90 p-2 text-sm shadow-md backdrop-blur-sm dark:bg-gray-800/9 hidden md:block">
-        <div className="flex items-center gap-2">
-          <Copy className="h-4 w-4 text-primary" />
-          <span>Right-click anywhere to view and copy coordinates</span>
-        </div>
-      </div>
+      <CreatePinModal />
+      <PinDetailAndActionsModal />
+      <AgentChat />
     </APIProvider>
   )
 }
 
-function SideMapItem({
-  setAlreadySelectedPlace,
+export default MapDashboardContent
+
+const MyPins = memo(function MyPins({
+  onPinClick,
+  showExpired,
 }: {
-  setAlreadySelectedPlace: (coords: { lat: number; lng: number }) => void
+  onPinClick: (pin: Pin) => void
+  showExpired: boolean
 }) {
-  const { nearbyPins } = useNearbyPinsStore()
-  const [loading, setLoading] = useState(true)
+  const { allPins, setAllPins } = useNearbyPinsStore()
+  const pinsQuery = api.maps.pin.getMyPins.useQuery({ showExpired })
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false)
-    }, 1500)
+    if (pinsQuery.data) {
+      setAllPins(pinsQuery.data)
+    }
+  }, [pinsQuery.data, setAllPins])
 
-    return () => clearTimeout(timer)
-  }, [])
+  if (pinsQuery.isLoading) return null
 
-  return (
-    <Card className="h-64 w-80 shadow-lg">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Nearby Locations</CardTitle>
-      </CardHeader>
-      <CardContent className="p-3">
-        <ScrollArea className="h-40 pr-3">
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <SkeletonPin key={index} />
-              ))}
-            </div>
-          ) : nearbyPins.length <= 0 ? (
-            <div className="flex h-20 items-center justify-center">
-              <p className="text-sm text-muted-foreground">No nearby locations found</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {nearbyPins?.map((pin) => (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                  onClick={() => {
-                    setAlreadySelectedPlace({
-                      lat: pin.latitude,
-                      lng: pin.longitude,
-                    })
-                  }}
-                  key={pin.id}
-                  className="group cursor-pointer rounded-lg border border-border bg-card p-3 transition-all hover:border-primary hover:shadow-md"
-                >
-                  <div className="flex items-start gap-3">
-                    <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
-                    <div className="flex-1">
-                      <h3 className="font-medium group-hover:text-primary">
-                        {pin.locationGroup?.title ?? "Unnamed Location"}
-                      </h3>
-                      <div className="mt-2 flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={pin.locationGroup?.image ?? "/favicon.ico"} alt="Creator" />
-                            <AvatarFallback>C</AvatarFallback>
-                          </Avatar>
-                          <Badge variant="secondary" className="text-xs">
-                            {pin._count.consumers} visitors
-                          </Badge>
-                        </div>
-                        {pin.locationGroup?.endDate && (
-                          <span className="text-[0.65rem] text-muted-foreground">
-                            Ends: {format(new Date(pin.locationGroup.endDate), "MMM d, yyyy")}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  )
-}
-
-function SkeletonPin() {
-  return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
-      <Skeleton className="h-4 w-4 rounded-full" />
-      <div className="flex-1">
-        <Skeleton className="h-4 w-3/4" />
-        <div className="mt-2 flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            <Skeleton className="h-5 w-5 rounded-full" />
-            <Skeleton className="h-4 w-16" />
-          </div>
-          <Skeleton className="h-3 w-20" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ManualPinButton({ handleClick }: { handleClick: () => void }) {
-  return (
-    <Button type="button" onClick={handleClick} variant="accentOutline" className="flex items-center gap-2  shadow-md">
-      <MapPin className="h-4 w-4" />
-      <span className="hidden md:block">Drop Pin</span>
-    </Button>
-  )
-}
-
-function ReportCollection() {
-  return (
-    <Button variant="accentOutline" asChild className="flex items-center gap-2  shadow-md">
-      <Link href="/organization/map/collection-report">
-        <ClipboardList className="h-4 w-4" />
-        <span className="hidden md:block">Collection Report</span>
-      </Link>
-    </Button>
-  )
-}
-function CreateBounty() {
-  const { setIsOpen: setBountyOpen } = useCreateLocationBasedBountyStore()
-
-  return (
-    <Button variant="destructive" className="flex items-center gap-2  shadow-md"
-      onClick={() => setBountyOpen(true)}
-    >
-      <Trophy className="h-4 w-4" />
-      <span className="hidden md:block">Create Bounty</span>
-    </Button>
-  )
-}
-
-function ZoomControls({
-  onZoomIn,
-  onZoomOut,
-}: {
-  onZoomIn: () => void
-  onZoomOut: () => void
-}) {
   return (
     <>
-      <style jsx global>{`
-        .touch-manipulation {
-          touch-action: manipulation;
-          -webkit-touch-callout: none;
-          -webkit-tap-highlight-color: transparent;
-        }
-      `}</style>
-      <motion.div
-        className="absolute bottom-4 left-2 z-10 flex
-                 items-center gap-2 md:bottom-auto md:left-auto md:right-2 md:top-4"
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
-      >
-        <motion.div
-          whileHover={{
-            scale: 1.1,
-            transition: { duration: 0.2 },
-          }}
-          whileTap={{ scale: 0.9 }}
-        >
-          <Button
-            variant="destructive"
-            size="icon"
-            className="h-10 w-10 touch-manipulation select-none rounded-full shadow-sm shadow-foreground"
-            onClick={onZoomOut}
-            aria-label="Zoom out"
+      {allPins.map((pin) => {
+        const PinIcon = getPinIcon(pin.locationGroup?.type ?? PinType.OTHER)
+        const isExpired = pin.locationGroup?.endDate && new Date(pin.locationGroup.endDate) < new Date()
+        const isApproved = pin.locationGroup?.approved === true
+        const isRemainingZero = pin.locationGroup?.remaining !== undefined && pin.locationGroup?.remaining <= 0
+
+        return (
+          <AdvancedMarker
+            key={pin.id}
+            position={{ lat: pin.latitude, lng: pin.longitude }}
+            onClick={() => {
+              onPinClick(pin)
+            }}
           >
-            <Minus className="h-4 w-4" />
-          </Button>
-        </motion.div>
-        <motion.div
-          whileHover={{
-            scale: 1.1,
-            transition: { duration: 0.2 },
-          }}
-          whileTap={{ scale: 0.9 }}
-        >
-          <Button
-            variant="destructive"
-            size="icon"
-            className="h-10 w-10 touch-manipulation  select-none rounded-full shadow-sm shadow-foreground"
-            onClick={onZoomIn}
-            aria-label="Zoom in"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </motion.div>
-      </motion.div>
+            <div
+              className={`relative flex items-center justify-center rounded-full border-3 border-white shadow-xl transition-all duration-300 hover:scale-125 hover:shadow-2xl cursor-pointer group
+                ${isExpired ?? isRemainingZero ? "opacity-60 grayscale" : "opacity-100"}
+                ${!isApproved ? "bg-slate-500" : "bg-white"}
+                transform hover:-translate-y-1
+              `}
+            >
+              {!isExpired && !isRemainingZero && isApproved && (
+                <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
+              )}
+
+              {pin.locationGroup?.creator.profileUrl ? (
+                <Image
+                  src={pin.locationGroup.creator.profileUrl ?? "/placeholder.svg"}
+                  width={32}
+                  height={32}
+                  alt="Creator"
+                  className="h-12 w-12 rounded-full object-cover ring-2 ring-white group-hover:ring-blue-400 transition-all duration-300"
+                />
+              ) : (
+                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center ring-2 ring-white group-hover:ring-blue-400 transition-all duration-300">
+                  <PinIcon className="h-6 w-6 text-gray-600 group-hover:text-blue-600 transition-colors duration-300" />
+                </div>
+              )}
+
+              {pin._count.consumers > 0 && (
+                <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium shadow-lg">
+                  {pin._count.consumers > 99 ? "99+" : pin._count.consumers}
+                </div>
+              )}
+            </div>
+          </AdvancedMarker>
+        )
+      })}
     </>
   )
-}
-
-function MyPins({
-  setIsAutoCollect,
-}: {
-  setIsAutoCollect: (value: boolean) => void
-}) {
-  const { setAllPins } = useNearbyPinsStore()
-  const pins = api.maps.pin.getMyPins.useQuery({
-    showExpired: false,
-  })
-  const { setData, setIsOpen } = useMapOptionsModalStore()
-  const { setData: setBountyData } = useCreateLocationBasedBountyStore()
-  useEffect(() => {
-    if (pins.data) {
-      setAllPins(pins.data)
-    }
-  }, [pins.data])
-  console.log(pins)
-
-  if (pins.data) {
-    return (
-      <>
-        {pins.data.map((pin) => {
-          return (
-            <AdvancedMarker
-              key={pin.id}
-              position={{ lat: pin.latitude, lng: pin.longitude }}
-              onClick={() => {
-                setBountyData({
-                  lat: pin.latitude,
-                  lng: pin.longitude,
-                })
-                setIsOpen(true)
-                setData({
-                  pinId: pin.id,
-                  long: pin.longitude,
-                  lat: pin.latitude,
-                  mapTitle: pin.locationGroup?.title,
-                  image: pin.locationGroup?.image ?? undefined,
-                  mapDescription: pin.locationGroup?.description,
-                  endDate: pin.locationGroup?.endDate,
-                  startDate: pin.locationGroup?.startDate,
-                  pinCollectionLimit: pin.locationGroup?.limit,
-                  pinRemainingLimit: pin.locationGroup?.remaining,
-                  multiPin: pin.locationGroup?.multiPin,
-                  subscriptionId: pin.locationGroup?.subscriptionId ?? undefined,
-                  autoCollect: pin.autoCollect,
-                  pageAsset: pin.locationGroup?.pageAsset ?? false,
-                  privacy: pin.locationGroup?.privacy,
-                  pinNumber: pin.locationGroup?.remaining,
-                  link: pin.locationGroup?.link ?? undefined,
-                  assetId: pin.locationGroup?.assetId ?? undefined,
-                })
-                setIsAutoCollect(pin.autoCollect)
-              }}
-            >
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1.2, opacity: 1 }}
-                transition={{ duration: 0.3 }}
-                className={`relative transition-all ${!pin.autoCollect ? "rounded-full" : ""} ${pin._count.consumers <= 0 ? "ring-2 ring-primary ring-offset-2" : "opacity-80"}`}
-              >
-                <Avatar className="h-8 w-8 border-2 border-white bg-background shadow-md">
-                  <AvatarImage src={pin.locationGroup?.creator.profileUrl ?? "/favicon.ico"} alt="Creator" />
-                  <AvatarFallback>C</AvatarFallback>
-                </Avatar>
-                {pin._count.consumers > 0 && (
-                  <Badge className="absolute -right-2 -top-2 h-5 w-5 rounded-full p-0 text-center text-[10px]">
-                    {pin._count.consumers}
-                  </Badge>
-                )}
-              </motion.div>
-            </AdvancedMarker>
-          )
-        })}
-      </>
-    )
-  }
-
-  return null
-}
-
-export default CreatorMap
-
+})

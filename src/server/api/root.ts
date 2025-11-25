@@ -14,6 +14,7 @@ import { actionTokenRouter } from "./routers/action-token/root";
 import { trigger } from "@trigger.dev/sdk/dist/commonjs/v3/shared";
 import { triggerRouter } from "./routers/trigger";
 import { qrRouter } from "./routers/qr";
+import { agentRouter } from "./routers/agent";
 
 /**
  * This is the primary router for your server.
@@ -34,7 +35,9 @@ export const appRouter = createTRPCRouter({
   s3: s3Router,
   action: actionTokenRouter,
   trigger: triggerRouter,
-  qr: qrRouter
+  qr: qrRouter,
+  agent: agentRouter,
+
 });
 
 // export type definition of API

@@ -53,7 +53,7 @@ export default function Layout({
     "/reward-checker",
   ];
   const isPublicRoute = publicRoutes.includes(router.pathname);
-  const isAugmentedRealityRoute = router.pathname.startsWith("/augmented-reality/ar");
+  const isAugmentedRealityRoute = router.pathname.startsWith("/action/ar");
 
   const isHomeRoute = router.pathname === "/";
   const handleToggle = () => {
@@ -63,13 +63,13 @@ export default function Layout({
   if (router.pathname.includes("/albedo")) {
     return <div>{children}</div>;
   }
-  if (router.pathname.includes("/augmented-reality")) {
-    // if (router.pathname.includes("/augmented-reality/enter")) {
+  if (router.pathname.includes("/action/")) {
+    // if (router.pathname.includes("/action/enter")) {
     //   return <>{children}</>;
     // }
     return (
       <>
-        {session?.status === "authenticated" || router.pathname.includes("/augmented-reality/qr") ? (
+        {session?.status === "authenticated" || router.pathname.includes("/action/qr") ? (
           <div className="h-screen w-full overflow-hidden fixed inset-0">
             {
               isAugmentedRealityRoute ? (
