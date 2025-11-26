@@ -238,7 +238,7 @@ function MapDashboardContent() {
 
       <CreatePinModal />
       <PinDetailAndActionsModal />
-      {/* <AgentChat /> */}
+      <AgentChat />
     </APIProvider>
   )
 }
