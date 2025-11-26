@@ -483,9 +483,10 @@ export default function ScavengerHuntDialog() {
                 signWith: needSign(),
                 prize: data.priceBandcoin,
                 method: paymentMethod,
-                fees: paymentMethod === "asset" ? totalFees :
-                    paymentMethod === "xlm" ? 1 :
-                        (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
+                fees: 0,
+                // paymentMethod === "asset" ? totalFees :
+                // paymentMethod === "xlm" ? 1 :
+                //     (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
             })
         } catch (error) {
             console.error("Form submission error:", error)
@@ -553,11 +554,12 @@ export default function ScavengerHuntDialog() {
                                         },
                                         {
                                             label: "Platform Fee",
-                                            amount: paymentMethod === "asset"
-                                                ? totalFees
-                                                : paymentMethod === "xlm"
-                                                    ? 1
-                                                    : (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
+                                            amount: 0,
+                                            // paymentMethod === "asset"
+                                            // ? totalFees
+                                            // : paymentMethod === "xlm"
+                                            //     ? 1
+                                            //     : (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
                                             highlighted: false,
                                             type: "fee",
                                         },

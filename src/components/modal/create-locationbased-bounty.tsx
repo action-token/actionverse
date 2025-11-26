@@ -295,9 +295,10 @@ export default function CreateLocationBasedBountyModal() {
                 signWith: needSign(),
                 prize: prizeAmount,
                 method: paymentMethod,
-                fees: paymentMethod === "asset" ? totalFees :
-                    paymentMethod === "xlm" ? 1 :
-                        (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))
+                fees: 0,
+                // paymentMethod === "asset" ? totalFees :
+                // paymentMethod === "xlm" ? 1 :
+                //     (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))
             })
         }
     }
@@ -455,11 +456,12 @@ export default function CreateLocationBasedBountyModal() {
                                                         },
                                                         {
                                                             label: "Platform Fee",
-                                                            amount: paymentMethod === "asset"
-                                                                ? totalFees
-                                                                : paymentMethod === "xlm"
-                                                                    ? 1
-                                                                    : (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1))),
+                                                            amount: 0,
+                                                            // paymentMethod === "asset"
+                                                            // ? totalFees
+                                                            // : paymentMethod === "xlm"
+                                                            //     ? 1
+                                                            //     : (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1))),
                                                             highlighted: false,
                                                             type: "fee",
                                                         },
