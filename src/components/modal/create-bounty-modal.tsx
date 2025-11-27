@@ -131,8 +131,8 @@ const CreateBountyModal = () => {
     const utils = api.useUtils()
 
     // Calculate fees
-    const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
-
+    // const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
+    const totalFees = 0 // Flat fee for simplification
     // Form setup
     const methods = useForm<z.infer<typeof BountySchema>>({
         resolver: zodResolver(BountySchema),
@@ -461,7 +461,7 @@ const CreateBountyModal = () => {
                                                         ? Number(getValues("prize"))
                                                         : paymentMethod === "xlm"
                                                             ? Number(getValues("prizeInUSD") / (XLMRate ?? 1))
-                                                            : Number(getValues("prizeInUSD") / (XLMRate ?? 1))
+                                                            : Number(getValues("prizeInUSD"))
                                                     ,
                                                     highlighted: true,
                                                     type: "cost",
@@ -482,17 +482,17 @@ const CreateBountyModal = () => {
                                                     amount: paymentMethod === "asset"
                                                         ? Number(getValues("prize")) + totalFees
                                                         : paymentMethod === "xlm"
-                                                            ? Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + 1
+                                                            ? Number(getValues("prizeInUSD") / (XLMRate ?? 1))
 
-                                                            : Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)))
+                                                            : Number(getValues("prizeInUSD") ?? 1)
                                                     ,
 
                                                     highlighted: false,
                                                     type: "total",
                                                 },
                                             ]}
-                                            XLM_EQUIVALENT={Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + 1}
-                                            USDC_EQUIVALENT={Number(getValues("prizeInUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)))}
+                                            XLM_EQUIVALENT={Number(getValues("prizeInUSD") / (XLMRate ?? 1))}
+                                            USDC_EQUIVALENT={Number(getValues("prizeInUSD") ?? 1)}
                                             handleConfirm={handleSubmit(onSubmit)}
                                             loading={loading}
                                             requiredToken={Number(getValues("prize")) + totalFees}

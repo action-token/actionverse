@@ -127,7 +127,8 @@ export default function CreateLocationBasedBountyModal() {
     const { setIsOpen: SetIsBountyOpen, data, isOpen: isBountyOpen } = useCreateLocationBasedBountyStore()
     const { isOpen, setIsOpen, paymentMethod } = usePaymentMethodStore()
     const { platformAssetBalance } = useUserStellarAcc()
-    const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
+    // const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
+    const totalFees = 0 // Flat fee for simplification
     const utils = api.useUtils()
     const { needSign } = useNeedSign()
     const session = useSession()
@@ -450,7 +451,7 @@ export default function CreateLocationBasedBountyModal() {
                                                                 ? Number(getValues("brandAmount") + totalFees)
                                                                 : paymentMethod === "xlm"
                                                                     ? Number(getValues("usdtAmount") / (XLMRate ?? 1))
-                                                                    : Number(getValues("usdtAmount") / (XLMRate ?? 1)),
+                                                                    : Number(getValues("usdtAmount")),
                                                             highlighted: true,
                                                             type: "cost",
                                                         },
@@ -470,15 +471,15 @@ export default function CreateLocationBasedBountyModal() {
                                                             amount: paymentMethod === "asset"
                                                                 ? Number(getValues("brandAmount")) + totalFees
                                                                 : paymentMethod === "xlm"
-                                                                    ? Number(getValues("usdtAmount") / (XLMRate ?? 1)) + 1
-                                                                    : Number(getValues("usdtAmount") / (XLMRate ?? 1)) + (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))
+                                                                    ? Number(getValues("usdtAmount") / (XLMRate ?? 1))
+                                                                    : Number(getValues("usdtAmount"))
                                                             ,
                                                             highlighted: false,
                                                             type: "total",
                                                         },
                                                     ]}
-                                                    XLM_EQUIVALENT={Number(getValues("usdtAmount") / (XLMRate ?? 1)) + 1}
-                                                    USDC_EQUIVALENT={Number(getValues("usdtAmount") / (XLMRate ?? 1)) + (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))}
+                                                    XLM_EQUIVALENT={Number(getValues("usdtAmount") / (XLMRate ?? 1))}
+                                                    USDC_EQUIVALENT={Number(getValues("usdtAmount"))}
                                                     handleConfirm={methods.handleSubmit(onSubmit)}
                                                     loading={isSubmitting}
                                                     requiredToken={getValues('brandAmount') + totalFees}

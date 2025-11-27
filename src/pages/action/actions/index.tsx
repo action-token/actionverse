@@ -226,7 +226,7 @@ export default function BountyScreen() {
   const handleBountyAction = (bounty: Bounty) => {
     if (bounty.isJoined || bounty.isOwner) {
       setData({ item: bounty })
-      router.push(`/augmented-reality/actions/${bounty.id}`)
+      router.push(`/action/actions/${bounty.id}`)
     } else if (bounty.totalWinner === bounty.currentWinnerCount) {
       toast.error("Bounty is already finished")
     } else {

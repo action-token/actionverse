@@ -209,8 +209,8 @@ export default function ScavengerHuntDialog() {
 
     const { trigger, formState, getValues, watch, setValue } = methods
     //api calling
-    const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
-
+    // const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
+    const totalFees = 0 // Flat fee for simplification
     const CreateBountyMutation = api.bounty.ScavengerHunt.createScavengerHunt.useMutation({
         onSuccess: async (data) => {
             toast.success("Bounty Created Successfully! 🎉")
@@ -548,7 +548,7 @@ export default function ScavengerHuntDialog() {
                                                 ? Number(getValues("priceBandcoin"))
                                                 : paymentMethod === "xlm"
                                                     ? Number(getValues("priceUSD") / (XLMRate ?? 1))
-                                                    : Number(getValues("priceUSD") / (XLMRate ?? 1)),
+                                                    : Number(getValues("priceUSD")),
                                             highlighted: true,
                                             type: "cost",
                                         },
@@ -569,13 +569,13 @@ export default function ScavengerHuntDialog() {
                                                 ? Number(getValues("priceBandcoin")) + totalFees
                                                 : paymentMethod === "xlm"
                                                     ? Number(getValues("priceUSD") / (XLMRate ?? 1)) + 1
-                                                    : Number(getValues("priceUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
+                                                    : Number(getValues("priceUSD")),
                                             highlighted: false,
                                             type: "total",
                                         },
                                     ]}
-                                    XLM_EQUIVALENT={Number(getValues("priceUSD") / (XLMRate ?? 1)) + 1}
-                                    USDC_EQUIVALENT={Number(getValues("priceUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1)))}
+                                    XLM_EQUIVALENT={Number(getValues("priceUSD") / (XLMRate ?? 1))}
+                                    USDC_EQUIVALENT={Number(getValues("priceUSD"))}
                                     handleConfirm={() => onSubmit(getValues())}
                                     loading={loading}
                                     requiredToken={Number(getValues("priceBandcoin")) + totalFees}

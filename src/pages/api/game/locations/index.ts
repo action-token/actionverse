@@ -126,6 +126,7 @@ export default async function handler(
         AND: [
           {
             approved: true,
+            startDate: { lte: new Date() },
             endDate: { gte: new Date() },
             subscriptionId: null,
             remaining: { gt: 0 },

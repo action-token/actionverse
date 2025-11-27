@@ -609,6 +609,17 @@ function MyPins({ locations }: { locations: ConsumedLocation[] }) {
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
                         transition={{ duration: 0.3, delay: 0.05 * index }}
+                        style={{
+                            height: 30,
+                            width: 30,
+                            borderWidth: 2,
+                            ...(
+                                !location.auto_collect && {
+                                    borderRadius: 20, // Add borderRadius only when auto_collect is false
+                                }
+                            ),
+                            ...(location.collected && { opacity: 0.4 }),
+                        }}
                     >
                         <div className="relative">
                             <div className="w-12 h-12 bg-white rounded-full shadow-lg border-2 border-white overflow-hidden">
