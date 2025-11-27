@@ -1,733 +1,1640 @@
-"use client"
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
-import type React from "react"
+"use client";
 
-import { useState, useMemo } from "react"
+import type React from "react";
+
+import { useState, useMemo, use } from "react";
 import {
-    Loader2,
-    Download,
-    Search,
-    Calendar,
-    RefreshCw,
-    ChevronDown,
-    Info,
-    MapPin,
-    User,
-    Mail,
-    FileText,
-} from "lucide-react"
-import { motion } from "framer-motion"
-import { api } from "~/utils/api"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/shadcn/ui/table"
-import { Button } from "~/components/shadcn/ui/button"
-import { Input } from "~/components/shadcn/ui/input"
-import { Badge } from "~/components/shadcn/ui/badge"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
+  BarChart3,
+  CalendarDays,
+  ChevronDown,
+  Download,
+  Filter,
+  Loader2,
+  MapPin,
+  Users,
+  X,
+  ArrowUpRight,
+  ArrowDownRight,
+  ArrowLeft,
+  Settings,
+} from "lucide-react";
+import Link from "next/link";
+
+import { api } from "~/utils/api";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "~/components/shadcn/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
-import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import { type CreatorConsumedPin, useModal } from "~/lib/state/augmented-reality/use-modal-store"
-import { addrShort } from "~/utils/utils"
-import { cn } from "~/lib/utils"
-import toast from "react-hot-toast"
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/shadcn/ui/table";
+import { Button } from "~/components/shadcn/ui/button";
+
+import { addrShort } from "~/utils/utils";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "~/components/shadcn/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/shadcn/ui/dropdown-menu";
+import { Badge } from "~/components/shadcn/ui/badge";
+import { Input } from "~/components/shadcn/ui/input";
+import { Skeleton } from "~/components/shadcn/ui/skeleton";
+import { cn } from "~/lib/utils";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "~/components/shadcn/ui/tabs";
+import { Checkbox } from "~/components/shadcn/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/shadcn/ui/dialog";
+import { Label } from "~/components/shadcn/ui/label";
+import { ScrollArea } from "~/components/shadcn/ui/scroll-area";
+// Add these imports at the top with the other imports
+import { Calendar } from "~/components/shadcn/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/shadcn/ui/popover";
+import { format } from "date-fns";
 
 type ConsumerType = {
-    user: {
-        name: string | null
-        id: string
-        email: string | null
-    }
-}
+  user: {
+    name: string | null;
+    id: string;
+    email: string | null;
+  };
+  claimedAt: Date | null;
+};
 
-const ITEMS_PER_PAGE = 10
+import { useRouter } from "next/navigation";
+import { CreatorConsumedPin } from "~/lib/state/augmented-reality/use-modal-store";
 
-const CreatorCollectionReport = () => {
-    const [searchTerm, setSearchTerm] = useState("")
-    const [currentPage, setCurrentPage] = useState(1)
-    const [isRefreshing, setIsRefreshing] = useState(false)
+const CreatorCollectionReport = ({
+  isAdmin,
+  userId,
+}: {
+  isAdmin?: boolean;
+  userId?: string;
+}) => {
+  const [selectedDays, setSelectedDays] = useState<number | undefined>(
+    undefined,
+  );
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("overview");
+  const [creatorId, setCreatorId] = useState<string | undefined>(userId);
 
-    const pins = api.maps.pin.getCreatorPinTConsumedByUser.useQuery({}, {
-        refetchOnWindowFocus: false,
-        onSettled: () => {
-            setIsRefreshing(false)
-        },
-    })
+  const pins = api.maps.pin.getCreatorPinTConsumedByUser.useQuery(
+    {
+      day: selectedDays,
+      creatorId: creatorId,
+      isAdmin: isAdmin,
+    },
+    {
+      enabled: true,
+    },
+  );
 
-    const handleRefresh = () => {
-        setIsRefreshing(true)
-        pins.refetch()
-    }
+  // Calculate summary metrics
+  const metrics = useMemo(() => {
+    if (!pins.data) return null;
 
-    if (pins.isLoading && !isRefreshing) {
-        return (
-            <div className="container mx-auto px-4 py-12">
-                <LoadingState />
-            </div>
-        )
-    }
+    const totalPins = pins.data.length;
+    const totalLocations = pins.data.reduce(
+      (acc, pin) => acc + pin.locations.length,
+      0,
+    );
 
-    if (pins.isError) {
-        return (
-            <div className="container mx-auto px-4 py-12">
-                <Card className="border-destructive/50 bg-destructive/5">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-destructive">
-                            <Info className="h-5 w-5" />
-                            Error Loading Data
-                        </CardTitle>
-                        <CardDescription className="text-destructive/80">
-                            {pins.error?.message || "There was an error loading your collection reports."}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardFooter>
-                        <Button variant="outline" onClick={() => pins.refetch()}>
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Try Again
-                        </Button>
-                    </CardFooter>
-                </Card>
-            </div>
-        )
-    }
+    const totalConsumers = pins.data.reduce((acc, pin) => {
+      return (
+        acc +
+        pin.locations.reduce((locAcc, loc) => locAcc + loc.consumers.length, 0)
+      );
+    }, 0);
 
-    if (!pins.data || pins.data.length === 0) {
-        return (
-            <div className="container mx-auto px-4 py-12">
-                <Card className="border-muted bg-muted/5">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-muted-foreground">
-                            <FileText className="h-5 w-5" />
-                            No Collection Data
-                        </CardTitle>
-                        <CardDescription>
-                            No pin collection data is available yet. Create pins and wait for users to collect them.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardFooter>
-                        <Button variant="outline" onClick={() => pins.refetch()}>
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Refresh Data
-                        </Button>
-                    </CardFooter>
-                </Card>
-            </div>
-        )
-    }
+    const consumptionRate =
+      totalLocations > 0
+        ? Math.round((totalConsumers / totalLocations) * 100)
+        : 0;
 
+    // Calculate top pins by consumer count
+    const topPins = [...pins.data]
+      .map((pin) => {
+        const consumerCount = pin.locations.reduce(
+          (acc, loc) => acc + loc.consumers.length,
+          0,
+        );
+        return { id: pin.id, title: pin.title, consumerCount };
+      })
+      .sort((a, b) => b.consumerCount - a.consumerCount)
+      .slice(0, 5);
+
+    return {
+      totalPins,
+      totalLocations,
+      totalConsumers,
+      consumptionRate,
+      topPins,
+    };
+  }, [pins.data]);
+
+  if (pins.isLoading) {
+    return <LoadingState />;
+  }
+
+  if (!pins.data) {
     return (
+      <div>
+        <CreatorDropDown creatorId={creatorId} setCreatorId={setCreatorId} />
+        <EmptyState message="No data available" />
+      </div>
+    );
+  }
 
-        <div className="px-4 py-12">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-                <div className="mb-8 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <h2 className="text-3xl font-bold tracking-tight">Collection Reports</h2>
-                        <p className="text-muted-foreground">Track and analyze all pin collections by your users.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
-                            <RefreshCw className={cn("mr-2 h-4 w-4", isRefreshing && "animate-spin")} />
-                            Refresh
-                        </Button>
-                        <ReportDownloadMenu />
-                    </div>
-                </div>
+  return (
+    <div className="container mx-auto px-4 py-8">
+      {!isAdmin && (
+        <>
+          {/* <div className="mb-6">
+                    <Button variant="ghost" size="sm" asChild className="mb-4">
+                        <Link href="/fan/creator" className="flex items-center">
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Back to Creator Dashboard
+                        </Link>
+                    </Button>
+                </div> */}
+        </>
+      )}
 
-                <Tabs defaultValue="table" className="w-full">
-                    <TabsList className="mb-4 grid w-full grid-cols-2 md:w-[400px]">
-                        <TabsTrigger value="table">
-                            <FileText className="mr-2 h-4 w-4" />
-                            Table View
-                        </TabsTrigger>
-                        <TabsTrigger value="summary">
-                            <Info className="mr-2 h-4 w-4" />
-                            Summary
-                        </TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="table" className="mt-0">
-                        <Card>
-                            <CardHeader className="pb-2">
-                                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                                    <div className="relative w-full max-w-sm">
-                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                        <Input
-                                            placeholder="Search by title, location or email..."
-                                            className="pl-8"
-                                            value={searchTerm}
-                                            onChange={(e) => {
-                                                setSearchTerm(e.target.value)
-                                                setCurrentPage(1) // Reset to first page on search
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-xs">
-                                            {pins.data.reduce(
-                                                (acc, pin) => acc + pin.locations.reduce((locAcc, loc) => locAcc + loc.consumers.length, 0),
-                                                0,
-                                            )}{" "}
-                                            Total Collections
-                                        </Badge>
-                                        <Badge variant="outline" className="text-xs">
-                                            {pins.data.length} Pins
-                                        </Badge>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <TableData
-                                    pins={pins.data}
-                                    searchTerm={searchTerm}
-                                    currentPage={currentPage}
-                                    itemsPerPage={ITEMS_PER_PAGE}
-                                    onPageChange={setCurrentPage}
-                                />
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-
-                    <TabsContent value="summary">
-                        <SummaryView pins={pins.data} />
-                    </TabsContent>
-                </Tabs>
-            </motion.div>
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Collection Reports
+          </h1>
+          <p className="text-muted-foreground">
+            Monitor and analyze your pin collection performance
+          </p>
         </div>
 
-    )
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <CreatorDropDown
+              creatorId={creatorId}
+              setCreatorId={setCreatorId}
+            />
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9">
+                <CalendarDays className="mr-2 h-4 w-4" />
+                {selectedDays ? `Last ${selectedDays} days` : "All time"}
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={() => setSelectedDays(undefined)}>
+                All time
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSelectedDays(7)}>
+                Last 7 days
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSelectedDays(15)}>
+                Last 15 days
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSelectedDays(30)}>
+                Last 30 days
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSelectedDays(90)}>
+                Last 90 days
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <ReportDownloadItem day={7} creatorId={creatorId}>
+                Last 7 days (Weekly)
+              </ReportDownloadItem>
+              <ReportDownloadItem day={30} creatorId={creatorId}>
+                Last 30 days (Monthly)
+              </ReportDownloadItem>
+              <ReportDownloadItem day={90} creatorId={creatorId}>
+                Last 90 days (Quarterly)
+              </ReportDownloadItem>
+              <ReportDownloadItem day={365} creatorId={creatorId}>
+                Last 365 days (Yearly)
+              </ReportDownloadItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {selectedDays && (
+        <div className="mb-6">
+          <Badge
+            variant="outline"
+            className="flex items-center gap-1 px-3 py-1"
+          >
+            <CalendarDays className="h-3.5 w-3.5" />
+            <span>Filtered to last {selectedDays} days</span>
+            <X
+              className="ml-1 h-3 w-3 cursor-pointer opacity-70 hover:opacity-100"
+              onClick={() => setSelectedDays(undefined)}
+            />
+          </Badge>
+        </div>
+      )}
+
+      <Tabs
+        defaultValue="overview"
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-6"
+      >
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="data">Data Table</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          {metrics && (
+            <>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  title="Total Pins"
+                  value={metrics.totalPins}
+                  icon={<MapPin className="h-4 w-4" />}
+                />
+                <MetricCard
+                  title="Total Locations"
+                  value={metrics.totalLocations}
+                  icon={<MapPin className="h-4 w-4" />}
+                />
+                <MetricCard
+                  title="Total Consumers"
+                  value={metrics.totalConsumers}
+                  icon={<Users className="h-4 w-4" />}
+                />
+                <MetricCard
+                  title="Consumption Rate"
+                  value={`${metrics.consumptionRate}%`}
+                  icon={<BarChart3 className="h-4 w-4" />}
+                />
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg font-medium">
+                      Top Performing Pins
+                    </CardTitle>
+                    <CardDescription>
+                      Pins with the highest consumer engagement
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {metrics.topPins.map((pin, index) => (
+                        <div
+                          key={pin.id}
+                          className="flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                              {index + 1}
+                            </div>
+                            <div>
+                              <div className="font-medium">{pin.title}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {pin.id}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">
+                              {pin.consumerCount} consumers
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="pt-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setActiveTab("data")}
+                    >
+                      View all pins
+                    </Button>
+                  </CardFooter>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg font-medium">
+                      Recent Activity
+                    </CardTitle>
+                    <CardDescription>
+                      Latest consumer interactions
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {pins.data
+                        .slice(0, 5)
+                        .flatMap((pin) =>
+                          pin.locations.flatMap((location) =>
+                            location.consumers.slice(0, 1).map((consumer) => (
+                              <div
+                                key={`${pin.id}-${location.id}-${consumer.user.id}`}
+                                className="flex items-center justify-between"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                                    {consumer.user.name?.[0] ?? "U"}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium">
+                                      {consumer.user.email ?? "Anonymous User"}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      Collected from {pin.title}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {consumer.claimedAt
+                                    ? new Date(
+                                      consumer.claimedAt,
+                                    ).toLocaleDateString()
+                                    : "Unknown date"}
+                                </div>
+                              </div>
+                            )),
+                          ),
+                        )
+                        .slice(0, 5)}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="pt-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setActiveTab("data")}
+                    >
+                      View all activity
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </div>
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="data">
+          <Card className="border-none shadow-sm">
+            <CardContent className="p-0 pt-6">
+              <TableData
+                pins={pins.data}
+                selectedDays={selectedDays}
+                setSelectedDays={setSelectedDays}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                isLoading={pins.isLoading}
+                isRefetching={pins.isRefetching}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+export default CreatorCollectionReport;
+
+function MetricCard({
+  title,
+  value,
+  icon,
+  trend,
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  trend?: { value: number; label: string };
+}) {
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+            {icon}
+          </div>
+        </div>
+        <div className="mt-4">
+          <div className="text-2xl font-bold">{value}</div>
+          <div className="text-sm font-medium text-muted-foreground">
+            {title}
+          </div>
+        </div>
+        {trend && (
+          <div className="mt-2 flex items-center text-xs">
+            {trend.value > 0 ? (
+              <ArrowUpRight className="mr-1 h-3 w-3 text-green-500" />
+            ) : (
+              <ArrowDownRight className="mr-1 h-3 w-3 text-red-500" />
+            )}
+            <span
+              className={trend.value > 0 ? "text-green-500" : "text-red-500"}
+            >
+              {trend.value > 0 ? "+" : ""}
+              {trend.value}%
+            </span>
+            <span className="ml-1 text-muted-foreground">{trend.label}</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
-export default CreatorCollectionReport
+// Replace the TableData function with this enhanced version that includes comprehensive filtering
+export function TableData({
+  pins,
+  selectedDays,
+  setSelectedDays,
+  searchTerm,
+  setSearchTerm,
+  isLoading,
+  isRefetching,
+}: {
+  pins: CreatorConsumedPin[];
+  selectedDays: number | undefined;
+  setSelectedDays: (days: number | undefined) => void;
+  searchTerm: string;
+  setSearchTerm: (term: string) => void;
+  isLoading: boolean;
+  isRefetching: boolean;
+}) {
+  const router = useRouter();
+  // Add these types and state at the beginning of the TableData function
+  type SortField = "title" | "startDate" | "consumers" | "id";
+  type SortDirection = "asc" | "desc";
+  const [sortConfig, setSortConfig] = useState<{
+    field: SortField;
+    direction: SortDirection;
+  }>({
+    field: "startDate",
+    direction: "desc",
+  });
+
+  // Add filter states
+  const [filters, setFilters] = useState({
+    title: "",
+    pinId: "",
+    location: "",
+    startDate: null as Date | null,
+    endDate: null as Date | null,
+  });
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Add column visibility state
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState({
+    creatorId: true,
+    pin_title: true,
+    pin_id: false,
+    start_date: true,
+    end_date: true,
+    location_id: false,
+    latitude: true,
+    longitude: true,
+    auto_collect: false,
+    consumer_name: false,
+    consumer_email: false,
+    consumer_id: true,
+    claimed_at: false,
+  });
+
+  // Add this function to handle sorting
+  const handleSort = (field: SortField) => {
+    setSortConfig((prevConfig) => ({
+      field,
+      direction:
+        prevConfig.field === field && prevConfig.direction === "asc"
+          ? "desc"
+          : "asc",
+    }));
+  };
+
+  // Add this function to handle filter changes
+  const handleFilterChange = (
+    field: keyof typeof filters,
+    value: string | Date | null,
+  ) => {
+    setFilters((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Add this function to reset filters
+  const resetFilters = () => {
+    setFilters({
+      title: "",
+      pinId: "",
+      location: "",
+      startDate: null,
+      endDate: null,
+    });
+    setSearchTerm("");
+  };
+
+  // Add this function to toggle column visibility
+  const toggleColumnVisibility = (column: keyof typeof visibleColumns) => {
+    setVisibleColumns((prev) => ({
+      ...prev,
+      [column]: !prev[column],
+    }));
+  };
+
+  // Add this function to reset column visibility
+  const resetColumnVisibility = () => {
+    setVisibleColumns({
+      creatorId: true,
+      pin_title: true,
+      pin_id: false,
+      start_date: true,
+      end_date: true,
+      location_id: false,
+      latitude: true,
+      longitude: true,
+      auto_collect: false,
+      consumer_name: false,
+      consumer_email: false,
+      consumer_id: true,
+      claimed_at: false,
+    });
+  };
+
+  // Add this function to get the sorted and filtered data
+  const getFilteredAndSortedPins = (pins: CreatorConsumedPin[]) => {
+    // First apply filters
+    const filteredData = pins.filter((pin) => {
+      // Search term filter (existing)
+      const matchesSearch =
+        searchTerm === "" ||
+        pin.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        pin.id.toLowerCase().includes(searchTerm.toLowerCase());
+
+      // Title filter
+      const matchesTitle =
+        filters.title === "" ||
+        pin.title.toLowerCase().includes(filters.title.toLowerCase());
+
+      // Pin ID filter
+      const matchesPinId =
+        filters.pinId === "" ||
+        pin.id.toLowerCase().includes(filters.pinId.toLowerCase());
+
+      // Location filter (check if any location matches)
+      const matchesLocation =
+        filters.location === "" ||
+        pin.locations.some((loc) => {
+          const locationString =
+            `${loc.latitude.toFixed(6)},${loc.longitude.toFixed(6)}`.toLowerCase();
+          return locationString.includes(filters.location.toLowerCase());
+        });
+
+      // Date range filter
+      const pinStartDate = new Date(pin.startDate);
+      const matchesStartDate =
+        !filters.startDate || pinStartDate >= filters.startDate;
+      const matchesEndDate =
+        !filters.endDate || pinStartDate <= filters.endDate;
+
+      return (
+        matchesSearch &&
+        matchesTitle &&
+        matchesPinId &&
+        matchesLocation &&
+        matchesStartDate &&
+        matchesEndDate
+      );
+    });
+
+    // Then sort the filtered data
+    return [...filteredData].sort((a, b) => {
+      switch (sortConfig.field) {
+        case "title":
+          return sortConfig.direction === "asc"
+            ? a.title.localeCompare(b.title)
+            : b.title.localeCompare(a.title);
+        case "startDate":
+          return sortConfig.direction === "asc"
+            ? new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+            : new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+        case "consumers":
+          const aConsumers = a.locations.reduce(
+            (sum, loc) => sum + loc.consumers.length,
+            0,
+          );
+          const bConsumers = b.locations.reduce(
+            (sum, loc) => sum + loc.consumers.length,
+            0,
+          );
+          return sortConfig.direction === "asc"
+            ? aConsumers - bConsumers
+            : bConsumers - aConsumers;
+        case "id":
+          return sortConfig.direction === "asc"
+            ? a.id.localeCompare(b.id)
+            : b.id.localeCompare(a.id);
+        default:
+          return 0;
+      }
+    });
+  };
+
+  // Replace the existing filteredPins definition with this:
+  const filteredPins = getFilteredAndSortedPins(pins);
+
+  // Check if any filters are active
+  const hasActiveFilters =
+    searchTerm !== "" ||
+    filters.title !== "" ||
+    filters.pinId !== "" ||
+    filters.location !== "" ||
+    filters.startDate !== null ||
+    filters.endDate !== null;
+
+  if (filteredPins.length === 0 && !isLoading) {
+    return (
+      <div className="flex min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+          <Filter className="h-10 w-10 text-muted-foreground" />
+        </div>
+        <h3 className="mt-4 text-lg font-semibold">No results found</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {hasActiveFilters
+            ? "Try adjusting your filters"
+            : "No pins match the current filter criteria"}
+        </p>
+        {hasActiveFilters && (
+          <Button variant="outline" className="mt-4" onClick={resetFilters}>
+            Reset all filters
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-col gap-4 px-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex w-full max-w-sm items-center space-x-2">
+          <Input
+            placeholder="Search pins by title or ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-9"
+          />
+          {searchTerm && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSearchTerm("")}
+              className="h-9 px-2"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Label>Date Range</Label>
+          <div className="flex flex-col space-y-1">
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 justify-start text-left font-normal"
+                  >
+                    {filters.startDate ? (
+                      format(filters.startDate, "PPP")
+                    ) : (
+                      <span className="text-muted-foreground">From date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={filters.startDate ?? undefined}
+                    onSelect={(date) =>
+                      handleFilterChange("startDate", date ?? null)
+                    }
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 justify-start text-left font-normal"
+                  >
+                    {filters.endDate ? (
+                      format(filters.endDate, "PPP")
+                    ) : (
+                      <span className="text-muted-foreground">To date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={filters.endDate ?? undefined}
+                    onSelect={(date) => {
+                      // Set the time to the end of the day for the end date
+                      if (date) {
+                        const endOfDay = new Date(date);
+                        endOfDay.setHours(23, 59, 59, 999);
+                        handleFilterChange("endDate", endOfDay);
+                      } else {
+                        handleFilterChange("endDate", null);
+                      }
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={resetFilters}>
+              <X className="mr-2 h-4 w-4" />
+              Clear Filters
+            </Button>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowColumnSettings(true)}
+            className="ml-2"
+          >
+            <Settings className="mr-2 h-4 w-4" />
+            Columns
+          </Button>
+        </div>
+      </div>
+
+      {/* Column Settings Dialog */}
+      <Dialog open={showColumnSettings} onOpenChange={setShowColumnSettings}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Table Columns</DialogTitle>
+            <DialogDescription>
+              Select which columns you want to display in the table
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[300px] py-4 pr-4">
+            <div className="grid gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-creatorId"
+                  checked={visibleColumns.creatorId}
+                  onCheckedChange={() => toggleColumnVisibility("creatorId")}
+                />
+                <Label htmlFor="column-creatorId">Creator ID</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-pin_title"
+                  checked={visibleColumns.pin_title}
+                  onCheckedChange={() => toggleColumnVisibility("pin_title")}
+                />
+                <Label htmlFor="column-pin_title">Pin Title</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-pin_id"
+                  checked={visibleColumns.pin_id}
+                  onCheckedChange={() => toggleColumnVisibility("pin_id")}
+                />
+                <Label htmlFor="column-pin_id">Pin ID</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-start_date"
+                  checked={visibleColumns.start_date}
+                  onCheckedChange={() => toggleColumnVisibility("start_date")}
+                />
+                <Label htmlFor="column-start_date">Start Date</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-end_date"
+                  checked={visibleColumns.end_date}
+                  onCheckedChange={() => toggleColumnVisibility("end_date")}
+                />
+                <Label htmlFor="column-end_date">End Date</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-location_id"
+                  checked={visibleColumns.location_id}
+                  onCheckedChange={() => toggleColumnVisibility("location_id")}
+                />
+                <Label htmlFor="column-location_id">Location ID</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-latitude"
+                  checked={visibleColumns.latitude}
+                  onCheckedChange={() => toggleColumnVisibility("latitude")}
+                />
+                <Label htmlFor="column-latitude">Latitude</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-longitude"
+                  checked={visibleColumns.longitude}
+                  onCheckedChange={() => toggleColumnVisibility("longitude")}
+                />
+                <Label htmlFor="column-longitude">Longitude</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-auto_collect"
+                  checked={visibleColumns.auto_collect}
+                  onCheckedChange={() => toggleColumnVisibility("auto_collect")}
+                />
+                <Label htmlFor="column-auto_collect">Auto Collect</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-consumer_name"
+                  checked={visibleColumns.consumer_name}
+                  onCheckedChange={() =>
+                    toggleColumnVisibility("consumer_name")
+                  }
+                />
+                <Label htmlFor="column-consumer_name">Consumer Name</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-consumer_email"
+                  checked={visibleColumns.consumer_email}
+                  onCheckedChange={() =>
+                    toggleColumnVisibility("consumer_email")
+                  }
+                />
+                <Label htmlFor="column-consumer_email">Consumer Email</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-consumer_id"
+                  checked={visibleColumns.consumer_id}
+                  onCheckedChange={() => toggleColumnVisibility("consumer_id")}
+                />
+                <Label htmlFor="column-consumer_id">Consumer ID</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-claimed_at"
+                  checked={visibleColumns.claimed_at}
+                  onCheckedChange={() => toggleColumnVisibility("claimed_at")}
+                />
+                <Label htmlFor="column-claimed_at">Claimed At</Label>
+              </div>
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={resetColumnVisibility}>
+              Reset
+            </Button>
+            <Button onClick={() => setShowColumnSettings(false)}>Apply</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {hasActiveFilters && (
+        <div className="mt-2 rounded-md bg-muted p-2 text-xs">
+          <div className="font-semibold">Active Filters:</div>
+          <div>
+            Start Date:{" "}
+            {filters.startDate ? format(filters.startDate, "PPP") : "None"}
+          </div>
+          <div>
+            End Date:{" "}
+            {filters.endDate ? format(filters.endDate, "PPP") : "None"}
+          </div>
+          <div>Search Term: {searchTerm ?? "None"}</div>
+        </div>
+      )}
+
+      <div className="relative overflow-hidden rounded-md border">
+        {isRefetching && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        )}
+
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              {visibleColumns.creatorId && (
+                <TableHead
+                  className="w-[180px] cursor-pointer"
+                  onClick={() => handleSort("id")}
+                >
+                  <div className="flex items-center">
+                    Creator ID
+                    {sortConfig.field === "id" && (
+                      <ChevronDown
+                        className={`ml-1 h-4 w-4 transition-transform ${sortConfig.direction === "asc" ? "rotate-180" : ""}`}
+                      />
+                    )}
+                  </div>
+                </TableHead>
+              )}
+              {visibleColumns.pin_title && (
+                <TableHead
+                  className="cursor-pointer"
+                  onClick={() => handleSort("title")}
+                >
+                  <div className="flex items-center">
+                    Pin Title
+                    {sortConfig.field === "title" && (
+                      <ChevronDown
+                        className={`ml-1 h-4 w-4 transition-transform ${sortConfig.direction === "asc" ? "rotate-180" : ""}`}
+                      />
+                    )}
+                  </div>
+                </TableHead>
+              )}
+              {visibleColumns.pin_id && (
+                <TableHead className="w-[180px]">Pin ID</TableHead>
+              )}
+              {visibleColumns.location_id && (
+                <TableHead className="w-[180px]">Location ID</TableHead>
+              )}
+              {visibleColumns.latitude && (
+                <TableHead className="w-[120px]">Latitude</TableHead>
+              )}
+              {visibleColumns.longitude && (
+                <TableHead className="w-[120px]">Longitude</TableHead>
+              )}
+              {visibleColumns.auto_collect && (
+                <TableHead className="w-[120px]">Auto Collect</TableHead>
+              )}
+              {visibleColumns.consumer_id && (
+                <TableHead
+                  className="w-[140px] cursor-pointer"
+                  onClick={() => handleSort("consumers")}
+                >
+                  <div className="flex items-center">
+                    Consumer ID
+                    {sortConfig.field === "consumers" && (
+                      <ChevronDown
+                        className={`ml-1 h-4 w-4 transition-transform ${sortConfig.direction === "asc" ? "rotate-180" : ""}`}
+                      />
+                    )}
+                  </div>
+                </TableHead>
+              )}
+              {visibleColumns.consumer_name && (
+                <TableHead className="w-[180px]">Consumer Name</TableHead>
+              )}
+              {visibleColumns.consumer_email && (
+                <TableHead className="w-[180px]">Consumer Email</TableHead>
+              )}
+              {visibleColumns.start_date && (
+                <TableHead className="w-[120px]">Start Date</TableHead>
+              )}
+              {visibleColumns.end_date && (
+                <TableHead className="w-[120px]">End Date</TableHead>
+              )}
+              {visibleColumns.claimed_at && (
+                <TableHead className="w-[120px]">Claimed At</TableHead>
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredPins.flatMap((pin) =>
+              pin.locations.flatMap((location) =>
+                location.consumers.length > 0 ? (
+                  location.consumers.map((consumer, consumerIndex) => (
+                    <TableRow
+                      onClick={() => {
+                        router.push(`/organization/map/collection-report/${location.id}`);
+                      }}
+                      key={`${pin.id}-${location.id}-${consumer.user.id}-${consumerIndex}`}
+                      className={cn(
+                        "transition-colors hover:bg-muted/50",
+                        consumerIndex % 2 === 0
+                          ? "bg-background"
+                          : "bg-muted/10",
+                      )}
+                    >
+                      {consumerIndex === 0 ? (
+                        <>
+                          {visibleColumns.creatorId && (
+                            <TableCell
+                              className="font-medium"
+                              rowSpan={location._count.consumers}
+                            >
+                              <div className="flex items-center">
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {pin.creatorId}
+                                </span>
+                              </div>
+                            </TableCell>
+                          )}
+                          {visibleColumns.pin_title && (
+                            <TableCell rowSpan={location._count.consumers}>
+                              <div className="font-medium">{pin.title}</div>
+                            </TableCell>
+                          )}
+                          {visibleColumns.pin_id && (
+                            <TableCell
+                              className="font-medium"
+                              rowSpan={location._count.consumers}
+                            >
+                              <div className="font-mono text-xs text-muted-foreground">
+                                {pin.id}
+                              </div>
+                            </TableCell>
+                          )}
+                          {visibleColumns.location_id && (
+                            <TableCell
+                              className="font-medium"
+                              rowSpan={location._count.consumers}
+                            >
+                              <div className="font-mono text-xs text-muted-foreground">
+                                {location.id}
+                              </div>
+                            </TableCell>
+                          )}
+                          {visibleColumns.latitude && (
+                            <TableCell
+                              className="font-medium"
+                              rowSpan={location._count.consumers}
+                            >
+                              <div className="font-mono text-xs">
+                                {location.latitude.toFixed(6)}
+                              </div>
+                            </TableCell>
+                          )}
+                          {visibleColumns.longitude && (
+                            <TableCell
+                              className="font-medium"
+                              rowSpan={location._count.consumers}
+                            >
+                              <div className="font-mono text-xs">
+                                {location.longitude.toFixed(6)}
+                              </div>
+                            </TableCell>
+                          )}
+                          {visibleColumns.auto_collect && (
+                            <TableCell
+                              className="font-medium"
+                              rowSpan={location._count.consumers}
+                            >
+                              <div className="font-mono text-xs">
+                                {location.autoCollect ? "Yes" : "No"}
+                              </div>
+                            </TableCell>
+                          )}
+                        </>
+                      ) : null}
+                      {visibleColumns.consumer_id && (
+                        <TableCell>
+                          <div className="font-mono text-xs">
+                            {addrShort(consumer.user.id, 5)}
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.consumer_name && (
+                        <TableCell>
+                          <div className="max-w-[150px] truncate text-sm">
+                            {consumer.user.name ?? (
+                              <span className="text-muted-foreground">N/A</span>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.consumer_email && (
+                        <TableCell>
+                          <div className="max-w-[150px] truncate text-sm">
+                            {consumer.user.email ?? (
+                              <span className="text-muted-foreground">
+                                Stellar Loggedin
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.start_date && (
+                        <TableCell>
+                          <div className="text-xs">
+                            {new Date(pin.startDate).toLocaleDateString()}
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.end_date && (
+                        <TableCell>
+                          <div className="text-xs">
+                            {new Date(pin.endDate).toLocaleDateString()}
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.claimed_at && (
+                        <TableCell>
+                          <div className="text-xs">
+                            {consumer.claimedAt
+                              ? new Date(
+                                consumer.claimedAt,
+                              ).toLocaleDateString()
+                              : "N/A"}
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow
+                    key={`${pin.id}-${location.id}-no-consumers`}
+                    className="hover:bg-muted/50"
+                  >
+                    {visibleColumns.creatorId && (
+                      <TableCell>
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {pin.creatorId}
+                        </div>
+                      </TableCell>
+                    )}
+                    {visibleColumns.pin_title && (
+                      <TableCell>
+                        <div className="font-medium">{pin.title}</div>
+                      </TableCell>
+                    )}
+                    {visibleColumns.pin_id && (
+                      <TableCell>
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {pin.id}
+                        </div>
+                      </TableCell>
+                    )}
+                    {visibleColumns.location_id && (
+                      <TableCell>
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {location.id}
+                        </div>
+                      </TableCell>
+                    )}
+                    {visibleColumns.latitude && (
+                      <TableCell>
+                        <div className="font-mono text-xs">
+                          {location.latitude.toFixed(6)}
+                        </div>
+                      </TableCell>
+                    )}
+                    {visibleColumns.longitude && (
+                      <TableCell>
+                        <div className="font-mono text-xs">
+                          {location.longitude.toFixed(6)}
+                        </div>
+                      </TableCell>
+                    )}
+                    {visibleColumns.auto_collect && (
+                      <TableCell>
+                        <div className="font-mono text-xs">
+                          {location.autoCollect ? "Yes" : "No"}
+                        </div>
+                      </TableCell>
+                    )}
+                    <TableCell
+                      colSpan={
+                        Object.entries(visibleColumns).filter(
+                          ([key, value]) =>
+                            value &&
+                            [
+                              "consumer_id",
+                              "consumer_name",
+                              "consumer_email",
+                              "start_date",
+                              "end_date",
+                              "claimed_at",
+                            ].includes(key),
+                        ).length
+                      }
+                      className="text-center text-sm text-muted-foreground"
+                    >
+                      No consumers for this location
+                    </TableCell>
+                  </TableRow>
+                ),
+              ),
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="mt-2 px-6 text-xs text-muted-foreground">
+        Showing {filteredPins.length} items
+        {selectedDays ? ` (filtered to last ${selectedDays} days)` : ""}
+        {sortConfig &&
+          ` • Sorted by ${sortConfig.field} (${sortConfig.direction === "asc" ? "ascending" : "descending"})`}
+        {hasActiveFilters && " • Filters applied"}
+      </div>
+    </div>
+  );
+}
+
+function ReportDownloadItem({
+  day,
+  children,
+  creatorId,
+}: {
+  day: number;
+  children?: React.ReactNode;
+  creatorId?: string;
+}) {
+  const [showFieldSelector, setShowFieldSelector] = useState(false);
+  const download = api.maps.pin.downloadCreatorPinTConsumedByUser.useMutation({
+    onSuccess: (data) => {
+      DownloadPinLocationAsCSV(data, selectedFields);
+    },
+  });
+
+  // Define all available fields
+  const allFields = [
+    { id: "creatorId", label: "Creator ID" },
+    { id: "pin_title", label: "Pin Title" },
+    { id: "pin_id", label: "Pin ID" },
+    { id: "start_date", label: "Start Date" },
+    { id: "end_date", label: "End Date" },
+    { id: "location_id", label: "Location ID" },
+    { id: "latitude", label: "Latitude" },
+    { id: "longitude", label: "Longitude" },
+    { id: "auto_collect", label: "Auto Collect" },
+    { id: "consumer_name", label: "Consumer Name" },
+    { id: "consumer_email", label: "Consumer Email" },
+    { id: "consumer_id", label: "Consumer ID" },
+    { id: "claimed_at", label: "Claimed At" },
+  ];
+
+  // State to track selected fields
+  const [selectedFields, setSelectedFields] = useState<string[]>(
+    allFields.map((field) => field.id),
+  );
+
+  // Toggle field selection
+  const toggleField = (fieldId: string) => {
+    setSelectedFields((prev) =>
+      prev.includes(fieldId)
+        ? prev.filter((id) => id !== fieldId)
+        : [...prev, fieldId],
+    );
+  };
+
+  // Select all fields
+  const selectAllFields = () => {
+    setSelectedFields(allFields.map((field) => field.id));
+  };
+
+  // Deselect all fields
+  const deselectAllFields = () => {
+    setSelectedFields([]);
+  };
+
+  return (
+    <>
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowFieldSelector(true);
+        }}
+      >
+        <div className="flex w-full items-center">
+          <Download className="mr-2 h-3.5 w-3.5" />
+          {children}
+        </div>
+      </DropdownMenuItem>
+
+      <Dialog
+        open={showFieldSelector}
+        onOpenChange={(open) => {
+          // Only allow the dialog to be closed via the buttons
+          if (!open) {
+            setShowFieldSelector(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Options</DialogTitle>
+            <DialogDescription>
+              Select the fields you want to include in your export for{" "}
+              {children}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex justify-between py-2">
+            <Button variant="outline" size="sm" onClick={selectAllFields}>
+              Select All
+            </Button>
+            <Button variant="outline" size="sm" onClick={deselectAllFields}>
+              Deselect All
+            </Button>
+          </div>
+
+          <ScrollArea className="h-[300px] pr-4">
+            <div className="grid gap-4">
+              {allFields.map((field) => (
+                <div key={field.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`field-${field.id}`}
+                    checked={selectedFields.includes(field.id)}
+                    onCheckedChange={() => toggleField(field.id)}
+                  />
+                  <Label
+                    htmlFor={`field-${field.id}`}
+                    className="flex-1 cursor-pointer"
+                  >
+                    {field.label}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <DialogFooter className="flex justify-between sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowFieldSelector(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (selectedFields.length === 0) {
+                  alert("Please select at least one field to export");
+                  return;
+                }
+                console.log(
+                  "Exporting with fields:",
+                  creatorId,
+                  selectedFields,
+                );
+                download.mutate({ day: day, creatorId: creatorId });
+                setShowFieldSelector(false);
+              }}
+              disabled={download.isLoading ?? selectedFields.length === 0}
+            >
+              {download.isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                "Export"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function DownloadPinLocationAsCSV(
+  data: CreatorConsumedPin[],
+  selectedFields: string[] = [],
+) {
+  // Skip if no data
+  if (!data.length) {
+    alert("No data available to download");
+    return;
+  }
+
+  // Skip if no fields selected
+  if (selectedFields.length === 0) {
+    alert("Please select at least one field to export");
+    return;
+  }
+
+  // Define proper types for the accessor functions
+  type LocationType = {
+    id: string;
+    latitude: number;
+    longitude: number;
+    autoCollect: boolean;
+    _count: { consumers: number };
+    consumers: ConsumerType[];
+  };
+
+  // Define all possible fields and their accessor functions with proper typing
+  const fieldAccessors: Record<
+    string,
+    (
+      pin: CreatorConsumedPin,
+      location: LocationType,
+      consumer: ConsumerType,
+    ) => string | number | boolean
+  > = {
+    creatorId: (pin) => pin.creatorId,
+    pin_title: (pin) => pin.title,
+    pin_id: (pin) => pin.id,
+    start_date: (pin) => new Date(pin.startDate).toISOString(),
+    end_date: (pin) => new Date(pin.endDate).toISOString(),
+    location_id: (_, location) => location.id,
+    latitude: (_, location) => location.latitude,
+    longitude: (_, location) => location.longitude,
+    auto_collect: (_, location) => location.autoCollect,
+    consumer_name: (_, __, consumer) => consumer.user.name ?? "N/A",
+    consumer_email: (_, __, consumer) => consumer.user.email ?? "",
+    consumer_id: (_, __, consumer) => consumer.user.id,
+    claimed_at: (_, __, consumer) =>
+      consumer.claimedAt ? new Date(consumer.claimedAt).toISOString() : "",
+  };
+
+  // Create CSV content with only selected fields
+  const csvContent = [
+    // Headers row with only selected fields
+    selectedFields,
+
+    // Data rows with only selected fields
+    ...data.flatMap((pin) =>
+      pin.locations.flatMap((location) =>
+        (location.consumers ?? []).map((consumer: ConsumerType) =>
+          selectedFields.map((field) =>
+            fieldAccessors[field]
+              ? fieldAccessors[field](pin, location, consumer)
+              : "",
+          ),
+        ),
+      ),
+    ),
+  ]
+    .map((e) => e.join(",")) // Convert each row into a comma-separated string
+    .join("\n"); // Combine all rows with newline characters
+
+  // Create a Blob from the CSV data
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+
+  // Create a link element and trigger a download
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute(
+    "download",
+    `pin_locations_${new Date().toISOString().split("T")[0]}.csv`,
+  );
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  // Clean up
+  URL.revokeObjectURL(url);
+}
 
 function LoadingState() {
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <Skeleton className="h-8 w-64" />
-                    <Skeleton className="mt-2 h-4 w-48" />
-                </div>
-                <Skeleton className="h-10 w-32" />
-            </div>
-
-            <Card>
-                <CardHeader>
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <Skeleton className="h-10 w-64" />
-                        <Skeleton className="h-6 w-32" />
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                                <Skeleton className="h-5 w-full max-w-[800px]" />
-                            </div>
-                        </div>
-                        {Array(5)
-                            .fill(0)
-                            .map((_, i) => (
-                                <div key={i} className="flex items-center justify-between">
-                                    <div className="space-y-1">
-                                        <Skeleton className="h-12 w-full max-w-[800px]" />
-                                    </div>
-                                </div>
-                            ))}
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-    )
-}
-
-function SummaryView({ pins }: { pins: CreatorConsumedPin[] }) {
-    // Calculate summary statistics
-    const totalPins = pins.length
-    const totalLocations = pins.reduce((acc, pin) => acc + pin.locations.length, 0)
-    const totalCollections = pins.reduce(
-        (acc, pin) => acc + pin.locations.reduce((locAcc, loc) => locAcc + loc.consumers.length, 0),
-        0,
-    )
-
-    const uniqueConsumers = new Set()
-    pins.forEach((pin) => {
-        pin.locations.forEach((location) => {
-            location.consumers.forEach((consumer) => {
-                uniqueConsumers.add(consumer.user.id)
-            })
-        })
-    })
-
-    const totalUniqueConsumers = uniqueConsumers.size
-
-    // Find most collected pin
-    let mostCollectedPin = { pin: null as CreatorConsumedPin | null, count: 0 }
-    pins.forEach((pin) => {
-        const pinCollections = pin.locations.reduce((acc, loc) => acc + loc.consumers.length, 0)
-        if (pinCollections > mostCollectedPin.count) {
-            mostCollectedPin = { pin, count: pinCollections }
-        }
-    })
-
-    return (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Total Pins</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex items-center justify-between">
-                        <div className="text-2xl font-bold">{totalPins}</div>
-                        <MapPin className="h-8 w-8 text-muted-foreground/50" />
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Total Locations</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex items-center justify-between">
-                        <div className="text-2xl font-bold">{totalLocations}</div>
-                        <MapPin className="h-8 w-8 text-muted-foreground/50" />
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Total Collections</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex items-center justify-between">
-                        <div className="text-2xl font-bold">{totalCollections}</div>
-                        <Download className="h-8 w-8 text-muted-foreground/50" />
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Unique Collectors</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex items-center justify-between">
-                        <div className="text-2xl font-bold">{totalUniqueConsumers}</div>
-                        <User className="h-8 w-8 text-muted-foreground/50" />
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card className="md:col-span-2">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Most Collected Pin</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {mostCollectedPin.pin ? (
-                        <div className="flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
-                                <div className="font-medium">{mostCollectedPin.pin.title}</div>
-                                <Badge>{mostCollectedPin.count} collections</Badge>
-                            </div>
-                            <div className="text-sm text-muted-foreground">ID: {mostCollectedPin.pin.id}</div>
-                            <div className="text-sm text-muted-foreground">
-                                Active: {new Date(mostCollectedPin.pin.startDate).toLocaleDateString()} -{" "}
-                                {new Date(mostCollectedPin.pin.endDate).toLocaleDateString()}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="text-muted-foreground">No collections yet</div>
-                    )}
-                </CardContent>
-            </Card>
-        </div>
-    )
-}
-
-export function TableData({
-    pins,
-    searchTerm,
-    currentPage,
-    itemsPerPage,
-    onPageChange,
-}: {
-    pins: CreatorConsumedPin[]
-    searchTerm: string
-    currentPage: number
-    itemsPerPage: number
-    onPageChange: (page: number) => void
-}) {
-    const { onOpen } = useModal()
-
-    // Filter pins based on search term
-    const filteredPins = useMemo(() => {
-        if (!searchTerm) return pins
-
-        const lowerSearchTerm = searchTerm.toLowerCase()
-
-        return pins.filter((pin) => {
-            // Check pin title
-            if (pin.title.toLowerCase().includes(lowerSearchTerm)) return true
-
-            // Check locations
-            return pin.locations.some((location) => {
-                // Check location coordinates
-                if (
-                    location.latitude.toString().includes(lowerSearchTerm) ||
-                    location.longitude.toString().includes(lowerSearchTerm)
-                ) {
-                    return true
-                }
-
-                // Check consumers
-                return location.consumers.some(
-                    (consumer) =>
-                        consumer.user.email?.toLowerCase().includes(lowerSearchTerm) ??
-                        consumer.user.name?.toLowerCase().includes(lowerSearchTerm) ??
-                        consumer.user.id.toLowerCase().includes(lowerSearchTerm),
-                )
-            })
-        })
-    }, [pins, searchTerm])
-
-    // Create flattened data for pagination
-    const flattenedData = useMemo(() => {
-        const data: {
-            pinId: string
-            pinTitle: string
-            locationId: string
-            latitude: number
-            longitude: number
-            consumerId: string
-            consumerEmail: string | null
-            rowSpan?: number
-        }[] = []
-
-        filteredPins.forEach((pin) => {
-            pin.locations.forEach((location) => {
-                if (location.consumers.length > 0) {
-                    location.consumers.forEach((consumer, idx) => {
-                        data.push({
-                            pinId: pin.id,
-                            pinTitle: pin.title,
-                            locationId: location.id,
-                            latitude: location.latitude,
-                            longitude: location.longitude,
-                            consumerId: consumer.user.id,
-                            consumerEmail: consumer.user.email,
-                            rowSpan: idx === 0 ? location.consumers.length : undefined,
-                        })
-                    })
-                } else {
-                    data.push({
-                        pinId: pin.id,
-                        pinTitle: pin.title,
-                        locationId: location.id,
-                        latitude: location.latitude,
-                        longitude: location.longitude,
-                        consumerId: "",
-                        consumerEmail: null,
-                    })
-                }
-            })
-        })
-
-        return data
-    }, [filteredPins])
-
-    // Calculate pagination
-    const totalPages = Math.ceil(flattenedData.length / itemsPerPage)
-    const paginatedData = flattenedData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-
-    if (filteredPins.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Search className="mb-4 h-12 w-12 text-muted-foreground/50" />
-                <h3 className="text-lg font-medium">No matching results</h3>
-                <p className="text-sm text-muted-foreground">Try adjusting your search term to find what you{"'re"} looking for.</p>
-            </div>
-        )
-    }
-
-    return (
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-            <div className="rounded-md border">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Pin Details</TableHead>
-                            <TableHead>Location</TableHead>
-                            <TableHead>Consumer</TableHead>
-                            <TableHead>Email</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {paginatedData.map((row, index) => (
-                            <TableRow key={`${row.pinId}-${row.locationId}-${row.consumerId || "empty"}-${index}`}>
-                                {row.rowSpan ? (
-                                    <TableCell className="font-medium" rowSpan={row.rowSpan}>
-                                        <div className="flex flex-col gap-1">
-                                            <div className="font-medium">{row.pinTitle}</div>
-                                            <div className="text-xs text-muted-foreground">ID: {row.pinId}</div>
-                                        </div>
-                                    </TableCell>
-                                ) : row.rowSpan === undefined ? null : (
-                                    <TableCell className="font-medium">
-                                        <div className="flex flex-col gap-1">
-                                            <div className="font-medium">{row.pinTitle}</div>
-                                            <div className="text-xs text-muted-foreground">ID: {row.pinId}</div>
-                                        </div>
-                                    </TableCell>
-                                )}
-
-                                {row.rowSpan ? (
-                                    <TableCell rowSpan={row.rowSpan}>
-                                        <div className="flex items-center gap-1">
-                                            <MapPin className="h-3 w-3 text-muted-foreground" />
-                                            <span className="text-xs font-mono">
-                                                {row.latitude.toFixed(6)} | {row.longitude.toFixed(6)}
-                                            </span>
-                                        </div>
-                                    </TableCell>
-                                ) : row.rowSpan === undefined ? null : (
-                                    <TableCell>
-                                        <div className="flex items-center gap-1">
-                                            <MapPin className="h-3 w-3 text-muted-foreground" />
-                                            <span className="text-xs font-mono">
-                                                {row.latitude.toFixed(6)} | {row.longitude.toFixed(6)}
-                                            </span>
-                                        </div>
-                                    </TableCell>
-                                )}
-
-                                <TableCell>
-                                    {row.consumerId ? (
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <span className="cursor-help font-mono text-xs">{addrShort(row.consumerId, 5)}</span>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    <p className="font-mono text-xs">{row.consumerId}</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    ) : (
-                                        <span className="text-muted-foreground text-xs">No consumers</span>
-                                    )}
-                                </TableCell>
-
-                                <TableCell>
-                                    {row.consumerEmail ? (
-                                        <div className="flex items-center gap-1">
-                                            <Mail className="h-3 w-3 text-muted-foreground" />
-                                            <span className="text-xs">{row.consumerEmail}</span>
-                                        </div>
-                                    ) : row.consumerId ? (
-                                        <span className="text-xs text-muted-foreground">Stellar Login</span>
-                                    ) : (
-                                        <span className="text-xs text-muted-foreground">-</span>
-                                    )}
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
-
-            {totalPages > 1 && (
-                <div className="mt-4 flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">
-                        Showing {Math.min(flattenedData.length, (currentPage - 1) * itemsPerPage + 1)} to{" "}
-                        {Math.min(flattenedData.length, currentPage * itemsPerPage)} of {flattenedData.length} results
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onPageChange(currentPage - 1)}
-                            disabled={currentPage === 1}
-                        >
-                            Previous
-                        </Button>
-                        <div className="flex items-center gap-1">
-                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                // Show pages around current page
-                                let pageNum = currentPage
-                                if (totalPages <= 5) {
-                                    pageNum = i + 1
-                                } else if (currentPage <= 3) {
-                                    pageNum = i + 1
-                                } else if (currentPage >= totalPages - 2) {
-                                    pageNum = totalPages - 4 + i
-                                } else {
-                                    pageNum = currentPage - 2 + i
-                                }
-
-                                return (
-                                    <Button
-                                        key={pageNum}
-                                        variant={currentPage === pageNum ? "default" : "outline"}
-                                        size="sm"
-                                        className="h-8 w-8 p-0"
-                                        onClick={() => onPageChange(pageNum)}
-                                    >
-                                        {pageNum}
-                                    </Button>
-                                )
-                            })}
-
-                            {totalPages > 5 && currentPage < totalPages - 2 && (
-                                <>
-                                    <span className="text-muted-foreground">...</span>
-                                    <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => onPageChange(totalPages)}>
-                                        {totalPages}
-                                    </Button>
-                                </>
-                            )}
-                        </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onPageChange(currentPage + 1)}
-                            disabled={currentPage === totalPages}
-                        >
-                            Next
-                        </Button>
-                    </div>
-                </div>
-            )}
+          <h1 className="text-3xl font-bold tracking-tight">
+            Collection Reports
+          </h1>
+          <p className="text-muted-foreground">
+            Monitor and analyze your pin collection performance
+          </p>
         </div>
-    )
+      </div>
+      <div className="space-y-6">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                    <Skeleton className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Skeleton className="h-6 w-20" />
+                  <Skeleton className="mt-2 h-4 w-32" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardContent className="p-0">
+            <Skeleton className="h-[300px] w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
 }
 
-function ReportDownloadMenu() {
-    return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button>
-                    <Download className="mr-2 h-4 w-4" />
-                    Download Report
-                    <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                    <ReportDownload day={7}>
-                        <Calendar className="mr-2 h-4 w-4" />
-                        Weekly Report (Last 7 days)
-                    </ReportDownload>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                    <ReportDownload day={30}>
-                        <Calendar className="mr-2 h-4 w-4" />
-                        Monthly Report (Last 30 days)
-                    </ReportDownload>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                    <ReportDownload day={90}>
-                        <Calendar className="mr-2 h-4 w-4" />
-                        Quarterly Report (Last 90 days)
-                    </ReportDownload>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                    <ReportDownload day={0}>
-                        <Calendar className="mr-2 h-4 w-4" />
-                        All-Time Report
-                    </ReportDownload>
-                </DropdownMenuItem>
-            </DropdownMenuContent>
-        </DropdownMenu>
-    )
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+        <Filter className="h-10 w-10 text-muted-foreground" />
+      </div>
+      <h3 className="mt-4 text-lg font-semibold">{message}</h3>
+      <p className="mt-2 text-sm text-muted-foreground">
+        There is no data available for the selected period.
+      </p>
+    </div>
+  );
 }
 
-function ReportDownload({
-    day,
-    children,
+function CreatorDropDown({
+  creatorId,
+  setCreatorId,
 }: {
-    day: number
-    children?: React.ReactNode
+  creatorId: string | undefined;
+  setCreatorId: (id: string | undefined) => void;
 }) {
-    const [isDownloading, setIsDownloading] = useState(false)
+  const creators = api.fan.creator.getCreators.useQuery();
 
-    const download = api.maps.pin.downloadCreatorPinTConsumedByUser.useMutation({
-        onSuccess: (data) => {
-            DownloadPinLocationAsCSV(data)
-            setIsDownloading(false)
-        },
-        onError: (error) => {
-            toast.error(`Download failed: ${error.message}`)
-            setIsDownloading(false)
-        },
-    })
-
-    const handleDownload = () => {
-        setIsDownloading(true)
-        download.mutate({ day: day })
-    }
-
-    return (
-        <Button variant="ghost" className="w-full justify-start" onClick={handleDownload} disabled={isDownloading}>
-            {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : children}
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9">
+          {creatorId
+            ? creators.data?.find((c) => c.id === creatorId)?.name
+              ? `${creators.data?.find((c) => c.id === creatorId)?.name} (${creatorId.slice(0, 6)}...)`
+              : creatorId
+            : "Select Creator"}
+          <ChevronDown className="ml-2 h-4 w-4" />
         </Button>
-    )
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {creators.data?.map((creator) => (
+          <DropdownMenuItem
+            key={creator.id}
+            onClick={() => setCreatorId(creator.id)}
+          >
+            <div className="flex flex-col">
+              <span className="font-medium">{creator.name ?? "Unnamed"}</span>
+              <span className="text-xs text-muted-foreground">
+                {creator.id.slice(0, 6)}...{creator.id.slice(-4)}
+              </span>
+            </div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
-
-function DownloadPinLocationAsCSV(data: CreatorConsumedPin[]) {
-    const csvContent = [
-        [
-            "pin_title",
-            "pin_id",
-            "start_date",
-            "end_date",
-            "location_id",
-            "latitude",
-            "longitude",
-            "auto_collect",
-            "consumer_name",
-            "consumer_email",
-        ], // CSV headers
-        ...data.flatMap((pin) =>
-            pin.locations.flatMap((location) =>
-                (location.consumers ?? []).map((consumer: ConsumerType) => [
-                    pin.title,
-                    pin.id,
-                    new Date(pin.startDate).toISOString(),
-                    new Date(pin.endDate).toISOString(),
-                    location.id,
-                    location.latitude,
-                    location.longitude,
-                    location.autoCollect,
-                    consumer.user.name ?? "N/A",
-                    consumer.user.email ?? "",
-                ]),
-            ),
-        ),
-    ]
-        .map((e) => e.join(",")) // Convert each row into a comma-separated string
-        .join("\n") // Combine all rows with newline characters
-
-    // Create a Blob from the CSV data
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-
-    // Create a link element and trigger a download
-    const link = document.createElement("a")
-    const url = URL.createObjectURL(blob)
-    link.setAttribute("href", url)
-    link.setAttribute("download", `pin_locations_report_${new Date().toISOString().split("T")[0]}.csv`)
-    link.style.visibility = "hidden"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-
-    // Show success message
-    toast.success("Report downloaded successfully")
-}
-
-
