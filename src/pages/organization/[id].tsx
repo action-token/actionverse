@@ -4,7 +4,7 @@ import React, { useEffect } from "react"
 import { useState, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useParams, useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/router"
 import {
     ImageIcon,
     Grid3X3,
@@ -41,15 +41,13 @@ import MarketAssetComponent from "~/components/common/market-asset"
 import { getAssetBalanceFromBalance } from "~/lib/stellar/marketplace/test/acc"
 import { clientsign } from "package/connect_wallet"
 import { clientSelect } from "~/lib/stellar/fan/utils"
+import FollowCreatorButton from "~/components/creator/follow-creator-button"
 
 export default function ArtistProfile() {
+    const router = useRouter();
+    const { id } = router.query as { id: string };
 
-    // ihave /organization/1
-    // iwant to get the id
-    // so i use useParams() to get the id
-    const params = useParams()
-    const id = Array.isArray(params?.id) ? params.id[0] : params?.id
-    const router = useRouter()
+
     const session = useSession()
     const [activeTab, setActiveTab] = useState("posts")
     const contentRef = useRef<HTMLDivElement>(null)
@@ -89,66 +87,7 @@ export default function ArtistProfile() {
         setIsSidebarOpen(!isSidebarOpen)
     }
 
-    const follow = api.fan.member.followCreator.useMutation({
-        onSuccess: () => toast.success("Followed"),
-    });
-    const followMutation = api.fan.trx.followCreatorTRX.useMutation({
-        onSuccess: async (xdr) => {
-            if (xdr) {
-                if (xdr === true) {
-                    toast.success("User already has trust in page asset");
-                    follow.mutate({ creatorId: id ?? "" });
-                } else {
-                    setSingLoading(true);
-                    try {
-                        const res = await clientsign({
-                            presignedxdr: xdr,
-                            pubkey: session.data?.user.id,
-                            walletType: session.data?.user.walletType,
-                            test: clientSelect(),
-                        });
 
-                        if (res) {
-                            follow.mutate({ creatorId: id ?? "" });
-                        } else toast.error("Transaction failed while signing.");
-                    } catch (e) {
-                        toast.error("Transaction failed while signing.");
-                        console.error(e);
-                    } finally {
-                        setSingLoading(false);
-                    }
-                }
-            } else {
-                toast.error("Can't get xdr");
-            }
-        },
-        onError: (e) => toast.error(e.message),
-    });
-    const unfollowMutation = api.fan.member.unFollowCreator.useMutation({
-        onSuccess: () => {
-            toast.success(`You have unfollowed ${creator.data?.name}`)
-            isFollowing.refetch()
-            creator.refetch()
-        },
-        onError: (error) => {
-            toast.error(`Error unfollowing creator: ${error.message}`)
-        },
-    })
-
-    // Handle follow/unfollow
-    const handleFollowToggle = () => {
-        if (!session.data) {
-            toast.error("Please sign in to follow creators")
-            router.push("/login")
-            return
-        }
-
-        if (isFollowing.data) {
-            unfollowMutation.mutate({ creatorId: id ?? "" })
-        } else {
-            followMutation.mutate({ creatorId: id ?? "" })
-        }
-    }
     const togglePackageExpansion = (id: number) => {
         if (expandedPackage === id) {
             setExpandedPackage(null)
@@ -185,7 +124,7 @@ export default function ArtistProfile() {
                 currentContentRef.removeEventListener("scroll", handleScroll)
             }
         }
-    }, [params.id, contentRef.current])
+    }, [id, contentRef.current])
     // Handle share
     const handleShare = () => {
         if (navigator.share) {
@@ -247,24 +186,7 @@ export default function ArtistProfile() {
                         <Menu className="h-5 w-5" />
                     </Button>
 
-                    {/* Follow/Share Buttons */}
-                    <div className="absolute top-4 right-4 flex gap-2">
-                        {
-                            isFollowing.data?.isOwner ? null : (
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    className="gap-1"
-                                    onClick={handleFollowToggle}
-                                    disabled={followMutation.isLoading ?? unfollowMutation.isLoading}
-                                >
-                                    <Heart className={cn("h-4 w-4", isFollowing.data?.isFollower && "fill-current")} />
-                                    <span className="hidden sm:inline">{isFollowing.data?.isFollower ? "Following" : "Follow"}</span>
-                                </Button>
-                            )
-                        }
 
-                    </div>
                     <header
                         className={cn(
                             "absolute top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-primary/20 shadow-md h-14 transition-all duration-500 flex items-center justify-between px-4",
@@ -428,20 +350,8 @@ export default function ArtistProfile() {
                             <div className="flex items-center justify-between mb-8">
                                 <h1 className="text-2xl md:text-3xl font-bold">{creator.data.name}{"'s"} Profile</h1>
                                 <div className="flex items-center gap-2">
-                                    {
-                                        isFollowing.data?.isOwner ? null : (
-                                            <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                className="gap-1"
-                                                onClick={handleFollowToggle}
-                                                disabled={followMutation.isLoading ?? unfollowMutation.isLoading}
-                                            >
-                                                <Heart className={cn("h-4 w-4", isFollowing.data?.isFollower && "fill-current")} />
-                                                <span className="hidden sm:inline">{isFollowing.data?.isFollower ? "Following" : "Follow"}</span>
-                                            </Button>
-                                        )
-                                    }
+                                    <FollowCreatorButton creatorId={creator.data.id} />
+
                                 </div>
                             </div>
 
@@ -715,7 +625,7 @@ export default function ArtistProfile() {
                                                 </div>
                                             )}
 
-                                            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-4 xl:grid-cols-5">
+                                            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-4 ">
                                                 {creatorNFT.data?.pages.map((items, itemIndex) =>
                                                     items.nfts.map((item, index) => (
                                                         <MarketAssetComponent key={`music-${itemIndex}-${index}`} item={item} />

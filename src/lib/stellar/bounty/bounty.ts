@@ -688,3 +688,20 @@ export async function checkXDRSubmitted(xdr: string) {
     return true;
   }
 }
+
+export async function getUserHasTrustOnUSDC(userPubKey: string) {
+  const server = new Horizon.Server(STELLAR_URL);
+  const account = await server.loadAccount(userPubKey);
+  const userHasTrust = account.balances.some((balance) => {
+    //console.log(balance);
+    return (
+      (balance.asset_type === "credit_alphanum4" ||
+        balance.asset_type === "credit_alphanum12") &&
+      balance.asset_code === assetCode &&
+      balance.asset_issuer === assetIssuer
+    );
+  });
+
+  return userHasTrust;
+}
+

@@ -16,6 +16,7 @@ import { Spinner } from "~/components/shadcn/ui/spinner"
 import { Preview } from "../common/quill-preview"
 import { Slider } from "../shadcn/ui/slider"
 import { Progress } from "../shadcn/ui/progress"
+import { useState } from "react"
 export enum BountyTypeEnum {
     GENERAL = "GENERAL",
     LOCATION_BASED = "LOCATION_BASED",
@@ -53,12 +54,15 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
 
     const router = useRouter()
     const { getAssetBalance } = useUserStellarAcc();
+    const [failedReasons, setFailedReasons] = useState<Record<number, string>>({})
 
     const isEligible = (bounty: BountyTypes) => {
+        console.log("Checking eligibility for bounty:", bounty.requiredBalanceCode, bounty.requiredBalanceIssuer);
         const balance = getAssetBalance({
             code: bounty.requiredBalanceCode,
             issuer: bounty.requiredBalanceIssuer
         })
+        console.log("Checking eligibility for balance:", balance)
         console.log("bounty.currentWinnerCount < bounty.totalWinner && bounty.requiredBalance <= getAssetBalance(bounty.requiredBalanceCode, bounty.requiredBalanceIssuer);")
         return bounty.currentWinnerCount < bounty.totalWinner && (bounty.requiredBalance <= Number(balance));
     }
@@ -75,13 +79,92 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
     const handleJoinBounty = (id: number) => {
         joinBountyMutation.mutate({ BountyId: id })
     }
+    // Helper: get current position as a Promise
+    const getCurrentPosition = (): Promise<{ latitude: number; longitude: number }> => {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                return reject(new Error("Geolocation is not supported by this browser."))
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+                (err) => reject(err),
+                { enableHighAccuracy: true, timeout: 10000 },
+            )
+        })
+    }
 
+    // Haversine - returns distance in meters
+    const getDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const toRad = (v: number) => (v * Math.PI) / 180
+        const R = 6371000 // meters
+        const dLat = toRad(lat2 - lat1)
+        const dLon = toRad(lon2 - lon1)
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return R * c
+    }
+
+    // Extract possible location fields from bounty; returns null if not location-based
+    const getBountyLocation = (bounty: BountyTypes): { lat: number; lon: number; radiusMeters: number } | null => {
+        // common field names tried
+        const lat = bounty.latitude
+        const lon = bounty.longitude
+        const radius = bounty.radius
+
+        if (lat == null || lon == null || radius == null) return null
+        return { lat: Number(lat), lon: Number(lon), radiusMeters: Number(radius) }
+    }
+
+    // Attempt to join, checking location permission + distance if bounty requires location
+    const handleJoinWithLocation = async (bounty: BountyTypes) => {
+        // reset any previous reason
+        setFailedReasons((s) => ({ ...s, [bounty.id]: "" }))
+
+        // spots
+        if (bounty.currentWinnerCount >= bounty.totalWinner) {
+            const msg = "No spots left"
+            setFailedReasons((s) => ({ ...s, [bounty.id]: msg }))
+            return
+        }
+
+        // balance
+        const balance = getAssetBalance({ code: bounty.requiredBalanceCode, issuer: bounty.requiredBalanceIssuer })
+        if (bounty.requiredBalance > Number(balance)) {
+            const msg = `${bounty.requiredBalance.toFixed(1)} ${bounty.requiredBalanceCode.toLocaleUpperCase()} required`
+            setFailedReasons((s) => ({ ...s, [bounty.id]: msg }))
+            return
+        }
+
+        // location check if bounty is location-based
+        const loc = getBountyLocation(bounty)
+        if (loc) {
+            try {
+                const pos = await getCurrentPosition()
+                const dist = getDistanceMeters(pos.latitude, pos.longitude, loc.lat, loc.lon)
+                if (dist > loc.radiusMeters) {
+                    const km = (loc.radiusMeters / 1000).toFixed(2)
+                    const msg = `You must be within ${km} km of the bounty location to join.`
+                    setFailedReasons((s) => ({ ...s, [bounty.id]: msg }))
+                    toast({ title: "Out of range", description: msg })
+                    return
+                }
+            } catch (err) {
+                const msg = "Unable to access location. Permission denied or unavailable."
+                setFailedReasons((s) => ({ ...s, [bounty.id]: msg }))
+                toast({ title: "Location required", description: msg })
+                return
+            }
+        }
+
+        // all checks passed; perform mutation
+        joinBountyMutation.mutate({ BountyId: bounty.id })
+    }
     if (bounties.length === 0) {
         return null // Empty state is handled in the parent component
     }
 
     return (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3  ">
             {bounties.map((bounty, index) => {
                 console.log(bounty.ActionLocation?.length)
                 const totalSteps = bounty.ActionLocation?.length ?? 0
@@ -111,7 +194,8 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
                                 </div>
                                 <div className="absolute top-3 right-3">
                                     <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm font-semibold">
-                                        ${bounty.priceInUSD}
+                                        {bounty.priceInUSD > 0 ? "USDC" : bounty.priceInBand > 0 ? PLATFORM_ASSET.code.toLocaleUpperCase() : "Free"}
+
                                     </Badge>
                                 </div>
                                 <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent h-16" />

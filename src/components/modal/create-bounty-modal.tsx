@@ -15,6 +15,8 @@ import {
     Check,
     Loader2,
     Sparkles,
+    Ticket,
+    Clock,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import Image from "next/image"
@@ -24,6 +26,7 @@ import { FormProvider, useForm, useFormContext, type SubmitHandler } from "react
 import toast from "react-hot-toast"
 import { z } from "zod"
 import { motion, AnimatePresence } from "framer-motion"
+
 import {
     Select,
     SelectContent,
@@ -32,7 +35,7 @@ import {
     SelectLabel,
     SelectTrigger,
     SelectValue,
-} from "~/components/shadcn/ui/select";
+} from "~/components/shadcn/ui/select"
 import { Button } from "~/components/shadcn/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
 import { Input } from "~/components/shadcn/ui/input"
@@ -41,10 +44,11 @@ import { Badge } from "~/components/shadcn/ui/badge"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { Label } from "~/components/shadcn/ui/label"
 import { Progress } from "~/components/shadcn/ui/progress"
+import { Switch } from "~/components/shadcn/ui/switch"
 
 import useNeedSign from "~/lib/hook"
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
-import { PLATFORM_ASSET, PLATFORM_FEE, TrxBaseFeeInPlatformAsset } from "~/lib/stellar/constant"
+import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 import { clientSelect } from "~/lib/stellar/fan/utils"
 import { api } from "~/utils/api"
 import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
@@ -61,79 +65,89 @@ const MediaInfo = z.object({
 
 type MediaInfoType = z.TypeOf<typeof MediaInfo>
 
-const BountySchema = z.object({
-    title: z
-        .string()
-        .max(65, {
-            message: "Title can't be more than 65 characters",
-        })
-        .min(1, { message: "Title can't be empty" }),
-    totalWinner: z
-        .number({
-            required_error: "Total Winner must be a number",
-            invalid_type_error: "Total Winner must be a number",
-        })
-        .min(1, { message: "Please select at least 1 winner" }),
-    prizeInUSD: z
-        .number({
-            required_error: "Prize must be a number",
-            invalid_type_error: "Prize must be a number",
-        })
-        .min(0.00001, { message: "Prize can't be less than 0.00001" }),
-    prize: z
-        .number({
-            required_error: "Prize must be a number",
-            invalid_type_error: "Prize must be a number",
-        })
-        .min(0.00001, { message: "Prize can't be less than 0.00001" }),
-    requiredBalance: z
-        .number({
-            required_error: "Required Balance must be a number",
-            invalid_type_error: "Required Balance must be a number",
-        })
-        .nonnegative({ message: "Required Balance can't be less than 0" })
-        .optional(),
-    requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
-    requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
-    content: z.string().min(2, { message: "Description can't be empty" }),
-    medias: z.array(MediaInfo).optional(),
-})
+const BountySchema = z
+    .object({
+        title: z
+            .string()
+            .max(65, { message: "Title can't be more than 65 characters" })
+            .min(1, { message: "Title can't be empty" }),
+        totalWinner: z
+            .number({
+                required_error: "Total Winner must be a number",
+                invalid_type_error: "Total Winner must be a number",
+            })
+            .min(1, { message: "Please select at least 1 winner" }),
+        // Reward type selection
+        rewardType: z.enum(["usdc", "platform_asset"]),
+        // USDC amount (used when rewardType is 'usdc')
+        usdcAmount: z.number().optional(),
+        // Platform asset amount (used when rewardType is 'platform_asset')
+        platformAssetAmount: z.number().optional(),
+        requiredBalance: z
+            .number({
+                required_error: "Required Balance must be a number",
+                invalid_type_error: "Required Balance must be a number",
+            })
+            .nonnegative({ message: "Required Balance can't be less than 0" })
+            .default(0),
+        requiredBalanceCode: z.string().min(1, { message: "Please select an asset" }),
+        requiredBalanceIssuer: z.string().min(1, { message: "Please select an asset" }),
+        content: z.string().min(2, { message: "Description can't be empty" }),
+        medias: z.array(MediaInfo).optional(),
+        generateRedeemCodes: z.boolean().default(false),
+    })
+    .refine(
+        (data) => {
+            if (data.rewardType === "usdc") {
+                return data.usdcAmount && data.usdcAmount >= 0.00001
+            }
+            if (data.rewardType === "platform_asset") {
+                return data.platformAssetAmount && data.platformAssetAmount >= 0.00001
+            }
+            return false
+        },
+        {
+            message: "Please enter a valid reward amount",
+            path: ["usdcAmount"],
+        },
+    )
 
-// Define the steps
-type FormStep = "details" | "media" | "review"
-const FORM_STEPS: FormStep[] = ["details", "media", "review"]
+type FormStep = "details" | "media" | "settings" | "review"
+const FORM_STEPS: FormStep[] = ["details", "media", "settings", "review"]
+const USDCIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+const USDCCode = "USDC";
+
 enum assetType {
     PAGEASSET = "PAGEASSET",
     PLATFORMASSET = "PLATFORMASSET",
     SHOPASSET = "SHOPASSET",
 }
+
 type selectedAssetType = {
-    assetCode: string;
-    assetIssuer: string;
-    balance: number;
-    assetType: assetType;
-};
+    assetCode: string
+    assetIssuer: string
+    balance: number
+    assetType: assetType
+}
+
 const CreateBountyModal = () => {
     // State management
     const [media, setMedia] = useState<MediaInfoType[]>([])
-    const [wantMediaType, setWantMedia] = useState<MediaType>()
     const [loading, setLoading] = useState(false)
-    const [prizeInAsset, setPrizeInAsset] = useState<number>(0)
     const [activeStep, setActiveStep] = useState<FormStep>("details")
-    const [formProgress, setFormProgress] = useState(33)
+    const [formProgress, setFormProgress] = useState(25)
     const [showConfetti, setShowConfetti] = useState(false)
+
     // Hooks
     const { needSign } = useNeedSign()
     const session = useSession()
     const { platformAssetBalance } = useUserStellarAcc()
-    const { isOpen, setIsOpen, paymentMethod } = usePaymentMethodStore()
+    const { isOpen, setIsOpen, paymentMethod, setPaymentMethod } = usePaymentMethodStore()
     const { isOpen: isDialogOpen, setIsOpen: setIsDialogOpen } = useCreateBountyStore()
     const utils = api.useUtils()
 
-    // Calculate fees
-    // const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
-    const totalFees = 0 // Flat fee for simplification
-    // Form setup
+    const totalFees = 0
+
     const methods = useForm<z.infer<typeof BountySchema>>({
         resolver: zodResolver(BountySchema),
         mode: "onChange",
@@ -141,9 +155,13 @@ const CreateBountyModal = () => {
             content: "",
             title: "",
             totalWinner: 1,
-            prizeInUSD: 0,
-            prize: 0,
+            rewardType: "usdc",
+            usdcAmount: 0,
+            platformAssetAmount: 0,
             requiredBalance: 0,
+            requiredBalanceCode: "",
+            requiredBalanceIssuer: "",
+            generateRedeemCodes: false,
         },
     })
 
@@ -158,13 +176,11 @@ const CreateBountyModal = () => {
         formState: { errors, isValid },
     } = methods
 
-    // Update progress based on active step
     useEffect(() => {
         const stepIndex = FORM_STEPS.indexOf(activeStep)
         setFormProgress((stepIndex + 1) * (100 / FORM_STEPS.length))
     }, [activeStep])
 
-    // Navigation functions
     const goToNextStep = () => {
         const currentIndex = FORM_STEPS.indexOf(activeStep)
         if (currentIndex < FORM_STEPS.length - 1) {
@@ -185,16 +201,13 @@ const CreateBountyModal = () => {
         }
     }
 
-    // Check if current step is valid before allowing to proceed
     const canProceed = async () => {
-        // Define fields to validate for each step
         const fieldsToValidate: Record<FormStep, (keyof z.infer<typeof BountySchema>)[]> = {
-            details: ["title", "content", "prizeInUSD", "prize", "totalWinner"],
+            details: ["title", "content", "rewardType", "totalWinner"],
             media: [],
+            settings: ["requiredBalanceCode", "requiredBalanceIssuer"],
             review: [],
         }
-
-        // Trigger validation for the current step's fields
         return await trigger(fieldsToValidate[activeStep])
     }
 
@@ -207,17 +220,31 @@ const CreateBountyModal = () => {
 
     // API mutations
     const CreateBountyMutation = api.bounty.Bounty.createBounty.useMutation({
-        onSuccess: async (data) => {
+        onSuccess: async () => {
             toast.success("Bounty Created Successfully! 🎉")
             setShowConfetti(true)
             utils.bounty.Bounty.getAllBounties.refetch().catch((error) => {
                 console.error("Error refetching bounties", error)
             })
-
             handleClose()
+        },
+    })
 
 
 
+    const CreateBountyPayLaterMutation = api.bounty.Bounty.createBountyPayLater.useMutation({
+        onSuccess: async () => {
+            toast.success("Bounty Created Successfully! Payment pending. 🎉")
+            setShowConfetti(true)
+            utils.bounty.Bounty.getAllBounties.refetch().catch((error) => {
+                console.error("Error refetching bounties", error)
+            })
+            handleClose()
+        },
+        onError: (error) => {
+            console.error("Error creating bounty", error)
+            toast.error(error.message)
+            setLoading(false)
         },
     })
 
@@ -232,19 +259,23 @@ const CreateBountyModal = () => {
                         pubkey: data.pubKey,
                         test: clientSelect(),
                     })
-
                     if (clientResponse) {
+                        const rewardType = getValues("rewardType")
                         CreateBountyMutation.mutate({
                             title: getValues("title"),
-                            prizeInUSD: getValues("prizeInUSD"),
+                            prizeInUSD: rewardType === "usdc" ? (getValues("usdcAmount") ?? 0) : 0,
                             totalWinner: getValues("totalWinner"),
-                            prize: getValues("prize"),
+                            prize: rewardType === "platform_asset" ? (getValues("platformAssetAmount") ?? 0) : 0,
                             requiredBalance: getValues("requiredBalance") ?? 0,
-                            priceInXLM: method == "xlm" ? getValues("prize") * 0.7 : undefined,
+                            priceInXLM: method === "xlm" ? (getValues("usdcAmount") ?? 0) * 0.7 : undefined,
                             content: getValues("content"),
-                            medias: media.map((item) => ({ ...item, type: item.type as MediaType })),
+                            medias: media.map((item) => ({
+                                ...item,
+                                type: item.type as MediaType,
+                            })),
                             requiredBalanceCode: getValues("requiredBalanceCode"),
                             requiredBalanceIssuer: getValues("requiredBalanceIssuer"),
+                            generateRedeemCodes: getValues("generateRedeemCodes"),
                         })
                         setLoading(false)
                         reset()
@@ -274,24 +305,43 @@ const CreateBountyModal = () => {
         },
     })
 
-    // Queries
-    const XLMRate = api.bounty.Bounty.getXLMPrice.useQuery().data
 
     const onSubmit: SubmitHandler<z.infer<typeof BountySchema>> = (data) => {
         data.medias = media
         setLoading(true)
+        const rewardType = getValues("rewardType")
+        const prizeAmount =
+            rewardType === "platform_asset"
+                ? Number(getValues("platformAssetAmount"))
+                : Number((getValues("usdcAmount")))
+
         SendBalanceToBountyMother.mutate({
             signWith: needSign(),
-            prize: paymentMethod === "asset" ? Number(getValues("prize")) :
-                paymentMethod === "xlm" ? Number(getValues("prizeInUSD") / (XLMRate ?? 1)) :
-                    Number(getValues("prizeInUSD") / (XLMRate ?? 1)),
+            prize: prizeAmount,
             fees: 0,
-            // paymentMethod === "asset" ? totalFees :
-            // paymentMethod === "xlm" ? 1 : 3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)),
             method: paymentMethod,
         })
     }
 
+    const handlePayLater = () => {
+        setLoading(true)
+        const rewardType = getValues("rewardType")
+        CreateBountyPayLaterMutation.mutate({
+            title: getValues("title"),
+            prizeInUSD: rewardType === "usdc" ? (getValues("usdcAmount") ?? 0) : 0,
+            totalWinner: getValues("totalWinner"),
+            prize: rewardType === "platform_asset" ? (getValues("platformAssetAmount") ?? 0) : 0,
+            requiredBalance: getValues("requiredBalance") ?? 0,
+            content: getValues("content"),
+            medias: media.map((item) => ({
+                ...item,
+                type: item.type as MediaType,
+            })),
+            requiredBalanceCode: getValues("requiredBalanceCode"),
+            requiredBalanceIssuer: getValues("requiredBalanceIssuer"),
+            generateRedeemCodes: getValues("generateRedeemCodes"),
+        })
+    }
 
     const addMediaItem = (url: string, type: MediaType) => {
         setMedia((prevMedia) => [...prevMedia, { url, type }])
@@ -306,98 +356,120 @@ const CreateBountyModal = () => {
         reset()
         setMedia([])
         setActiveStep("details")
+        setLoading(false)
     }
 
-    // Watch values for preview
+    // Watch values
     const watchedTitle = watch("title")
-    const watchedPrizeUSD = watch("prizeInUSD")
-    const watchedPrizeAsset = watch("prize")
+    const watchedRewardType = watch("rewardType")
+    const watchedUsdcAmount = watch("usdcAmount")
+    const watchedPlatformAssetAmount = watch("platformAssetAmount")
     const watchedWinners = watch("totalWinner")
     const watchedRequiredBalance = watch("requiredBalance")
-    const watchedRequiredCode = watch("requiredBalanceCode")
+    const watchedGenerateRedeemCodes = watch("generateRedeemCodes")
+    const watchedRequiredBalanceCode = watch("requiredBalanceCode")
+
+    const getPrizeAmount = () => {
+        if (watchedRewardType === "platform_asset") {
+            return watchedPlatformAssetAmount ?? 0
+        }
+        return (watchedUsdcAmount ?? 0)
+    }
+
+    useEffect(() => {
+        console.log("Watched Reward Type changed:", watchedRewardType);
+        setPaymentMethod(watchedRewardType === "usdc" ? "usdc" : "asset")
+    }, [watchedRewardType])
+
+
     return (
         <Dialog open={isDialogOpen} onOpenChange={handleClose}>
             <DialogContent
-                onInteractOutside={(e) => {
-                    e.preventDefault()
-                }}
+                onInteractOutside={(e) => e.preventDefault()}
                 className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-2"
             >
-                {showConfetti && (
-                    <div className="fixed inset-0 pointer-events-none z-50">
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1, opacity: [0, 1, 0] }}
-                                transition={{ duration: 2 }}
-                                className="text-4xl"
-                            >
-                                <div className="flex items-center justify-center gap-2 text-primary">
-                                    <Sparkles className="h-8 w-8" />
-                                    <span className="font-bold">Bounty created successfully!</span>
-                                    <Sparkles className="h-8 w-8" />
-                                </div>
-                            </motion.div>
-                        </div>
-                        {Array.from({ length: 100 }).map((_, i) => (
-                            <motion.div
-                                key={i}
-                                className="absolute w-2 h-2 rounded-full"
-                                initial={{
-                                    top: "50%",
-                                    left: "50%",
-                                    scale: 0,
-                                    backgroundColor: ["#FF5733", "#33FF57", "#3357FF", "#F3FF33", "#FF33F3"][Math.floor(Math.random() * 5)],
-                                }}
-                                animate={{
-                                    top: `${Math.random() * 100}%`,
-                                    left: `${Math.random() * 100}%`,
-                                    scale: [0, 1, 0],
-                                    opacity: [0, 1, 0],
-                                }}
-                                transition={{
-                                    duration: 2 + Math.random() * 2,
-                                    delay: Math.random() * 0.5,
-                                    ease: "easeOut",
-                                }}
-                            />
-                        ))}
-                    </div>
-                )}
+                {/* {showConfetti && (
+          <div className="pointer-events-none fixed inset-0 z-50">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1, opacity: [0, 1, 0] }}
+                transition={{ duration: 2 }}
+                className="text-4xl"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <Sparkles className="h-8 w-8" />
+                  <span className="font-bold">Bounty created successfully!</span>
+                  <Sparkles className="h-8 w-8" />
+                </div>
+              </motion.div>
+            </div>
+            {Array.from({ length: 100 }).map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute h-2 w-2 rounded-full"
+                initial={{
+                  top: "50%",
+                  left: "50%",
+                  scale: 0,
+                  backgroundColor: ["#FF5733", "#33FF57", "#3357FF", "#F3FF33", "#FF33F3"][
+                    Math.floor(Math.random() * 5)
+                  ],
+                }}
+                animate={{
+                  top: `${Math.random() * 100}%`,
+                  left: `${Math.random() * 100}%`,
+                  scale: [0, 1, 0],
+                  opacity: [0, 1, 0],
+                }}
+                transition={{
+                  duration: 2 + Math.random() * 2,
+                  delay: Math.random() * 0.5,
+                  ease: "easeOut",
+                }}
+              />
+            ))}
+          </div>
+        )} */}
+
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.3 }}
-                    className="flex flex-col h-full"
+                    className="flex h-full flex-col"
                 >
-                    <DialogHeader className="px-2 md:px-4 py-4">
+                    <DialogHeader className="px-2 py-4 md:px-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Coins className="h-5 w-5" />
-                                <DialogTitle className="text-xl font-bold">Create New Bounty</DialogTitle>
+                                <DialogTitle className="text-xl font-bold">Create New Action</DialogTitle>
                             </div>
                         </div>
-                        <DialogDescription>Create a bounty for users to complete and earn rewards</DialogDescription>
-
+                        <DialogDescription>Create an action for users to complete and earn rewards</DialogDescription>
                         <Progress value={formProgress} className="mt-2 h-2" />
-
                         <div className="w-full px-2 md:px-4">
                             <div className="flex items-center justify-between">
                                 {FORM_STEPS.map((step, index) => (
                                     <div key={step} className="flex flex-col items-center">
                                         <div
                                             className={cn(
-                                                "w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm mb-1",
+                                                "mb-1 flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium",
                                                 activeStep === step
-                                                    ? "bg-primary text-primary-foreground shadow-sm shadow-foreground"
+                                                    ? "bg-primary shadow-sm shadow-foreground"
                                                     : "bg-muted text-muted-foreground",
                                             )}
                                         >
                                             {index + 1}
                                         </div>
                                         <span className={cn("text-xs", activeStep === step ? "font-medium" : "text-muted-foreground")}>
-                                            {step === "details" ? "Details" : step === "media" ? "Media" : "Review"}
+                                            {step === "details"
+                                                ? "Details"
+                                                : step === "media"
+                                                    ? "Media"
+                                                    : step === "settings"
+                                                        ? "Settings"
+                                                        : "Review"}
                                         </span>
                                     </div>
                                 ))}
@@ -419,16 +491,19 @@ const CreateBountyModal = () => {
                                             loading={loading}
                                         />
                                     )}
+                                    {activeStep === "settings" && <SettingsStep key="settings" />}
                                     {activeStep === "review" && (
                                         <ReviewStep
                                             key="review"
                                             media={media}
                                             title={watchedTitle}
-                                            prizeUSD={watchedPrizeUSD}
-                                            prizeAsset={watchedPrizeAsset}
+                                            rewardType={watchedRewardType}
+                                            usdcAmount={watchedUsdcAmount}
+                                            platformAssetAmount={watchedPlatformAssetAmount}
                                             winners={watchedWinners}
                                             requiredBalance={watchedRequiredBalance}
-                                            requiredBalanceCode={watchedRequiredCode}
+                                            requiredBalanceCode={watchedRequiredBalanceCode}
+                                            generateRedeemCodes={watchedGenerateRedeemCodes}
                                         />
                                     )}
                                 </AnimatePresence>
@@ -440,6 +515,7 @@ const CreateBountyModal = () => {
                                     variant="outline"
                                     onClick={goToPreviousStep}
                                     disabled={activeStep === "details" || loading}
+                                    className=""
                                 >
                                     <ChevronLeft className="mr-2 h-4 w-4" />
                                     Back
@@ -451,69 +527,83 @@ const CreateBountyModal = () => {
                                         <ChevronRight className="ml-2 h-4 w-4" />
                                     </Button>
                                 ) : (
-                                    <>
+                                    <div className="flex gap-2">
+                                        {/* Pay Later Button */}
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handlePayLater}
+                                            disabled={loading || !isValid || watchedGenerateRedeemCodes}
+                                            title={watchedGenerateRedeemCodes ? "Pay now is required when generating redeem codes" : ""}
+                                            className="border-amber-300 hover:bg-amber-50 bg-transparent"
+                                        >
+                                            {loading ? (
+                                                <>
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    Creating...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Clock className="mr-2 h-4 w-4" />
+                                                    Pay Later
+                                                </>
+                                            )}
+                                        </Button>
 
-                                        <PaymentChoose
-                                            costBreakdown={[
-                                                {
-                                                    label: "Bounty Prize",
-                                                    amount: paymentMethod === "asset"
-                                                        ? Number(getValues("prize"))
-                                                        : paymentMethod === "xlm"
-                                                            ? Number(getValues("prizeInUSD") / (XLMRate ?? 1))
-                                                            : Number(getValues("prizeInUSD"))
-                                                    ,
-                                                    highlighted: true,
-                                                    type: "cost",
-                                                },
-                                                {
-                                                    label: "Platform Fee",
-                                                    amount: 0,
-                                                    // paymentMethod === "asset"
-                                                    // ? totalFees
-                                                    // : paymentMethod === "xlm"
-                                                    //     ? 1 : (3 * (Number(getValues("prizeInUSD") ?? 1) * (XLMRate ?? 1)))
+                                        {/* Pay Now Button */}
+                                        {platformAssetBalance < getPrizeAmount() ? (
+                                            <Button disabled className="shadow-sm shadow-foreground">
+                                                Insufficient Balance
+                                            </Button>
+                                        ) : (
+                                            <PaymentChoose
+                                                costBreakdown={[
+                                                    {
+                                                        label: "Action Prize",
+                                                        amount: getPrizeAmount(),
+                                                        highlighted: true,
+                                                        type: "cost",
+                                                    },
+                                                    {
+                                                        label: "Platform Fee",
+                                                        amount: 0,
+                                                        highlighted: false,
+                                                        type: "fee",
+                                                    },
+                                                    {
+                                                        label: "Total Cost",
+                                                        amount: getPrizeAmount() + totalFees,
+                                                        highlighted: false,
+                                                        type: "total",
+                                                    },
+                                                ]}
+                                                {...(watchedRewardType === "usdc"
+                                                    ? { USDC_EQUIVALENT: getPrizeAmount() + totalFees }
+                                                    : {
+                                                        requiredToken: getPrizeAmount() + totalFees
+                                                    })}
 
-                                                    highlighted: false,
-                                                    type: "fee",
-                                                },
-                                                {
-                                                    label: "Total Cost",
-                                                    amount: paymentMethod === "asset"
-                                                        ? Number(getValues("prize")) + totalFees
-                                                        : paymentMethod === "xlm"
-                                                            ? Number(getValues("prizeInUSD") / (XLMRate ?? 1))
+                                                handleConfirm={handleSubmit(onSubmit)}
 
-                                                            : Number(getValues("prizeInUSD") ?? 1)
-                                                    ,
-
-                                                    highlighted: false,
-                                                    type: "total",
-                                                },
-                                            ]}
-                                            XLM_EQUIVALENT={Number(getValues("prizeInUSD") / (XLMRate ?? 1))}
-                                            USDC_EQUIVALENT={Number(getValues("prizeInUSD") ?? 1)}
-                                            handleConfirm={handleSubmit(onSubmit)}
-                                            loading={loading}
-                                            requiredToken={Number(getValues("prize")) + totalFees}
-                                            trigger={
-                                                <Button disabled={loading || !isValid} className="shadow-sm shadow-foreground">
-                                                    {loading ? (
-                                                        <>
-                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                            Creating Bounty...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Coins className="mr-2 h-4 w-4" />
-                                                            Create Bounty
-                                                        </>
-                                                    )}
-                                                </Button>
-                                            }
-                                        />
-
-                                    </>
+                                                loading={loading}
+                                                trigger={
+                                                    <Button disabled={loading || !isValid} className="shadow-sm shadow-foreground">
+                                                        {loading ? (
+                                                            <>
+                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                Creating Action...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Coins className="mr-2 h-4 w-4" />
+                                                                Pay Now
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                }
+                                            />
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </form>
@@ -532,49 +622,78 @@ function DetailsStep() {
         watch,
         formState: { errors },
     } = useFormContext<z.infer<typeof BountySchema>>()
+    const session = useSession()
+    const { needSign } = useNeedSign();
 
     const title = watch("title", "")
-    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
-    const pageAssetbal = api.fan.creator.getCreatorPageAssetBalance.useQuery()
-    const shopAssetbal = api.fan.creator.getCreatorShopAssetBalance.useQuery()
-    const { platformAssetBalance } = useUserStellarAcc()
-    const [selectedAsset, setSelectedAsset] = useState<selectedAssetType | null>(null)
-    const handlePrizeChange = (value: string) => {
-        const prizeUSD = Number(value) || 0
-        setValue("prizeInUSD", prizeUSD)
-
-        // Make sure prize is a valid number before dividing
-        if (prizeRate && Number(prizeRate) > 0) {
-            const prizeValue = prizeUSD / Number(prizeRate)
-            setValue("prize", prizeValue)
-        } else {
-            setValue("prize", 0)
-        }
-    }
-
+    const rewardType = watch("rewardType")
+    const usdcAmount = watch("usdcAmount")
+    const platformAssetAmount = watch("platformAssetAmount")
+    const totalWinner = watch("totalWinner")
+    const [loading, setLoading] = useState(false);
     const handleEditorChange = (value: string): void => {
         setValue("content", value)
     }
+    const CheckUSDCTrustLine = api.bounty.Bounty.checkUSDCTrustLine.useQuery(undefined, {
+        enabled: session.status === "authenticated" && getValues("rewardType") === "usdc",
+    })
+    const AddTrustMutation =
+        api.walletBalance.wallBalance.addTrustLine.useMutation({
+            onSuccess: async (data) => {
+                try {
+                    const clientResponse = await clientsign({
+                        walletType: session?.data?.user?.walletType,
+                        presignedxdr: data.xdr,
+                        pubkey: data.pubKey,
+                        test: clientSelect(),
+                    });
 
+                    if (clientResponse) {
+                        toast.success("Added trustline successfully");
+                        try {
+                            await api
+                                .useUtils()
+                                .walletBalance.wallBalance.getWalletsBalance.refetch();
+                        } catch (refetchError) {
+                            console.log("Error refetching balance", refetchError);
+                        }
+                    } else {
+                        toast.error("No Data Found at TrustLine Operation");
+                    }
+                } catch (error) {
+                    if (error instanceof Error) {
+                        toast.error(`Error: ${error.message}`);
+                    } else {
+                        toast.error("An unknown error occurred.");
+                    }
+                    console.log("Error", error);
+                } finally {
+                    setLoading(false);
+                }
+            },
+            onError: (error) => {
+                setLoading(false);
+                toast.error(error.message);
+            },
+        });
     return (
         <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.3 }}
-            className=""
+            className="space-y-6"
         >
-
             {/* Basic Information Card */}
-            <Card className="border-0 shadow-sm">
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-orange-50">
                 <CardHeader className="pb-4">
                     <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
-                            <FileText className="h-4 w-4 text-blue-600" />
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100">
+                            <FileText className="h-4 w-4 text-amber-600" />
                         </div>
                         <div>
                             <h3 className="font-semibold">Basic Information</h3>
-                            <p className="text-sm text-muted-foreground">Enter the essential details about your bounty</p>
+                            <p className="text-sm text-muted-foreground">Enter the essential details about your action</p>
                         </div>
                     </div>
                 </CardHeader>
@@ -610,7 +729,7 @@ function DetailsStep() {
                         <Editor
                             value={getValues("content")}
                             onChange={handleEditorChange}
-                            placeholder="Provide clear instructions on what participants need to do to earn this bounty..."
+                            placeholder="Provide clear instructions on what participants need to do to earn this action..."
                             className="min-h-32 resize-none transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
                         />
                         {errors.content && (
@@ -623,296 +742,159 @@ function DetailsStep() {
                 </CardContent>
             </Card>
 
-            {/* Rewards Configuration Card */}
-            <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-orange-50">
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-accent/20 to-accent/20">
                 <CardHeader className="pb-4">
                     <div className="flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100">
                             <DollarSign className="h-4 w-4 text-amber-600" />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-amber-900">Bounty Rewards</h3>
-                            <p className="text-sm text-amber-700">Configure reward amounts and distribution</p>
+                            <h3 className="font-semibold">Action Rewards</h3>
+                            <p className="text-sm text-muted-foreground">Choose reward type and configure amounts</p>
                         </div>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                        {/* USD Prize */}
-                        <div className="space-y-3">
-                            <Label htmlFor="prizeInUSD" className="text-sm font-medium text-amber-800">
-                                Reward Amount (USD)
-                            </Label>
-                            <div className="relative">
-                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                    <DollarSign className="h-4 w-4 text-amber-500" />
-                                </div>
-                                <Input
-                                    id="prizeInUSD"
-                                    onChange={(e) => handlePrizeChange(e.target.value)}
-                                    value={watch("prizeInUSD") || ""}
-                                    className="pl-10 bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                                    type="number"
-                                    step={0.00001}
-                                    min={0.00001}
-                                    placeholder="0.00"
-                                />
-                            </div>
-                            {errors.prizeInUSD && (
-                                <p className="text-sm text-red-500 flex items-center gap-1">
-                                    <span className="h-1 w-1 rounded-full bg-red-500"></span>
-                                    {errors.prizeInUSD.message}
-                                </p>
-                            )}
-                        </div>
-
-                        {/* Platform Asset Amount */}
-                        <div className="space-y-3">
-                            <Label htmlFor="prize" className="text-sm font-medium text-amber-800">
-                                {PLATFORM_ASSET.code.toUpperCase()} Equivalent
-                            </Label>
-                            <div className="relative">
-                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                    <Coins className="h-4 w-4 text-amber-500" />
-                                </div>
-                                <Input
-                                    id="prize"
-                                    value={watch("prize") ? watch("prize").toFixed(5) : ""}
-
-                                    className="pl-10 bg-white/50 text-amber-800 transition-all duration-200"
-                                    placeholder="0.00000"
-                                />
-                            </div>
-                            {errors.prize && (
-                                <p className="text-sm text-red-500 flex items-center gap-1">
-                                    <span className="h-1 w-1 rounded-full bg-red-500"></span>
-                                    {errors.prize.message}
-                                </p>
-                            )}
+                <CardContent className="space-y-5">
+                    {/* Reward Type Toggle */}
+                    <div className="space-y-3">
+                        <div className="inline-flex rounded-lg border p-1 bg-muted/30">
+                            <button
+                                type="button"
+                                onClick={() => setValue("rewardType", "usdc")}
+                                className={cn(
+                                    "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all",
+                                    rewardType === "usdc"
+                                        ? "bg-background shadow-sm text-foreground"
+                                        : "text-muted-foreground hover:text-foreground",
+                                )}
+                            >
+                                <DollarSign className="h-4 w-4" />
+                                USDC
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setValue("rewardType", "platform_asset")}
+                                className={cn(
+                                    "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all",
+                                    rewardType === "platform_asset"
+                                        ? "bg-background shadow-sm text-foreground"
+                                        : "text-muted-foreground hover:text-foreground",
+                                )}
+                            >
+                                <Coins className="h-4 w-4" />
+                                {PLATFORM_ASSET.code.toUpperCase()}
+                            </button>
                         </div>
                     </div>
 
-                    {/* Number of Winners */}
-                    <div className="space-y-3">
-                        <Label htmlFor="totalWinner" className="text-sm font-medium text-amber-800">
-                            Number of Winners
-                        </Label>
-                        <div className="relative max-w-xs">
-                            <Trophy className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-500" />
-                            <Input
-                                id="totalWinner"
-                                type="number"
-                                step={1}
-                                min={1}
-                                {...register("totalWinner", {
-                                    valueAsNumber: true,
-                                })}
-                                className="pl-10 bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                                placeholder="1"
-                            />
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Amount Input */}
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                                {rewardType === "usdc" ? "USDC Amount" : `${PLATFORM_ASSET.code.toUpperCase()} Amount`}
+                            </Label>
+                            <div className="relative">
+                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                    {rewardType === "usdc" ? (
+                                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                    ) : (
+                                        <Coins className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                </div>
+                                {rewardType === "usdc" ? (
+                                    <Input
+                                        type="number"
+                                        step={0.01}
+                                        min={0.01}
+                                        {...register("usdcAmount", { valueAsNumber: true })}
+                                        className="pl-10"
+                                        placeholder="0.00"
+                                    />
+                                ) : (
+                                    <Input
+                                        type="number"
+                                        step={0.00001}
+                                        min={0.00001}
+                                        {...register("platformAssetAmount", { valueAsNumber: true })}
+                                        className="pl-10"
+                                        placeholder="0.00000"
+                                    />
+                                )}
+                            </div>
+                            {errors.usdcAmount && <p className="text-xs text-red-500">{errors.usdcAmount.message}</p>}
+                            {errors.platformAssetAmount && (
+                                <p className="text-xs text-red-500">{errors.platformAssetAmount.message}</p>
+                            )}
                         </div>
-                        {errors.totalWinner && (
-                            <p className="text-sm text-red-500 flex items-center gap-1">
-                                <span className="h-1 w-1 rounded-full bg-red-500"></span>
-                                {errors.totalWinner.message}
-                            </p>
-                        )}
+
+                        {/* Winners Input */}
+                        <div className="space-y-2">
+                            <Label htmlFor="totalWinner" className="text-sm font-medium">
+                                Number of Winners
+                            </Label>
+                            <div className="relative">
+                                <Trophy className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    id="totalWinner"
+                                    type="number"
+                                    step={1}
+                                    min={1}
+                                    {...register("totalWinner", { valueAsNumber: true })}
+                                    className="pl-10"
+                                    placeholder="1"
+                                />
+                            </div>
+                            {errors.totalWinner && <p className="text-xs text-red-500">{errors.totalWinner.message}</p>}
+                        </div>
                     </div>
 
                     {/* Reward Summary */}
-                    {watch("prizeInUSD") > 0 && watch("prize") > 0 && (
-                        <div className="rounded-lg bg-white/60 p-4 border border-amber-200">
-                            <h4 className="font-medium text-amber-900 mb-3">Reward Summary</h4>
-                            <div className="space-y-2">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-amber-700">Total Pool:</span>
-                                    <span className="font-semibold text-amber-900">
-                                        ${watch("prizeInUSD")} ({watch("prize").toFixed(5)} {PLATFORM_ASSET.code.toUpperCase()})
-                                    </span>
+                    {(rewardType === "usdc" ? (usdcAmount ?? 0) > 0 : (platformAssetAmount ?? 0) > 0) && (
+                        <div className="rounded-lg bg-muted/50 p-4 flex justify-between items-center">
+                            <div className="flex  items-center justify-between w-full">
+                                <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Total Pool</p>
+                                    <p className="text-lg font-semibold">
+                                        {rewardType === "usdc"
+                                            ? `$${(usdcAmount ?? 0).toFixed(5)} USDC`
+                                            : `${(platformAssetAmount ?? 0).toFixed(5)} ${PLATFORM_ASSET.code.toUpperCase()}`}
+                                    </p>
                                 </div>
-                                {watch("totalWinner") > 1 && (
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-700">Per Winner:</span>
-                                        <span className="font-semibold text-amber-900">
-                                            ${(watch("prizeInUSD") / watch("totalWinner")).toFixed(2)} (
-                                            {(watch("prize") / watch("totalWinner")).toFixed(5)} {PLATFORM_ASSET.code.toUpperCase()})
-                                        </span>
+                                {(totalWinner ?? 1) > 1 && (
+                                    <div className="text-right space-y-1">
+                                        <p className="text-xs text-muted-foreground">Per Winner</p>
+                                        <p className="text-lg font-semibold">
+                                            {rewardType === "usdc"
+                                                ? `$${(((usdcAmount ?? 0) / (totalWinner ?? 1))).toFixed(5)}`
+                                                : `${(((platformAssetAmount ?? 0) / (totalWinner ?? 1))).toFixed(5)}`}
+                                        </p>
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Requirements Card */}
-            <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-indigo-50">
-                <CardHeader className="pb-4">
-                    <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100">
-                            <Users className="h-4 w-4 text-purple-600" />
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-purple-900">Participation Requirements</h3>
-                            <p className="text-sm text-purple-700">Set minimum balance requirements for participants (optional)</p>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Asset Selection First */}
-                    <div className="space-y-3">
-                        <Label className="text-sm font-medium text-purple-800">Select Required Asset</Label>
-                        <Select
-                            onValueChange={(value) => {
-                                const parts = value.split(" ")
-                                if (parts.length === 4) {
-                                    setValue("requiredBalanceCode", parts[0] ?? "")
-                                    setValue("requiredBalanceIssuer", parts[1] ?? "")
-                                    setSelectedAsset({
-                                        assetCode: parts[0] ?? "",
-                                        assetIssuer: parts[1] ?? "",
-                                        balance: Number.parseFloat(parts[2] ?? "0"),
-                                        assetType: (parts[3] as assetType) ?? "defaultAssetType",
-                                    })
-                                } else {
-                                    setSelectedAsset(null)
-                                    setValue("requiredBalance", 0)
-                                }
-                            }}
-                        >
-                            <SelectTrigger className="bg-white/70 focus-visible:ring-2 focus-visible:ring-purple-500/20">
-                                <SelectValue placeholder="Choose an asset for minimum balance requirement" />
-                            </SelectTrigger>
-                            <SelectContent className="w-full">
-                                <SelectGroup>
-                                    <SelectLabel className="text-center font-semibold text-purple-600 py-2">PAGE ASSET</SelectLabel>
-                                    {
-                                        pageAssetbal.data && (
+                            {
+                                rewardType === "usdc" && CheckUSDCTrustLine.data === false && (
+                                    <Button
+                                        type="button"
+                                        onClick={() =>
+                                            AddTrustMutation.mutate({
+                                                asset_code: USDCCode,
+                                                asset_issuer: USDCIssuer,
+                                                signWith: needSign(),
+                                            })}
+                                        disabled={AddTrustMutation.isLoading}
+                                        variant={"outline"}
+                                    >
+                                        {AddTrustMutation.isLoading ? (
                                             <>
-                                                <SelectItem
-                                                    value={
-                                                        pageAssetbal?.data?.assetCode +
-                                                        " " +
-                                                        pageAssetbal?.data.assetCode +
-                                                        " " +
-                                                        pageAssetbal?.data.balance +
-                                                        " " +
-                                                        "PAGEASSET"
-                                                    }
-                                                    className="my-1"
-                                                >
-                                                    <div className="flex w-full items-center justify-between">
-                                                        <span className="font-medium">{pageAssetbal?.data.assetCode}</span>
-                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
-                                                            {pageAssetbal?.data.balance}
-                                                        </Badge>
-                                                    </div>
-                                                </SelectItem>
-
-                                                <SelectLabel className="text-center font-semibold text-purple-600 py-2 mt-3">
-                                                    PLATFORM ASSET
-                                                </SelectLabel>
-                                                <SelectItem
-                                                    value={
-                                                        PLATFORM_ASSET.code +
-                                                        " " +
-                                                        PLATFORM_ASSET.issuer +
-                                                        " " +
-                                                        platformAssetBalance +
-                                                        " " +
-                                                        "PLATFORMASSET"
-                                                    }
-                                                    className="my-1"
-                                                >
-                                                    <div className="flex w-full items-center justify-between">
-                                                        <span className="font-medium">{PLATFORM_ASSET.code}</span>
-                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
-                                                            {platformAssetBalance}
-                                                        </Badge>
-                                                    </div>
-                                                </SelectItem></>
-                                        )
-                                    }
-
-                                    <SelectLabel className="text-center font-semibold text-purple-600 py-2 mt-3">SHOP ASSETS</SelectLabel>
-                                    {!shopAssetbal.data ? (
-                                        <div className="flex w-full items-center justify-center p-3 text-sm text-muted-foreground">
-                                            <span>No Shop Assets Available</span>
-                                        </div>
-                                    ) : (
-                                        shopAssetbal.data.map((asset) =>
-                                            asset.asset_type === "credit_alphanum4" ||
-                                                (asset.asset_type === "credit_alphanum12" &&
-                                                    asset.asset_code !== pageAssetbal.data?.assetCode &&
-                                                    asset.asset_issuer !== pageAssetbal.data?.assetIssuer) ? (
-                                                <SelectItem
-                                                    key={asset.asset_code}
-                                                    value={asset.asset_code + " " + asset.asset_issuer + " " + asset.balance + " " + "SHOPASSET"}
-                                                    className="my-1"
-                                                >
-                                                    <div className="flex w-full items-center justify-between">
-                                                        <span className="font-medium">{asset.asset_code}</span>
-                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
-                                                            {asset.balance}
-                                                        </Badge>
-                                                    </div>
-                                                </SelectItem>
-                                            ) : null,
-                                        )
-                                    )}
-                                </SelectGroup>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Required Balance Input - Only visible after asset selection */}
-                    {selectedAsset && (
-                        <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.3 }}
-                            className="space-y-3"
-                        >
-                            <Label htmlFor="requiredBalance" className="text-sm font-medium text-purple-800">
-                                Minimum Balance Required
-                            </Label>
-                            <div className="relative max-w-sm">
-                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                    <Coins className="h-4 w-4 text-purple-500" />
-                                </div>
-                                <Input
-                                    id="requiredBalance"
-                                    type="number"
-                                    step={0.00001}
-                                    min={0}
-                                    {...register("requiredBalance", {
-                                        valueAsNumber: true,
-                                    })}
-                                    className="pl-10 bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-purple-500/20"
-                                    placeholder={`Min ${selectedAsset.assetCode} balance`}
-                                />
-                            </div>
-                            {errors.requiredBalance && (
-                                <p className="text-sm text-red-500 flex items-center gap-1">
-                                    <span className="h-1 w-1 rounded-full bg-red-500"></span>
-                                    {errors.requiredBalance.message}
-                                </p>
-                            )}
-                            <div className="rounded-lg bg-white/60 p-3 border border-purple-200">
-                                <p className="text-xs text-purple-700">
-                                    Participants must hold at least this amount of{" "}
-                                    <span className="font-semibold">{selectedAsset.assetCode}</span> to be eligible for this bounty.
-                                </p>
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {!selectedAsset && (
-                        <div className="rounded-lg bg-white/60 p-4 border border-purple-200 text-center">
-                            <p className="text-sm text-purple-600">
-                                Select an asset above to set minimum balance requirements for participants
-                            </p>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Adding Trust
+                                            </>
+                                        ) : (
+                                            "Add Trust"
+                                        )}
+                                    </Button>
+                                )
+                            }
                         </div>
                     )}
                 </CardContent>
@@ -943,29 +925,28 @@ function MediaStep({
             className="space-y-6"
         >
             <div className="space-y-1">
-                <h2 className="text-xl font-semibold">Bounty Media</h2>
-                <p className="text-sm text-muted-foreground">Add images to make your bounty more engaging</p>
+                <h2 className="text-xl font-semibold">Action Media</h2>
+                <p className="text-sm text-muted-foreground">Add images to make your action more engaging</p>
             </div>
 
-            <Card className="bg-amber-50 border-amber-200">
+            <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="p-4">
                     <div className="flex items-start gap-2 text-amber-800">
-                        <Camera className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                        <Camera className="mt-0.5 h-5 w-5 flex-shrink-0" />
                         <p className="text-sm">
-                            Upload up to 4 images to showcase your bounty. The first image will be used as the main thumbnail.
+                            Upload up to 4 images to showcase your action. The first image will be used as the main thumbnail.
                         </p>
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Media Upload */}
             <div className="space-y-4">
                 {media.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                         {media.map((item, index) => (
-                            <div key={index} className="relative aspect-square rounded-md overflow-hidden border">
+                            <div key={index} className="relative aspect-square overflow-hidden rounded-md border">
                                 <Image
-                                    src={item.url ?? "/images/action/logo.png"}
+                                    src={item.url || "/placeholder.svg"}
                                     alt={`Uploaded media ${index + 1}`}
                                     fill
                                     className="object-cover"
@@ -973,7 +954,7 @@ function MediaStep({
                                 <Button
                                     size="icon"
                                     variant="destructive"
-                                    className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                                    className="absolute right-1 top-1 h-6 w-6 rounded-full"
                                     onClick={() => removeMediaItem(index)}
                                 >
                                     <X className="h-3 w-3" />
@@ -983,10 +964,10 @@ function MediaStep({
                         ))}
                     </div>
                 ) : (
-                    <div className="border border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center">
-                        <Camera className="h-10 w-10 text-muted-foreground mb-2" />
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+                        <Camera className="mb-2 h-10 w-10 text-muted-foreground" />
                         <p className="text-muted-foreground">No images uploaded yet</p>
-                        <p className="text-xs text-muted-foreground mt-1">Upload images to increase user engagement</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Upload images to increase user engagement</p>
                     </div>
                 )}
 
@@ -1013,10 +994,10 @@ function MediaStep({
                 {media.length >= 4 && <p className="text-xs text-amber-600">Maximum number of uploads reached (4/4)</p>}
             </div>
 
-            <Card className="bg-gray-50 border-gray-200">
+            <Card className="border-gray-200 bg-gray-50">
                 <CardContent className="p-4">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Tips for great bounty images:</h4>
-                    <ul className="text-xs text-gray-600 list-disc pl-4 space-y-1">
+                    <h4 className="mb-2 text-sm font-medium text-gray-700">Tips for great action images:</h4>
+                    <ul className="list-disc space-y-1 pl-4 text-xs text-gray-600">
                         <li>Use high-quality, relevant images</li>
                         <li>Include a clear main thumbnail</li>
                         <li>Show examples of what you{"'re"} looking for</li>
@@ -1028,22 +1009,324 @@ function MediaStep({
     )
 }
 
+function SettingsStep() {
+    const {
+        register,
+        setValue,
+        watch,
+        formState: { errors },
+    } = useFormContext<z.infer<typeof BountySchema>>()
+
+    const generateRedeemCodes = watch("generateRedeemCodes")
+    const totalWinner = watch("totalWinner")
+    const selectedAssetCode = watch("requiredBalanceCode")
+
+    const { platformAssetBalance } = useUserStellarAcc()
+    const pageAssetbal = api.fan.creator.getCreatorPageAssetBalance.useQuery()
+    const shopAssetbal = api.fan.creator.getCreatorShopAssetBalance.useQuery()
+
+    const [selectedAsset, setSelectedAsset] = useState<selectedAssetType | null>(null)
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+        >
+            <div className="space-y-1">
+                <h2 className="text-xl font-semibold">Action Settings</h2>
+                <p className="text-sm text-muted-foreground">Configure participation requirements and additional options</p>
+            </div>
+
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-indigo-50">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100">
+                            <Users className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold">Participation Requirements</h3>
+                            <p className="text-sm text-muted-foreground">Set minimum balance requirements for participants</p>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        {/* Required Asset Selection */}
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                                Required Asset <span className="text-red-500">*</span>
+                            </Label>
+                            <Select
+                                onValueChange={(value) => {
+                                    const parts = value.split(" ")
+                                    if (parts.length === 4) {
+                                        setValue("requiredBalanceCode", parts[0] ?? "", { shouldValidate: true })
+                                        setValue("requiredBalanceIssuer", parts[1] ?? "", { shouldValidate: true })
+                                        setValue("requiredBalance", 0)
+                                        console.log("Selected Asset Parts:", parts)
+                                        setSelectedAsset({
+                                            assetCode: parts[0] ?? "",
+                                            assetIssuer: parts[1] ?? "",
+                                            balance: Number.parseFloat(parts[2] ?? "0"),
+                                            assetType: (parts[3] as assetType) ?? "defaultAssetType",
+                                        })
+                                    }
+                                }}
+                            >
+                                <SelectTrigger
+                                    className={cn(
+                                        "focus-visible:ring-2 focus-visible:ring-purple-500/20",
+                                        errors.requiredBalanceCode && "border-red-500",
+                                    )}
+                                >
+                                    <SelectValue placeholder="Select an asset (required)" />
+                                </SelectTrigger>
+                                <SelectContent className="w-full max-w-sm max-h-64 overflow-y-auto">
+                                    <SelectGroup className="w-full">
+                                        <div className="px-3 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
+                                            <SelectLabel className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                                                Page Asset
+                                            </SelectLabel>
+                                        </div>
+                                        {pageAssetbal.data && (
+                                            <>
+                                                <SelectItem
+                                                    value={`${pageAssetbal.data.assetCode} ${pageAssetbal.data.assetIssuer} ${pageAssetbal.data.balance} PAGEASSET`}
+                                                    className="px-3 py-3 w-full hover:bg-purple-50/80 focus:bg-purple-50 cursor-pointer transition-colors"
+                                                >
+                                                    <div className="grid grid-cols-2 items-center justify-between w-full ">
+                                                        <div className="flex items-center justify-start gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
+                                                                <span className="text-xs font-bold text-purple-700">
+                                                                    {pageAssetbal.data.assetCode.slice(0, 2)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-semibold text-gray-900 text-sm">{pageAssetbal.data.assetCode}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid justify-end">
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="bg-purple-100 text-purple-800 font-medium text-xs px-2 py-1"
+                                                            >
+                                                                {Number(pageAssetbal.data.balance).toLocaleString(undefined, {
+                                                                    maximumFractionDigits: 2,
+                                                                })}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                </SelectItem>
+
+                                                <div className="px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100 mt-2">
+                                                    <SelectLabel className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                                                        Platform Asset
+                                                    </SelectLabel>
+                                                </div>
+                                                <SelectItem
+                                                    value={`${PLATFORM_ASSET.code} ${PLATFORM_ASSET.issuer} ${platformAssetBalance} PLATFORMASSET`}
+                                                    className="px-3 py-3 hover:bg-amber-50/80 focus:bg-amber-50 cursor-pointer transition-colors"
+                                                >
+                                                    <div className="items-center justify-between w-full grid grid-cols-2">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center">
+                                                                <span className="text-xs font-bold text-amber-700">
+                                                                    {PLATFORM_ASSET.code.slice(0, 2)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-semibold text-gray-900 text-sm">{PLATFORM_ASSET.code}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid justify-end">
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="bg-amber-100 text-amber-800 font-medium text-xs px-2 py-1"
+                                                            >
+                                                                {Number(platformAssetBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                </SelectItem>
+                                            </>
+                                        )}
+
+                                        <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-blue-100 mt-2">
+                                            <SelectLabel className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                                                Shop Assets
+                                            </SelectLabel>
+                                        </div>
+                                        {!shopAssetbal.data ? (
+                                            <div className="flex w-full items-center justify-center p-6 text-sm text-muted-foreground">
+                                                <div className="text-center">
+                                                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                                                        <span className="text-gray-400">💼</span>
+                                                    </div>
+                                                    <span className="text-gray-500">No Shop Assets Available</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            shopAssetbal.data.map((asset) =>
+                                                asset.asset_type === "credit_alphanum4" ||
+                                                    (asset.asset_type === "credit_alphanum12" &&
+                                                        asset.asset_code !== pageAssetbal.data?.assetCode &&
+                                                        asset.asset_issuer !== pageAssetbal.data?.assetIssuer) ? (
+                                                    <SelectItem
+                                                        key={asset.asset_code}
+                                                        value={`${asset.asset_code} ${asset.asset_issuer} ${asset.balance} SHOPASSET`}
+                                                        className="px-3 py-3 hover:bg-blue-50/80 focus:bg-blue-50 cursor-pointer transition-colors"
+                                                    >
+                                                        <div className="grid items-center justify-between w-full">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                                                                    <span className="text-xs font-bold text-blue-700">{asset.asset_code.slice(0, 2)}</span>
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-semibold text-gray-900 text-sm">{asset.asset_code}</span>
+                                                                    <span className="text-xs text-gray-500">Shop Asset</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="grid justify-end">
+                                                                <Badge
+                                                                    variant="secondary"
+                                                                    className="bg-blue-100 text-blue-800 font-medium text-xs px-2 py-1"
+                                                                >
+                                                                    {Number(asset.balance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                                </Badge>
+                                                            </div>
+                                                        </div>
+                                                    </SelectItem>
+                                                ) : null,
+                                            )
+                                        )}
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                            {errors.requiredBalanceCode && (
+                                <p className="text-sm text-red-500 flex items-center gap-1">
+                                    <span className="h-1 w-1 rounded-full bg-red-500"></span>
+                                    {errors.requiredBalanceCode.message}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Minimum Balance - shown after asset selection */}
+                        {selectedAsset && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.3 }}
+                                className="space-y-2"
+                            >
+                                <Label htmlFor="requiredBalance" className="text-sm font-medium">
+                                    Minimum Balance Required
+                                </Label>
+                                <div className="relative">
+                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                        <Coins className="h-4 w-4 text-muted-foreground" />
+                                    </div>
+                                    <Input
+                                        id="requiredBalance"
+                                        type="number"
+                                        step={0.00001}
+                                        min={0}
+                                        {...register("requiredBalance", { valueAsNumber: true })}
+                                        className="pl-10 pr-12"
+                                        placeholder="0"
+                                    />
+                                    <div className="absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                                        {selectedAsset.assetCode}
+                                    </div>
+                                </div>
+                                {errors.requiredBalance && <p className="text-sm text-red-500">{errors.requiredBalance.message}</p>}
+                                {/* <p className="text-xs text-muted-foreground">Set to 0 to allow anyone with a trustline to participate</p> */}
+                            </motion.div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Generate Redeem Codes Card */}
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-indigo-50">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
+                            <Ticket className="h-4 w-4 text-emerald-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold">Redeem Codes</h3>
+                            <p className="text-sm text-muted-foreground">Generate unique codes for winners</p>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between rounded-lg bg-muted/50 p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="generateRedeemCodes" className="text-sm font-medium cursor-pointer">
+                                    Generate Redeem Codes
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Automatically generate unique redeem codes for each winner
+                                </p>
+                            </div>
+                        </div>
+                        <Switch
+                            id="generateRedeemCodes"
+                            checked={generateRedeemCodes}
+                            onCheckedChange={(checked) => setValue("generateRedeemCodes", checked)}
+                        />
+                    </div>
+
+                    {generateRedeemCodes && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="rounded-lg bg-emerald-50 p-3 border border-emerald-200"
+                        >
+                            <div className="flex items-start gap-2">
+                                <Check className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-emerald-700">
+                                    <p className="font-medium mb-1">
+                                        {totalWinner} unique redeem code{totalWinner > 1 ? "s" : ""} will be generated
+                                    </p>
+                                    <p>Each winner will receive a unique code that can only be redeemed once.</p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </CardContent>
+            </Card>
+        </motion.div>
+    )
+}
+
 function ReviewStep({
     media,
     title,
-    prizeUSD,
-    prizeAsset,
+    rewardType,
+    usdcAmount,
+    platformAssetAmount,
     winners,
     requiredBalance,
-    requiredBalanceCode
+    requiredBalanceCode,
+    generateRedeemCodes,
 }: {
     media: MediaInfoType[]
     title: string
-    prizeUSD: number
-    prizeAsset: number
+    rewardType: "usdc" | "platform_asset"
+    usdcAmount?: number
+    platformAssetAmount?: number
     winners: number
     requiredBalance?: number
     requiredBalanceCode?: string
+    generateRedeemCodes?: boolean
 }) {
     return (
         <motion.div
@@ -1054,14 +1337,14 @@ function ReviewStep({
             className="space-y-6"
         >
             <div className="space-y-1">
-                <h2 className="text-xl font-semibold">Review Your Bounty</h2>
+                <h2 className="text-xl font-semibold">Review Your Action</h2>
                 <p className="text-sm text-muted-foreground">Please review all information before submitting</p>
             </div>
 
-            <Card className="border-amber-200">
-                <CardContent className="p-4 space-y-4">
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-emerald-50">
+                <CardContent className="space-y-4 p-4">
                     <div>
-                        <h3 className="text-lg font-semibold">{title || "Untitled Bounty"}</h3>
+                        <h3 className="text-lg font-semibold">{title || "Untitled Action"}</h3>
                     </div>
 
                     <Separator />
@@ -1070,13 +1353,20 @@ function ReviewStep({
                         <p className="text-sm font-medium">Reward Details</p>
                         <div className="flex flex-col gap-1">
                             <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">Prize Amount (USD):</span>
-                                <span className="font-medium">${prizeUSD || 0}</span>
+                                <span className="text-muted-foreground">Reward Type:</span>
+                                <Badge
+                                    variant="secondary"
+                                    className={rewardType === "usdc" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}
+                                >
+                                    {rewardType === "usdc" ? "USDC" : PLATFORM_ASSET.code.toUpperCase()}
+                                </Badge>
                             </div>
                             <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">Prize Amount ({PLATFORM_ASSET.code.toLocaleUpperCase()}):</span>
+                                <span className="text-muted-foreground">Prize Amount:</span>
                                 <span className="font-medium">
-                                    {(prizeAsset || 0).toFixed(5)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                    {rewardType === "usdc"
+                                        ? `$${usdcAmount?.toFixed(5) ?? 0} USDC`
+                                        : `${(platformAssetAmount ?? 0).toFixed(5)} ${PLATFORM_ASSET.code.toUpperCase()}`}
                                 </span>
                             </div>
                             <div className="flex justify-between text-sm">
@@ -1084,15 +1374,34 @@ function ReviewStep({
                                 <span className="font-medium">{winners || 1}</span>
                             </div>
                             <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">Prize per Winner (USD):</span>
-                                <span className="font-medium">${((prizeUSD || 0) / (winners || 1)).toFixed(2)}</span>
+                                <span className="text-muted-foreground">Prize per Winner:</span>
+                                <span className="font-medium">
+                                    {rewardType === "usdc"
+                                        ? `$${((usdcAmount ?? 0) / (winners || 1)).toFixed(5)} USDC`
+                                        : `${((platformAssetAmount ?? 0) / (winners || 1)).toFixed(5)} ${PLATFORM_ASSET.code.toUpperCase()}`}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Updated ReviewStep to show selected asset with required balance */}
+                    <div className="space-y-2 ">
+                        <p className="text-sm font-medium">Participation Requirements</p>
+                        <div className="flex flex-col gap-1">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Required Asset:</span>
+                                <Badge variant="outline" className="font-medium">
+                                    {requiredBalanceCode ?? "Not set"}
+                                </Badge>
                             </div>
                             <div className="flex justify-between text-sm">
-                                <span className="text-muted-foreground">
-                                    Prize per Winner ({PLATFORM_ASSET.code.toLocaleUpperCase()}):
-                                </span>
+                                <span className="text-muted-foreground">Minimum Balance:</span>
                                 <span className="font-medium">
-                                    {((prizeAsset || 0) / (winners || 1)).toFixed(5)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                    {requiredBalance !== undefined && requiredBalance > 0
+                                        ? `${requiredBalance} ${requiredBalanceCode}`
+                                        : "No minimum (trustline required)"}
                                 </span>
                             </div>
                         </div>
@@ -1101,10 +1410,22 @@ function ReviewStep({
                     <Separator />
 
                     <div>
-                        <p className="text-sm font-medium">Required Balance</p>
-                        <p className="text-sm">
-                            {requiredBalance ? `${requiredBalance} ${requiredBalanceCode}` : "No minimum balance required"}
-                        </p>
+                        <p className="text-sm font-medium">Redeem Codes</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            {generateRedeemCodes ? (
+                                <>
+                                    <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">
+                                        <Ticket className="h-3 w-3 mr-1" />
+                                        Enabled
+                                    </Badge>
+                                    <span className="text-sm text-muted-foreground">
+                                        {winners} unique code{winners > 1 ? "s" : ""} will be generated
+                                    </span>
+                                </>
+                            ) : (
+                                <span className="text-sm text-muted-foreground">No redeem codes will be generated</span>
+                            )}
+                        </div>
                     </div>
 
                     <Separator />
@@ -1112,11 +1433,11 @@ function ReviewStep({
                     <div>
                         <p className="text-sm font-medium">Media</p>
                         {media.length > 0 ? (
-                            <div className="grid grid-cols-4 gap-2 mt-2">
+                            <div className="mt-2 grid grid-cols-4 gap-2">
                                 {media.map((item, index) => (
-                                    <div key={index} className="relative aspect-square rounded-md overflow-hidden border">
+                                    <div key={index} className="relative aspect-square overflow-hidden rounded-md border">
                                         <Image
-                                            src={item.url ?? "/images/action/logo.png"}
+                                            src={item.url || "/placeholder.svg"}
                                             alt={`Thumbnail ${index + 1}`}
                                             fill
                                             className="object-cover"
@@ -1130,11 +1451,11 @@ function ReviewStep({
                         )}
                     </div>
 
-                    <Card className="bg-amber-50 border-amber-200">
-                        <CardContent className="p-3 flex items-center gap-2">
+                    <Card className="border-amber-200 bg-amber-50">
+                        <CardContent className="flex items-center gap-2 p-3">
                             <Check className="h-5 w-5 text-green-500" />
                             <p className="text-sm text-amber-800">
-                                Your bounty is ready to be created. Click the button below to finalize.
+                                Your action is ready to be created. Choose to pay now or pay later.
                             </p>
                         </CardContent>
                     </Card>
@@ -1145,4 +1466,3 @@ function ReviewStep({
 }
 
 export default CreateBountyModal
-

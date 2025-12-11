@@ -361,6 +361,7 @@ model User {
     BountyWinner BountyWinner[]
 
     RedeemConsumer RedeemConsumer[]
+    bountyRedeems  BountyRedeem[]
 }
 
 model VerificationToken {
@@ -635,12 +636,14 @@ model ActionLocation {
 }
 
 model Bounty {
-    id                    Int                 @id @default(autoincrement())
-    title                 String
-    description           String
-    latitude              Float?
-    longitude             Float?
-    radius                Float?
+    id          Int     @id @default(autoincrement())
+    title       String
+    description String
+    latitude    Float?
+    longitude   Float?
+    radius      Float?
+    payNow      Boolean @default(false)
+
     priceInUSD            Float
     priceInBand           Float
     totalWinner           Int
@@ -664,6 +667,7 @@ model Bounty {
     userId                String?
     bountyType            BountyType          @default(GENERAL)
     ActionLocation        ActionLocation[]
+    bountyRedeems         BountyRedeem[]
 
     @@index([title, description])
 }
@@ -781,6 +785,24 @@ enum SubmissionViewType {
 }
 
 // I want to add asset redeeming feature
+model BountyRedeem {
+    id           Int     @id @default(autoincrement())
+    bountyId     Int
+    bounty       Bounty  @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+    code         String
+    isMarkedUsed Boolean @default(false)
+    isRedeemed   Boolean @default(false)
+    redeemedBy   String?
+    redeemUserId String?
+
+    redeemedUser     User?           @relation(fields: [redeemedBy], references: [id], onDelete: SetNull)
+    redeemedAt       DateTime?
+    createdAt        DateTime        @default(now())
+    redeemConsumer   RedeemConsumer? @relation(fields: [redeemConsumerId], references: [id])
+    redeemConsumerId Int?
+
+    @@unique([bountyId, code])
+}
 
 model Redeem {
     code            String           @id
@@ -791,12 +813,13 @@ model Redeem {
 }
 
 model RedeemConsumer {
-    id         Int      @id @default(autoincrement())
-    userId     String
-    user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    code       String
-    redeemCode Redeem   @relation(fields: [code], references: [code], onDelete: Cascade)
-    redeemedAt DateTime @default(now())
+    id            Int            @id @default(autoincrement())
+    userId        String
+    user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    code          String
+    redeemCode    Redeem         @relation(fields: [code], references: [code], onDelete: Cascade)
+    redeemedAt    DateTime       @default(now())
+    bountyRedeems BountyRedeem[]
 }
 
 model OriginReward {

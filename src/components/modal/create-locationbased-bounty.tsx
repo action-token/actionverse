@@ -1,12 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useForm, FormProvider, useFormContext, type SubmitHandler } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { motion, AnimatePresence } from "framer-motion"
-import { z } from "zod"
-// Add the missing Users icon import
+import { MediaType } from "@prisma/client"
 import {
+    Camera,
     Coins,
     MapPin,
     FileText,
@@ -19,27 +16,19 @@ import {
     Loader2,
     Users,
     Sparkles,
+    Ticket,
+    Clock,
+    X,
 } from "lucide-react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
-import { Button } from "~/components/shadcn/ui/button"
-import { Input } from "~/components/shadcn/ui/input"
-import { Label } from "~/components/shadcn/ui/label"
-import { Progress } from "~/components/shadcn/ui/progress"
-import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
-import { Separator } from "~/components/shadcn/ui/separator"
-import { Badge } from "~/components/shadcn/ui/badge"
-import { cn } from "~/lib/utils"
-import { useCreatorMapModalStore } from "../store/creator-map-modal-store"
-import { useCreateLocationBasedBountyStore } from "../store/create-locationbased-bounty-store"
-import { PLATFORM_ASSET, PLATFORM_FEE, TrxBaseFeeInPlatformAsset } from "~/lib/stellar/constant"
-import { api } from "~/utils/api"
-import { Editor } from "../common/quill-editor"
-import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
-import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
-import { clientsign } from "package/connect_wallet"
-import useNeedSign from "~/lib/hook"
 import { useSession } from "next-auth/react"
+import Image from "next/image"
+import { clientsign } from "package/connect_wallet"
+import { useState, useEffect } from "react"
+import { FormProvider, useForm, useFormContext, type SubmitHandler } from "react-hook-form"
 import toast from "react-hot-toast"
+import { z } from "zod"
+import { motion, AnimatePresence } from "framer-motion"
+
 import {
     Select,
     SelectContent,
@@ -48,22 +37,54 @@ import {
     SelectLabel,
     SelectTrigger,
     SelectValue,
-} from "~/components/shadcn/ui/select";
+} from "~/components/shadcn/ui/select"
+import { Button } from "~/components/shadcn/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
+import { Input } from "~/components/shadcn/ui/input"
+import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
+import { Badge } from "~/components/shadcn/ui/badge"
+import { Separator } from "~/components/shadcn/ui/separator"
+import { Label } from "~/components/shadcn/ui/label"
+import { Progress } from "~/components/shadcn/ui/progress"
+import { Switch } from "~/components/shadcn/ui/switch"
+import useNeedSign from "~/lib/hook"
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
+import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 import { clientSelect } from "~/lib/stellar/fan/utils"
+import { api } from "~/utils/api"
+import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
+import { UploadS3Button } from "../common/upload-button"
+import { Editor } from "../common/quill-editor"
+import { useCreatorMapModalStore } from "../store/creator-map-modal-store"
+import { useCreateLocationBasedBountyStore } from "../store/create-locationbased-bounty-store"
+import { cn } from "~/lib/utils"
+
+// Schema definitions
+const MediaInfo = z.object({
+    url: z.string(),
+    type: z.string().default(MediaType.IMAGE),
+})
+
+type MediaInfoType = z.TypeOf<typeof MediaInfo>
+
+const USDCIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+const USDCCode = "USDC"
+
 enum assetType {
     PAGEASSET = "PAGEASSET",
     PLATFORMASSET = "PLATFORMASSET",
     SHOPASSET = "SHOPASSET",
 }
+
 type selectedAssetType = {
-    assetCode: string;
-    assetIssuer: string;
-    balance: number;
-    assetType: assetType;
-};
+    assetCode: string
+    assetIssuer: string
+    balance: number
+    assetType: assetType
+}
 
 // Define the schema for the bounty form
-export const BountyFormSchema = z
+export const LocationBasedBountyFormSchema = z
     .object({
         title: z.string().min(3, "Title must be at least 3 characters").max(65, "Title must be at most 65 characters"),
         description: z.string().min(10, "Description must be at least 10 characters"),
@@ -84,70 +105,80 @@ export const BountyFormSchema = z
                 },
             ),
         radius: z.number().min(10, "Radius must be at least 10 meters").max(1000, "Radius cannot exceed 1000 meters"),
-        brandAmount: z
-            .number({
-                required_error: "Prize must be a number",
-                invalid_type_error: "Prize must be a number",
-            })
-            .min(0.00001, { message: "Prize can't be less than 0.00001" }),
-        usdtAmount: z
-            .number({
-                required_error: "Prize must be a number",
-                invalid_type_error: "Prize must be a number",
-            })
-            .min(0.00001, { message: "Prize can't be less than 0.00001" }),
+        // Reward type selection
+        rewardType: z.enum(["usdc", "platform_asset"]),
+        // USDC amount (used when rewardType is 'usdc')
+        usdcAmount: z.number().optional(),
+        // Platform asset amount (used when rewardType is 'platform_asset')
+        platformAssetAmount: z.number().optional(),
         winners: z.number().int().min(1, "Must have at least 1 winner").max(100, "Cannot have more than 100 winners"),
-        requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
-        requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
+        requiredBalanceCode: z.string().min(1, { message: "Please select an asset" }),
+        requiredBalanceIssuer: z.string().min(1, { message: "Please select an asset" }),
         requiredBalance: z
             .number({
                 required_error: "Required Balance must be a number",
                 invalid_type_error: "Required Balance must be a number",
             })
             .nonnegative({ message: "Required Balance can't be less than 0" })
-
+            .default(0),
+        medias: z.array(MediaInfo).optional(),
+        generateRedeemCodes: z.boolean().default(false),
     })
+    .refine(
+        (data) => {
+            if (data.rewardType === "usdc") {
+                return data.usdcAmount && data.usdcAmount >= 0.00001
+            }
+            if (data.rewardType === "platform_asset") {
+                return data.platformAssetAmount && data.platformAssetAmount >= 0.00001
+            }
+            return false
+        },
+        {
+            message: "Please enter a valid reward amount",
+            path: ["usdcAmount"],
+        },
+    )
 
-    .refine((data) => data.brandAmount ?? data.usdtAmount, {
-        message: "You must specify at least one currency amount",
-        path: ["brandAmount"],
-    })
-
-type BountyFormType = z.infer<typeof BountyFormSchema>
-
+type LocationBasedBountyFormType = z.infer<typeof LocationBasedBountyFormSchema>
 
 // Define the steps
-type FormStep = "details" | "location" | "reward" | "review"
-const FORM_STEPS: FormStep[] = ["details", "location", "reward", "review"]
+type FormStep = "details" | "location" | "media" | "settings" | "review"
+const FORM_STEPS: FormStep[] = ["details", "location", "media", "settings", "review"]
 
 export default function CreateLocationBasedBountyModal() {
+    // State management
+    const [media, setMedia] = useState<MediaInfoType[]>([])
     const [activeStep, setActiveStep] = useState<FormStep>("details")
-    const [formProgress, setFormProgress] = useState(25)
+    const [formProgress, setFormProgress] = useState(20)
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const { setIsOpen: SetIsBountyOpen, data, isOpen: isBountyOpen } = useCreateLocationBasedBountyStore()
-    const { isOpen, setIsOpen, paymentMethod } = usePaymentMethodStore()
-    const { platformAssetBalance } = useUserStellarAcc()
-    // const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
-    const totalFees = 0 // Flat fee for simplification
-    const utils = api.useUtils()
-    const { needSign } = useNeedSign()
-    const session = useSession()
-    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
     const [showConfetti, setShowConfetti] = useState(false)
 
-    const methods = useForm<BountyFormType>({
+    // Hooks
+    const { setIsOpen: SetIsBountyOpen, data, isOpen: isBountyOpen } = useCreateLocationBasedBountyStore()
+    const { isOpen, setIsOpen, paymentMethod, setPaymentMethod } = usePaymentMethodStore()
+    const { platformAssetBalance } = useUserStellarAcc()
+    const totalFees = 0
+    const { data: sessionData, status } = useSession()
+    const { needSign } = useNeedSign()
+
+    const methods = useForm<LocationBasedBountyFormType>({
         mode: "onChange",
-        resolver: zodResolver(BountyFormSchema),
+        resolver: zodResolver(LocationBasedBountyFormSchema),
         defaultValues: {
             title: "",
             description: "",
             latitude: "",
             longitude: "",
             radius: 100,
-            brandAmount: 0,
-            usdtAmount: 0,
+            rewardType: "usdc",
+            usdcAmount: 0,
+            platformAssetAmount: 0,
             winners: 1,
             requiredBalance: 0,
+            requiredBalanceCode: "",
+            requiredBalanceIssuer: "",
+            generateRedeemCodes: false,
         },
     })
 
@@ -161,13 +192,14 @@ export default function CreateLocationBasedBountyModal() {
         watch,
         formState: { errors, isValid },
     } = methods
+    const utils = api.useUtils()
 
     useEffect(() => {
         if (data) {
             setValue("latitude", data.lat.toString())
             setValue("longitude", data.lng.toString())
         }
-    }, [data, methods])
+    }, [data, setValue])
 
     // Update progress based on active step
     useEffect(() => {
@@ -197,19 +229,15 @@ export default function CreateLocationBasedBountyModal() {
     }
 
     // Check if current step is valid before allowing to proceed
-    const canProceed = () => {
-        const { trigger } = methods
-
-        // Define fields to validate for each step
-        const fieldsToValidate: Record<FormStep, (keyof BountyFormType)[]> = {
-            details: ["title", "description"],
+    const canProceed = async () => {
+        const fieldsToValidate: Record<FormStep, (keyof LocationBasedBountyFormType)[]> = {
+            details: ["title", "description", "rewardType", "winners"],
             location: ["latitude", "longitude", "radius"],
-            reward: ["brandAmount", "usdtAmount", "winners"],
+            media: [],
+            settings: ["requiredBalanceCode", "requiredBalanceIssuer"],
             review: [],
         }
-
-        // Trigger validation for the current step's fields
-        return trigger(fieldsToValidate[activeStep])
+        return await trigger(fieldsToValidate[activeStep])
     }
 
     const handleNext = async () => {
@@ -218,21 +246,34 @@ export default function CreateLocationBasedBountyModal() {
             goToNextStep()
         }
     }
+
+    // API mutations
     const CreateBountyMutation = api.bounty.Bounty.createLocationBounty.useMutation({
-        onSuccess: async (data) => {
+        onSuccess: async () => {
             toast.success("Bounty Created Successfully! 🎉")
             setShowConfetti(true)
             utils.bounty.Bounty.getAllBounties.refetch().catch((error) => {
                 console.error("Error refetching bounties", error)
             })
-            setTimeout(() => {
-                handleClose()
-
-
-            }, 2000)
+            handleClose()
         },
     })
-    const XLMRate = api.bounty.Bounty.getXLMPrice.useQuery().data
+
+    const CreateBountyPayLaterMutation = api.bounty.Bounty.createLocationBountyPayLater.useMutation({
+        onSuccess: async () => {
+            toast.success("Bounty Created Successfully! Payment pending. 🎉")
+            setShowConfetti(true)
+            utils.bounty.Bounty.getAllBounties.refetch().catch((error) => {
+                console.error("Error refetching bounties", error)
+            })
+            handleClose()
+        },
+        onError: (error) => {
+            console.error("Error creating bounty", error)
+            toast.error(error.message)
+            setIsSubmitting(false)
+        },
+    })
 
     const SendBalanceToBountyMother = api.bounty.Bounty.sendBountyBalanceToMotherAcc.useMutation({
         onSuccess: async (data, { method }) => {
@@ -241,37 +282,47 @@ export default function CreateLocationBasedBountyModal() {
                     setIsSubmitting(true)
                     const clientResponse = await clientsign({
                         presignedxdr: data.xdr,
-                        walletType: session.data?.user?.walletType,
+                        walletType: sessionData?.user?.walletType,
                         pubkey: data.pubKey,
                         test: clientSelect(),
                     })
 
                     if (clientResponse) {
+                        const rewardType = getValues("rewardType")
                         CreateBountyMutation.mutate({
                             title: getValues("title"),
+                            rewardType: getValues("rewardType"),
                             description: getValues("description"),
                             latitude: getValues("latitude"),
                             longitude: getValues("longitude"),
                             radius: getValues("radius"),
-                            brandAmount: getValues("brandAmount"),
-                            usdtAmount: getValues("usdtAmount"),
                             winners: getValues("winners"),
-                            requiredBalance: getValues("requiredBalance"),
+                            platformAssetAmount: rewardType === "platform_asset" ? (getValues("platformAssetAmount") ?? 0) : 0,
+                            usdcAmount: rewardType === "usdc" ? (getValues("usdcAmount") ?? 0) : 0,
+                            requiredBalance: getValues("requiredBalance") ?? 0,
                             requiredBalanceCode: getValues("requiredBalanceCode"),
                             requiredBalanceIssuer: getValues("requiredBalanceIssuer"),
+                            medias: media.map((item) => ({
+                                ...item,
+                                type: item.type as MediaType,
+                            })),
+                            generateRedeemCodes: getValues("generateRedeemCodes"),
                         })
                         setIsSubmitting(false)
                         reset()
+                        setMedia([])
                     } else {
                         setIsSubmitting(false)
                         reset()
                         toast.error("Error in signing transaction")
+                        setMedia([])
                     }
                     setIsOpen(false)
                 } catch (error) {
                     setIsSubmitting(false)
                     console.error("Error sending balance to bounty mother", error)
                     reset()
+                    setMedia([])
                 }
             }
         },
@@ -279,253 +330,390 @@ export default function CreateLocationBasedBountyModal() {
             console.error("Error creating bounty", error)
             toast.error(error.message)
             reset()
+            setMedia([])
             setIsSubmitting(false)
             setIsOpen(false)
         },
     })
 
-    const onSubmit: SubmitHandler<z.infer<typeof BountyFormSchema>> = async () => {
-        const isValid = await trigger()
-        if (isValid) {
-            setIsSubmitting(true)
-            console.log("Submitting form", getValues())
-            // Get the prize amount from brandAmount
-            const prizeAmount = Number(getValues("brandAmount") || 0)
-            console.log("Prize amount", prizeAmount)
-            SendBalanceToBountyMother.mutate({
-                signWith: needSign(),
-                prize: prizeAmount,
-                method: paymentMethod,
-                fees: 0,
-                // paymentMethod === "asset" ? totalFees :
-                // paymentMethod === "xlm" ? 1 :
-                //     (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1)))
-            })
-        }
+    const onSubmit: SubmitHandler<LocationBasedBountyFormType> = (data) => {
+        data.medias = media
+        setIsSubmitting(true)
+
+        const rewardType = getValues("rewardType")
+        const prizeAmount =
+            rewardType === "platform_asset" ? Number(getValues("platformAssetAmount")) : Number(getValues("usdcAmount"))
+
+        SendBalanceToBountyMother.mutate({
+            signWith: needSign(),
+            prize: prizeAmount,
+            fees: 0,
+            method: paymentMethod,
+        })
     }
 
+    const handlePayLater = () => {
+        setIsSubmitting(true)
+        const rewardType = getValues("rewardType")
+
+        CreateBountyPayLaterMutation.mutate({
+            title: getValues("title"),
+            description: getValues("description"),
+            rewardType: getValues("rewardType"),
+            latitude: getValues("latitude"),
+            longitude: getValues("longitude"),
+            radius: getValues("radius"),
+            platformAssetAmount: rewardType === "platform_asset" ? (getValues("platformAssetAmount") ?? 0) : 0,
+            winners: getValues("winners"),
+            usdcAmount: rewardType === "usdc" ? (getValues("usdcAmount") ?? 0) : 0,
+            requiredBalance: getValues("requiredBalance") ?? 0,
+            requiredBalanceCode: getValues("requiredBalanceCode"),
+            requiredBalanceIssuer: getValues("requiredBalanceIssuer"),
+            medias: media.map((item) => ({
+                ...item,
+                type: item.type as MediaType,
+            })),
+            generateRedeemCodes: getValues("generateRedeemCodes"),
+        })
+    }
+
+    const addMediaItem = (url: string, type: MediaType) => {
+        setMedia((prevMedia) => [...prevMedia, { url, type }])
+    }
+
+    const removeMediaItem = (index: number) => {
+        setMedia((prevMedia) => prevMedia.filter((_, i) => i !== index))
+    }
 
     const handleClose = () => {
         SetIsBountyOpen(false)
-        setActiveStep("details")
         reset()
+        setMedia([])
+        setActiveStep("details")
+        setIsSubmitting(false)
     }
 
+    // Watch values
+    const watchedTitle = watch("title")
+    const watchedRewardType = watch("rewardType")
+    const watchedUsdcAmount = watch("usdcAmount")
+    const watchedPlatformAssetAmount = watch("platformAssetAmount")
+    const watchedWinners = watch("winners")
+    const watchedRequiredBalance = watch("requiredBalance")
+    const watchedGenerateRedeemCodes = watch("generateRedeemCodes")
+    const watchedRequiredBalanceCode = watch("requiredBalanceCode")
+    const watchedLatitude = watch("latitude")
+    const watchedLongitude = watch("longitude")
+    const watchedRadius = watch("radius")
 
+    const getPrizeAmount = () => {
+        if (watchedRewardType === "platform_asset") {
+            return watchedPlatformAssetAmount ?? 0
+        }
+        return watchedUsdcAmount ?? 0
+    }
+
+    useEffect(() => {
+        setPaymentMethod(watchedRewardType === "usdc" ? "usdc" : "asset")
+    }, [watchedRewardType, setPaymentMethod])
 
     return (
-        <>
-            <Dialog open={isBountyOpen} onOpenChange={handleClose}>
-                <DialogContent
-                    onInteractOutside={(e) => {
-                        e.preventDefault()
-                    }}
-                    className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-2"
-                >
-                    {showConfetti && (
-                        <div className="fixed inset-0 pointer-events-none z-50">
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1, opacity: [0, 1, 0] }}
-                                    transition={{ duration: 2 }}
-                                    className="text-4xl"
-                                >
-                                    <div className="flex items-center justify-center gap-2 text-primary">
-                                        <Sparkles className="h-8 w-8" />
-                                        <span className="font-bold">Bounty created successfully!</span>
-                                        <Sparkles className="h-8 w-8" />
-                                    </div>
-                                </motion.div>
-                            </div>
-                            {Array.from({ length: 100 }).map((_, i) => (
-                                <motion.div
-                                    key={i}
-                                    className="absolute w-2 h-2 rounded-full"
-                                    initial={{
-                                        top: "50%",
-                                        left: "50%",
-                                        scale: 0,
-                                        backgroundColor: ["#FF5733", "#33FF57", "#3357FF", "#F3FF33", "#FF33F3"][Math.floor(Math.random() * 5)],
-                                    }}
-                                    animate={{
-                                        top: `${Math.random() * 100}%`,
-                                        left: `${Math.random() * 100}%`,
-                                        scale: [0, 1, 0],
-                                        opacity: [0, 1, 0],
-                                    }}
-                                    transition={{
-                                        duration: 2 + Math.random() * 2,
-                                        delay: Math.random() * 0.5,
-                                        ease: "easeOut",
-                                    }}
-                                />
-                            ))}
+        <Dialog open={isBountyOpen} onOpenChange={handleClose}>
+            <DialogContent
+                onInteractOutside={(e) => e.preventDefault()}
+                className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-2"
+            >
+                {/* {showConfetti && (
+                    <div className="pointer-events-none fixed inset-0 z-50">
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1, opacity: [0, 1, 0] }}
+                                transition={{ duration: 2 }}
+                                className="text-4xl"
+                            >
+                                <div className="flex items-center justify-center gap-2">
+                                    <Sparkles className="h-8 w-8" />
+                                    <span className="font-bold">Bounty created successfully!</span>
+                                    <Sparkles className="h-8 w-8" />
+                                </div>
+                            </motion.div>
                         </div>
-                    )}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 20 }}
-                        transition={{ duration: 0.3 }}
-                        className="flex flex-col h-full"
-                    >
-                        <DialogHeader className="px-2 md:px-4 py-4">
+                        {Array.from({ length: 100 }).map((_, i) => (
+                            <motion.div
+                                key={i}
+                                className="absolute h-2 w-2 rounded-full"
+                                initial={{
+                                    top: "50%",
+                                    left: "50%",
+                                    scale: 0,
+                                    backgroundColor: ["#FF5733", "#33FF57", "#3357FF", "#F3FF33", "#FF33F3"][
+                                        Math.floor(Math.random() * 5)
+                                    ],
+                                }}
+                                animate={{
+                                    top: `${Math.random() * 100}%`,
+                                    left: `${Math.random() * 100}%`,
+                                    scale: [0, 1, 0],
+                                    opacity: [0, 1, 0],
+                                }}
+                                transition={{
+                                    duration: 2 + Math.random() * 2,
+                                    delay: Math.random() * 0.5,
+                                    ease: "easeOut",
+                                }}
+                            />
+                        ))}
+                    </div>
+                )} */}
+
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex h-full flex-col"
+                >
+                    <DialogHeader className="px-2 py-4 md:px-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <MapPin className="h-5 w-5" />
+                                <DialogTitle className="text-xl font-bold">Create Location Action</DialogTitle>
+                            </div>
+                        </div>
+                        <DialogDescription>Create a location-based action for users to claim</DialogDescription>
+                        <Progress value={formProgress} className="mt-2 h-2" />
+                        <div className="w-full px-2 md:px-4">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Coins className="h-5 w-5" />
-                                    <DialogTitle className="text-xl font-bold">Create New Bounty</DialogTitle>
-                                </div>
-
-                            </div>
-                            <DialogDescription>Create a location-based bounty for users to claim</DialogDescription>
-
-                            <Progress value={formProgress} className="mt-2 h-2" />
-
-                            <div className="w-full px-2 md:px-4">
-                                <div className="flex items-center justify-between">
-                                    {FORM_STEPS.map((step, index) => (
-                                        <div key={step} className="flex flex-col items-center">
-                                            <div
-                                                className={cn(
-                                                    "w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm mb-1 ",
-                                                    activeStep === step ? "bg-primary text-primary-foreground shadow-sm shadow-foreground" : "bg-muted text-muted-foreground",
-                                                )}
-                                            >
-                                                {index + 1}
-                                            </div>
-                                            <span className={cn("text-xs", activeStep === step ? "font-medium" : "text-muted-foreground")}>
-                                                {step === "details"
-                                                    ? "Details"
-                                                    : step === "location"
-                                                        ? "Location"
-                                                        : step === "reward"
-                                                            ? "Reward"
-                                                            : "Review"}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </DialogHeader>
-
-                        <FormProvider {...methods}>
-                            <form>
-                                <div className="p-2 md:p-4">
-                                    <AnimatePresence mode="wait">
-                                        {activeStep === "details" && <DetailsStep key="details" />}
-                                        {activeStep === "location" && <LocationStep key="location" />}
-                                        {activeStep === "reward" && <RewardStep key="reward" />}
-                                        {activeStep === "review" && <ReviewStep key="review" />}
-                                    </AnimatePresence>
-                                </div>
-
-                                <div className="flex justify-between border-t p-6">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={goToPreviousStep}
-                                        disabled={activeStep === "details" || isSubmitting}
-                                    >
-                                        <ChevronLeft className="mr-2 h-4 w-4" />
-                                        Back
-                                    </Button>
-
-                                    {activeStep !== "review" ? (
-                                        <Button type="button" onClick={handleNext} className="shadow-sm shadow-foreground">
-                                            Next
-                                            <ChevronRight className="ml-2 h-4 w-4" />
-                                        </Button>
-                                    ) : (
-                                        <>
-                                            {platformAssetBalance < getValues("brandAmount") + totalFees ? (
-                                                <Button disabled className="shadow-sm shadow-foreground">
-                                                    Insufficient Balance
-                                                </Button>
-                                            ) : (
-                                                <PaymentChoose
-                                                    costBreakdown={[
-                                                        {
-                                                            label: "Bounty Prize",
-                                                            amount: paymentMethod === "asset"
-                                                                ? Number(getValues("brandAmount") + totalFees)
-                                                                : paymentMethod === "xlm"
-                                                                    ? Number(getValues("usdtAmount") / (XLMRate ?? 1))
-                                                                    : Number(getValues("usdtAmount")),
-                                                            highlighted: true,
-                                                            type: "cost",
-                                                        },
-                                                        {
-                                                            label: "Platform Fee",
-                                                            amount: 0,
-                                                            // paymentMethod === "asset"
-                                                            // ? totalFees
-                                                            // : paymentMethod === "xlm"
-                                                            //     ? 1
-                                                            //     : (3 * (Number(getValues("usdtAmount") ?? 1) * (XLMRate ?? 1))),
-                                                            highlighted: false,
-                                                            type: "fee",
-                                                        },
-                                                        {
-                                                            label: "Total Cost",
-                                                            amount: paymentMethod === "asset"
-                                                                ? Number(getValues("brandAmount")) + totalFees
-                                                                : paymentMethod === "xlm"
-                                                                    ? Number(getValues("usdtAmount") / (XLMRate ?? 1))
-                                                                    : Number(getValues("usdtAmount"))
-                                                            ,
-                                                            highlighted: false,
-                                                            type: "total",
-                                                        },
-                                                    ]}
-                                                    XLM_EQUIVALENT={Number(getValues("usdtAmount") / (XLMRate ?? 1))}
-                                                    USDC_EQUIVALENT={Number(getValues("usdtAmount"))}
-                                                    handleConfirm={methods.handleSubmit(onSubmit)}
-                                                    loading={isSubmitting}
-                                                    requiredToken={getValues('brandAmount') + totalFees}
-                                                    trigger={
-                                                        <Button disabled={isSubmitting || !isValid} className="shadow-sm shadow-foreground">
-                                                            {isSubmitting ? (
-                                                                <>
-                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                                    Creating Bounty...
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Coins className="mr-2 h-4 w-4" />
-                                                                    Create Bounty
-                                                                </>
-                                                            )}
-                                                        </Button>
-                                                    }
-                                                />
+                                {FORM_STEPS.map((step, index) => (
+                                    <div key={step} className="flex flex-col items-center">
+                                        <div
+                                            className={cn(
+                                                "mb-1 flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium",
+                                                activeStep === step
+                                                    ? "bg-primary shadow-sm shadow-foreground"
+                                                    : "bg-muted text-muted-foreground",
                                             )}
-                                        </>
-                                    )}
+                                        >
+                                            {index + 1}
+                                        </div>
+                                        <span className={cn("text-xs", activeStep === step ? "font-medium" : "text-muted-foreground")}>
+                                            {step === "details"
+                                                ? "Details"
+                                                : step === "location"
+                                                    ? "Location"
+                                                    : step === "media"
+                                                        ? "Media"
+                                                        : step === "settings"
+                                                            ? "Settings"
+                                                            : "Review"}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </DialogHeader>
 
-                                </div>
-                            </form>
-                        </FormProvider>
-                    </motion.div>
-                </DialogContent>
-            </Dialog>
-        </>
+                    <FormProvider {...methods}>
+                        <form>
+                            <div className="p-2 md:p-4">
+                                <AnimatePresence mode="wait">
+                                    {activeStep === "details" && <DetailsStep key="details" />}
+                                    {activeStep === "location" && <LocationStep key="location" />}
+                                    {activeStep === "media" && (
+                                        <MediaStep
+                                            key="media"
+                                            media={media}
+                                            removeMediaItem={removeMediaItem}
+                                            addMediaItem={addMediaItem}
+                                            loading={isSubmitting}
+                                        />
+                                    )}
+                                    {activeStep === "settings" && <SettingsStep key="settings" />}
+                                    {activeStep === "review" && (
+                                        <ReviewStep
+                                            key="review"
+                                            media={media}
+                                            title={watchedTitle}
+                                            rewardType={watchedRewardType}
+                                            usdcAmount={watchedUsdcAmount}
+                                            platformAssetAmount={watchedPlatformAssetAmount}
+                                            winners={watchedWinners}
+                                            requiredBalance={watchedRequiredBalance}
+                                            requiredBalanceCode={watchedRequiredBalanceCode}
+                                            generateRedeemCodes={watchedGenerateRedeemCodes}
+                                            latitude={watchedLatitude}
+                                            longitude={watchedLongitude}
+                                            radius={watchedRadius}
+                                        />
+                                    )}
+                                </AnimatePresence>
+                            </div>
+
+                            <div className="flex justify-between border-t p-6">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={goToPreviousStep}
+                                    disabled={activeStep === "details" || isSubmitting}
+                                    className=" bg-transparent"
+                                >
+                                    <ChevronLeft className="mr-2 h-4 w-4" />
+                                    Back
+                                </Button>
+
+                                {activeStep !== "review" ? (
+                                    <Button type="button" onClick={handleNext} className="shadow-sm shadow-foreground">
+                                        Next
+                                        <ChevronRight className="ml-2 h-4 w-4" />
+                                    </Button>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        {/* Pay Later Button */}
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handlePayLater}
+                                            disabled={isSubmitting || !isValid || watchedGenerateRedeemCodes}
+
+                                            className="border-amber-300 hover:bg-amber-50 bg-transparent"
+                                        >
+                                            {isSubmitting ? (
+                                                <>
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    Creating...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Clock className="mr-2 h-4 w-4" />
+                                                    Pay Later
+                                                </>
+                                            )}
+                                        </Button>
+
+                                        {/* Pay Now Button */}
+                                        {platformAssetBalance < getPrizeAmount() ? (
+                                            <Button disabled className="shadow-sm shadow-foreground">
+                                                Insufficient Balance
+                                            </Button>
+                                        ) : (
+                                            <PaymentChoose
+                                                costBreakdown={[
+                                                    {
+                                                        label: "Action Prize",
+                                                        amount: getPrizeAmount(),
+                                                        highlighted: true,
+                                                        type: "cost",
+                                                    },
+                                                    {
+                                                        label: "Platform Fee",
+                                                        amount: 0,
+                                                        highlighted: false,
+                                                        type: "fee",
+                                                    },
+                                                    {
+                                                        label: "Total Cost",
+                                                        amount: getPrizeAmount() + totalFees,
+                                                        highlighted: false,
+                                                        type: "total",
+                                                    },
+                                                ]}
+                                                {...(watchedRewardType === "usdc"
+                                                    ? { USDC_EQUIVALENT: getPrizeAmount() + totalFees }
+                                                    : {
+                                                        requiredToken: getPrizeAmount() + totalFees,
+                                                    })}
+                                                handleConfirm={handleSubmit(onSubmit)}
+                                                loading={isSubmitting}
+                                                trigger={
+                                                    <Button disabled={isSubmitting || !isValid} className="shadow-sm shadow-foreground">
+                                                        {isSubmitting ? (
+                                                            <>
+                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                Creating Action...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Coins className="mr-2 h-4 w-4" />
+                                                                Pay Now
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                }
+                                            />
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </form>
+                    </FormProvider>
+                </motion.div>
+            </DialogContent>
+        </Dialog>
     )
 }
 
 function DetailsStep() {
     const {
         register,
-        watch,
         getValues,
         setValue,
+        watch,
         formState: { errors },
-    } = useFormContext<BountyFormType>()
+    } = useFormContext<LocationBasedBountyFormType>()
 
-    const title = watch("title")
+    const session = useSession()
+    const { needSign } = useNeedSign()
+    const title = watch("title", "")
+    const rewardType = watch("rewardType")
+    const usdcAmount = watch("usdcAmount")
+    const platformAssetAmount = watch("platformAssetAmount")
+    const totalWinner = watch("winners")
+    const [loading, setLoading] = useState(false)
+
     const handleEditorChange = (value: string): void => {
         setValue("description", value)
     }
+
+    const CheckUSDCTrustLine = api.bounty.Bounty.checkUSDCTrustLine.useQuery(undefined, {
+        enabled: session.status === "authenticated" && getValues("rewardType") === "usdc",
+    })
+
+    const AddTrustMutation = api.walletBalance.wallBalance.addTrustLine.useMutation({
+        onSuccess: async (data) => {
+            try {
+                const clientResponse = await clientsign({
+                    walletType: session.data?.user?.walletType,
+                    presignedxdr: data.xdr,
+                    pubkey: data.pubKey,
+                    test: clientSelect(),
+                })
+                if (clientResponse) {
+                    toast.success("Added trustline successfully")
+                    try {
+                        await api.useUtils().walletBalance.wallBalance.getWalletsBalance.refetch()
+                    } catch (refetchError) {
+                        console.log("Error refetching balance", refetchError)
+                    }
+                } else {
+                    toast.error("No Data Found at TrustLine Operation")
+                }
+            } catch (error) {
+                if (error instanceof Error) {
+                    toast.error(`Error: ${error.message}`)
+                } else {
+                    toast.error("An unknown error occurred.")
+                }
+                console.log("Error", error)
+            } finally {
+                setLoading(false)
+            }
+        },
+        onError: (error) => {
+            setLoading(false)
+            toast.error(error.message)
+        },
+    })
 
     return (
         <motion.div
@@ -535,47 +723,221 @@ function DetailsStep() {
             transition={{ duration: 0.3 }}
             className="space-y-6"
         >
-            <div className="space-y-1">
-                <h2 className="text-xl font-semibold">Basic Information</h2>
-                <p className="text-sm text-muted-foreground">Enter the basic details about your bounty</p>
-            </div>
-
-            <div className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="title" className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Bounty Title
-                    </Label>
-                    <div className="relative">
-                        <Input
-                            id="title"
-                            {...register("title")}
-                            placeholder="Enter a catchy title"
-                            maxLength={65}
-                            className="transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                        />
-                        <div className="absolute right-2 bottom-2 text-xs text-muted-foreground">
-                            {65 - (title?.length || 0)} characters left
+            {/* Basic Information Card */}
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-orange-50">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100">
+                            <FileText className="h-4 w-4 text-amber-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold">Basic Information</h3>
+                            <p className="text-sm text-muted-foreground">Enter the essential details about your action</p>
                         </div>
                     </div>
-                    {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
-                </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="space-y-3">
+                        <Label htmlFor="title" className="text-sm font-medium">
+                            Action Title
+                        </Label>
+                        <div className="relative">
+                            <Input
+                                id="title"
+                                {...register("title")}
+                                placeholder="Enter a compelling title that attracts participants"
+                                maxLength={65}
+                                className="pr-20 transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
+                            />
+                            <div className="absolute bottom-2 right-3 text-xs text-muted-foreground">
+                                {65 - (title?.length || 0)} left
+                            </div>
+                        </div>
+                        {errors.title && (
+                            <p className="text-sm text-red-500 flex items-center gap-1">
+                                <span className="h-1 w-1 rounded-full bg-red-500"></span>
+                                {errors.title.message}
+                            </p>
+                        )}
+                    </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="description" className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Description
-                    </Label>
-                    <Editor
-                        value={getValues("description")}
-                        onChange={handleEditorChange}
-                        placeholder="Describe what users need to do to claim this bounty"
-                        className="min-h-24 resize-none transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                    />
-                    {errors.description && <p className="text-sm text-destructive">{errors.description.message}</p>}
-                </div>
+                    <div className="space-y-3">
+                        <Label htmlFor="description" className="text-sm font-medium">
+                            Description
+                        </Label>
+                        <Editor
+                            value={getValues("description")}
+                            onChange={handleEditorChange}
+                            placeholder="Provide clear instructions on what participants need to do to earn this action..."
+                            className="min-h-32 resize-none transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
+                        />
+                        {errors.description && (
+                            <p className="text-sm text-red-500 flex items-center gap-1">
+                                <span className="h-1 w-1 rounded-full bg-red-500"></span>
+                                {errors.description.message}
+                            </p>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
 
-            </div>
+            {/* Bounty Rewards Card */}
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-accent/20 to-accent/20">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100">
+                            <DollarSign className="h-4 w-4 text-amber-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold">Action Rewards</h3>
+                            <p className="text-sm text-muted-foreground">Choose reward type and configure amounts</p>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                    {/* Reward Type Toggle */}
+                    <div className="space-y-3">
+                        <div className="inline-flex rounded-lg border p-1 bg-muted/30">
+                            <button
+                                type="button"
+                                onClick={() => setValue("rewardType", "usdc")}
+                                className={cn(
+                                    "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all",
+                                    rewardType === "usdc"
+                                        ? "bg-background shadow-sm text-foreground"
+                                        : "text-muted-foreground hover:text-foreground",
+                                )}
+                            >
+                                <DollarSign className="h-4 w-4" />
+                                USDC
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setValue("rewardType", "platform_asset")}
+                                className={cn(
+                                    "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all",
+                                    rewardType === "platform_asset"
+                                        ? "bg-background shadow-sm text-foreground"
+                                        : "text-muted-foreground hover:text-foreground",
+                                )}
+                            >
+                                <Coins className="h-4 w-4" />
+                                {PLATFORM_ASSET.code.toUpperCase()}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Amount Input */}
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                                {rewardType === "usdc" ? "USDC Amount" : `${PLATFORM_ASSET.code.toUpperCase()} Amount`}
+                            </Label>
+                            <div className="relative">
+                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                    {rewardType === "usdc" ? (
+                                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                    ) : (
+                                        <Coins className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                </div>
+                                {rewardType === "usdc" ? (
+                                    <Input
+                                        type="number"
+                                        step={0.01}
+                                        min={0.01}
+                                        {...register("usdcAmount", { valueAsNumber: true })}
+                                        className="pl-10"
+                                        placeholder="0.00"
+                                    />
+                                ) : (
+                                    <Input
+                                        type="number"
+                                        step={0.00001}
+                                        min={0.00001}
+                                        {...register("platformAssetAmount", { valueAsNumber: true })}
+                                        className="pl-10"
+                                        placeholder="0.00000"
+                                    />
+                                )}
+                            </div>
+                            {errors.usdcAmount && <p className="text-xs text-red-500">{errors.usdcAmount.message}</p>}
+                            {errors.platformAssetAmount && (
+                                <p className="text-xs text-red-500">{errors.platformAssetAmount.message}</p>
+                            )}
+                        </div>
+
+                        {/* Winners Input */}
+                        <div className="space-y-2">
+                            <Label htmlFor="winners" className="text-sm font-medium">
+                                Number of Winners
+                            </Label>
+                            <div className="relative">
+                                <Trophy className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    id="winners"
+                                    type="number"
+                                    step={1}
+                                    min={1}
+                                    {...register("winners", { valueAsNumber: true })}
+                                    className="pl-10"
+                                    placeholder="1"
+                                />
+                            </div>
+                            {errors.winners && <p className="text-xs text-red-500">{errors.winners.message}</p>}
+                        </div>
+                    </div>
+
+                    {/* Reward Summary */}
+                    {(rewardType === "usdc" ? (usdcAmount ?? 0) > 0 : (platformAssetAmount ?? 0) > 0) && (
+                        <div className="rounded-lg bg-muted/50 p-4 flex justify-between items-center">
+                            <div className="flex items-center justify-between w-full">
+                                <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Total Pool</p>
+                                    <p className="text-lg font-semibold">
+                                        {rewardType === "usdc"
+                                            ? `$${(usdcAmount ?? 0).toFixed(5)} USDC`
+                                            : `${(platformAssetAmount ?? 0).toFixed(5)} ${PLATFORM_ASSET.code.toUpperCase()}`}
+                                    </p>
+                                </div>
+                                {(totalWinner ?? 1) > 1 && (
+                                    <div className="text-right space-y-1">
+                                        <p className="text-xs text-muted-foreground">Per Winner</p>
+                                        <p className="text-lg font-semibold">
+                                            {rewardType === "usdc"
+                                                ? `$${((usdcAmount ?? 0) / (totalWinner ?? 1)).toFixed(5)}`
+                                                : `${((platformAssetAmount ?? 0) / (totalWinner ?? 1)).toFixed(5)}`}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                            {rewardType === "usdc" && CheckUSDCTrustLine.data === false && (
+                                <Button
+                                    type="button"
+                                    onClick={() =>
+                                        AddTrustMutation.mutate({
+                                            asset_code: USDCCode,
+                                            asset_issuer: USDCIssuer,
+                                            signWith: needSign(),
+                                        })
+                                    }
+                                    disabled={AddTrustMutation.isLoading}
+                                    variant={"outline"}
+                                >
+                                    {AddTrustMutation.isLoading ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Adding Trust
+                                        </>
+                                    ) : (
+                                        "Add Trust"
+                                    )}
+                                </Button>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
         </motion.div>
     )
 }
@@ -586,7 +948,7 @@ function LocationStep() {
         watch,
         setValue,
         formState: { errors },
-    } = useFormContext<BountyFormType>()
+    } = useFormContext<LocationBasedBountyFormType>()
 
     const radius = watch("radius")
     const { setIsOpen: setMapModalOpen, setPosition } = useCreatorMapModalStore()
@@ -594,15 +956,12 @@ function LocationStep() {
     const handleOpenMapModal = () => {
         const latitude = watch("latitude")
         const longitude = watch("longitude")
-
-        // If coordinates are already set, pass them to the map modal
         if (latitude && longitude) {
             setPosition({
                 lat: Number.parseFloat(latitude),
                 lng: Number.parseFloat(longitude),
             })
         }
-
         setMapModalOpen(true)
     }
 
@@ -614,121 +973,113 @@ function LocationStep() {
             transition={{ duration: 0.3 }}
             className="space-y-6"
         >
-            <div className="space-y-1">
-                <h2 className="text-xl font-semibold">Location Settings</h2>
-                <p className="text-sm text-muted-foreground">
-                    Set the exact location where users need to be to claim this bounty
-                </p>
-            </div>
-
-            <Card className="bg-amber-50 border-amber-200">
-                <CardContent className="p-4">
-                    <div className="flex items-start gap-2 text-amber-800">
-                        <MapPin className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm">
-                            Enter the exact coordinates where users need to be to claim this bounty. The proximity radius determines
-                            how close they need to be.
-                        </p>
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-cyan-50">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
+                            <MapPin className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold">Location Settings</h3>
+                            <p className="text-sm text-muted-foreground">
+                                Set the exact location where users need to be to claim this action
+                            </p>
+                        </div>
                     </div>
-                </CardContent>
-            </Card>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <Card className="bg-amber-50 border-amber-200">
+                        <CardContent className="p-4">
+                            <div className="flex items-start gap-2 text-amber-800">
+                                <MapPin className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                                <p className="text-sm">
+                                    Enter the exact coordinates where users need to be to claim this action. The proximity radius
+                                    determines how close they need to be.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label htmlFor="latitude" className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4" />
-                        Latitude
-                    </Label>
-                    <Input
-                        id="latitude"
-                        {...register("latitude")}
-                        placeholder="e.g. 40.7128"
-                        className="transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                    />
-                    {errors.latitude && <p className="text-sm text-destructive">{errors.latitude.message}</p>}
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="latitude" className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4" />
+                                Latitude
+                            </Label>
+                            <Input
+                                id="latitude"
+                                {...register("latitude")}
+                                placeholder="e.g. 40.7128"
+                                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
+                            />
+                            {errors.latitude && <p className="text-sm text-destructive">{errors.latitude.message}</p>}
+                        </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="longitude" className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4" />
-                        Longitude
-                    </Label>
-                    <Input
-                        id="longitude"
-                        {...register("longitude")}
-                        placeholder="e.g. -74.0060"
-                        className="transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                    />
-                    {errors.longitude && <p className="text-sm text-destructive">{errors.longitude.message}</p>}
-                </div>
-            </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="longitude" className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4" />
+                                Longitude
+                            </Label>
+                            <Input
+                                id="longitude"
+                                {...register("longitude")}
+                                placeholder="e.g. -74.0060"
+                                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
+                            />
+                            {errors.longitude && <p className="text-sm text-destructive">{errors.longitude.message}</p>}
+                        </div>
+                    </div>
 
+                    <div className="space-y-2">
+                        <div className="flex justify-between">
+                            <Label htmlFor="radius" className="flex items-center gap-2">
+                                <Target className="h-4 w-4" />
+                                Proximity Radius
+                            </Label>
+                            <span className="text-sm font-medium text-blue-600">{radius} meters</span>
+                        </div>
+                        <input
+                            type="range"
+                            id="radius"
+                            min="10"
+                            max="1000"
+                            step="10"
+                            value={radius}
+                            onChange={(e) => setValue("radius", Number.parseInt(e.target.value))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <p className="text-xs text-muted-foreground">Users must be within this distance to claim the action</p>
+                    </div>
 
-
-            <div className="space-y-2">
-                <div className="flex justify-between">
-                    <Label htmlFor="radius" className="flex items-center gap-2">
-                        <Target className="h-4 w-4" />
-                        Proximity Radius
-                    </Label>
-                    <span className="text-sm font-medium text-amber-600">{radius} meters</span>
-                </div>
-                <input
-                    type="range"
-                    id="radius"
-                    min="10"
-                    max="1000"
-                    step="10"
-                    value={radius}
-                    onChange={(e) => setValue("radius", Number.parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                />
-                <p className="text-xs text-muted-foreground">Users must be within this distance to claim the bounty</p>
-            </div>
-
-            <Card className="bg-gray-50 border-gray-200">
-                <CardContent className="p-4">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">How to find coordinates:</h4>
-                    <ol className="text-xs text-gray-600 list-decimal pl-4 space-y-1">
-                        <li>Open Artist Maps</li>
-                        <li>Right-click on your desired location</li>
-                        <li>Click Copy Coordinates</li>
-                        <li>The coordinates will copied.</li>
-                    </ol>
+                    <Card className="bg-gray-50 border-gray-200">
+                        <CardContent className="p-4">
+                            <h4 className="text-sm font-medium text-gray-700 mb-2">How to find coordinates:</h4>
+                            <ol className="text-xs text-gray-600 list-decimal pl-4 space-y-1">
+                                <li>Open Artist Maps</li>
+                                <li>Right-click on your desired location</li>
+                                <li>Click Copy Coordinates</li>
+                                <li>The coordinates will be copied.</li>
+                            </ol>
+                        </CardContent>
+                    </Card>
                 </CardContent>
             </Card>
         </motion.div>
     )
 }
 
-function RewardStep() {
-    const {
-        register,
-        watch,
-        setValue,
-        formState: { errors },
-    } = useFormContext<BountyFormType>()
-    const [selectedAsset, setSelectedAsset] = useState<selectedAssetType | null>(null)
-
-    const { data: prizeRate } = api.bounty.Bounty.getCurrentUSDFromAsset.useQuery()
-    const pageAssetbal = api.fan.creator.getCreatorPageAssetBalance.useQuery()
-    const shopAssetbal = api.fan.creator.getCreatorShopAssetBalance.useQuery()
-    const { platformAssetBalance } = useUserStellarAcc()
-    const winners = watch("winners")
-    const brandAmount = watch("brandAmount")
-    const usdtAmount = watch("usdtAmount")
-    const handlePrizeChange = (value: string) => {
-        const prizeUSD = Number(value) || 0
-        setValue("usdtAmount", prizeUSD)
-
-        // Make sure prize is a valid number before dividing
-        if (prizeRate && Number(prizeRate) > 0) {
-            const prizeValue = prizeUSD / Number(prizeRate)
-            setValue("brandAmount", prizeValue)
-        } else {
-            setValue("brandAmount", 0)
-        }
-    }
+function MediaStep({
+    media,
+    removeMediaItem,
+    addMediaItem,
+    loading,
+}: {
+    media: MediaInfoType[]
+    removeMediaItem: (index: number) => void
+    addMediaItem: (url: string, type: MediaType) => void
+    loading: boolean
+}) {
+    const { trigger } = useFormContext<LocationBasedBountyFormType>()
 
     return (
         <motion.div
@@ -739,62 +1090,121 @@ function RewardStep() {
             className="space-y-6"
         >
             <div className="space-y-1">
-                <h2 className="text-xl font-semibold">Reward Settings</h2>
-                <p className="text-sm text-muted-foreground">Define the rewards for completing this bounty</p>
+                <h2 className="text-xl font-semibold">Action Media</h2>
+                <p className="text-sm text-muted-foreground">Add images to make your action more engaging</p>
             </div>
 
-            <Card className="p-0">
-                <CardContent className="p-0 md:p-4 space-y-4">
-                    <h3 className="text-base font-medium text-amber-800">Bounty Rewards</h3>
-                    <p className="text-sm text-amber-700">Specify reward amounts in one or both currencies</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* USD Prize */}
-                        <div className="space-y-2">
-                            <Label htmlFor="usdtAmount" className="flex items-center gap-2">
-                                <DollarSign className="h-4 w-4 text-amber-600" />
-                                USD Amount
-                            </Label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <DollarSign className="h-4 w-4 text-amber-500" />
-                                </div>
-                                <Input
-                                    id="usdtAmount"
-                                    onChange={(e) => handlePrizeChange(e.target.value)}
-                                    value={watch("usdtAmount") || ""}
-                                    className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                                    type="number"
-                                    step={0.00001}
-                                    min={0.00001}
-                                    placeholder="Enter USD amount"
-                                />
-                            </div>
-                            {errors.usdtAmount && <p className="text-sm text-destructive">{errors.usdtAmount.message}</p>}
-                        </div>
-
-                        {/* Platform asset amount */}
-                        <div className="space-y-2">
-                            <Label htmlFor="prize" className="flex items-center gap-2">
-                                <Coins className="h-4 w-4 text-amber-600" />
-                                {PLATFORM_ASSET.code.toLocaleUpperCase()} Amount
-                            </Label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <Coins className="h-4 w-4 text-amber-500" />
-                                </div>
-                                <Input
-                                    id="prize"
-                                    value={watch("brandAmount") ? watch("brandAmount").toFixed(5) : ""}
-                                    readOnly
-                                    className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-amber-500/20"
-                                    placeholder={`${PLATFORM_ASSET.code.toLocaleUpperCase()} equivalent`}
-                                />
-                            </div>
-                            {errors.brandAmount && <p className="text-sm text-destructive">{errors.brandAmount.message}</p>}
-                        </div>
+            <Card className="border-amber-200 bg-amber-50">
+                <CardContent className="p-4">
+                    <div className="flex items-start gap-2 text-amber-800">
+                        <Camera className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                        <p className="text-sm">
+                            Upload up to 4 images to showcase your action. The first image will be used as the main thumbnail.
+                        </p>
                     </div>
                 </CardContent>
             </Card>
+
+            <div className="space-y-4">
+                {media.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                        {media.map((item, index) => (
+                            <div key={index} className="relative aspect-square overflow-hidden rounded-md border">
+                                <Image
+                                    src={item.url || "/placeholder.svg"}
+                                    alt={`Uploaded media ${index + 1}`}
+                                    fill
+                                    className="object-cover"
+                                />
+                                <Button
+                                    size="icon"
+                                    variant="destructive"
+                                    className="absolute right-1 top-1 h-6 w-6 rounded-full"
+                                    onClick={() => removeMediaItem(index)}
+                                >
+                                    <X className="h-3 w-3" />
+                                </Button>
+                                {index === 0 && <Badge className="absolute bottom-1 left-1 bg-primary/80">Main</Badge>}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+                        <Camera className="mb-2 h-10 w-10 text-muted-foreground" />
+                        <p className="text-muted-foreground">No images uploaded yet</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Upload images to increase user engagement</p>
+                    </div>
+                )}
+
+                {media.length < 4 && (
+                    <UploadS3Button
+                        variant="button"
+                        className="w-full"
+                        label={media.length === 0 ? "Upload Thumbnail Images" : "Add More Images"}
+                        disabled={media.length >= 4 || loading}
+                        endpoint="imageUploader"
+                        onClientUploadComplete={(res) => {
+                            const data = res
+                            if (data?.url) {
+                                addMediaItem(data.url, MediaType.IMAGE)
+                                trigger().catch((e) => console.log(e))
+                            }
+                        }}
+                        onUploadError={(error: Error) => {
+                            toast.error(`Upload Error: ${error.message}`)
+                        }}
+                    />
+                )}
+
+                {media.length >= 4 && <p className="text-xs text-amber-600">Maximum number of uploads reached (4/4)</p>}
+            </div>
+
+            <Card className="border-gray-200 bg-gray-50">
+                <CardContent className="p-4">
+                    <h4 className="mb-2 text-sm font-medium text-gray-700">Tips for great action images:</h4>
+                    <ul className="list-disc space-y-1 pl-4 text-xs text-gray-600">
+                        <li>Use high-quality, relevant images</li>
+                        <li>Include a clear main thumbnail</li>
+                        <li>Show examples of what you{"'re"} looking for</li>
+                        <li>Avoid text-heavy images; put details in the description</li>
+                    </ul>
+                </CardContent>
+            </Card>
+        </motion.div>
+    )
+}
+
+function SettingsStep() {
+    const {
+        register,
+        setValue,
+        watch,
+        formState: { errors },
+    } = useFormContext<LocationBasedBountyFormType>()
+
+    const generateRedeemCodes = watch("generateRedeemCodes")
+    const totalWinner = watch("winners")
+    const selectedAssetCode = watch("requiredBalanceCode")
+    const { platformAssetBalance } = useUserStellarAcc()
+
+    const pageAssetbal = api.fan.creator.getCreatorPageAssetBalance.useQuery()
+    const shopAssetbal = api.fan.creator.getCreatorShopAssetBalance.useQuery()
+
+    const [selectedAsset, setSelectedAsset] = useState<selectedAssetType | null>(null)
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+        >
+            <div className="space-y-1">
+                <h2 className="text-xl font-semibold">Action Settings</h2>
+                <p className="text-sm text-muted-foreground">Configure participation requirements and additional options</p>
+            </div>
+
             <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-indigo-50">
                 <CardHeader className="pb-4">
                     <div className="flex items-center gap-2">
@@ -802,240 +1212,295 @@ function RewardStep() {
                             <Users className="h-4 w-4 text-purple-600" />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-purple-900">Participation Requirements</h3>
-                            <p className="text-sm text-purple-700">Set minimum balance requirements for participants (optional)</p>
+                            <h3 className="font-semibold">Participation Requirements</h3>
+                            <p className="text-sm text-muted-foreground">Set minimum balance requirements for participants</p>
                         </div>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Asset Selection First */}
-                    <div className="space-y-3">
-                        <Label className="text-sm font-medium text-purple-800">Select Required Asset</Label>
-                        <Select
-                            onValueChange={(value) => {
-                                const parts = value.split(" ")
-                                if (parts.length === 4) {
-                                    setValue("requiredBalanceCode", parts[0] ?? "")
-                                    setValue("requiredBalanceIssuer", parts[1] ?? "")
-                                    setSelectedAsset({
-                                        assetCode: parts[0] ?? "",
-                                        assetIssuer: parts[1] ?? "",
-                                        balance: Number.parseFloat(parts[2] ?? "0"),
-                                        assetType: (parts[3] as assetType) ?? "defaultAssetType",
-                                    })
-                                } else {
-                                    setSelectedAsset(null)
-                                    setValue("requiredBalance", 0)
-                                }
-                            }}
-                        >
-                            <SelectTrigger className="bg-white/70 focus-visible:ring-2 focus-visible:ring-purple-500/20">
-                                <SelectValue placeholder="Choose an asset for minimum balance requirement" />
-                            </SelectTrigger>
-                            <SelectContent className="w-full">
-                                <SelectGroup>
-                                    <SelectLabel className="text-center font-semibold text-purple-600 py-2">PAGE ASSET</SelectLabel>
-                                    {
-                                        pageAssetbal.data && (
+                <CardContent className="space-y-5">
+                    <div className="grid grid-cols-2 gap-4 items-center">
+                        {/* Required Asset Selection */}
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">
+                                Required Asset <span className="text-red-500">*</span>
+                            </Label>
+                            <Select
+                                onValueChange={(value) => {
+                                    const parts = value.split(" ")
+                                    if (parts.length === 4) {
+                                        setValue("requiredBalanceCode", parts[0] ?? "", { shouldValidate: true })
+                                        setValue("requiredBalanceIssuer", parts[1] ?? "", { shouldValidate: true })
+                                        setValue("requiredBalance", 0)
+                                        setSelectedAsset({
+                                            assetCode: parts[0] ?? "",
+                                            assetIssuer: parts[1] ?? "",
+                                            balance: Number.parseFloat(parts[2] ?? "0"),
+                                            assetType: (parts[3] as assetType) ?? "defaultAssetType",
+                                        })
+                                    }
+                                }}
+                            >
+                                <SelectTrigger
+                                    className={cn(
+                                        "focus-visible:ring-2 focus-visible:ring-purple-500/20",
+                                        errors.requiredBalanceCode && "border-red-500",
+                                    )}
+                                >
+                                    <SelectValue placeholder="Select an asset (required)" />
+                                </SelectTrigger>
+                                <SelectContent className="w-full max-w-sm max-h-64 overflow-y-auto">
+                                    <SelectGroup className="w-full">
+                                        <div className="px-3 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
+                                            <SelectLabel className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                                                Page Asset
+                                            </SelectLabel>
+                                        </div>
+                                        {pageAssetbal.data && (
                                             <>
                                                 <SelectItem
-                                                    value={
-                                                        pageAssetbal?.data?.assetCode +
-                                                        " " +
-                                                        pageAssetbal?.data.assetCode +
-                                                        " " +
-                                                        pageAssetbal?.data.balance +
-                                                        " " +
-                                                        "PAGEASSET"
-                                                    }
-                                                    className="my-1"
+                                                    value={`${pageAssetbal.data.assetCode} ${pageAssetbal.data.assetIssuer} ${pageAssetbal.data.balance} PAGEASSET`}
+                                                    className="px-3 py-3 w-full hover:bg-purple-50/80 focus:bg-purple-50 cursor-pointer transition-colors"
                                                 >
-                                                    <div className="flex w-full items-center justify-between">
-                                                        <span className="font-medium">{pageAssetbal?.data.assetCode}</span>
-                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
-                                                            {pageAssetbal?.data.balance}
-                                                        </Badge>
+                                                    <div className="grid grid-cols-2 items-center justify-between w-full ">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
+                                                                <span className="text-xs font-bold text-purple-700">
+                                                                    {pageAssetbal.data.assetCode.slice(0, 2)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-semibold text-gray-900 text-sm">
+                                                                    {pageAssetbal.data.assetCode}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid justify-end">
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="bg-purple-100 text-purple-800 font-medium text-xs px-2 py-1"
+                                                            >
+                                                                {Number(pageAssetbal.data.balance).toLocaleString(undefined, {
+                                                                    maximumFractionDigits: 2,
+                                                                })}
+                                                            </Badge>
+                                                        </div>
                                                     </div>
                                                 </SelectItem>
-
-                                                <SelectLabel className="text-center font-semibold text-purple-600 py-2 mt-3">
-                                                    PLATFORM ASSET
-                                                </SelectLabel>
+                                                <div className="px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100 mt-2">
+                                                    <SelectLabel className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                                                        Platform Asset
+                                                    </SelectLabel>
+                                                </div>
                                                 <SelectItem
-                                                    value={
-                                                        PLATFORM_ASSET.code +
-                                                        " " +
-                                                        PLATFORM_ASSET.issuer +
-                                                        " " +
-                                                        platformAssetBalance +
-                                                        " " +
-                                                        "PLATFORMASSET"
-                                                    }
-                                                    className="my-1"
+                                                    value={`${PLATFORM_ASSET.code} ${PLATFORM_ASSET.issuer} ${platformAssetBalance} PLATFORMASSET`}
+                                                    className="px-3 py-3 hover:bg-amber-50/80 focus:bg-amber-50 cursor-pointer transition-colors"
                                                 >
-                                                    <div className="flex w-full items-center justify-between">
-                                                        <span className="font-medium">{PLATFORM_ASSET.code}</span>
-                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
-                                                            {platformAssetBalance}
-                                                        </Badge>
+                                                    <div className="items-center justify-between w-full  grid grid-cols-2">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center">
+                                                                <span className="text-xs font-bold text-amber-700">
+                                                                    {PLATFORM_ASSET.code.slice(0, 2)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-semibold text-gray-900 text-sm">{PLATFORM_ASSET.code}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid justify-end">
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="bg-amber-100 text-amber-800 font-medium text-xs px-2 py-1"
+                                                            >
+                                                                {Number(platformAssetBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                            </Badge>
+                                                        </div>
                                                     </div>
-                                                </SelectItem></>
-                                        )
-                                    }
-
-                                    <SelectLabel className="text-center font-semibold text-purple-600 py-2 mt-3">SHOP ASSETS</SelectLabel>
-                                    {!shopAssetbal.data ? (
-                                        <div className="flex w-full items-center justify-center p-3 text-sm text-muted-foreground">
-                                            <span>No Shop Assets Available</span>
+                                                </SelectItem>
+                                            </>
+                                        )}
+                                        <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-blue-100 mt-2">
+                                            <SelectLabel className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                                                Shop Assets
+                                            </SelectLabel>
                                         </div>
-                                    ) : (
-                                        shopAssetbal.data.map((asset) =>
-                                            asset.asset_type === "credit_alphanum4" ||
-                                                (asset.asset_type === "credit_alphanum12" &&
-                                                    asset.asset_code !== pageAssetbal.data?.assetCode &&
-                                                    asset.asset_issuer !== pageAssetbal.data?.assetIssuer) ? (
-                                                <SelectItem
-                                                    key={asset.asset_code}
-                                                    value={asset.asset_code + " " + asset.asset_issuer + " " + asset.balance + " " + "SHOPASSET"}
-                                                    className="my-1"
-                                                >
-                                                    <div className="flex w-full items-center justify-between">
-                                                        <span className="font-medium">{asset.asset_code}</span>
-                                                        <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-700">
-                                                            {asset.balance}
-                                                        </Badge>
+                                        {!shopAssetbal.data ? (
+                                            <div className="flex w-full items-center justify-center p-6 text-sm text-muted-foreground">
+                                                <div className="text-center">
+                                                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                                                        <span className="text-gray-400">💼</span>
                                                     </div>
-                                                </SelectItem>
-                                            ) : null,
-                                        )
-                                    )}
-                                </SelectGroup>
-                            </SelectContent>
-                        </Select>
+                                                    <span className="text-gray-500">No Shop Assets Available</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            shopAssetbal.data.map((asset) =>
+                                                asset.asset_type === "credit_alphanum4" ||
+                                                    (asset.asset_type === "credit_alphanum12" &&
+                                                        asset.asset_code !== pageAssetbal.data?.assetCode &&
+                                                        asset.asset_issuer !== pageAssetbal.data?.assetIssuer) ? (
+                                                    <SelectItem
+                                                        key={asset.asset_code}
+                                                        value={`${asset.asset_code} ${asset.asset_issuer} ${asset.balance} SHOPASSET`}
+                                                        className="px-3 py-3 hover:bg-blue-50/80 focus:bg-blue-50 cursor-pointer transition-colors"
+                                                    >
+                                                        <div className="grid items-center justify-between w-full ">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                                                                    <span className="text-xs font-bold text-blue-700">
+                                                                        {asset.asset_code.slice(0, 2)}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-semibold text-gray-900 text-sm">{asset.asset_code}</span>
+                                                                    <span className="text-xs text-gray-500">Shop Asset</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="grid justify-end">
+                                                                <Badge
+                                                                    variant="secondary"
+                                                                    className="bg-blue-100 text-blue-800 font-medium text-xs px-2 py-1"
+                                                                >
+                                                                    {Number(asset.balance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                                </Badge>
+                                                            </div>
+                                                        </div>
+                                                    </SelectItem>
+                                                ) : null,
+                                            )
+                                        )}
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                            {errors.requiredBalanceCode && (
+                                <p className="text-sm text-red-500 flex items-center gap-1">
+                                    <span className="h-1 w-1 rounded-full bg-red-500"></span>
+                                    {errors.requiredBalanceCode.message}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Minimum Balance - shown after asset selection */}
+                        {selectedAsset && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.3 }}
+                                className="space-y-2"
+                            >
+                                <Label htmlFor="requiredBalance" className="text-sm font-medium">
+                                    Minimum Balance Required
+                                </Label>
+                                <div className="relative">
+                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                        <Coins className="h-4 w-4 text-muted-foreground" />
+                                    </div>
+                                    <Input
+                                        id="requiredBalance"
+                                        type="number"
+                                        step={0.00001}
+                                        min={0}
+                                        {...register("requiredBalance", { valueAsNumber: true })}
+                                        className="pl-10 pr-12"
+                                        placeholder="0"
+                                    />
+                                    <div className="absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                                        {selectedAsset.assetCode}
+                                    </div>
+                                </div>
+                                {errors.requiredBalance && <p className="text-sm text-red-500">{errors.requiredBalance.message}</p>}
+                            </motion.div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Generate Redeem Codes Card */}
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-indigo-50">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
+                            <Ticket className="h-4 w-4 text-emerald-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold">Redeem Codes</h3>
+                            <p className="text-sm text-muted-foreground">Generate unique codes for winners</p>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between rounded-lg bg-muted/50 p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="generateRedeemCodes" className="text-sm font-medium cursor-pointer">
+                                    Generate Redeem Codes
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Automatically generate unique redeem codes for each winner
+                                </p>
+                            </div>
+                        </div>
+                        <Switch
+                            id="generateRedeemCodes"
+                            checked={generateRedeemCodes}
+                            onCheckedChange={(checked) => setValue("generateRedeemCodes", checked)}
+                        />
                     </div>
 
-                    {/* Required Balance Input - Only visible after asset selection */}
-                    {selectedAsset && (
+                    {generateRedeemCodes && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.3 }}
-                            className="space-y-3"
+                            transition={{ duration: 0.2 }}
+                            className="rounded-lg bg-emerald-50 p-3 border border-emerald-200"
                         >
-                            <Label htmlFor="requiredBalance" className="text-sm font-medium text-purple-800">
-                                Minimum Balance Required
-                            </Label>
-                            <div className="relative max-w-sm">
-                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                    <Coins className="h-4 w-4 text-purple-500" />
+                            <div className="flex items-start gap-2">
+                                <Check className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-emerald-700">
+                                    <p className="font-medium mb-1">
+                                        {totalWinner} unique redeem code{totalWinner > 1 ? "s" : ""} will be generated
+                                    </p>
+                                    <p>Each winner will receive a unique code that can only be redeemed once.</p>
                                 </div>
-                                <Input
-                                    id="requiredBalance"
-                                    type="number"
-                                    step={0.00001}
-                                    min={0}
-                                    {...register("requiredBalance", {
-                                        valueAsNumber: true,
-                                    })}
-                                    className="pl-10 bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-purple-500/20"
-                                    placeholder={`Min ${selectedAsset.assetCode} balance`}
-                                />
-                            </div>
-                            {errors.requiredBalance && (
-                                <p className="text-sm text-red-500 flex items-center gap-1">
-                                    <span className="h-1 w-1 rounded-full bg-red-500"></span>
-                                    {errors.requiredBalance.message}
-                                </p>
-                            )}
-                            <div className="rounded-lg bg-white/60 p-3 border border-purple-200">
-                                <p className="text-xs text-purple-700">
-                                    Participants must hold at least this amount of{" "}
-                                    <span className="font-semibold">{selectedAsset.assetCode}</span> to be eligible for this bounty.
-                                </p>
                             </div>
                         </motion.div>
                     )}
-
-                    {!selectedAsset && (
-                        <div className="rounded-lg bg-white/60 p-4 border border-purple-200 text-center">
-                            <p className="text-sm text-purple-600">
-                                Select an asset above to set minimum balance requirements for participants
-                            </p>
-                        </div>
-                    )}
                 </CardContent>
             </Card>
-            <div className="space-y-2">
-                <div className="flex justify-between">
-                    <Label htmlFor="winners" className="flex items-center gap-2">
-                        <Trophy className="h-4 w-4" />
-                        Number of Winners
-                    </Label>
-                    <span className="text-sm font-medium text-amber-600">
-                        {winners} {winners === 1 ? "winner" : "winners"}
-                    </span>
-                </div>
-                <input
-                    type="range"
-                    id="winners"
-                    min="1"
-                    max="20"
-                    step="1"
-                    value={winners}
-                    onChange={(e) => setValue("winners", Number.parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                />
-                <p className="text-xs text-muted-foreground">The reward will be split equally among all winners</p>
-            </div>
-
-            {(brandAmount ?? usdtAmount) && (
-                <Card className="bg-amber-50 border-amber-200">
-                    <CardContent className="p-4">
-                        <h3 className="font-medium text-amber-800 mb-2">Reward Summary</h3>
-                        <div className="space-y-3">
-                            {brandAmount && (
-                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                    <div className="text-gray-600">Total {PLATFORM_ASSET.code.toLocaleUpperCase()}:</div>
-                                    <div className="font-medium">{brandAmount} {PLATFORM_ASSET.code.toLocaleUpperCase()}</div>
-                                    <div className="text-gray-600">Per Winner:</div>
-                                    <div className="font-medium">{(Number(brandAmount) / winners).toFixed(2)} {PLATFORM_ASSET.code.toLocaleUpperCase()}</div>
-                                </div>
-                            )}
-
-                            {usdtAmount && (
-                                <div
-                                    className={`grid grid-cols-2 gap-2 text-sm ${brandAmount ? "mt-3 pt-3 border-t border-amber-200" : ""}`}
-                                >
-                                    <div className="text-gray-600">Total USDT:</div>
-                                    <div className="font-medium">{usdtAmount} USDT</div>
-                                    <div className="text-gray-600">Per Winner:</div>
-                                    <div className="font-medium">{(Number.parseFloat(usdtAmount.toString()) / winners).toFixed(2)} USDT</div>
-                                </div>
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
         </motion.div>
     )
 }
 
-function ReviewStep() {
-    const { watch } = useFormContext<BountyFormType>()
-    const { setIsOpen: setMapModalOpen, setPosition } = useCreatorMapModalStore()
-
-    const title = watch("title")
+function ReviewStep({
+    media,
+    title,
+    rewardType,
+    usdcAmount,
+    platformAssetAmount,
+    winners,
+    requiredBalance,
+    requiredBalanceCode,
+    generateRedeemCodes,
+    latitude,
+    longitude,
+    radius,
+}: {
+    media: MediaInfoType[]
+    title: string
+    rewardType: "usdc" | "platform_asset"
+    usdcAmount?: number
+    platformAssetAmount?: number
+    winners: number
+    requiredBalance?: number
+    requiredBalanceCode?: string
+    generateRedeemCodes?: boolean
+    latitude: string
+    longitude: string
+    radius: number
+}) {
+    const { watch } = useFormContext<LocationBasedBountyFormType>()
     const description = watch("description")
-    const latitude = watch("latitude")
-    const longitude = watch("longitude")
-    const radius = watch("radius")
-    const brandAmount = watch("brandAmount")
-    const usdtAmount = watch("usdtAmount")
-    const winners = watch("winners")
-    const requiredBalance = watch("requiredBalance")
-    const requiredBalanceCode = watch("requiredBalanceCode")
-
 
     return (
         <motion.div
@@ -1046,14 +1511,14 @@ function ReviewStep() {
             className="space-y-6"
         >
             <div className="space-y-1">
-                <h2 className="text-xl font-semibold">Review Your Bounty</h2>
+                <h2 className="text-xl font-semibold">Review Your Action</h2>
                 <p className="text-sm text-muted-foreground">Please review all information before submitting</p>
             </div>
 
-            <Card className="border-amber-200">
-                <CardContent className="p-4 space-y-4">
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-emerald-50">
+                <CardContent className="space-y-4 p-4">
                     <div>
-                        <h3 className="text-lg font-semibold">{title}</h3>
+                        <h3 className="text-lg font-semibold">{title || "Untitled Action"}</h3>
                     </div>
 
                     <div className="space-y-1">
@@ -1063,11 +1528,9 @@ function ReviewStep() {
 
                     <Separator />
 
-                    <div>
-                        <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm font-medium">Location</p>
-
-                        </div>
+                    {/* Location Section */}
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">Location</p>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <Badge className="font-mono bg-muted text-muted-foreground hover:bg-muted">Lat: {latitude}</Badge>
@@ -1076,66 +1539,120 @@ function ReviewStep() {
                                 <Badge className="font-mono bg-muted text-muted-foreground hover:bg-muted">Lng: {longitude}</Badge>
                             </div>
                         </div>
+                        <div className="flex justify-between text-sm mt-2">
+                            <span className="text-muted-foreground">Proximity Radius:</span>
+                            <span className="font-medium">{radius} meters</span>
+                        </div>
                     </div>
 
-                    <div>
-                        <p className="text-sm font-medium">Proximity Radius</p>
-                        <p className="text-sm text-muted-foreground">{radius} meters</p>
+                    <Separator />
+
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">Reward Details</p>
+                        <div className="flex flex-col gap-1">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Reward Type:</span>
+                                <Badge
+                                    variant="secondary"
+                                    className={rewardType === "usdc" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}
+                                >
+                                    {rewardType === "usdc" ? "USDC" : PLATFORM_ASSET.code.toUpperCase()}
+                                </Badge>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Prize Amount:</span>
+                                <span className="font-medium">
+                                    {rewardType === "usdc"
+                                        ? `$${usdcAmount?.toFixed(5) ?? 0} USDC`
+                                        : `${(platformAssetAmount ?? 0).toFixed(5)} ${PLATFORM_ASSET.code.toUpperCase()}`}
+                                </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Number of Winners:</span>
+                                <span className="font-medium">{winners || 1}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Prize per Winner:</span>
+                                <span className="font-medium">
+                                    {rewardType === "usdc"
+                                        ? `$${((usdcAmount ?? 0) / (winners || 1)).toFixed(5)} USDC`
+                                        : `${((platformAssetAmount ?? 0) / (winners || 1)).toFixed(5)} ${PLATFORM_ASSET.code.toUpperCase()}`}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">Participation Requirements</p>
+                        <div className="flex flex-col gap-1">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Required Asset:</span>
+                                <Badge variant="outline" className="font-medium">
+                                    {requiredBalanceCode ?? "Not set"}
+                                </Badge>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Minimum Balance:</span>
+                                <span className="font-medium">
+                                    {requiredBalance !== undefined && requiredBalance > 0
+                                        ? `${requiredBalance} ${requiredBalanceCode}`
+                                        : "No minimum (trustline required)"}
+                                </span>
+                            </div>
+                        </div>
                     </div>
 
                     <Separator />
 
                     <div>
-                        <p className="text-sm font-medium">Rewards</p>
-                        <div className="mt-2 space-y-2">
-                            {brandAmount && (
-                                <div className="flex justify-between text-sm">
-                                    <span>{PLATFORM_ASSET.code.toLocaleUpperCase()}:</span>
-                                    <span className="font-medium">
-                                        {brandAmount} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                        <p className="text-sm font-medium">Redeem Codes</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            {generateRedeemCodes ? (
+                                <>
+                                    <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">
+                                        <Ticket className="h-3 w-3 mr-1" />
+                                        Enabled
+                                    </Badge>
+                                    <span className="text-sm text-muted-foreground">
+                                        {winners} unique code{winners > 1 ? "s" : ""} will be generated
                                     </span>
-                                </div>
-                            )}
-                            {usdtAmount && (
-                                <div className="flex justify-between text-sm">
-                                    <span>USDT:</span>
-                                    <span className="font-medium">{usdtAmount} USDT</span>
-                                </div>
-                            )}
-                            <div className="flex justify-between text-sm">
-                                <span>Per Winner ({PLATFORM_ASSET.code.toLocaleUpperCase()}):</span>
-                                <span className="font-medium">
-                                    {(Number(brandAmount) / Number(winners)).toFixed(5)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
-                                </span>
-                            </div>
-                            {usdtAmount && (
-                                <div className="flex justify-between text-sm">
-                                    <span>Per Winner (USDT):</span>
-                                    <span className="font-medium">{(Number(usdtAmount) / Number(winners)).toFixed(2)} USDT</span>
-                                </div>
+                                </>
+                            ) : (
+                                <span className="text-sm text-muted-foreground">No redeem codes will be generated</span>
                             )}
                         </div>
                     </div>
 
-                    <div>
-                        <p className="text-sm font-medium">Winners</p>
-                        <p className="text-sm text-muted-foreground">
-                            {winners} {winners === 1 ? "winner" : "winners"}
-                        </p>
-                    </div>
+                    <Separator />
 
                     <div>
-                        <p className="text-sm font-medium">Required Balance</p>
-                        <p className="text-sm text-muted-foreground">
-                            {requiredBalance ? `${requiredBalance} ${requiredBalanceCode}` : "No minimum balance required"}
-                        </p>
+                        <p className="text-sm font-medium">Media</p>
+                        {media.length > 0 ? (
+                            <div className="mt-2 grid grid-cols-4 gap-2">
+                                {media.map((item, index) => (
+                                    <div key={index} className="relative aspect-square overflow-hidden rounded-md border">
+                                        <Image
+                                            src={item.url || "/placeholder.svg"}
+                                            alt={`Thumbnail ${index + 1}`}
+                                            fill
+                                            className="object-cover"
+                                        />
+                                        {index === 0 && <Badge className="absolute bottom-1 left-1 bg-primary/80">Main</Badge>}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">No images uploaded</p>
+                        )}
                     </div>
 
-                    <Card className="bg-amber-50 border-amber-200">
-                        <CardContent className="p-3 flex items-center gap-2">
+                    <Card className="border-amber-200 bg-amber-50">
+                        <CardContent className="flex items-center gap-2 p-3">
                             <Check className="h-5 w-5 text-green-500" />
                             <p className="text-sm text-amber-800">
-                                Your bounty is ready to be created. Click the button below to finalize.
+                                Your action is ready to be created. Choose to pay now or pay later.
                             </p>
                         </CardContent>
                     </Card>

@@ -99,7 +99,7 @@ export default function TrendingSidebar() {
     // Loading state for initial data fetch
     if (isLoading) {
         return (
-            <div className="space-y-2">
+            <div className="space-y-1">
                 {Array.from({ length: 6 }).map((_, i) => (
                     <Card key={i} className="rounded-lg p-3 shadow-sm animate-pulse">
                         <CardContent className="p-0">
@@ -118,23 +118,23 @@ export default function TrendingSidebar() {
     }
 
     return (
-        <div className="space-y-2 overflow-auto h-full">
+        <div className="space-y-1 overflow-y-auto h-full">
             {creators.map((creator) => (
-                <Card key={creator.id} className="rounded-lg p-3 shadow-sm">
-                    <CardContent className="p-0">
-                        <div className="mb-2 flex items-center  gap-3">
-                            <Link href={`/organization/${creator.id}`} className="flex items-center gap-2">
+                <div key={creator.id} className=" border-b-[1.5px]  p-1 shadow-sm">
+                    <div className="p-0">
+                        <div className="flex items-center  gap-2">
+                            <Link
+                                href={`/artist/${creator.id}`}
+                            >
                                 <CustomAvatar url={creator.profileUrl} />
                             </Link>
-
-
                             <div className="flex items-center justify-between gap-2 w-full">
-                                <Link href={`/organization/${creator.id}`} className="flex  flex-col">
+                                <Link
+                                    href={`/artist/${creator.id}`}
+                                >
                                     <p className="font-medium">{creator.name}</p>
                                     <p className="text-xs text-gray-500">{creator._count.followers} followers</p>
                                 </Link>
-
-
                                 {creator.isCurrentUser ? (
                                     <Button variant="ghost" size="sm" className="">
                                         <Edit />
@@ -164,8 +164,8 @@ export default function TrendingSidebar() {
                             </div>
                         </div>
 
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
             ))}
 
             {hasNextPage && (

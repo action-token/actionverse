@@ -6,10 +6,13 @@ import {
     ArrowRight,
     Award,
     Calendar,
+    Check,
     CheckCircle,
+    CheckCircle2,
     ChevronDown,
     Clock,
     Coins,
+    Copy,
     Crown,
     DollarSign,
     Edit,
@@ -29,6 +32,7 @@ import {
     Paperclip,
     Search,
     Send,
+    Ticket,
     Trash,
     Trophy,
     UserCheck,
@@ -115,6 +119,7 @@ import { useBountySubmissionModalStore } from "~/components/store/bounty-submiss
 import { useViewBountySubmissionModalStore } from "~/components/store/view-bounty-attachment-store";
 import { Circle } from "~/components/common/circle";
 import { Progress } from "~/components/shadcn/ui/progress";
+import { usePaymentMethodStore } from "~/components/common/payment-options";
 type Message = {
     role: UserRole
     message: string
@@ -151,6 +156,7 @@ const UserBountyPage = () => {
     const [messages, setMessages] = useState<Message[]>([])
     const messagesEndRef: MutableRefObject<HTMLDivElement | null> = useRef<HTMLDivElement | null>(null)
     const { getAssetBalance } = useUserStellarAcc();
+    const [isRedeemOpen, setIsRedeemOpen] = useState<boolean>(false);
 
     const inputLength = input.trim().length
     const utils = api.useUtils()
@@ -310,7 +316,30 @@ const UserBountyPage = () => {
             toast.error(`Claim failed: ${error.message}`);
         },
     });
+    const MakeWinnerMutation = api.bounty.Bounty.makeBountyWinner.useMutation({
+        onSuccess: async (data) => {
+            setIsRedeemOpen(false);
+            toast.success("You can now claim your reward!");
 
+        },
+    });
+    const redeemCodeClaim = api.bounty.Bounty.redeemBountyCode.useMutation({
+        onSuccess: async (data) => {
+            if (data.success) {
+                console.log("Making winner");
+                MakeWinnerMutation.mutate({
+                    BountyId: Number(id),
+                    userId: session.data?.user.id ?? "",
+                    isRedeem: true
+                })
+            }
+            await utils.bounty.Bounty.getBountyByID.refetch();
+
+        },
+        onError: (error) => {
+            toast.error(`Failed to redeem bounty code: ${error.message}`);
+        },
+    });
     const { data: Owner } = api.bounty.Bounty.isOwnerOfBounty.useQuery(
         {
             BountyId: Number(id) ?? 0,
@@ -892,60 +921,60 @@ const UserBountyPage = () => {
 
                             {/* Card Footer with Actions */}
                             <CardFooter className="flex flex-col items-center justify-between gap-4 border-t border-slate-200 px-6 py-4 dark:border-slate-700 sm:flex-row">
-                                <div className="w-full sm:w-auto">
+                                <div className="w-full sm:w-auto flex justify-center items-center gap-4">
                                     {data.BountyWinner.some(
                                         (winner) => winner.user.id === session.data?.user.id,
-                                    ) && (
-                                            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                                                <DialogTrigger asChild>
-                                                    <Button
-                                                        className="group relative overflow-hidden bg-gradient-to-r from-primary to-slate-400 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 sm:w-auto"
-                                                        disabled={
-                                                            loading || data.BountyWinner.some((winner) => winner.user.id === session.data?.user.id && winner.isClaimed)
-                                                        }
-                                                    >
-                                                        <motion.div className="flex items-center gap-3" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                                                            <Gift className="h-5 w-5" />
-                                                            <span className="font-semibold">Claim Rewards</span>
-                                                        </motion.div>
-                                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                                                    </Button>
-                                                </DialogTrigger>
+                                    ) ? (
+                                        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                                            <DialogTrigger asChild>
+                                                <Button
+                                                    className="group relative  shadow-foreground overflow-hidden bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-sm hover:shadow-md transition-all duration-300 sm:w-auto"
+                                                    disabled={
+                                                        loading || data.BountyWinner.some((winner) => winner.user.id === session.data?.user.id && winner.isClaimed)
+                                                    }
+                                                >
+                                                    <motion.div className="flex items-center gap-3" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                                                        <Gift className="h-5 w-5" />
+                                                        <span className="font-semibold">Claim Rewards</span>
+                                                    </motion.div>
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                                                </Button>
+                                            </DialogTrigger>
 
-                                                <DialogContent className="border-0 backdrop-blur-sm">
-                                                    <DialogHeader className="space-y-4">
+                                            <DialogContent className="border-0 backdrop-blur-sm">
+                                                <DialogHeader className="space-y-4">
+                                                    <DialogTitle className="text-center text-2xl font-bold ">
+                                                        Claim Your Rewards
+                                                    </DialogTitle>
+                                                    <DialogDescription className="text-center text-base text-muted-foreground leading-relaxed">
+                                                        Choose how you{"'"}d like to receive your rewards. Both options are secure and processed instantly.
+                                                    </DialogDescription>
+                                                </DialogHeader>
 
-                                                        <DialogTitle className="text-center text-2xl font-bold ">
-                                                            Claim Your Rewards
-                                                        </DialogTitle>
-                                                        <DialogDescription className="text-center text-base text-muted-foreground leading-relaxed">
-                                                            Choose how you{"'"}d like to receive your rewards. Both options are secure and processed instantly.
-                                                        </DialogDescription>
-                                                    </DialogHeader>
-
-                                                    {!getMotherTrustLine.data ? (
-                                                        <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
-                                                            <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
-                                                                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-                                                                    <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-                                                                </div>
-                                                                <div className="space-y-2">
-                                                                    <h3 className="font-semibold text-amber-800 dark:text-amber-200">Manual Processing Required</h3>
-                                                                    <p className="text-sm text-amber-700 dark:text-amber-300">
-                                                                        Please contact our support team to process your rewards
-                                                                    </p>
-                                                                    <Badge
-                                                                        variant="outline"
-                                                                        className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300"
-                                                                    >
-                                                                        support@action-tokens.com
-                                                                    </Badge>
-                                                                </div>
-                                                            </CardContent>
-                                                        </Card>
-                                                    ) : (
-                                                        <div className="space-y-6">
-                                                            <div className="grid gap-4">
+                                                {!getMotherTrustLine.data && data.priceInUSD > 0 ? (
+                                                    <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
+                                                        <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
+                                                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                                                                <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <h3 className="font-semibold text-amber-800 dark:text-amber-200">Manual Processing Required</h3>
+                                                                <p className="text-sm text-amber-700 dark:text-amber-300">
+                                                                    Please contact our support team to process your rewards
+                                                                </p>
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300"
+                                                                >
+                                                                    support@bandcoin.io
+                                                                </Badge>
+                                                            </div>
+                                                        </CardContent>
+                                                    </Card>
+                                                ) : (
+                                                    <div className="space-y-6">
+                                                        <div className="grid gap-4">
+                                                            {data.priceInUSD > 0 ? (
                                                                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                                                                     <Button
                                                                         className="group relative h-16 w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md hover:shadow-lg transition-all duration-300"
@@ -953,7 +982,7 @@ const UserBountyPage = () => {
                                                                         onClick={() => {
                                                                             ClaimUSDCReward.mutate({
                                                                                 bountyId: Number(id),
-                                                                                rewardAmount: data.priceInUSD,
+                                                                                rewardAmount: data.priceInUSD / data.totalWinner,
                                                                                 signWith: needSign(),
                                                                                 winnerId: data.BountyWinner.find(
                                                                                     (winner) => winner.user.id === session.data?.user.id
@@ -966,33 +995,22 @@ const UserBountyPage = () => {
                                                                                 <DollarSign className="h-5 w-5" />
                                                                             </div>
                                                                             <div className="text-left">
-                                                                                {
-                                                                                    ClaimUSDCReward.isLoading ? (
-                                                                                        <>
-                                                                                            <div className="font-semibold">Claiming USDC Rewards</div>
-                                                                                            <div className="text-sm text-emerald-100">Stable digital currency</div>
-                                                                                        </>
-                                                                                    ) : (
-                                                                                        <>
-                                                                                            <div className="font-semibold">Claim {data.priceInUSD} USDC  Rewards</div>
-                                                                                            <div className="text-sm text-emerald-100">Stable digital currency</div>
-                                                                                        </>
-                                                                                    )
-                                                                                }
+                                                                                {ClaimUSDCReward.isLoading ? (
+                                                                                    <>
+                                                                                        <div className="font-semibold">Claiming USDC Rewards</div>
+                                                                                        <div className="text-sm text-emerald-100">Stable digital currency</div>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <div className="font-semibold">Claim {data.priceInUSD / data.totalWinner} USDC  Rewards</div>
+                                                                                        <div className="text-sm text-emerald-100">Stable digital currency</div>
+                                                                                    </>
+                                                                                )}
                                                                             </div>
                                                                         </div>
                                                                     </Button>
                                                                 </motion.div>
-
-                                                                <div className="relative flex items-center justify-center py-2">
-                                                                    <div className="absolute inset-0 flex items-center">
-                                                                        <div className="w-full border-t border-border" />
-                                                                    </div>
-                                                                    <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-muted border border-border">
-                                                                        <span className="text-xs font-medium text-muted-foreground">OR</span>
-                                                                    </div>
-                                                                </div>
-
+                                                            ) : (
                                                                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                                                                     <Button
                                                                         className="group relative h-16 w-full bg-gradient-to-r from-accent to-purple-600 hover:from-accent/90 hover:to-purple-700 text-white shadow-md hover:shadow-lg transition-all duration-300"
@@ -1000,7 +1018,7 @@ const UserBountyPage = () => {
                                                                         disabled={ClaimBandCoinReward.isLoading || UpdateWinnerInformation.isLoading}
                                                                         onClick={() => ClaimBandCoinReward.mutate({
                                                                             bountyId: Number(id),
-                                                                            rewardAmount: data.priceInBand,
+                                                                            rewardAmount: data.priceInBand / data.totalWinner,
                                                                             signWith: needSign(),
                                                                             winnerId: data.BountyWinner.find(
                                                                                 (winner) => winner.user.id === session.data?.user.id
@@ -1012,44 +1030,110 @@ const UserBountyPage = () => {
                                                                                 <Coins className="h-5 w-5" />
                                                                             </div>
                                                                             <div className="text-left">
-                                                                                {
-                                                                                    (
-                                                                                        ClaimBandCoinReward.isLoading || UpdateWinnerInformation.isLoading) ? (
-                                                                                        <>
-                                                                                            <div className="font-semibold">Claiming {PLATFORM_ASSET.code} Rewards</div>
-                                                                                            <div className="text-sm text-purple-100">Platform native token</div>
-                                                                                        </>
-
-                                                                                    ) : (
-                                                                                        <>
-                                                                                            <div className="font-semibold">Claim {data.priceInBand} {PLATFORM_ASSET.code} Rewards</div>
-                                                                                            <div className="text-sm text-purple-100">Platform native token</div>
-                                                                                        </>
-                                                                                    )
-                                                                                }
+                                                                                {(ClaimBandCoinReward.isLoading || UpdateWinnerInformation.isLoading) ? (
+                                                                                    <>
+                                                                                        <div className="font-semibold">Claiming {PLATFORM_ASSET.code} Rewards</div>
+                                                                                        <div className="text-sm text-purple-100">Platform native token</div>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <div className="font-semibold">Claim {data.priceInBand / data.totalWinner} {PLATFORM_ASSET.code} Rewards</div>
+                                                                                        <div className="text-sm text-purple-100">Platform native token</div>
+                                                                                    </>
+                                                                                )}
                                                                             </div>
                                                                         </div>
                                                                     </Button>
                                                                 </motion.div>
-                                                            </div>
-
-                                                            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/10">
-                                                                <CardContent className="flex items-start gap-3 p-4">
-                                                                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                                                                    <div className="space-y-1">
-                                                                        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Important Notice</p>
-                                                                        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-                                                                            This is a one-time operation and cannot be undone. Please choose your preferred reward type
-                                                                            carefully.
-                                                                        </p>
-                                                                    </div>
-                                                                </CardContent>
-                                                            </Card>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                </DialogContent>
-                                            </Dialog>
-                                        )}
+
+                                                        <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/10">
+                                                            <CardContent className="flex items-start gap-3 p-4">
+                                                                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                                                                <div className="space-y-1">
+                                                                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Important Notice</p>
+                                                                    <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                                                                        This is a one-time operation and cannot be undone. Please choose your preferred reward type
+                                                                        carefully.
+                                                                    </p>
+                                                                </div>
+                                                            </CardContent>
+                                                        </Card>
+                                                    </div>
+                                                )}
+                                            </DialogContent>
+                                        </Dialog>
+                                    ) :
+
+                                        <Dialog open={isRedeemOpen} onOpenChange={setIsRedeemOpen}>
+                                            <DialogTrigger asChild>
+                                                <Button variant="outline">Redeem Code</Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="sm:max-w-md">
+                                                <DialogHeader>
+                                                    <DialogTitle>Redeem Code</DialogTitle>
+                                                    <DialogDescription>
+                                                        Enter your redeem code below to claim your reward.
+                                                    </DialogDescription>
+                                                </DialogHeader>
+
+                                                <form
+                                                    onSubmit={(e) => {
+                                                        e.preventDefault();
+                                                        const formData = new FormData(e.currentTarget);
+                                                        const code = formData.get("redeemCode") as string;
+
+                                                        if (!code || code.trim().length === 0) {
+                                                            toast.error("Please enter a redeem code");
+                                                            return;
+                                                        }
+
+                                                        redeemCodeClaim.mutate({
+                                                            code: code.trim(),
+                                                            bountyId: Number(id),
+                                                        });
+                                                    }}
+                                                    className="space-y-4"
+                                                >
+                                                    <div>
+                                                        <Input
+                                                            name="redeemCode"
+                                                            placeholder="Enter redeem code"
+                                                            required
+                                                            disabled={redeemCodeClaim.isLoading}
+                                                        />
+                                                    </div>
+
+                                                    <div className="flex justify-end gap-2">
+                                                        <DialogClose asChild>
+                                                            <Button variant="outline" type="button" disabled={redeemCodeClaim.isLoading}>
+                                                                Cancel
+                                                            </Button>
+                                                        </DialogClose>
+                                                        <Button
+                                                            type="submit"
+                                                            className="bg-primary hover:bg-primary/90"
+                                                            disabled={redeemCodeClaim.isLoading}
+                                                        >
+                                                            {redeemCodeClaim.isLoading ? (
+                                                                <div className="flex items-center gap-2">
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                    <span>Redeeming...</span>
+                                                                </div>
+                                                            ) : (
+                                                                "Redeem"
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                </form>
+                                            </DialogContent>
+                                        </Dialog>
+                                    }
+
+                                    {/* Redeem button opens a modal with input + claim */}
+
+
                                 </div>
 
                                 <div className="flex w-full justify-center sm:w-auto">
@@ -1224,6 +1308,7 @@ const AdminBountyPage = () => {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const { setIsOpen: setAttachmentModal, setData: setAttachment } = useViewBountySubmissionModalStore()
     const router = useRouter()
+    const session = useSession()
     const [loadingBountyId, setLoadingBountyId] = useState<number | null>(null)
     const { needSign } = useNeedSign()
     const [input, setInput] = useState("")
@@ -1233,11 +1318,20 @@ const AdminBountyPage = () => {
     const { id } = router.query
     const { setData, setIsOpen } = useEditBuyModalStore()
     const [selectedSubmission, setSelectedSubmission] = useState<extendedBountySubmission | null>(null)
+    const { paymentMethod, } = usePaymentMethodStore()
 
     const isLocationBasedBounty = (bounty: Bounty) => {
         console.log(bounty?.latitude, bounty?.longitude, bounty?.radius)
         return bounty?.latitude !== null && bounty?.longitude !== null && bounty?.radius !== null
     }
+    const { data: redeemCodes, isLoading: redeemCodesLoading } = api.bounty.Bounty.getBountyRedeemCodes.useQuery(
+        {
+            bountyId: Number(id),
+        },
+        {
+            enabled: !!Number(id),
+        },
+    )
     const { data, isLoading: bountyLoading } = api.bounty.Bounty.getBountyByID.useQuery(
         {
             BountyId: Number(id),
@@ -1278,6 +1372,58 @@ const AdminBountyPage = () => {
         },
     )
 
+    const SendBalanceToBountyMother = api.bounty.Bounty.sendBountyBalanceToMotherAcc.useMutation({
+        onSuccess: async (data, { method, bountyId, userId }) => {
+            if (data) {
+                try {
+                    const clientResponse = await clientsign({
+                        presignedxdr: data.xdr,
+                        walletType: session.data?.user?.walletType,
+                        pubkey: data.pubKey,
+                        test: clientSelect(),
+                    })
+                    if (clientResponse) {
+                        MakeWinnerMutation.mutate({
+                            BountyId: bountyId ?? 0,
+                            userId: userId ?? "",
+                        });
+                    } else {
+                        toast.error("Error in signing transaction")
+                    }
+                    setIsOpen(false)
+                } catch (error) {
+                    console.error("Error sending balance to bounty mother", error)
+                }
+            }
+        },
+        onError: (error) => {
+            console.error("Error creating bounty", error)
+            toast.error(error.message)
+            setIsOpen(false)
+        },
+    })
+
+    const handleWinner = ({ payNow, bountyId, priceInUSD, userId, prize }: { payNow: boolean, bountyId: number, priceInUSD: number, userId: string, prize: number }) => {
+        setLoadingBountyId(bountyId);
+
+        if (!payNow) {
+            SendBalanceToBountyMother.mutate({
+                signWith: needSign(),
+                prize: prize > 0 ? prize : priceInUSD,
+                fees: 0,
+                method: paymentMethod,
+                bountyId: bountyId,
+                userId: userId,
+            })
+        }
+        else {
+            MakeWinnerMutation.mutate({
+                BountyId: bountyId,
+                userId: userId,
+            });
+        }
+        setLoadingBountyId(null);
+    };
     const GetDeleteXDR = api.bounty.Bounty.getDeleteXdr.useMutation({
         onSuccess: async (data, variables) => {
             setLoadingBountyId(variables.bountyId)
@@ -1326,16 +1472,7 @@ const AdminBountyPage = () => {
         },
     })
 
-    const handleWinner = (bountyId: number, userId: string, prize: number) => {
-        setLoadingBountyId(bountyId)
-        console.log("handleWinner", bountyId, userId, prize)
-        GetSendBalanceToWinnerXdr.mutate({
-            BountyId: bountyId,
-            userId: userId,
-            prize: prize,
-        })
-        setLoadingBountyId(null)
-    }
+
 
     const handleDelete = (id: number, prize: number) => {
         setLoadingBountyId(id)
@@ -1360,6 +1497,11 @@ const AdminBountyPage = () => {
             : []),
         { id: "doubt", label: "Chat", icon: MessageSquare },
         { id: "comments", label: "Comments", icon: MessageSquare, count: data?._count.comments },
+        {
+            id: "redeem-codes",
+            label: "Redeem Codes",
+            icon: Ticket,
+        },
     ]
     if (bountyLoading) {
         return (
@@ -1515,6 +1657,11 @@ const AdminBountyPage = () => {
                                                             {tab.count}
                                                         </Badge>
                                                     )}
+                                                    {tab.id === "redeem-codes" && redeemCodes && (
+                                                        <Badge variant="secondary" className="ml-1 h-5 min-w-[20px] rounded-full px-1.5 text-xs">
+                                                            {redeemCodes.length}
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                                 <motion.div
                                                     className="absolute -bottom-[1px] left-0 right-0 h-0.5 bg-primary rounded-full opacity-0 scale-x-0 group-data-[state=active]:opacity-100 group-data-[state=active]:scale-x-100 transition-all duration-200"
@@ -1535,7 +1682,9 @@ const AdminBountyPage = () => {
                                         <SafeHTML html={data.description} />
                                     </motion.div>
                                 </TabsContent>
-
+                                <TabsContent value="redeem-codes" className="mt-0">
+                                    <RedeemCodesTab redeemCodes={redeemCodes} isLoading={redeemCodesLoading} />
+                                </TabsContent>
                                 <TabsContent value="submissions" className="mt-0">
                                     <div className="space-y-6">
                                         <div className="flex items-center justify-between">
@@ -1695,7 +1844,17 @@ const AdminBountyPage = () => {
                                                             GetSendBalanceToWinnerXdr.isLoading
                                                         }
                                                         className="flex-1 bg-primary hover:bg-primary/90"
-                                                        onClick={() => handleWinner(data.id, selectedSubmission.userId, data.priceInBand)}
+                                                        onClick={() =>
+                                                            handleWinner(
+                                                                {
+                                                                    payNow: data.payNow,
+                                                                    bountyId: data.id,
+                                                                    priceInUSD: data.priceInUSD / data.totalWinner,
+                                                                    userId: selectedSubmission.userId,
+                                                                    prize: data.priceInBand / data.totalWinner,
+                                                                }
+                                                            )
+                                                        }
                                                     >
                                                         {GetSendBalanceToWinnerXdr.isLoading ? (
                                                             <div className="flex items-center gap-2">
@@ -1782,7 +1941,15 @@ const AdminBountyPage = () => {
                                                                             <Button
                                                                                 size="sm"
                                                                                 onClick={() =>
-                                                                                    handleWinner(data.id, participant.user.id, data.priceInBand / data.totalWinner)
+                                                                                    handleWinner(
+                                                                                        {
+                                                                                            payNow: data.payNow,
+                                                                                            bountyId: data.id,
+                                                                                            priceInUSD: data.priceInUSD / data.totalWinner,
+                                                                                            userId: participant.user.id,
+                                                                                            prize: data.priceInBand / data.totalWinner,
+                                                                                        }
+                                                                                    )
                                                                                 }
                                                                                 disabled={
                                                                                     loadingBountyId === data.id ||
@@ -2034,3 +2201,228 @@ const shortURL = (url: string) => {
     return url
 }
 
+
+interface RedeemCode {
+    id: number
+    code: string
+    isMarkedUsed: boolean
+    isRedeemed: boolean
+    redeemedAt: Date | null
+    createdAt: Date
+    redeemedUser: {
+        id: string
+        name: string | null
+        image: string | null
+    } | null
+}
+
+interface RedeemCodesTabProps {
+    redeemCodes: RedeemCode[] | undefined
+    isLoading: boolean
+}
+
+export function RedeemCodesTab({ redeemCodes, isLoading }: RedeemCodesTabProps) {
+    const [copiedCode, setCopiedCode] = useState<string | null>(null)
+    const [locallyMarkedIds, setLocallyMarkedIds] = useState<number[]>([])
+    const utils = api.useUtils()
+
+    const markMutation = api.bounty.Bounty.markRedeemCode.useMutation({
+        onSuccess: async () => {
+            toast.success("Code marked")
+            // try to refresh the parent query that provides redeemCodes
+            try {
+                await utils.bounty.Bounty.getBountyRedeemCodes.refetch()
+            } catch {
+                // fallback: do nothing
+            }
+        },
+        onError: (err) => {
+            toast.error(err.message)
+        },
+    })
+
+    const copyToClipboard = async (code: string) => {
+        await navigator.clipboard.writeText(code)
+        setCopiedCode(code)
+        toast.success("Code copied to clipboard")
+        setTimeout(() => setCopiedCode(null), 2000)
+    }
+
+    const handleMark = (id: number) => {
+        // prevent double marking
+        if (locallyMarkedIds.includes(id)) return
+
+        // optimistic UI
+        setLocallyMarkedIds((prev) => [...prev, id])
+        markMutation.mutate(
+            { id },
+            {
+                onError: () => {
+                    // rollback on error
+                    setLocallyMarkedIds((prev) => prev.filter((i) => i !== id))
+                },
+            },
+        )
+    }
+
+    const redeemedCount = redeemCodes?.filter((c) => c.isRedeemed).length ?? 0
+    const totalCount = redeemCodes?.length ?? 0
+
+    if (isLoading) {
+        return (
+            <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Stats Header */}
+            <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Redeem Codes</h2>
+                <div className="flex gap-3">
+                    <Badge
+                        variant="outline"
+                        className="gap-1.5 border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400"
+                    >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {redeemedCount} Redeemed
+                    </Badge>
+                    <Badge
+                        variant="outline"
+                        className="gap-1.5 border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400"
+                    >
+                        <Clock className="h-4 w-4" />
+                        {totalCount - redeemedCount} Available
+                    </Badge>
+                </div>
+            </div>
+
+            {/* Empty State */}
+            {!redeemCodes || redeemCodes.length === 0 ? (
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 dark:border-slate-700 dark:bg-slate-800/50"
+                >
+                    <div className="mb-4 text-slate-400 dark:text-slate-500">
+                        <Ticket size={48} />
+                    </div>
+                    <h3 className="mb-1 text-lg font-medium text-slate-900 dark:text-white">No redeem codes yet</h3>
+                    <p className="max-w-md text-center text-slate-500 dark:text-slate-400">
+                        There are no redeem codes generated for this bounty yet.
+                    </p>
+                </motion.div>
+            ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {redeemCodes.map((redeemCode, idx) => {
+                        const isMarked = redeemCode.isMarkedUsed
+                        // only show "Mark" button when code is NOT redeemed
+                        const showMarkButton = !redeemCode.isRedeemed
+
+                        return (
+                            <motion.div
+                                key={redeemCode.id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.3, delay: idx * 0.05 }}
+                                className={`group relative overflow-hidden rounded-xl border p-4 shadow-sm transition-all duration-200 hover:shadow-md ${redeemCode.isRedeemed
+                                    ? "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white dark:border-emerald-800 dark:from-emerald-900/20 dark:to-slate-800"
+                                    : "border-amber-200 bg-gradient-to-br from-amber-50 to-white dark:border-amber-800 dark:from-amber-900/20 dark:to-slate-800"
+                                    }`}
+                            >
+                                {/* Status Indicator */}
+                                <div className="absolute right-3 top-3">
+                                    {redeemCode.isRedeemed ? (
+                                        <Badge className="gap-1 bg-emerald-500 text-white hover:bg-emerald-600">
+                                            <CheckCircle2 className="h-3 w-3" />
+                                            Redeemed
+                                        </Badge>
+                                    ) : (
+                                        <Badge className={`gap-1 ${isMarked ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-amber-500 text-white hover:bg-amber-600"}`}>
+                                            <Clock className="h-3 w-3" />
+                                            {isMarked ? "Marked" : "Available"}
+                                        </Badge>
+                                    )}
+                                </div>
+
+                                {/* Code Display */}
+                                <div className="mb-4 mt-2">
+                                    <p className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                        Code
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <code
+                                            className={`font-mono text-lg font-semibold ${redeemCode.isRedeemed
+                                                ? "text-emerald-700 dark:text-emerald-400"
+                                                : isMarked
+                                                    ? "text-emerald-700 dark:text-emerald-400"
+                                                    : "text-amber-700 dark:text-amber-400"
+                                                }`}
+                                        >
+                                            {redeemCode.code}
+                                        </code>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7"
+                                            onClick={() => copyToClipboard(redeemCode.code)}
+                                        >
+                                            {copiedCode === redeemCode.code ? (
+                                                <Check className="h-4 w-4 text-emerald-500" />
+                                            ) : (
+                                                <Copy className="h-4 w-4 text-slate-400" />
+                                            )}
+                                        </Button>
+
+                                        {/* Mark Button - only when not redeemed */}
+                                        {showMarkButton && (
+                                            <div className="ml-auto">
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => handleMark(redeemCode.id)}
+                                                    disabled={isMarked || markMutation.isLoading}
+                                                    className={`${isMarked ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-amber-500 hover:bg-amber-600 text-white"} h-8 px-3`}
+                                                >
+                                                    {isMarked ? "Marked" : "Mark"}
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Redeemed User Info */}
+                                {redeemCode.isRedeemed && redeemCode.redeemedUser && (
+                                    <div className="mb-3 flex items-center gap-2 rounded-lg bg-white/50 p-2 dark:bg-slate-800/50">
+                                        <Avatar className="h-8 w-8">
+                                            <AvatarImage src={redeemCode.redeemedUser.image ?? undefined} />
+                                            <AvatarFallback className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                                                {redeemCode.redeemedUser.name?.charAt(0) ?? "U"}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
+                                                {redeemCode.redeemedUser.name ?? "Anonymous"}
+                                            </p>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">Redeemed by</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Timestamps */}
+                                <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                                    <p>Created: {format(new Date(redeemCode.createdAt), "MMM dd, yyyy")}</p>
+                                    {redeemCode.redeemedAt && (
+                                        <p>Redeemed: {format(new Date(redeemCode.redeemedAt), "MMM dd, yyyy 'at' h:mm a")}</p>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )
+                    })}
+                </div>
+            )}
+        </div>
+    )
+}
