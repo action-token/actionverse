@@ -1471,10 +1471,17 @@ const AdminBountyPage = () => {
 
 
 
-    const handleDelete = (id: number, prizeInBand: number, prizeInUSD: number) => {
-        setLoadingBountyId(id)
-        GetDeleteXDR.mutate({ prizeInBand: prizeInBand, prizeInUSD: prizeInUSD, bountyId: id })
-        setLoadingBountyId(null)
+    const handleDelete = (id: number, prizeInBand: number, prizeInUSD: number, payNow: boolean) => {
+        if (payNow) {
+            setLoadingBountyId(id)
+            GetDeleteXDR.mutate({ prizeInBand: prizeInBand, prizeInUSD: prizeInUSD, bountyId: id })
+            setLoadingBountyId(null)
+        }
+        else {
+            DeleteMutation.mutate({
+                BountyId: id ?? 0,
+            })
+        }
     }
 
     const UpdateSubmissionStatusMutation = api.bounty.Bounty.updateBountySubmissionStatus.useMutation()
@@ -2069,7 +2076,7 @@ const AdminBountyPage = () => {
                                                     disabled={loadingBountyId === data.id || data.currentWinnerCount > 0}
                                                     variant="destructive"
                                                     className="flex-1"
-                                                    onClick={() => handleDelete(data.id, data.priceInBand, data.priceInUSD)}
+                                                    onClick={() => handleDelete(data.id, data.priceInBand, data.priceInUSD, data.payNow)}
                                                 >
                                                     {DeleteMutation.isLoading ? (
                                                         <div className="flex items-center gap-2">
