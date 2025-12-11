@@ -1800,36 +1800,50 @@ const AdminBountyPage = () => {
                                     </div>
 
                                     {selectedSubmission && (
-                                        <Dialog open={isDialogOpenWinner} onOpenChange={setIsDialogOpenWinner}>
+                                        <Dialog
+                                            open={isDialogOpenWinner}
+                                            onOpenChange={setIsDialogOpenWinner}
+                                        >
                                             <DialogContent className="sm:max-w-md">
                                                 <DialogHeader>
-                                                    <DialogTitle className="text-xl">Confirm Winner</DialogTitle>
+                                                    <DialogTitle className="text-xl">
+                                                        Confirm Winner
+                                                    </DialogTitle>
                                                 </DialogHeader>
-                                                <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                                                    <div className="flex items-center gap-3 mb-4">
+                                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                                                    <div className="mb-4 flex items-center gap-3">
                                                         <CustomAvatar
                                                             className="h-12 w-12"
                                                             winnerCount={selectedSubmission.userWinCount}
                                                             url={selectedSubmission.user.image}
                                                         />
                                                         <div>
-                                                            <p className="font-medium">{selectedSubmission.user.name}</p>
+                                                            <p className="font-medium">
+                                                                {selectedSubmission.user.name}
+                                                            </p>
                                                             <p className="text-sm text-slate-500 dark:text-slate-400">
                                                                 {addrShort(selectedSubmission.userId, 6)}
                                                             </p>
                                                         </div>
                                                     </div>
                                                     <p className="text-slate-700 dark:text-slate-300">
-                                                        Do you want to make this user a winner? This action cannot be undone.
+                                                        Do you want to make this user a winner? This action
+                                                        cannot be undone.
                                                     </p>
-                                                    <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
+                                                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
                                                         <p className="text-sm text-amber-800 dark:text-amber-300">
-                                                            The prize amount of {(data.priceInBand / data.totalWinner).toFixed(3)}{" "}
-                                                            {PLATFORM_ASSET.code} will be transferred to this user.
+                                                            The prize amount of{" "}
+                                                            {
+                                                                data.priceInBand > 0 ?
+                                                                    `${(data.priceInBand / data.totalWinner).toFixed(5)} ${PLATFORM_ASSET.code.toLocaleUpperCase()}`
+                                                                    :
+                                                                    `$${(data.priceInUSD / data.totalWinner).toFixed(5)} USDC`
+                                                            } will be{" "}
+                                                            claim later.
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <DialogFooter className="flex flex-col sm:flex-row gap-3">
+                                                <DialogFooter className="flex flex-col gap-3 sm:flex-row">
                                                     <Button
                                                         variant="outline"
                                                         className="flex-1 border-slate-200 dark:border-slate-700"
@@ -1838,13 +1852,18 @@ const AdminBountyPage = () => {
                                                         Cancel
                                                     </Button>
                                                     <Button
+                                                        variant={"accent"}
                                                         disabled={
                                                             loadingBountyId === data.id ||
                                                             data.totalWinner <= data.currentWinnerCount ||
-                                                            data.BountyWinner.some((winner) => winner.user.id === selectedSubmission.userId) ||
-                                                            GetSendBalanceToWinnerXdr.isLoading
+                                                            data.BountyWinner.some(
+                                                                (winner) =>
+                                                                    winner.user.id === selectedSubmission.userId,
+                                                            ) ||
+                                                            MakeWinnerMutation.isLoading
                                                         }
-                                                        className="flex-1 bg-primary hover:bg-primary/90"
+
+                                                        className="flex-1 shadow-sm shadow-foreground"
                                                         onClick={() =>
                                                             handleWinner(
                                                                 {
@@ -1857,7 +1876,7 @@ const AdminBountyPage = () => {
                                                             )
                                                         }
                                                     >
-                                                        {GetSendBalanceToWinnerXdr.isLoading ? (
+                                                        {MakeWinnerMutation.isLoading ? (
                                                             <div className="flex items-center gap-2">
                                                                 <Loader2 className="h-4 w-4 animate-spin" />
                                                                 <span>Processing...</span>
