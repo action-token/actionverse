@@ -501,12 +501,10 @@ const UserBountyPage = () => {
                                             <div className="flex items-center gap-3 flex-wrap">
                                                 <Badge variant="default" className="bg-primary/90 hover:bg-primary shadow-sm">
                                                     <Trophy className="mr-1 h-4 w-4" />
-                                                    {data?.priceInUSD} USD
+                                                    {data?.priceInUSD > 0 ? `$${data.priceInUSD.toFixed(2)} USDC` : `${data?.priceInBand.toFixed(3)} ${PLATFORM_ASSET.code.toLocaleUpperCase()}`}
                                                 </Badge>
-                                                <Badge variant="secondary" className=" shadow-sm">
-                                                    <Award className="mr-1 h-4 w-4" />
-                                                    {data?.priceInBand.toFixed(3)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
-                                                </Badge>
+
+
                                                 <Badge
                                                     variant="outline"
                                                     className="bg-black/40 backdrop-blur-sm text-white border-white/30 shadow-sm"
@@ -1171,7 +1169,7 @@ const UserBountyPage = () => {
                                 </div>
                             </CardFooter>
                         </Card>
-                    </motion.div>
+                    </motion.div >
                 ) : data.requiredBalance > platformAssetBalance ? (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
@@ -1234,8 +1232,7 @@ const UserBountyPage = () => {
                                     <div className="flex items-center gap-2">
                                         <Badge variant="default" className="bg-primary/90 shadow-sm">
                                             <Trophy className="mr-1 h-3 w-3" />
-                                            {data?.priceInUSD} USD
-                                        </Badge>
+                                            {data?.priceInUSD > 0 ? `$${data.priceInUSD.toFixed(2)} USDC` : `${data?.priceInBand.toFixed(3)} ${PLATFORM_ASSET.code.toLocaleUpperCase()}`}                                        </Badge>
                                     </div>
                                 </div>
                             </div>
@@ -1287,7 +1284,7 @@ const UserBountyPage = () => {
                         </Card>
                     </motion.div>
                 )}
-            </div>
+            </div >
         )
     }
 }
@@ -1474,9 +1471,9 @@ const AdminBountyPage = () => {
 
 
 
-    const handleDelete = (id: number, prize: number) => {
+    const handleDelete = (id: number, prizeInBand: number, prizeInUSD: number) => {
         setLoadingBountyId(id)
-        GetDeleteXDR.mutate({ prize: prize, bountyId: id })
+        GetDeleteXDR.mutate({ prizeInBand: prizeInBand, prizeInUSD: prizeInUSD, bountyId: id })
         setLoadingBountyId(null)
     }
 
@@ -1600,12 +1597,9 @@ const AdminBountyPage = () => {
                                         <div className="flex items-center gap-3 flex-wrap">
                                             <Badge variant="default" className="bg-primary/90 hover:bg-primary shadow-sm">
                                                 <Trophy className="mr-1 h-4 w-4" />
-                                                {data?.priceInUSD} USD
+                                                {data?.priceInUSD > 0 ? `$${data.priceInUSD.toFixed(2)} USDC` : `${data?.priceInBand.toFixed(3)} ${PLATFORM_ASSET.code.toLocaleUpperCase()}`}
                                             </Badge>
-                                            <Badge variant="secondary" className=" shadow-sm">
-                                                <Award className="mr-1 h-4 w-4" />
-                                                {data?.priceInBand.toFixed(3)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
-                                            </Badge>
+
                                             <Badge
                                                 variant="outline"
                                                 className="bg-black/40 backdrop-blur-sm text-white border-white/30 shadow-sm"
@@ -2075,7 +2069,7 @@ const AdminBountyPage = () => {
                                                     disabled={loadingBountyId === data.id || data.currentWinnerCount > 0}
                                                     variant="destructive"
                                                     className="flex-1"
-                                                    onClick={() => handleDelete(data.id, data.priceInBand)}
+                                                    onClick={() => handleDelete(data.id, data.priceInBand, data.priceInUSD)}
                                                 >
                                                     {DeleteMutation.isLoading ? (
                                                         <div className="flex items-center gap-2">

@@ -221,6 +221,62 @@ export async function SendBountyBalanceToUserAccount({
   buildTrx.sign(motherAcc);
   return buildTrx.toXDR();
 }
+export async function SendBountyBalanceToUserAccountUSDC({
+  prize,
+  userPubKey,
+}: {
+  prize: number;
+  userPubKey: string;
+}) {
+  const server = new Horizon.Server(STELLAR_URL);
+  const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
+  const account = await server.loadAccount(motherAcc.publicKey());
+
+  const platformAssetBalance = account.balances.find((balance) => {
+    if (
+      balance.asset_type === "credit_alphanum4" ||
+      balance.asset_type === "credit_alphanum12"
+    ) {
+      return balance.asset_code === assetCode && balance.asset_issuer === assetIssuer;
+    }
+    return false;
+  });
+  //console.log("platformAssetBalance.............", platformAssetBalance);
+
+  if (
+    !platformAssetBalance ||
+    parseFloat(platformAssetBalance.balance) < prize
+  ) {
+    throw new Error("Balance is not enough to send the asset.");
+  }
+
+  const XLMBalance = await NativeBalance({ userPub: motherAcc.publicKey() });
+
+  if (!XLMBalance?.balance || parseFloat(XLMBalance.balance) < 1.0) {
+    throw new Error(
+      "Please make sure you have at least 1 XLM in your account.",
+    );
+  }
+
+  const transaction = new TransactionBuilder(account, {
+    fee: BASE_FEE.toString(),
+    networkPassphrase,
+  });
+
+  transaction.addOperation(
+    Operation.payment({
+      destination: userPubKey,
+      source: motherAcc.publicKey(),
+      asset: new Asset(assetCode, assetIssuer),
+      amount: prize.toFixed(7).toString(),
+    }),
+  );
+  transaction.setTimeout(0);
+
+  const buildTrx = transaction.build();
+  buildTrx.sign(motherAcc);
+  return buildTrx.toXDR();
+}
 export async function claimBandCoinReward({
   pubKey,
   rewardAmount,

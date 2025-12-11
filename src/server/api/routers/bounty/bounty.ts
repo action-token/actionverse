@@ -23,6 +23,7 @@ import {
   SendBountyBalanceToMotherAccountViaUSDC,
   SendBountyBalanceToMotherAccountViaXLM,
   SendBountyBalanceToUserAccount,
+  SendBountyBalanceToUserAccountUSDC,
   SendBountyBalanceToUserAccountViaXLM,
   SendBountyBalanceToWinner,
   SendBountyBalanceToWinnerViaXLM,
@@ -1199,7 +1200,6 @@ export const BountyRoute = createTRPCRouter({
   getDeleteXdr: protectedProcedure
     .input(
       z.object({
-        prize: z.number().min(0.00001, { message: "Prize can't less than 0" }),
         creatorId: z
           .string()
           .min(1, { message: "User ID can't be less than 0" })
@@ -1207,6 +1207,8 @@ export const BountyRoute = createTRPCRouter({
         bountyId: z
           .number()
           .min(1, { message: "Bounty ID can't be less than 0" }),
+        prizeInBand: z.number().optional(),
+        prizeInUSD: z.number().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -1233,11 +1235,17 @@ export const BountyRoute = createTRPCRouter({
           userPubKey: input.creatorId ? input.creatorId : userPubKey,
           prizeInXLM: bounty.priceInXLM,
         });
-      } else
+      } else if (bounty.priceInBand) {
         return await SendBountyBalanceToUserAccount({
           userPubKey: input.creatorId ? input.creatorId : userPubKey,
-          prize: input.prize,
+          prize: input.prizeInBand ?? 0,
         });
+      } else if (bounty.priceInUSD) {
+        return await SendBountyBalanceToUserAccountUSDC({
+          userPubKey: input.creatorId ? input.creatorId : userPubKey,
+          prize: input.prizeInUSD ?? 0,
+        });
+      }
     }),
 
   updateBounty: protectedProcedure
