@@ -166,7 +166,6 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
     return (
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3  ">
             {bounties.map((bounty, index) => {
-                console.log(bounty.ActionLocation?.length)
                 const totalSteps = bounty.ActionLocation?.length ?? 0
 
                 return (
@@ -213,7 +212,11 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
                                 <div className="flex items-center text-sm">
                                     <Award className="mr-1 h-4 w-4" />
                                     <span className="font-medium">
-                                        {bounty.priceInBand.toFixed(2)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
+                                        {bounty.priceInBand > 0
+                                            ? `${bounty.priceInBand.toFixed(2)} ${PLATFORM_ASSET.code.toLocaleUpperCase()}`
+                                            : bounty.priceInUSD > 0 ?
+                                                `$${bounty.priceInUSD.toFixed(2)} USDC`
+                                                : "Free"}
                                     </span>
                                 </div>
                             </div>

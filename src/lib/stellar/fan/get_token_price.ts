@@ -1,6 +1,7 @@
 import axios from "axios";
 import { env } from "~/env";
 import { PLATFORM_ASSET } from "../constant";
+import { USDC_ASSET_CODE, USDC_ISSUER } from "~/lib/usdc"
 
 interface PlatformAssetInfo {
   price: number;
@@ -91,7 +92,7 @@ export async function getAssetToUSDCRate(): Promise<number> {
   try {
     // https://api.stellar.expert/explorer/public/asset/USDC-GCTDHOF4JMAULZKOX5DKAYHF3JDEQMED73JFMNCJZTO2DMDEJW6VSWIS
     const response = await axios.get<PlatformAssetInfo>(
-      "https://api.stellar.expert/explorer/public/asset/USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      `https://api.stellar.expert/explorer/public/asset/${USDC_ASSET_CODE}-${USDC_ISSUER}`,
     );
 
     const platformAssetInfo = response.data;
@@ -100,7 +101,7 @@ export async function getAssetToUSDCRate(): Promise<number> {
     return price ?? 0.000531;
   } catch (error) {
     console.error(
-      `Error fetching USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN price:`,
+      `Error fetching ${USDC_ASSET_CODE}-${USDC_ISSUER} price:`,
       error,
     );
     throw error;

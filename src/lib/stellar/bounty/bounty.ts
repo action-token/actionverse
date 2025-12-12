@@ -19,8 +19,8 @@ import { MOTHER_SECRET } from "../marketplace/SECRET";
 import { SignUserType, WithSing } from "../utils";
 import { getAssetToUSDCRate, getPlatformAssetPrice } from "../fan/get_token_price";
 
-const assetIssuer = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
-const assetCode = "USDC";
+import { USDC_ASSET_CODE, USDC_ISSUER } from "~/lib/usdc"
+
 
 export async function SendBountyBalanceToMotherAccountViaAsset({
   prize,
@@ -85,10 +85,7 @@ export async function SendBountyBalanceToMotherAccountViaUSDC({
   const server = new Horizon.Server(STELLAR_URL);
   const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
   const account = await server.loadAccount(motherAcc.publicKey());
-  const USDC = new Asset(
-    "USDC",
-    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-  );
+  const USDC = new Asset(USDC_ASSET_CODE, USDC_ISSUER);
   const transaction = new TransactionBuilder(account, {
     fee: TrxBaseFee,
     networkPassphrase,
@@ -237,7 +234,7 @@ export async function SendBountyBalanceToUserAccountUSDC({
       balance.asset_type === "credit_alphanum4" ||
       balance.asset_type === "credit_alphanum12"
     ) {
-      return balance.asset_code === assetCode && balance.asset_issuer === assetIssuer;
+      return balance.asset_code === USDC_ASSET_CODE && balance.asset_issuer === USDC_ISSUER;
     }
     return false;
   });
@@ -267,7 +264,7 @@ export async function SendBountyBalanceToUserAccountUSDC({
     Operation.payment({
       destination: userPubKey,
       source: motherAcc.publicKey(),
-      asset: new Asset(assetCode, assetIssuer),
+      asset: new Asset(USDC_ASSET_CODE, USDC_ISSUER),
       amount: prize.toFixed(7).toString(),
     }),
   );
@@ -337,7 +334,8 @@ export async function claimBandCoinReward({
   const buildTrx = transaction.build();
   buildTrx.sign(motherAcc);
   const xdr = buildTrx.toXDR()
-  return xdr;
+  const singedXdr = WithSing({ xdr, signWith: signWith });
+  return singedXdr;
 }
 export async function claimUSDCReward({
   pubKey,
@@ -351,7 +349,7 @@ export async function claimUSDCReward({
   const server = new Horizon.Server(STELLAR_URL);
   const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
   const account = await server.loadAccount(motherAcc.publicKey());
-  const asset = new Asset(assetCode, assetIssuer);
+  const asset = new Asset(USDC_ASSET_CODE, USDC_ISSUER);
   const userAcc = await server.loadAccount(pubKey);
 
   const platformAssetBalance = account.balances.find((balance) => {
@@ -387,17 +385,24 @@ export async function claimUSDCReward({
     return (
       (balance.asset_type === "credit_alphanum4" ||
         balance.asset_type === "credit_alphanum12") &&
-      balance.asset_code === assetCode &&
-      balance.asset_issuer === assetIssuer
+      balance.asset_code === USDC_ASSET_CODE &&
+      balance.asset_issuer === USDC_ISSUER
     );
   });
-  if (!userHasTrustOnUSDC) {
-    throw new Error("User does not have trust on USDC.");
-  }
+
   const transaction = new TransactionBuilder(account, {
     fee: BASE_FEE.toString(),
     networkPassphrase,
   });
+
+  if (!userHasTrustOnUSDC) {
+    transaction.addOperation(
+      Operation.changeTrust({
+        asset: asset,
+        source: pubKey,
+      }),
+    );
+  }
 
   transaction.addOperation(
     Operation.payment({
@@ -411,8 +416,10 @@ export async function claimUSDCReward({
 
   const buildTrx = transaction.build();
   buildTrx.sign(motherAcc);
-  const xdr = buildTrx.toXDR()
-  return xdr;
+  return {
+    xdr: buildTrx.toXDR(),
+    needSign: !userHasTrustOnUSDC,
+  };
 }
 export async function SendBountyBalanceToUserAccountViaXLM({
   prizeInXLM,
@@ -603,15 +610,15 @@ export async function SwapUserAssetToMotherUSDC({
     return false;
   });
 
-  const asset = new Asset(assetCode, assetIssuer);
+  const asset = new Asset(USDC_ASSET_CODE, USDC_ISSUER);
 
   const senderHasTrustOnUSDC = senderAcc.balances.some((balance) => {
     //console.log(balance);
     return (
       (balance.asset_type === "credit_alphanum4" ||
         balance.asset_type === "credit_alphanum12") &&
-      balance.asset_code === assetCode &&
-      balance.asset_issuer === assetIssuer
+      balance.asset_code === USDC_ASSET_CODE &&
+      balance.asset_issuer === USDC_ISSUER
     );
   });
 
@@ -620,8 +627,8 @@ export async function SwapUserAssetToMotherUSDC({
     return (
       (balance.asset_type === "credit_alphanum4" ||
         balance.asset_type === "credit_alphanum12") &&
-      balance.asset_code === assetCode &&
-      balance.asset_issuer === assetIssuer
+      balance.asset_code === USDC_ASSET_CODE &&
+      balance.asset_issuer === USDC_ISSUER
     );
   });
 
@@ -696,8 +703,8 @@ export async function getHasMotherTrustOnUSDC() {
     return (
       (balance.asset_type === "credit_alphanum4" ||
         balance.asset_type === "credit_alphanum12") &&
-      balance.asset_code === assetCode &&
-      balance.asset_issuer === assetIssuer
+      balance.asset_code === USDC_ASSET_CODE &&
+      balance.asset_issuer === USDC_ISSUER
     );
   });
   if (motherHasTrust) {
@@ -714,8 +721,8 @@ export async function getHasUserHasTrustOnUSDC(userPubKey: string) {
     return (
       (balance.asset_type === "credit_alphanum4" ||
         balance.asset_type === "credit_alphanum12") &&
-      balance.asset_code === assetCode &&
-      balance.asset_issuer === assetIssuer
+      balance.asset_code === USDC_ASSET_CODE &&
+      balance.asset_issuer === USDC_ISSUER
     );
   });
 
@@ -753,8 +760,8 @@ export async function getUserHasTrustOnUSDC(userPubKey: string) {
     return (
       (balance.asset_type === "credit_alphanum4" ||
         balance.asset_type === "credit_alphanum12") &&
-      balance.asset_code === assetCode &&
-      balance.asset_issuer === assetIssuer
+      balance.asset_code === USDC_ASSET_CODE &&
+      balance.asset_issuer === USDC_ISSUER
     );
   });
 

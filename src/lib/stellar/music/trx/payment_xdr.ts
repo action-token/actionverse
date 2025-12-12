@@ -18,6 +18,7 @@ import {
 import { env } from "~/env";
 import { StellarAccount } from "../../marketplace/test/Account";
 import { getplatformAssetNumberForXLM, getPlatformAssetPrice } from "../../fan/get_token_price";
+import { USDC_ASSET_CODE, USDC_ISSUER } from "~/lib/usdc"
 
 const log = console;
 
@@ -154,10 +155,7 @@ export async function XDR4BuyUSDC({
   const storageAcc = Keypair.fromSecret(storageSecret);
 
   const motherAcc = Keypair.fromSecret(env.MOTHER_SECRET);
-  const USDC = new Asset(
-    "USDC",
-    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-  );
+  const USDC = new Asset(USDC_ASSET_CODE, USDC_ISSUER);
 
   const transactionInializer = await server.loadAccount(motherAcc.publicKey());
 

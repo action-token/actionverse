@@ -1634,6 +1634,7 @@ export const BountyRoute = createTRPCRouter({
       },
     });
     if (existingReward) throw new Error("Reward already claimed");
+
     return await claimUSDCReward({
       pubKey: userId,
       rewardAmount: input.rewardAmount,
