@@ -29,7 +29,7 @@ import {
 import { BADWORDS } from "~/utils/banned-word";
 import { urlToIpfsHash } from "~/utils/ipfs";
 import { truncateString } from "~/utils/string";
-import { MAX_ASSET_LIMIT } from "./membership";
+export const MAX_ASSET_LIMIT = Number("922337203685");
 export const CreatorAboutShema = z.object({
   bio: z
     .string()

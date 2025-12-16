@@ -116,7 +116,7 @@ export function CreatePostModal() {
             }, 2000)
         },
     })
-    const tiers = api.fan.member.getAllMembership.useQuery()
+    const tiers = api.fan.member.getAllMembership.useQuery({})
 
     const onSubmit: SubmitHandler<z.infer<typeof PostSchema>> = (data) => {
         data.medias = media
@@ -133,7 +133,6 @@ export function CreatePostModal() {
 
     function handleEditorChange(value: string): void {
         setValue("content", value)
-
     }
 
     const openMediaPreview = (item: MediaInfoType) => {

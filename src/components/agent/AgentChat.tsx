@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from "react"
 import { api } from "~/utils/api"
 import { MessageCircle, X, Send, Loader2, MapPin, Calendar, ExternalLink, Eye, ChevronDown, Minimize2, Trash2, Minus } from "lucide-react"
 import type { EventData } from "~/lib/agent/types"
-import { useMapInteractionStore } from "../store/map-store"
+import { useMapInteractionStore } from "../store/map-stores"
 
 interface Message {
     role: "user" | "assistant" | "system"
@@ -19,7 +19,7 @@ export default function AgentChat() {
     const [messages, setMessages] = useState<Message[]>([
         {
             role: "assistant",
-            content: "Hi! I'm your ActionToken assistant. How can I help you today?",
+            content: "Hi! I'm your Actionverse assistant. How can I help you today?",
         },
     ])
     const [inputMessage, setInputMessage] = useState("")
@@ -92,7 +92,7 @@ export default function AgentChat() {
         setMessages([
             {
                 role: "assistant",
-                content: "Hi! I'm your ActionToken assistant. How can I help you today?",
+                content: "Hi! I'm your Actionverse assistant. How can I help you today?",
             },
         ])
     }
@@ -108,7 +108,7 @@ export default function AgentChat() {
                     }}
                     className="fixed bottom-12 left-1/2 -translate-x-1/2 translate-y-1/2 z-40 px-6 py-3 rounded-full bg-primary text-primary-foreground font-semibold shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-105 active:scale-95"
                 >
-                    ActionToken Assistant
+                    Actionverse Assistant
                 </button>
             )}
 
@@ -291,7 +291,7 @@ export default function AgentChat() {
                                     <MessageCircle className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-base">Actiontoken Assistant</h3>
+                                    <h3 className="font-bold text-base">Actionverse Assistant</h3>
                                     <p className="text-xs text-white/80">Powered by AI</p>
                                 </div>
                             </div>

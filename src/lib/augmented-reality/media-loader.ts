@@ -42,7 +42,7 @@ export async function loadMedia(
 
 async function loadImageIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
     try {
-        console.log(`[v0] Loading image into scene: ${qrItem.asset.mediaUrl}`)
+        console.log(`Loading image into scene: ${qrItem.asset.mediaUrl}`)
         options?.onProgress?.(25)
         const imageMesh = await createImagePlane(qrItem.asset.mediaUrl)
         positionMediaInScene(imageMesh, 5, 1.6, undefined, true)
@@ -66,7 +66,7 @@ async function loadImageIntoScene(qrItem: MarketAssetType, options?: MediaLoadOp
 
 export async function loadVideoIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
     try {
-        console.log(`[v0] Loading video into scene: ${qrItem.asset.mediaUrl}`)
+        console.log(`Loading video into scene: ${qrItem.asset.mediaUrl}`)
         options?.onProgress?.(25)
         const { mesh, video, texture } = await createVideoPlane(qrItem.asset.mediaUrl)
 
@@ -96,9 +96,9 @@ export async function loadVideoIntoScene(qrItem: MarketAssetType, options?: Medi
                 video.muted = false
                 await video.play()
                 unmuteButton.style.display = "none"
-                console.log("[v0] Video unmuted and playing")
+                console.log("Video unmuted and playing")
             } catch (error) {
-                console.error("[v0] Failed to unmute and play:", error)
+                console.error("Failed to unmute and play:", error)
                 unmuteButton.innerHTML = "❌ Play Failed - Try Refresh"
             }
         }
@@ -123,7 +123,7 @@ export async function loadVideoIntoScene(qrItem: MarketAssetType, options?: Medi
 
         return { type: "VIDEO", mesh, video, texture }
     } catch (error) {
-        console.error("[v0] Video loading error:", error)
+        console.error("Video loading error:", error)
         const err = error instanceof Error ? error : new Error("Unknown error loading video")
         options?.onError?.(err)
         throw err
@@ -132,7 +132,7 @@ export async function loadVideoIntoScene(qrItem: MarketAssetType, options?: Medi
 
 async function loadAudioIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
     try {
-        console.log(`[v0] Loading audio into scene: ${qrItem.asset.mediaUrl}`)
+        console.log(`Loading audio into scene: ${qrItem.asset.mediaUrl}`)
         options?.onProgress?.(25)
 
         const result = createAudioIndicator(qrItem.asset.name)
@@ -203,7 +203,7 @@ export async function load3DModelIntoScene(
     },
 ) {
     try {
-        console.log(`[v0] Loading 3D model into scene: ${modelUrl}`)
+        console.log(`Loading 3D model into scene: ${modelUrl}`)
 
         const loader = new GLTFLoader()
 
@@ -217,7 +217,7 @@ export async function load3DModelIntoScene(
                 (progress) => {
                     const percent = (progress.loaded / progress.total) * 100
                     options?.onProgress?.(percent)
-                    console.log(`[v0] Loading progress: ${percent.toFixed(1)}%`)
+                    console.log(`Loading progress: ${percent.toFixed(1)}%`)
                 },
                 reject,
             )
@@ -229,10 +229,10 @@ export async function load3DModelIntoScene(
             options.modelRef.current = model
         }
 
-        console.log("[v0] 3D model loaded successfully:", model)
+        console.log("3D model loaded successfully:", model)
 
         if (gltf.animations && gltf.animations.length > 0 && options?.mixerRef) {
-            console.log(`[v0] Found ${gltf.animations.length} animations`)
+            console.log(`Found ${gltf.animations.length} animations`)
             options.mixerRef.current = new THREE.AnimationMixer(model)
             gltf.animations.forEach((clip: THREE.AnimationClip) => {
                 const action = options.mixerRef!.current!.clipAction(clip)
@@ -267,7 +267,7 @@ export async function load3DModelIntoScene(
         const size = box.getSize(new THREE.Vector3())
         const center = box.getCenter(new THREE.Vector3())
 
-        console.log("[v0] Model bounding box:", {
+        console.log("Model bounding box:", {
             size: { x: size.x, y: size.y, z: size.z },
             center: { x: center.x, y: center.y, z: center.z },
         })
@@ -297,9 +297,9 @@ export async function load3DModelIntoScene(
 
         if (options?.mediaGroupRef?.current) {
             options.mediaGroupRef.current.add(model)
-            console.log("[v0] 3D model added to media group")
+            console.log("3D model added to media group")
         } else {
-            console.warn("[v0] Media group reference not available, adding to scene directly")
+            console.warn("Media group reference not available, adding to scene directly")
             if (options?.sceneRef?.current) {
                 options.sceneRef.current.add(model)
             }
@@ -313,7 +313,7 @@ export async function load3DModelIntoScene(
 
         return { type: "model", model }
     } catch (error) {
-        console.error("[v0] Error loading 3D model:", error)
+        console.error("Error loading 3D model:", error)
         const err = error instanceof Error ? error : new Error("Unknown error loading model")
         options?.onError?.(err)
         throw err

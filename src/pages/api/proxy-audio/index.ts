@@ -44,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         res.status(200).end(Buffer.from(buffer))
     } catch (error) {
-        console.error("[v0] Video proxy error:", error)
+        console.error("Video proxy error:", error)
         res.status(500).json({ error: "Failed to proxy video" })
     }
 }

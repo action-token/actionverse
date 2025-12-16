@@ -6,10 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Avatar } from "~/components/shadcn/ui/avatar"
 import Image from "next/image"
+import { useNearbyPinsStore } from "~/components/store/map-stores"
 import { format } from "date-fns"
 import type { Location, LocationGroup } from "@prisma/client"
-import { useNearbyPinsStore } from "../store/map-store"
 
+// Define Pin type for clarity and consistency
+type Pin = Location & {
+    locationGroup:
+    | (LocationGroup & {
+        creator: { profileUrl: string | null }
+    })
+    | null
+    _count: {
+        consumers: number
+    }
+}
 
 interface NearbyLocationsPanelProps {
     onSelectPlace: (coords: { lat: number; lng: number }) => void

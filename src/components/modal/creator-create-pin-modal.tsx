@@ -16,14 +16,15 @@ import { useCreatorStorageAcc } from "~/lib/state/wallete/stellar-balances"
 import { api } from "~/utils/api"
 import { BADWORDS } from "~/utils/banned-word"
 import { PinType } from "@prisma/client"
+import { useMapInteractionStore } from "~/components/store/map-stores"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shadcn/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "../shadcn/ui/card"
 import { Badge } from "../shadcn/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shadcn/ui/tabs"
+import CopyCutPinModal from "./copy-cut-pin-modal"
 import { UploadS3Button } from "../common/upload-button"
 import { Switch } from "../shadcn/ui/switch"
-import { useMapInteractionStore } from "../store/map-store"
-import CopyCutPinModal from "./copy-cut-pin-modal"
+import { LocationAddressDisplay } from "../map/address-display"
 
 // Define types for assets and pins
 type AssetType = {
@@ -435,6 +436,7 @@ export default function CreatePinModal() {
                                                                     />
                                                                 )}
                                                             />
+                                                            {errors.endDate && <p className="text-destructive text-sm">{errors.endDate.message}</p>}
                                                         </div>
                                                     </div>
                                                 </CardContent>
@@ -897,6 +899,11 @@ function ManualCoordinatesInput({ manual, position }: ManualCoordinatesInputProp
                             {position?.lng?.toFixed(6)}
                         </Badge>
                     </div>
+                    <div className="flex items-center justify-between">
+
+                        <LocationAddressDisplay latitude={position?.lat ?? 0} longitude={position?.lng ?? 0} />
+
+                    </div>
                 </div>
             </CardContent>
         </Card>
@@ -988,7 +995,7 @@ function PinTypeToggles() {
     )
 }
 function TiersOptions() {
-    const tiersQuery = api.fan.member.getAllMembership.useQuery()
+    const tiersQuery = api.fan.member.getAllMembership.useQuery({})
     const { control } = useFormContext<CreatePinType>()
     if (tiersQuery.isLoading) return <div className="skeleton h-10 w-20"></div>;
     if (tiersQuery.data) {

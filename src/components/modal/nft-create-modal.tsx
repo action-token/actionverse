@@ -209,7 +209,7 @@ export default function NftCreateModal() {
         },
     });
 
-    const tiers = api.fan.member.getAllMembership.useQuery();
+    const tiers = api.fan.member.getAllMembership.useQuery({});
 
     const addAsset = api.fan.asset.createAsset.useMutation({
         onSuccess: () => {

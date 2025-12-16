@@ -66,7 +66,7 @@ export type CreatorConsumedPin = {
         name: string | null;
         email: string | null;
       };
-      claimedAt: Date | null;
+      claimed_at: Date | null;
     }[];
   }[];
 };

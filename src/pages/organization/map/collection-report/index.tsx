@@ -85,7 +85,7 @@ type ConsumerType = {
     id: string;
     email: string | null;
   };
-  claimedAt: Date | null;
+  claimed_at: Date | null;
 };
 
 import { useRouter } from "next/navigation";
@@ -1062,16 +1062,16 @@ export function TableData({
                 location.consumers.length > 0 ? (
                   location.consumers.map((consumer, consumerIndex) => (
                     <TableRow
-                      onClick={() => {
-                        router.push(`/organization/map/collection-report/${location.id}`);
-                      }}
                       key={`${pin.id}-${location.id}-${consumer.user.id}-${consumerIndex}`}
                       className={cn(
-                        "transition-colors hover:bg-muted/50",
+                        "cursor-pointer transition-colors hover:bg-muted/50",
                         consumerIndex % 2 === 0
                           ? "bg-background"
                           : "bg-muted/10",
                       )}
+                      onClick={() => {
+                        router.push(`/organization/map/collection-report/${location.id}`);
+                      }}
                     >
                       {consumerIndex === 0 ? (
                         <>
@@ -1188,9 +1188,9 @@ export function TableData({
                       {visibleColumns.claimed_at && (
                         <TableCell>
                           <div className="text-xs">
-                            {consumer.claimedAt
+                            {consumer.claimed_at
                               ? new Date(
-                                consumer.claimedAt,
+                                consumer.claimed_at,
                               ).toLocaleDateString()
                               : "N/A"}
                           </div>
@@ -1201,7 +1201,10 @@ export function TableData({
                 ) : (
                   <TableRow
                     key={`${pin.id}-${location.id}-no-consumers`}
-                    className="hover:bg-muted/50"
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      router.push(`/organization/map/collection-report/${location.id}`);
+                    }}
                   >
                     {visibleColumns.creatorId && (
                       <TableCell>
@@ -1500,7 +1503,7 @@ function DownloadPinLocationAsCSV(
     consumer_email: (_, __, consumer) => consumer.user.email ?? "",
     consumer_id: (_, __, consumer) => consumer.user.id,
     claimed_at: (_, __, consumer) =>
-      consumer.claimedAt ? new Date(consumer.claimedAt).toISOString() : "",
+      consumer.claimed_at ? new Date(consumer.claimed_at).toISOString() : "",
   };
 
   // Create CSV content with only selected fields

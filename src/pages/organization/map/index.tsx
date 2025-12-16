@@ -1,40 +1,29 @@
 "use client"
-import type React from "react"
-import { APIProvider, AdvancedMarker, Map, Marker, type MapMouseEvent } from "@vis.gl/react-google-maps"
-import { format } from "date-fns"
-import { ClipboardList, MapPin, Plus, Minus, ArrowRightFromLine, ArrowLeftFromLine, Trophy, Copy } from "lucide-react"
-import Link from "next/link"
-import { useEffect, useState, useRef, memo } from "react"
-import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avatar"
-import { Badge } from "~/components/shadcn/ui/badge"
-import { Button } from "~/components/shadcn/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
-import { ScrollArea } from "~/components/shadcn/ui/scroll-area"
-import { useModal } from "~/lib/state/augmented-reality/use-modal-store"
-import { useSelectedAutoSuggestion } from "~/lib/state/augmented-reality/use-selectedAutoSuggestion"
-import { api } from "~/utils/api"
-import { motion, AnimatePresence } from "framer-motion"
-import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import PinDetailAndActionsModal from "~/components/modal/pin-detail-modal"
 
-import { useCreatorMapModalStore } from "~/components/store/creator-map-modal-store"
-import { useMapOptionsModalStore } from "~/components/store/map-options-modal-store"
-import { useToast } from "~/components/shadcn/ui/use-toast"
-import { useCreateLocationBasedBountyStore } from "~/components/store/create-locationbased-bounty-store"
-import { PinType, type Location, type LocationGroup } from "@prisma/client"
-import { useMapInteractionStore, useNearbyPinsStore } from "~/components/store/map-store"
+import { memo, useEffect, useState } from "react"
+import { APIProvider, AdvancedMarker, Map, Marker } from "@vis.gl/react-google-maps"
+import { useSelectedAutoSuggestion } from "~/hooks/use-selectedAutoSuggestion"
 import { useCreatorStorageAcc } from "~/lib/state/wallete/stellar-balances"
+import { api } from "~/utils/api"
+import { ClipboardList, MapPin } from "lucide-react"
+import Image from "next/image"
+
+import { NearbyLocationsPanel } from "~/components/map/nearby-locations-panel"
+import { getPinIcon } from "~/utils/map-helpers"
+
+import { useGeolocation } from "~/hooks/use-geolocation"
 import { useMapState } from "~/hooks/use-map-state"
 import { useMapInteractions } from "~/hooks/use-map-interactions"
-import { useGeolocation } from "~/hooks/use-geolocation"
 import { usePinsData } from "~/hooks/use-pins-data"
+import { PinType, type Location, type LocationGroup } from "@prisma/client"
 import { MapControls } from "~/components/map/map-controls"
-import { NearbyLocationsPanel } from "~/components/map/nearby-locations-panel"
+import AgentChat from "~/components/agent/AgentChat"
 import { MapHeader } from "~/components/map/map-header"
 import CreatePinModal from "~/components/modal/creator-create-pin-modal"
-import Image from "next/image"
-import { getPinIcon } from "~/utils/map-helpers"
-import AgentChat from "~/components/agent/AgentChat"
+import PinDetailAndActionsModal from "~/components/modal/pin-detail-modal"
+import { useMapInteractionStore, useNearbyPinsStore } from "~/components/store/map-stores"
+import Link from "next/link"
+import { Button } from "~/components/shadcn/ui/button"
 
 // Define Pin type for clarity and consistency with Prisma schema
 type Pin = Location & {
@@ -48,8 +37,7 @@ type Pin = Location & {
   }
 }
 
-
-function MapDashboardContent() {
+function CreatorMapDashboardContent() {
   const {
     duplicate,
     manual,
@@ -102,7 +90,7 @@ function MapDashboardContent() {
     copiedPinData,
     setMapZoom,
     mapZoom,
-    filterNearbyPins,
+    filterNearbyPins: (bounds) => filterNearbyPins(bounds, "my"),
     centerChanged,
   })
 
@@ -132,10 +120,10 @@ function MapDashboardContent() {
 
   useEffect(() => {
     if (position) {
-      setMapCenter(position);
-      setMapZoom(14);
+      setMapCenter(position)
+      setMapZoom(14)
     }
-  }, [position]);
+  }, [position])
 
   const handleManualPinClick = () => {
     setManual(true)
@@ -147,6 +135,7 @@ function MapDashboardContent() {
   return (
     <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAP_API_KEY!}>
       <MapHeader
+        showCreatorList={false}
         showExpired={showExpired}
         setShowExpired={setShowExpired}
         onManualPinClick={handleManualPinClick}
@@ -186,13 +175,7 @@ function MapDashboardContent() {
           disableDefaultUI={true}
           onDragend={handleDragEnd}
         >
-          {position && !isCordsSearch && (
-            <Marker
-              position={{ lat: position.lat, lng: position.lng }}
-
-            />
-          )}
-          {/* Marker for search coordinates */}
+          {position && !isCordsSearch && <Marker position={{ lat: position.lat, lng: position.lng }} />}
           {isCordsSearch && searchCoordinates && (
             <AdvancedMarker position={searchCoordinates}>
               <div className="animate-bounce">
@@ -201,7 +184,6 @@ function MapDashboardContent() {
             </AdvancedMarker>
           )}
 
-          {/* Marker for manual coordinate search */}
           {isCordsSearch && cordSearchCords && (
             <AdvancedMarker position={cordSearchCords}>
               <div className="animate-bounce">
@@ -220,7 +202,11 @@ function MapDashboardContent() {
           />
         </Map>
       </div>
-
+      <Link href="/organization/map/collection-report">
+        <Button className="absolute bottom-32 right-6">
+          <ClipboardList className="mr-2 h-4 w-4" /> Collection Reports
+        </Button>
+      </Link>
       <NearbyLocationsPanel
         onSelectPlace={(coords) => {
           setMapCenter(coords)
@@ -229,13 +215,6 @@ function MapDashboardContent() {
         }}
       />
 
-      <Link href="/organization/map/collection-report">
-        <Button className="absolute bottom-28 right-6">
-          <ClipboardList className="mr-2 h-4 w-4" />
-          Collection Reports
-        </Button>
-      </Link>
-
       <CreatePinModal />
       <PinDetailAndActionsModal />
       <AgentChat />
@@ -243,7 +222,7 @@ function MapDashboardContent() {
   )
 }
 
-export default MapDashboardContent
+export default CreatorMapDashboardContent
 
 const MyPins = memo(function MyPins({
   onPinClick,
@@ -252,20 +231,20 @@ const MyPins = memo(function MyPins({
   onPinClick: (pin: Pin) => void
   showExpired: boolean
 }) {
-  const { allPins, setAllPins } = useNearbyPinsStore()
+  const { myPins, setMyPins } = useNearbyPinsStore()
   const pinsQuery = api.maps.pin.getMyPins.useQuery({ showExpired })
 
   useEffect(() => {
     if (pinsQuery.data) {
-      setAllPins(pinsQuery.data)
+      setMyPins(pinsQuery.data)
     }
-  }, [pinsQuery.data, setAllPins])
+  }, [pinsQuery.data, setMyPins])
 
   if (pinsQuery.isLoading) return null
 
   return (
     <>
-      {allPins.map((pin) => {
+      {myPins.map((pin) => {
         const PinIcon = getPinIcon(pin.locationGroup?.type ?? PinType.OTHER)
         const isExpired = pin.locationGroup?.endDate && new Date(pin.locationGroup.endDate) < new Date()
         const isApproved = pin.locationGroup?.approved === true
@@ -280,14 +259,17 @@ const MyPins = memo(function MyPins({
             }}
           >
             <div
-              className={`relative flex items-center justify-center rounded-full border-3 border-white shadow-xl transition-all duration-300 hover:scale-125 hover:shadow-2xl cursor-pointer group
-                ${isExpired ?? isRemainingZero ? "opacity-60 grayscale" : "opacity-100"}
-                ${!isApproved ? "bg-slate-500" : "bg-white"}
+              className={`relative flex items-center justify-center  shadow-xl transition-all duration-300 hover:scale-125 hover:shadow-2xl cursor-pointer group
+                ${(isExpired ?? isRemainingZero) ? "opacity-60 grayscale" : "opacity-100"}
+                ${!isApproved ? "opacity-80 bg-gray-500" : "bg-white/80 hover:bg-white/100"}
+               ${pin.hidden ? "border-dashed border-red-500 border-2 opacity-60 disabled" : ""}
+                ${pin.autoCollect ? "rounded-none " : " ring-2 ring-green-400 rounded-full"}
+               }
                 transform hover:-translate-y-1
               `}
             >
               {!isExpired && !isRemainingZero && isApproved && (
-                <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
+                <div className={`absolute inset-0  bg-blue-400 animate-ping opacity-20 ${pin.autoCollect ? "" : "rounded-full"}`} />
               )}
 
               {pin.locationGroup?.creator.profileUrl ? (

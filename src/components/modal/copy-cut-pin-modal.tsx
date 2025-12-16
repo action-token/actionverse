@@ -6,7 +6,7 @@ import toast from "react-hot-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
 import { api } from "~/utils/api"
 import { Button } from "../shadcn/ui/button"
-import { useMapInteractionStore } from "../store/map-store"
+import { useMapInteractionStore } from "../store/map-stores"
 import { useCopyCutModalStore } from "../store/copy-cut-modal-store"
 
 const CopyCutPinModal = () => {

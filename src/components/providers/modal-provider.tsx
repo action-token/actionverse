@@ -10,7 +10,6 @@ import BountyFileUploadModal from "../modal/bounty-submission-modal";
 import ViewBountyAttachmentModal from "../modal/view-bounty-attachment-modal";
 import CreateBountyModal from "../modal/create-bounty-modal";
 import CreatorCreatePinModal from "../modal/creator-create-pin-modal";
-import MapOptionModal from "../modal/map-options-modal";
 import CreateAlbumModal from "../modal/create-album-modal";
 import NftCreateModal from "../modal/nft-create-modal";
 import CreatorStoredAssetModal from "../modal/creator-stored-asset-modal";
@@ -21,6 +20,7 @@ import { CreatePostModal } from "../modal/create-post-modal";
 import AddSubscriptionModal from "../modal/create-subscription-modal";
 import ScavengerHuntModal from "../modal/scavenger-hunt-modal";
 import SellPageAssetModal from "../modal/sell-page-asset-modal";
+import PinDetailAndActionsModal from "../modal/pin-detail-modal";
 
 const ModalProvider = () => {
   const [isMounted, setIsMounted] = useState(false);
@@ -42,13 +42,13 @@ const ModalProvider = () => {
       <BountyFileUploadModal />
       <ViewBountyAttachmentModal />
       <CreateBountyModal />
-      <MapOptionModal />
       <CreatorCreatePinModal />
       <CreateAlbumModal />
       <NftCreateModal />
       <CreatorStoredAssetModal />
       <CreateSongModal />
       <ShareModal />
+      {/* <PinDetailAndActionsModal /> */}
       <CreateLocationBasedBountyModal />
       <CreatePostModal />
       <AddSubscriptionModal />

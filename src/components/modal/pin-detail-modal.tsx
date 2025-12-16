@@ -41,12 +41,12 @@ import { Textarea } from "~/components/shadcn/ui/textarea"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
 import { Separator } from "~/components/shadcn/ui/separator"
+import { useMapInteractionStore } from "~/components/store/map-stores" // Changed to useMapInteractionStore
 
 // Re-using the Pin type from map-stores.ts for consistency
 import type { Location, LocationGroup } from "@prisma/client"
 import { PinType as PinTypeEnum } from "@prisma/client" // Declare PinType
 import { UploadS3Button } from "../common/upload-button"
-import { useMapInteractionStore } from "../store/map-store"
 
 type Pin = {
     locationGroup:
@@ -70,7 +70,7 @@ type AssetType = {
 export const PAGE_ASSET_NUM = -10
 export const NO_ASSET = -99
 
-const MapOptionModal = () => {
+const PinDetailAndActionsModal = () => {
     const {
         selectedPinForDetail: data, // Use selectedPinForDetail from the store as 'data'
         closePinDetailModal: handleClose, // Use closePinDetailModal from the store
@@ -83,12 +83,12 @@ const MapOptionModal = () => {
         setDuplicate,
         setPrevData,
     } = useMapInteractionStore()
-    const utils = api.useUtils()
+
     const [isFormLocal, setIsFormLocal] = React.useState(false) // Local state for form view
     const session = useSession()
     const router = useRouter()
     const [activeTab, setActiveTab] = useState<string>("details")
-
+    const utils = api.useUtils()
     const pinM = api.maps.pin.getPinM.useMutation({
         onSuccess: (data) => {
             setPrevData(data)
@@ -144,9 +144,9 @@ const MapOptionModal = () => {
     const DeletePin = api.maps.pin.deletePin.useMutation({
         onSuccess: async (data) => {
             if (data.item) {
-                toast.success("Pin deleted successfully")
-                await utils.maps.pin.getMyPins.invalidate()
+                await utils.maps.pin.getCreatorPins.refetch()
 
+                toast.success("Pin deleted successfully")
                 handleClose()
             } else {
                 toast.error("Pin not found or You are not authorized to delete this pin")
@@ -426,7 +426,7 @@ const MapOptionModal = () => {
                                                 variant="destructive"
                                                 className="col-span-1 flex h-auto items-center justify-start gap-2 py-3 md:col-span-2"
                                                 onClick={handleDelete}
-                                                disabled={DeletePin.isLoading}
+                                                disabled={DeletePin.isLoading || data.hidden}
                                             >
                                                 {DeletePin.isLoading ? (
                                                     <div className="flex items-center gap-2">
@@ -459,7 +459,7 @@ const MapOptionModal = () => {
     )
 }
 
-export default MapOptionModal
+export default PinDetailAndActionsModal
 
 function PinInfo({
     data,
@@ -756,7 +756,7 @@ function PinInfoUpdate({
     })
 
 
-    const tiers = api.fan.member.getAllMembership.useQuery()
+    const tiers = api.fan.member.getAllMembership.useQuery({})
     const assets = api.fan.asset.myAssets.useQuery(undefined, {
         enabled: !!selectedPinForDetail, // Enable query only when modal is open
     })
@@ -764,6 +764,8 @@ function PinInfoUpdate({
     const update = api.maps.pin.updatePin.useMutation({
         onSuccess: async (updatedData) => {
             await utils.maps.pin.getMyPins.refetch()
+            await utils.maps.pin.getCreatorPins.refetch()
+
             toast.success("Pin updated successfully")
             closePinDetailModal() // Close the main modal
             handleClose() // Close the form view

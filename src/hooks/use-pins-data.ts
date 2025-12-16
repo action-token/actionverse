@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { useNearbyPinsStore } from "~/components/store/map-store"
+import { useNearbyPinsStore } from "~/components/store/map-stores"
 import { api } from "~/utils/api"
 
 export function usePinsData(showExpired: boolean) {

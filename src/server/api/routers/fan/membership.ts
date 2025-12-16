@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AccountSchema } from "~/lib/stellar/fan/utils";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import { MAX_ASSET_LIMIT } from "../admin/creator";
 import { BADWORDS } from "~/utils/banned-word";
 export const EditTierSchema = z.object({
   name: z
@@ -31,6 +32,62 @@ export const EditTierSchema = z.object({
     .string()
     .min(20, { message: "Description must be longer than 20 characters" }),
   id: z.number(),
+});
+
+export const CreatorAboutShema = z.object({
+  description: z
+    .string()
+    .max(100, { message: "Bio must be lass than 101 character" })
+    .nullable(),
+  name: z
+    .string()
+    .min(3, { message: "Name must be between 3 to 98 characters" })
+    .max(98, { message: "Name must be between 3 to 98 characters" }),
+  profileUrl: z.string().nullable().optional(),
+});
+export const CreatorPageAssetSchema = z.object({
+  code: z
+    .string()
+    .min(4, { message: "Must be a minimum of 4 characters" })
+    .max(12, { message: "Must be a maximum of 12 characters" })
+    .refine(
+      (value) => {
+        // Check if the input is a single word
+        return /^\w+$/.test(value);
+      },
+      {
+        message: "Input must be a single word",
+      },
+    ),
+  limit: z
+    .number({
+      required_error: "Limit must be entered as a number",
+      invalid_type_error: "Limit must be entered as a number",
+    })
+    .min(1, { message: "Limit must be greater than 0" })
+    .max(MAX_ASSET_LIMIT, {
+      message: `Limit must be less than ${MAX_ASSET_LIMIT} `,
+    })
+    .nonnegative(),
+  price: z
+    .number({
+      required_error: "Price must be entered as a number",
+      invalid_type_error: "Price must be entered as a number",
+    })
+    .nonnegative().min(.01, {
+      message: "Price must be greater than 0"
+    }).default(2),
+  priceUSD: z
+    .number({
+      required_error: "Price must be entered as a number",
+      invalid_type_error: "Price must be entered as a number",
+    })
+    .nonnegative().min(.01, {
+      message: "Price must be greater than 0"
+    })
+    .default(1),
+
+  thumbnail: z.string(),
 });
 export const TierSchema = z.object({
   name: z
@@ -66,47 +123,6 @@ export const TierSchema = z.object({
     .string()
     .min(10, { message: "Make description longer" }),
 });
-export const CreatorAboutShema = z.object({
-  description: z
-    .string()
-    .max(100, { message: "Bio must be lass than 101 character" })
-    .nullable(),
-  name: z
-    .string()
-    .min(3, { message: "Name must be between 3 to 98 characters" })
-    .max(98, { message: "Name must be between 3 to 98 characters" }),
-  profileUrl: z.string().nullable().optional(),
-});
-export const MAX_ASSET_LIMIT = Number("922337203685");
-
-export const CreatorPageAssetSchema = z.object({
-  code: z
-    .string()
-    .min(2, { message: "Must be a minimum of 2 characters" })
-    .max(12, { message: "Must be a maximum of 12 characters" })
-    .refine(
-      (value) => {
-        // Check if the input is a single word
-        return /^\w+$/.test(value);
-      },
-      {
-        message: "Input must be a single word",
-      },
-    ),
-  limit: z
-    .number({
-      required_error: "Limit must be entered as a number",
-      invalid_type_error: "Limit must be entered as a number",
-    })
-    .min(1, { message: "Limit must be greater than 0" })
-    .max(MAX_ASSET_LIMIT, {
-      message: `Limit must be less than ${MAX_ASSET_LIMIT} `,
-    })
-    .nonnegative()
-    .default(10),
-  thumbnail: z.string(),
-});
-
 const selectedColumn = {
   name: true,
   price: true,
@@ -115,12 +131,12 @@ const selectedColumn = {
   creatorId: true,
   creator: {
     select: {
-      customPageAssetCodeIssuer: true,
       pageAsset: {
         select: {
           code: true,
         },
       },
+      customPageAssetCodeIssuer: true,
     }
   }
 };
@@ -133,7 +149,7 @@ export const membershipRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const creatorId = ctx.session.user.id;
 
-      const { code: code, issuer, limit, thumbnail } = input;
+      const { code: code, price, priceUSD, issuer, limit, thumbnail } = input;
 
       if (thumbnail) {
         await ctx.db.creatorPageAsset.create({
@@ -142,6 +158,8 @@ export const membershipRouter = createTRPCRouter({
             limit: limit,
             code,
             thumbnail: thumbnail,
+            price,
+            priceUSD,
             issuer: issuer.publicKey,
             issuerPrivate: issuer.secretKey,
           },
@@ -152,6 +170,8 @@ export const membershipRouter = createTRPCRouter({
             creatorId,
             limit: limit,
             code,
+            price,
+            priceUSD,
             issuer: issuer.publicKey,
             issuerPrivate: issuer.secretKey,
           },
@@ -160,11 +180,11 @@ export const membershipRouter = createTRPCRouter({
     }),
 
   createCustomPageAsset: protectedProcedure
-    .input(z.object({ code: z.string(), issuer: z.string() }))
+    .input(z.object({ code: z.string(), issuer: z.string(), price: z.number(), priceUSD: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const creatorId = ctx.session.user.id;
-      const { code, issuer } = input;
-      const assetIssuer = `${code}-${issuer}`;
+      const { code, issuer, price, priceUSD } = input;
+      const assetIssuer = `${code}-${issuer}-${price}-${priceUSD}`;
 
       const creator = await ctx.db.creator.update({
         data: { customPageAssetCodeIssuer: assetIssuer },
@@ -220,9 +240,13 @@ export const membershipRouter = createTRPCRouter({
   //       include: { subscription: true },
   //     });
   //   }),
-  getAllMembership: protectedProcedure.query(async ({ ctx }) => {
+  getAllMembership: protectedProcedure.input(z.object(
+    {
+      creatorId: z.string().optional(),
+    }
+  )).query(async ({ ctx, input }) => {
     return await ctx.db.subscription.findMany({
-      where: { creatorId: ctx.session.user.id },
+      where: { creatorId: input.creatorId ?? ctx.session.user.id },
       select: selectedColumn,
     });
   }),
@@ -286,7 +310,6 @@ export const membershipRouter = createTRPCRouter({
   isFollower: protectedProcedure
     .input(z.object({ creatorId: z.string() }))
     .query(async ({ ctx, input }) => {
-
       const isFollower = await ctx.db.follow.findUnique({
         where: {
           userId_creatorId: {
@@ -295,18 +318,8 @@ export const membershipRouter = createTRPCRouter({
           },
         },
       });
-      const isOwner = await ctx.db.creator.findUnique({
-        where: { id: input.creatorId },
-      });
-      console.log({
-        isFollower,
-        isOwner: isOwner?.id === ctx.session.user.id,
-      })
-      return {
-        isFollower
-          : isFollower ? true : false
-        , isOwner: isOwner?.id === ctx.session.user.id
-      };
+      if (isFollower) return true;
+      else false;
     }),
 
   followCreator: protectedProcedure

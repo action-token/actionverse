@@ -191,7 +191,7 @@ function QrCodeCreate({ onClose }: { onClose: () => void }) {
         },
     })
 
-    const tiers = api.fan.member.getAllMembership.useQuery()
+    const tiers = api.fan.member.getAllMembership.useQuery({})
 
     const addAsset = api.fan.asset.createAsset.useMutation({
         onSuccess: () => {

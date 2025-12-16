@@ -68,14 +68,14 @@ export function createVideoPlane(videoUrl: string): Promise<{
                 if (playPromise !== undefined) {
                     playPromise
                         .then(() => {
-                            console.log("[v0] Video autoplay succeeded")
+                            console.log("Video autoplay succeeded")
                             // Try to unmute after playing starts
                             setTimeout(() => {
                                 video.muted = false
                             }, 500)
                         })
                         .catch((err) => {
-                            console.warn("[v0] Video autoplay failed, keeping muted for user interaction:", err)
+                            console.warn("Video autoplay failed, keeping muted for user interaction:", err)
                             // Video will stay muted - unmute button will be shown
                         })
                 } else {
