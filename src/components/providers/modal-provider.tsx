@@ -42,7 +42,7 @@ const ModalProvider = () => {
       <BountyFileUploadModal />
       <ViewBountyAttachmentModal />
       <CreateBountyModal />
-      <CreatorCreatePinModal />
+      {/* <CreatorCreatePinModal /> */}
       <CreateAlbumModal />
       <NftCreateModal />
       <CreatorStoredAssetModal />

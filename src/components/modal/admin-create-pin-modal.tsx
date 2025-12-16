@@ -168,6 +168,11 @@ export default function CreateAdminPinModal() {
     }
 
     const onSubmit: SubmitHandler<z.infer<typeof createAdminPinFormSchema>> = (data) => {
+
+        if (!selectedCreator) {
+            toast.error("Please select a creator before creating a pin.")
+            return;
+        }
         if (selectedToken && data.pinCollectionLimit && data.pinCollectionLimit > selectedToken.bal) {
             setError("pinCollectionLimit", {
                 type: "manual",
@@ -187,6 +192,7 @@ export default function CreateAdminPinModal() {
         addPinM.mutate({
             ...finalData,
             description: finalData.description ?? "",
+            creatorId: selectedCreator.id
         })
     }
     useEffect(() => {
