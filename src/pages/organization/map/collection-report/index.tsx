@@ -90,6 +90,7 @@ type ConsumerType = {
 
 import { useRouter } from "next/navigation";
 import { CreatorConsumedPin } from "~/lib/state/augmented-reality/use-modal-store";
+import { useSession } from "next-auth/react";
 
 const CreatorCollectionReport = ({
   isAdmin,
@@ -98,12 +99,13 @@ const CreatorCollectionReport = ({
   isAdmin?: boolean;
   userId?: string;
 }) => {
+  const session = useSession();
   const [selectedDays, setSelectedDays] = useState<number | undefined>(
     undefined,
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
-  const [creatorId, setCreatorId] = useState<string | undefined>(userId);
+  const [creatorId, setCreatorId] = useState<string | undefined>(session.data?.user.id);
 
   const pins = api.maps.pin.getCreatorPinTConsumedByUser.useQuery(
     {
@@ -198,12 +200,7 @@ const CreatorCollectionReport = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {isAdmin && (
-            <CreatorDropDown
-              creatorId={creatorId}
-              setCreatorId={setCreatorId}
-            />
-          )}
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-9">
