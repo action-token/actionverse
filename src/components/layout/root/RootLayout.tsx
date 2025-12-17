@@ -31,6 +31,7 @@ import { BottomPlayerProvider } from "~/components/player/context/bottom-player-
 import { StemPlayer } from "~/components/player/bottom-player";
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 import { api } from "~/utils/api";
+import FallingSnowflakes from "~/components/christmas/FallingSnowflakes";
 export default function Layout({
   children,
   className,
@@ -153,6 +154,7 @@ export default function Layout({
             </div>
           </div>
           <StemPlayer />
+          <FallingSnowflakes />
         </BottomPlayerProvider>
       </MiniPlayerProvider>
     </ThemeProvider>

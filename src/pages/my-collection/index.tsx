@@ -136,7 +136,7 @@ const MyCollection = () => {
                                             code={item.location.locationGroup?.title}
                                             thumbnail={
                                                 item.location.locationGroup?.image ??
-                                                "https://bandcoin.io/images/loading.png"
+                                                "https://app.action-tokens.com/images/logo.png"
                                             }
                                             isPinned={true}
                                             creatorId={item.location.locationGroup?.creatorId}

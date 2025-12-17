@@ -19,9 +19,14 @@ import { useSidebar } from "~/hooks/use-sidebar";
 import { DashboardNav } from "./Left-sidebar/dashboard-nav";
 import { LeftBottom, LeftNavigation } from "./Left-sidebar/sidebar";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
-import ChristmasSleigh from "../../../public/ChristmasSleigh.json"
-import ChristmasWindChimes from "../../../public/ChristmasWindChimes.json"
+import dynamic from "next/dynamic";
 
+const ChristmasSleighAnimation = dynamic(() => import('../christmas/ChristmasSleigh'), {
+    ssr: false,
+});
+const ChristmasWindChimeAnimation = dynamic(() => import('../christmas/ChristmasWindChimes'), {
+    ssr: false,
+});
 
 function Header() {
     const { isSheetOpen, setIsSheetOpen } = useSidebar();
@@ -36,14 +41,7 @@ function Header() {
                     className="object-cover object-top"
                     priority
                 />
-                <div className="absolute top-0 right-0 transform  max-w-md z-10 pointer-events-none">
-                    <Lottie
-                        animationData={ChristmasWindChimes}
-                        loop={true}
-                        autoplay={true}
-                        className='h-52'
-                    />
-                </div>
+                <ChristmasWindChimeAnimation />
                 <div className="relative z-10 flex items-center justify-between">
                     <div className="flex items-center gap-0">
                         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
@@ -102,9 +100,7 @@ function Header() {
                         </div>
                         <h1 className="hidden md:block relative text-xl font-bold capitalize text-white  md:text-4xl">
                             ACTIONVERSE
-                            <div className={`absolute -top-4  left-0 right-0 z-50 h-32 w-full transition-all overflow-hidden duration-500 ease-out pointer-events-none`}>
-                                <Lottie animationData={ChristmasSleigh} loop={true} style={{ width: "100%", height: "100%" }} />
-                            </div>
+                            <ChristmasSleighAnimation />
                             <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
                         </h1>
                     </div>
