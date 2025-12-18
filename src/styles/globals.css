@@ -11,6 +11,8 @@
       --popover: 0 0% 100%;
       --popover-foreground: 240 10% 3.9%;
       --primary: 142.1 76.2% 36.3%;
+      /* Brand alternate color (greditnet) */
+      --greditnet: 142.1 76.2% 36.3%;
       --primary-foreground: 355.7 100% 97.3%;
       --secondary: 240 4.8% 95.9%;
       --secondary-foreground: 240 5.9% 10%;
@@ -132,6 +134,24 @@
 
   .hexagon-mask {
     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  }
+
+  /* Greditnet utility classes */
+  .greditnet-text {
+    color: hsl(var(--greditnet));
+  }
+
+  .greditnet-bg {
+    background-color: hsl(var(--greditnet) / 0.12);
+  }
+
+  .greditnet-icon {
+    color: hsl(var(--greditnet));
+  }
+
+  .greditnet-hover:hover {
+    border-color: hsl(var(--greditnet) / 0.6);
+    box-shadow: 0 8px 30px hsl(var(--greditnet) / 0.12);
   }
 
   .scrollbar-hide::-webkit-scrollbar {
