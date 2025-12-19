@@ -169,7 +169,7 @@ export default function MyBeamsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">My Beams</h1>
         <p className="mt-1 text-muted-foreground">
-          Create new beams or manage your {beams?.length || 0} existing Beams
+          Create new beams or manage your {beams?.length ?? 0} existing Beams
         </p>
       </div>
 
@@ -264,7 +264,7 @@ export default function MyBeamsPage() {
                       </div>
                     ) : (
                       <img
-                        src={beam.contentUrl || "/placeholder.svg?height=300&width=400&query=beam content"}
+                        src={beam.contentUrl ?? "/placeholder.svg?height=300&width=400&query=beam content"}
                         alt={`${beam.type} Beam`}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                       />

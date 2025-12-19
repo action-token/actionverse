@@ -1,3 +1,5 @@
+
+
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 import { env } from "~/env";
@@ -19,7 +21,7 @@ export class S3UploadService {
    */
   static async uploadBase64Image(
     base64Data: string,
-    mimeType: string = "image/png",
+    mimeType = "image/png",
   ): Promise<string> {
     try {
       // Remove data URI prefix if present
@@ -28,12 +30,13 @@ export class S3UploadService {
         : base64Data;
 
       // Convert base64 to buffer
+
       const buffer = Buffer.from(base64String, "base64");
 
       // Generate unique filename
       const timestamp = Date.now();
       const randomString = Math.random().toString(36).substring(7);
-      const extension = mimeType.split("/")[1] || "png";
+      const extension = mimeType.split("/")[1] ?? "png";
       const filename = `generated-images/${timestamp}-${randomString}.${extension}`;
 
       // Upload to S3

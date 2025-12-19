@@ -26,7 +26,7 @@ export function BeamContentCard({
   if (type === "VIDEO") {
     return (
       <div className="relative aspect-video overflow-hidden rounded-2xl bg-foreground/5">
-        <video src={contentUrl || ""} controls className="h-full w-full" poster="/video-thumbnail.png" />
+        <video src={contentUrl ?? ""} controls className="h-full w-full" poster="/video-thumbnail.png" />
       </div>
     )
   }
@@ -50,7 +50,7 @@ export function BeamContentCard({
           style={{ backfaceVisibility: "hidden" }}
         >
           <img
-            src={contentUrl || "/placeholder.svg?height=800&width=1200&query=beautiful beam content"}
+            src={contentUrl ?? "/placeholder.svg?height=800&width=1200&query=beautiful beam content"}
             alt="Beam content"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
           />
@@ -78,7 +78,7 @@ export function BeamContentCard({
         >
           <div className="text-center max-w-2xl">
             <p className="mb-8 text-xl leading-relaxed text-foreground md:text-2xl font-light text-balance italic">
-              {message || "No message provided."}
+              {message ?? "No message provided."}
             </p>
             <Separator className="mx-auto my-8 w-24 bg-primary/30" />
             <div className="space-y-2 text-sm text-muted-foreground">

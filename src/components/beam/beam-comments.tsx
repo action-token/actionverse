@@ -31,7 +31,7 @@ export function BeamComments({
   isLoading,
   isPending,
 }: BeamCommentsProps) {
-  const loading = isLoading || isPending || false
+  const loading = isLoading ?? isPending ?? false
   const session = useSession()
   return (
     <div className="space-y-8">

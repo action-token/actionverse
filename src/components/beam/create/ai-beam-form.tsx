@@ -81,7 +81,9 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
             throw new Error(statusData.message ?? "Generation failed")
           } else {
             // Continue polling after 2 seconds
-            setTimeout(() => pollStatus(), 2000)
+            setTimeout(() => {
+              pollStatus().catch(console.error)
+            }, 2000)
           }
         } catch (error) {
           console.error("Status check error:", error)
@@ -96,11 +98,7 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
     } catch (error) {
       console.error("Generation error:", error)
       setIsGenerating(false)
-      toast({
-        title: "Generation failed",
-        description: "Failed to start image generation. Please try again.",
-        variant: "destructive",
-      })
+      toast.error("Image generation failed. Please try again.")
     }
   }
 
@@ -277,7 +275,7 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
             message={message}
             arEnabled={arEnabled}
             isPublic={isPublic}
-            contentUrl={generatedImageUrl || ""}
+            contentUrl={generatedImageUrl ?? ""}
             customPrompt={prompt}
           />
         </div>

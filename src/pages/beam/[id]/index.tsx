@@ -103,7 +103,7 @@ export default function BeamPage() {
         </div>
         <h1 className="mb-3 text-3xl font-bold">Beam not found</h1>
         <p className="mb-8 text-center text-muted-foreground max-w-md">
-          This beam may have been deleted or doesn't exist.
+          This beam may have been deleted or doesn{"'"}t exist.
         </p>
         <Button onClick={() => router.push("/beam")} className="gap-2">
           Go Home
@@ -159,7 +159,7 @@ export default function BeamPage() {
         {/* Video Message */}
         {beam.type === "VIDEO" && beam.message && (
           <div className="mb-6 p-6 rounded-2xl bg-secondary/50 border border-border">
-            <p className="text-foreground leading-relaxed italic">"{beam.message}"</p>
+            <p className="text-foreground leading-relaxed italic">{beam.message}</p>
           </div>
         )}
 
@@ -202,7 +202,7 @@ export default function BeamPage() {
         <div className="mb-10">
           <BeamReactions
             beamId={id}
-            reactions={beam.reactions || []}
+            reactions={beam.reactions ?? []}
             loadingEmoji={loadingEmoji}
             setLoadingEmoji={setLoadingEmoji}
             onSuccess={() => refetch()}
@@ -212,11 +212,11 @@ export default function BeamPage() {
 
         {/* Comments */}
         <BeamComments
-          comments={beam.comments || []}
+          comments={beam.comments ?? []}
           comment={comment}
           onCommentChange={setComment}
           onSubmit={handleAddComment}
-          isLoading={addCommentMutation.isPending}
+          isLoading={addCommentMutation.isLoading}
         />
       </main>
 

@@ -182,7 +182,7 @@ export function VideoBeamForm({ onBack }: VideoBeamFormProps) {
             message={message}
             arEnabled={arEnabled}
             isPublic={isPublic}
-            contentUrl={videoPreview || ""}
+            contentUrl={videoPreview ?? ""}
           />
         </div>
       </form>

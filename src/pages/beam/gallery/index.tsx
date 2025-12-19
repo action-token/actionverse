@@ -87,7 +87,7 @@ export default function GalleryPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Public Gallery</h1>
           <p className="mt-1 text-muted-foreground">
-            Explore {beams?.length || 0} creative Beams shared by the community
+            Explore {beams?.length ?? 0} creative Beams shared by the community
           </p>
         </div>
         <Button asChild>
@@ -217,7 +217,7 @@ export default function GalleryPage() {
                       </div>
                     ) : (
                       <img
-                        src={beam.contentUrl || "/placeholder.svg?height=400&width=400&query=beam content"}
+                        src={beam.contentUrl ?? "/placeholder.svg?height=400&width=400&query=beam content"}
                         alt={`${beam.type} Beam`}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                       />
@@ -237,7 +237,7 @@ export default function GalleryPage() {
 
                   <CardContent className="p-4">
                     <p className="mb-3 text-sm">
-                      By <span className="font-medium">{beam.user.name || "Anonymous"}</span>
+                      By <span className="font-medium">{beam.user.name ?? "Anonymous"}</span>
                     </p>
 
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">

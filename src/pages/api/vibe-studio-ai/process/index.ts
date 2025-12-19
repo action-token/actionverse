@@ -46,7 +46,7 @@ function extractBase64FromDataUrl(dataUrl: string): { base64: string; mimeType: 
 async function getRawBody(req: NextApiRequest): Promise<string> {
     const chunks: Buffer[] = []
     for await (const chunk of req) {
-        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
+        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk as Buffer)
     }
     return Buffer.concat(chunks).toString("utf-8")
 }
@@ -247,7 +247,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void>
     try {
         let body: ProcessJobRequest
 
-        if (req.body && typeof req.body === "object" && Object.keys(req.body).length > 0) {
+        if (req.body && typeof req.body === "object" && Object.keys(req.body as Record<string, unknown>).length > 0) {
             body = req.body as ProcessJobRequest
         } else {
             const rawBody = await getRawBody(req)

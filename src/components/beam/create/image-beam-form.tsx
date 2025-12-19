@@ -181,7 +181,7 @@ export function ImageBeamForm({ onBack }: ImageBeamFormProps) {
             message={message}
             arEnabled={arEnabled}
             isPublic={isPublic}
-            contentUrl={imagePreview || ""}
+            contentUrl={imagePreview ?? ""}
           />
         </div>
         <UploadS3Button

@@ -1,16 +1,17 @@
+
 import { Client } from "@upstash/qstash"
 import { Redis } from "@upstash/redis"
 import { env } from "~/env"
 
 // Initialize QStash client for background jobs
 export const qstash = new Client({
-    token: env.QSTASH_TOKEN!,
+    token: env.QSTASH_TOKEN,
 })
 
 // Initialize Redis for job status storage
 export const redis = new Redis({
-    url: env.KV_REST_API_URL!,
-    token: env.KV_REST_API_TOKEN!,
+    url: env.KV_REST_API_URL,
+    token: env.KV_REST_API_TOKEN,
 })
 
 // Job status types
@@ -66,5 +67,6 @@ export async function updateJob(jobId: string, updates: Partial<JobData>): Promi
 export async function getJob(jobId: string): Promise<JobData | null> {
     const data = await redis.get(`job:${jobId}`)
     if (!data) return null
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return typeof data === "string" ? JSON.parse(data) : data as JobData
 }

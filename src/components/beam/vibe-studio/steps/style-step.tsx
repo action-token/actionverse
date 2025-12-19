@@ -63,7 +63,7 @@ export function StyleStep({ category, onSelect, onBack }: StyleStepProps) {
                   "flex items-center justify-center overflow-hidden bg-gradient-to-br from-primary/5 to-accent/5 h-32",
                 )}
               >
-                <span className="text-4xl">{(styleOption as any).icon ?? "🎨"}</span>
+                <span className="text-4xl">{(styleOption).icon ?? "🎨"}</span>
               </div>
 
               {/* Content */}
