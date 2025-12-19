@@ -20,7 +20,6 @@ import {
   Lock,
 } from "lucide-react"
 import Link from "next/link"
-import { useToast } from "~/hooks/use-toast"
 import { api } from "~/utils/api"
 import {
   DropdownMenu,
@@ -46,39 +45,41 @@ import { VideoBeamForm } from "~/components/beam/create/video-beam-form"
 import { CardBeamForm } from "~/components/beam/create/card-beam-form"
 import { AIBeamForm } from "~/components/beam/create/ai-beam-form"
 import { useRouter } from "next/router"
+import toast from "react-hot-toast"
 
 type BeamType = "IMAGE" | "VIDEO" | "CARD" | "AI" | null
 
 export default function MyBeamsPage() {
-  const { toast } = useToast()
   const router = useRouter()
   const [selectedType, setSelectedType] = useState<BeamType>(null)
   const { data: beams, isLoading, refetch } = api.beam.getMyBeams.useQuery()
-
-  const deleteBeamMutation = api.beam.delete.useMutation({
+  const togglePublic = api.beam.togglePublic.useMutation({
     onSuccess: () => {
-      toast({
-        title: "Beam deleted",
-        description: "Your Beam has been removed.",
-      })
-      refetch()
+      toast.success("Beam visibility updated")
     },
     onError: (error) => {
-      toast({
-        title: "Failed to delete",
-        description: error.message,
-        variant: "destructive",
-      })
+      toast.error(`Error updating visibility: ${error.message}`)
+    },
+    onSettled: async () => {
+      await refetch()
+    },
+  })
+  const deleteBeamMutation = api.beam.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Beam deleted successfully")
+    },
+    onError: (error) => {
+      toast.error(`Error deleting beam: ${error.message}`)
+    },
+    onSettled: async () => {
+      await refetch()
     },
   })
 
-  const handleCopyLink = (beamId: string) => {
+  const handleCopyLink = async (beamId: string) => {
     const url = `${window.location.origin}/beam/${beamId}`
-    navigator.clipboard.writeText(url)
-    toast({
-      title: "Link copied!",
-      description: "Beam link copied to clipboard.",
-    })
+    await navigator.clipboard.writeText(url)
+    toast.success("Beam link copied to clipboard")
   }
 
   const handleDelete = (beamId: string) => {
@@ -93,6 +94,7 @@ export default function MyBeamsPage() {
 
   const handleBackToList = () => {
     setSelectedType(null)
+    router.push("/beam/create", undefined, { shallow: true })
     refetch()
   }
   // Set selectedType based on URL query parameter
@@ -326,11 +328,22 @@ export default function MyBeamsPage() {
 
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" disabled={deleteBeamMutation.isLoading || togglePublic.isLoading}>
+
                             <MoreHorizontal className="h-4 w-4" />
+
+
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="animate-scale-in">
+                          <DropdownMenuItem onClick={() => togglePublic.mutate({
+                            id: beam.id,
+                            isPublic: beam.isPublic,
+                          })}>
+                            <Copy className="mr-2 h-4 w-4" />
+                            Mark as {beam.isPublic ? "Private" : "Public"}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleCopyLink(beam.id)}>
                             <Copy className="mr-2 h-4 w-4" />
                             Copy Link

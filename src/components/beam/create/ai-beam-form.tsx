@@ -3,24 +3,21 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
 import { Label } from "~/components/shadcn/ui/label"
 import { Textarea } from "~/components/shadcn/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
 import { Switch } from "~/components/shadcn/ui/switch"
-import { useToast } from "~/hooks/use-toast"
-import { api } from "~/utils/api"
 import { ArrowLeft } from "lucide-react"
+import { CreateButton } from "./create-button"
+import toast from "react-hot-toast"
 
 interface AIBeamFormProps {
   onBack: () => void
 }
 
 export function AIBeamForm({ onBack }: AIBeamFormProps) {
-  const router = useRouter()
-  const { toast } = useToast()
   const [senderName, setSenderName] = useState("")
   const [recipientName, setRecipientName] = useState("")
   const [message, setMessage] = useState("")
@@ -30,63 +27,9 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null)
 
-  const createBeamMutation = api.beam.create.useMutation({
-    onSuccess: (data) => {
-      toast({
-        title: "Beam created!",
-        description: "Your AI Art Beam is ready to share.",
-      })
-      router.push(`/beam/${data.id}`)
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to create Beam",
-        description: error.message,
-        variant: "destructive",
-      })
-    },
-  })
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!prompt) {
-      toast({
-        title: "Prompt required",
-        description: "Please provide an AI art prompt.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!generatedImageUrl) {
-      toast({
-        title: "Generate image first",
-        description: "Please generate an AI image before creating the beam.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    createBeamMutation.mutate({
-      type: "AI",
-      senderName,
-      recipientName,
-      message,
-      contentUrl: generatedImageUrl,
-      customPrompt: prompt,
-      arEnabled,
-      isPublic,
-    })
-  }
-
   const handleGenerate = async () => {
     if (!prompt.trim()) {
-      toast({
-        title: "Prompt required",
-        description: "Please enter a prompt to generate an image.",
-        variant: "destructive",
-      })
+      toast.error("Please enter a prompt to generate an image.")
       return
     }
 
@@ -133,10 +76,7 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
           if (statusData.status === "completed" && statusData.result?.items?.[0]?.url) {
             setGeneratedImageUrl(statusData.result.items[0].url)
             setIsGenerating(false)
-            toast({
-              title: "Image generated!",
-              description: "Your AI art is ready.",
-            })
+            toast.success("Image generated!")
           } else if (statusData.status === "failed") {
             throw new Error(statusData.message ?? "Generation failed")
           } else {
@@ -146,11 +86,7 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
         } catch (error) {
           console.error("Status check error:", error)
           setIsGenerating(false)
-          toast({
-            title: "Generation failed",
-            description: "Failed to generate image. Please try again.",
-            variant: "destructive",
-          })
+          toast.error("Image generation failed. Please try again.")
         }
       }
 
@@ -178,7 +114,7 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
       <h1 className="mb-1 text-2xl font-bold text-foreground text-center">Create AI Art Beam</h1>
       <p className="mb-4 text-sm text-muted-foreground text-center">Generate unique artwork with AI</p>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-2 ">
           {/* Left column: Beam Details and Settings */}
           <div className="flex flex-col gap-4">
@@ -334,9 +270,16 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
           <Button type="button" variant="outline" size="sm" onClick={onBack} className="flex-1 bg-transparent">
             Cancel
           </Button>
-          <Button type="submit" size="sm" disabled={createBeamMutation.isLoading} className="flex-1">
-            {createBeamMutation.isLoading ? "Creating..." : "Create Beam"}
-          </Button>
+          <CreateButton
+            type="AI"
+            senderName={senderName}
+            recipientName={recipientName}
+            message={message}
+            arEnabled={arEnabled}
+            isPublic={isPublic}
+            contentUrl={generatedImageUrl || ""}
+            customPrompt={prompt}
+          />
         </div>
       </form>
     </div>

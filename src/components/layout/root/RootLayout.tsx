@@ -52,6 +52,7 @@ export default function Layout({
     "/support",
     "/",
     "/reward-checker",
+    "/beam/[id]"
   ];
   const isPublicRoute = publicRoutes.includes(router.pathname);
   const isAugmentedRealityRoute = router.pathname.startsWith("/action/ar");

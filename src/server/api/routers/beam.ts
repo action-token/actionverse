@@ -1,8 +1,27 @@
 import { BeamType, StyleCategory } from "@prisma/client"
 import { z } from "zod"
+import { beamXDRForAsset } from "~/lib/stellar/beam"
+import { SignUser } from "~/lib/stellar/utils"
 import { createTRPCRouter, publicProcedure, protectedProcedure } from "~/server/api/trpc"
 
 export const beamRouter = createTRPCRouter({
+  createBeamXDR: protectedProcedure
+    .input(
+      z.object({
+        amount: z.number(),
+        signWith: SignUser,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      console.log("Creating Beam XDR for amount:", input.amount)
+      const userId = ctx.session.user.id
+      return beamXDRForAsset({
+        userId,
+        signWith: input.signWith,
+        amount: Number(input.amount),
+      })
+    }),
+
   create: protectedProcedure
     .input(
       z.object({
@@ -87,7 +106,22 @@ export const beamRouter = createTRPCRouter({
       orderBy: { createdAt: "desc" },
     })
   }),
+  togglePublic: protectedProcedure
+    .input(z.object({ id: z.string(), isPublic: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const beam = await ctx.db.beam.findUnique({
+        where: { id: input.id },
+      })
 
+      if (!beam || beam.userId !== ctx.session.user.id) {
+        throw new Error("Unauthorized")
+      }
+
+      return ctx.db.beam.update({
+        where: { id: input.id },
+        data: { isPublic: !input.isPublic },
+      })
+    }),
   getPublicBeams: publicProcedure
     .input(
       z.object({
@@ -204,4 +238,5 @@ export const beamRouter = createTRPCRouter({
       take: 5,
     })
   }),
+
 })

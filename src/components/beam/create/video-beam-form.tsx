@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
 import { Label } from "~/components/shadcn/ui/label"
@@ -11,16 +10,15 @@ import { Textarea } from "~/components/shadcn/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
 import { Switch } from "~/components/shadcn/ui/switch"
 import { ArrowLeft, Upload } from "lucide-react"
-import { api } from "~/utils/api"
 import { UploadS3Button } from "~/components/common/upload-button"
 import toast from "react-hot-toast"
+import { CreateButton } from "./create-button"
 
 interface VideoBeamFormProps {
   onBack: () => void
 }
 
 export function VideoBeamForm({ onBack }: VideoBeamFormProps) {
-  const router = useRouter()
   const [senderName, setSenderName] = useState("")
   const [recipientName, setRecipientName] = useState("")
   const [message, setMessage] = useState("")
@@ -28,32 +26,8 @@ export function VideoBeamForm({ onBack }: VideoBeamFormProps) {
   const [arEnabled, setArEnabled] = useState(false)
   const [videoFile, setVideoFile] = useState<File | null>(null)
   const [videoPreview, setVideoPreview] = useState<string | null>(null)
-
-  const createBeamMutation = api.beam.create.useMutation({
-    onSuccess: (data) => {
-      toast.success("Beam created successfully!")
-      router.push(`/beam/${data.id}`)
-    },
-    onError: (error) => {
-      toast.error(`Failed to create Beam: ${error.message}`)
-    },
-  })
-
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-
-    createBeamMutation.mutate({
-      type: "VIDEO",
-      senderName,
-      recipientName,
-      message,
-      contentUrl: videoPreview ?? "",
-      arEnabled,
-      isPublic,
-    })
-  }
+  const [progress, setProgress] = useState<number>(0)
+  const [isUploading, setIsUploading] = useState(false)
 
   return (
     <div className="w-full  p-6 m-2">
@@ -65,7 +39,7 @@ export function VideoBeamForm({ onBack }: VideoBeamFormProps) {
       <h1 className="mb-1 text-2xl font-bold text-foreground text-center">Create Video Beam</h1>
       <p className="mb-4 text-sm text-muted-foreground text-center">Share a video message or celebration</p>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-2 ">
           {/* Left column: Beam Details and Settings */}
           <div className="flex flex-col gap-4">
@@ -168,9 +142,10 @@ export function VideoBeamForm({ onBack }: VideoBeamFormProps) {
                         type="button"
                         onClick={() => document.getElementById("fileInput")?.click()}
                         className="mt-2"
+                        disabled={isUploading}
                       >
                         <Upload className="mr-2 h-4 w-4" />
-                        Upload Video
+                        {isUploading ? `Uploading... ${progress}%` : "Upload Video"}
                       </Button>
                     </label>
                   )}
@@ -184,6 +159,7 @@ export function VideoBeamForm({ onBack }: VideoBeamFormProps) {
                         setVideoFile(null)
                       }}
                       className="w-full "
+                      disabled={isUploading}
                     >
                       Change Video
                     </Button>
@@ -199,26 +175,39 @@ export function VideoBeamForm({ onBack }: VideoBeamFormProps) {
           <Button type="button" variant="outline" size="sm" onClick={onBack} className="flex-1 bg-transparent">
             Cancel
           </Button>
-          <Button type="submit" size="sm" disabled={createBeamMutation.isLoading} className="flex-1">
-            {createBeamMutation.isLoading ? "Creating..." : "Create Beam"}
-          </Button>
+          <CreateButton
+            type="VIDEO"
+            senderName={senderName}
+            recipientName={recipientName}
+            message={message}
+            arEnabled={arEnabled}
+            isPublic={isPublic}
+            contentUrl={videoPreview || ""}
+          />
         </div>
       </form>
       <UploadS3Button
         id='fileInput'
         className="hidden"
         endpoint="videoUploader"
+        onUploadProgress={(progress) => {
+          setProgress(progress)
+          setIsUploading(true)
+        }}
         onClientUploadComplete={async (res) => {
           const data = res
           if (data?.url) {
-
             setVideoPreview(data.url)
           }
+          setIsUploading(false)
+          setProgress(0)
           toast.success("Video uploaded successfully!")
-        }
-        }
+        }}
         onUploadError={(error: Error) => {
           console.log("ERROR UPLOADING: ", error)
+          setIsUploading(false)
+          setProgress(0)
+          toast.error("Upload failed!")
         }}
       />
     </div>
