@@ -14,6 +14,7 @@ import { cn } from "~/lib/utils"
 import { useImageGeneration, type GeneratedImage } from "~/hooks/use-image-generation"
 import { api } from "~/utils/api"
 import { useRouter } from "next/navigation"
+import { CreateButton } from "../../create/create-button"
 
 type Category = "CHRISTMAS" | "EVERYDAY" | "BIRTHDAY"
 type CreationMode = "transform" | "generate"
@@ -130,43 +131,7 @@ export function FinalizeStep({
       })
     },
   })
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
 
-    if (!senderName || !recipientName || !message) {
-      toast({
-        title: "Missing fields",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsSubmitting(true)
-
-    try {
-
-      createBeamMutation.mutate({
-        type: "AI",
-        senderName,
-        recipientName,
-        message,
-        contentUrl: selectedImage,
-        customPrompt: customPrompt,
-        arEnabled,
-        isPublic,
-      })
-
-
-    } catch {
-      toast({
-        title: "Beam created!",
-        description: "Your Card Beam is ready to share. (Preview mode)",
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
 
   return (
     <div className="space-y-8">
@@ -184,7 +149,7 @@ export function FinalizeStep({
 
 
 
-      <form onSubmit={handleSubmit}>
+      <form >
         <div className="grid gap-8 lg:grid-cols-2">
           {/* Preview card */}
           <div className="space-y-4">
@@ -420,10 +385,15 @@ export function FinalizeStep({
               </div>
             </div>
 
-            <Button type="submit" size="lg" disabled={isSubmitting} className="w-full gap-2">
-              <Send className="h-4 w-4" />
-              {isSubmitting ? "Publishing..." : "Publish Beam"}
-            </Button>
+            <CreateButton
+              type="VIDEO"
+              senderName={senderName}
+              recipientName={recipientName}
+              message={message}
+              arEnabled={arEnabled}
+              isPublic={isPublic}
+              contentUrl={selectedImage ?? ""}
+            />
           </div>
         </div>
       </form>
