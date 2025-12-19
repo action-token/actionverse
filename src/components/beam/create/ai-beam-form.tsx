@@ -169,7 +169,7 @@ export function AIBeamForm({ onBack }: AIBeamFormProps) {
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full  p-6 m-2">
       <Button variant="destructive" onClick={onBack} className="mb-6">
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back

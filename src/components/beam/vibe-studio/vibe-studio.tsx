@@ -88,7 +88,7 @@ export function VibeStudio({ onBack }: VibeStudioProps) {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen p-6 m-2">
       {/* Header with step indicator */}
       <div className="border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="mx-auto max-w-5xl px-6 py-4">

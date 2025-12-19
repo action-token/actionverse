@@ -172,4 +172,36 @@ export const beamRouter = createTRPCRouter({
       where: { id: input.id },
     })
   }),
+  recentBeams: publicProcedure.query(async ({ ctx }) => {
+    return ctx.db.beam.findMany({
+      where: {
+        isPublic: true,
+        type: {
+          in: [
+            BeamType.AI,
+            BeamType.IMAGE,
+            BeamType.CARD
+          ]
+        }
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        reactions: true,
+        comments: true,
+        _count: {
+          select: {
+            reactions: true,
+            comments: true
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    })
+  }),
 })

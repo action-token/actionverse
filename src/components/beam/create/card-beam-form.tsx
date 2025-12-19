@@ -9,7 +9,7 @@ interface CardBeamFormProps {
 
 export function CardBeamForm({ onBack }: CardBeamFormProps) {
   return (
-    <div className="">
+    <div className=" p-6 m-2">
       <Button variant="destructive" onClick={onBack} className="mb-6">
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back

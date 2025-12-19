@@ -19,32 +19,35 @@ interface MediaLoadOptions {
 }
 
 export async function loadMedia(
-    qrItem: MarketAssetType,
+    qrItem: {
+        type: "VIDEO" | "IMAGE" | "MUSIC" | "THREE_D" | "CARD" | "AI"
+        url: string
+    },
     locar: LocationBased,
     modelLat: number,
     modelLng: number,
     options?: MediaLoadOptions,
 ) {
-    if (qrItem.asset.mediaType === "THREE_D") {
-        return await load3DModelIntoScene(qrItem.asset.mediaUrl, locar, modelLat, modelLng, options)
+    if (qrItem.type === "THREE_D") {
+        return await load3DModelIntoScene(qrItem.url, locar, modelLat, modelLng, options)
     }
 
-    if (qrItem.asset.mediaType === "IMAGE") {
-        return await loadImageIntoScene(qrItem, options)
-    } else if (qrItem.asset.mediaType === "VIDEO") {
-        return await loadVideoIntoScene(qrItem, options)
-    } else if (qrItem.asset.mediaType === "MUSIC") {
-        return await loadAudioIntoScene(qrItem, options)
+    if (qrItem.type === "IMAGE" || qrItem.type === "CARD" || qrItem.type === "AI") {
+        return await loadImageIntoScene(qrItem.url, options)
+    } else if (qrItem.type === "VIDEO") {
+        return await loadVideoIntoScene(qrItem.url, options)
+    } else if (qrItem.type === "MUSIC") {
+        return await loadAudioIntoScene(qrItem.url, options)
     }
 
     throw new Error(`Unsupported media type`)
 }
 
-async function loadImageIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
+async function loadImageIntoScene(url: string, options?: MediaLoadOptions) {
     try {
-        console.log(`Loading image into scene: ${qrItem.asset.mediaUrl}`)
+        console.log(`Loading image into scene: ${url}`)
         options?.onProgress?.(25)
-        const imageMesh = await createImagePlane(qrItem.asset.mediaUrl)
+        const imageMesh = await createImagePlane(url)
         positionMediaInScene(imageMesh, 5, 1.6, undefined, true)
 
         options?.onProgress?.(75)
@@ -64,12 +67,11 @@ async function loadImageIntoScene(qrItem: MarketAssetType, options?: MediaLoadOp
     }
 }
 
-export async function loadVideoIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
+export async function loadVideoIntoScene(url: string, options?: MediaLoadOptions) {
     try {
-        console.log(`Loading video into scene: ${qrItem.asset.mediaUrl}`)
+        console.log(`Loading video into scene: ${url}`)
         options?.onProgress?.(25)
-        const { mesh, video, texture } = await createVideoPlane(qrItem.asset.mediaUrl)
-
+        const { mesh, video, texture } = await createVideoPlane(url)
         positionMediaInScene(mesh as THREE.Object3D<THREE.Object3DEventMap>, 3, 1.6, undefined, true)
 
         const unmuteButton = document.createElement("button")
@@ -130,18 +132,18 @@ export async function loadVideoIntoScene(qrItem: MarketAssetType, options?: Medi
     }
 }
 
-async function loadAudioIntoScene(qrItem: MarketAssetType, options?: MediaLoadOptions) {
+async function loadAudioIntoScene(url: string, options?: MediaLoadOptions) {
     try {
-        console.log(`Loading audio into scene: ${qrItem.asset.mediaUrl}`)
+        console.log(`Loading audio into scene: ${url}`)
         options?.onProgress?.(25)
 
-        const result = createAudioIndicator(qrItem.asset.name)
+        const result = createAudioIndicator("AUDIO")
         const mesh = result.mesh
         const audio = result.audio
 
         positionMediaInScene(mesh as THREE.Object3D<THREE.Object3DEventMap>, 3, 1.6, undefined, true)
 
-        audio.src = qrItem.asset.mediaUrl
+        audio.src = url
         audio.crossOrigin = "anonymous"
 
         const playButton = document.createElement("button")

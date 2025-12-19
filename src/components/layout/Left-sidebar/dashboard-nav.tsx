@@ -10,8 +10,8 @@ import { cn } from "~/lib/utils"
 import { useSidebar } from "~/hooks/use-sidebar"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
 import { Icons } from "./icons"
-import type { NavItem } from "~/types/icon-types"
 import { Button } from "~/components/shadcn/ui/button"
+import { NavItem } from "~/types/icon-types"
 
 interface DashboardNavProps {
   items: NavItem[]
@@ -50,6 +50,13 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
     if (itemHref === "/bounty") {
       // Check if the current path is /bounty or starts with /bounty/
       return path === "/bounty" || path.startsWith("/bounty/")
+    }
+
+    if (itemHref.startsWith("/beam")) {
+      if (itemHref === "/beam") {
+        return path === "/beam"
+      }
+      return path === itemHref || path.startsWith(itemHref + "/")
     }
 
     // Check if it's a sub-route (except for /bounty/* which is handled above)
@@ -92,7 +99,9 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
                         "flex  items-center  justify-start gap-2 overflow-hidden rounded-md text-sm font-medium",
                         isActive
                           ? "shadow-sm shadow-black bg-primary text-primary-foreground"
-                          : "transparent  border-primary bg-secondary hover:bg-primary/10 font-bold text-primary shadow-sm shadow-black",
+                          : item.icon === "back"
+                            ? "bg-red-500 text-white hover:bg-red-600 shadow-sm shadow-black"
+                            : "transparent  border-primary bg-secondary hover:bg-primary/10 font-bold text-primary shadow-sm shadow-black",
                         item.disabled && "cursor-not-allowed opacity-80",
                         !isMinimized && "w-full",
                       )}

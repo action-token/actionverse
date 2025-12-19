@@ -37,19 +37,27 @@ export async function getPlatformAssetNumberForUSD(
 }
 
 export async function getXLMPrice(): Promise<number> {
-  try {
-    const response = await axios.get<{ price: string }>(
-      "https://api.stellar.expert/explorer/public/asset/XLM",
-    );
-    // console.log(response.data);
+  if (env.NEXT_PUBLIC_STELLAR_PUBNET) {
+    try {
+      const response = await axios.get<{ price: string }>(
+        "https://api.stellar.expert/explorer/public/asset/XLM",
+      );
+      // console.log(response.data);
 
-    const xlmUsdPrice = parseFloat(response.data.price);
+      const xlmUsdPrice = parseFloat(response.data.price);
 
-    return xlmUsdPrice;
-  } catch (error) {
-    console.error("Error fetching XLM USD price:", error);
-    throw error;
+      return xlmUsdPrice;
+
+    } catch (error) {
+      console.error("Error fetching XLM USD price:", error);
+      throw error;
+    }
   }
+  else {
+    return 0.5;
+
+  }
+
 }
 
 export async function getAssetPrice(): Promise<number> {
@@ -89,21 +97,26 @@ export async function getPlatformTokenNumberForUSD(
 }
 
 export async function getAssetToUSDCRate(): Promise<number> {
-  try {
-    // https://api.stellar.expert/explorer/public/asset/USDC-GCTDHOF4JMAULZKOX5DKAYHF3JDEQMED73JFMNCJZTO2DMDEJW6VSWIS
-    const response = await axios.get<PlatformAssetInfo>(
-      `https://api.stellar.expert/explorer/public/asset/${USDC_ASSET_CODE}-${USDC_ISSUER}`,
-    );
+  if (env.NEXT_PUBLIC_STELLAR_PUBNET) {
+    try {
+      // https://api.stellar.expert/explorer/public/asset/USDC-GCTDHOF4JMAULZKOX5DKAYHF3JDEQMED73JFMNCJZTO2DMDEJW6VSWIS
+      const response = await axios.get<PlatformAssetInfo>(
+        `https://api.stellar.expert/explorer/public/asset/${USDC_ASSET_CODE}-${USDC_ISSUER}`,
+      );
 
-    const platformAssetInfo = response.data;
-    const price = platformAssetInfo.price;
+      const platformAssetInfo = response.data;
+      const price = platformAssetInfo.price;
 
-    return price ?? 0.000531;
-  } catch (error) {
-    console.error(
-      `Error fetching ${USDC_ASSET_CODE}-${USDC_ISSUER} price:`,
-      error,
-    );
-    throw error;
+      return price ?? 0.000531;
+    } catch (error) {
+      console.error(
+        `Error fetching ${USDC_ASSET_CODE}-${USDC_ISSUER} price:`,
+        error,
+      );
+      throw error;
+    }
+  }
+  else {
+    return 0.2
   }
 }

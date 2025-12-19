@@ -17,7 +17,7 @@ import { PLATFORM_ASSET } from "~/lib/stellar/constant";
 import { api } from "~/utils/api";
 import { useSidebar } from "~/hooks/use-sidebar";
 import { DashboardNav } from "./Left-sidebar/dashboard-nav";
-import { LeftBottom, LeftNavigation } from "./Left-sidebar/sidebar";
+import { BeamNavigation, LeftBottom, LeftNavigation } from "./Left-sidebar/sidebar";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
 import dynamic from "next/dynamic";
 
@@ -29,7 +29,11 @@ const ChristmasWindChimeAnimation = dynamic(() => import('../christmas/Christmas
 });
 
 function Header() {
+    const router = useRouter()
     const { isSheetOpen, setIsSheetOpen } = useSidebar();
+    const isBeamRoute = router.pathname.startsWith("/beam")
+
+    const navigationItems = isBeamRoute ? BeamNavigation : LeftNavigation
 
     return (
         <header className="sticky w-full top-0 z-50 h-22  bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -75,7 +79,7 @@ function Header() {
                                 </SheetHeader>
                                 <div className="flex h-full w-full flex-col items-center justify-between p-2 no-scrollbar overflow-y-auto">
                                     <div className="flex h-full   w-full overflow-x-hidden flex-col py-2">
-                                        <DashboardNav items={LeftNavigation} />
+                                        <DashboardNav items={navigationItems} />
                                     </div>
                                     <div className="flex h-full w-full flex-col items-center">
                                         <LeftBottom />

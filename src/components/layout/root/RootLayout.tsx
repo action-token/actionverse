@@ -55,7 +55,7 @@ export default function Layout({
   ];
   const isPublicRoute = publicRoutes.includes(router.pathname);
   const isAugmentedRealityRoute = router.pathname.startsWith("/action/ar");
-  const isHideSidebar = router.pathname.startsWith("/beam")
+
   const isHomeRoute = router.pathname === "/";
   const handleToggle = () => {
     toggle();
@@ -115,56 +115,43 @@ export default function Layout({
         <BottomPlayerProvider>
 
           <div className={clsx("flex  w-full flex-col", className)}>
-            {router.pathname !== "/" && <Header />}
-            {
-              isHideSidebar ? (session.status === "authenticated" ? (
-                <>
-                  {children}
+            {!(router.pathname === "/" || router.pathname.includes("/beam/ar")) && <Header />}
+            <div className="flex w-full scrollbar-hide ">
+              <div className="relative  bg-secondary shadow-sm shadow-primary">
+                <Sidebar />
+                <ChevronLeft
+                  className={cn(
+                    "fixed left-[17rem] top-24 z-50 hidden cursor-pointer rounded-full border-2 bg-background text-3xl text-foreground shadow-sm shadow-black transition-all duration-500 ease-in-out md:block",
+                    isMinimized && "left-[4.5rem] rotate-180",
+                    isHomeRoute ? "top-0" : "top-24",
+                  )}
+                  onClick={handleToggle}
+                />
+              </div>
+
+              {session.status === "authenticated" ? (
+                <div className="w-full  overflow-y-auto    scrollbar-hide ">
+                  {isArtistRoutes ? (
+                    <>
+                      <CreatorLayout>{children}</CreatorLayout>
+                    </>
+                  ) : (
+                    <>{children}</>
+                  )}
                   <ModalProvider />
-                </>
+                  <Toaster />
+                </div>
+              ) : isPublicRoute ? (
+                <div className="w-full   overflow-y-auto    scrollbar-hide ">
+                  <>{children}</>
+                  <LoginRequiredModal />
+                </div>
               ) : (
                 <div className="flex h-screen w-full items-center justify-center ">
                   <ConnectWalletButton />
                 </div>
-              )) : <div className="flex w-full scrollbar-hide ">
-
-                <div className="relative  bg-secondary shadow-sm shadow-primary">
-                  <Sidebar />
-                  <ChevronLeft
-                    className={cn(
-                      "fixed left-[17rem] top-24 z-50 hidden cursor-pointer rounded-full border-2 bg-background text-3xl text-foreground shadow-sm shadow-black transition-all duration-500 ease-in-out md:block",
-                      isMinimized && "left-[4.5rem] rotate-180",
-                      isHomeRoute ? "top-0" : "top-24",
-                    )}
-                    onClick={handleToggle}
-                  />
-                </div>
-
-                {session.status === "authenticated" ? (
-                  <div className="w-full  overflow-y-auto    scrollbar-hide ">
-                    {isArtistRoutes ? (
-                      <>
-                        <CreatorLayout>{children}</CreatorLayout>
-                      </>
-                    ) : (
-                      <>{children}</>
-                    )}
-                    <ModalProvider />
-                    <Toaster />
-                  </div>
-                ) : isPublicRoute ? (
-                  <div className="w-full   overflow-y-auto    scrollbar-hide ">
-                    <>{children}</>
-                    <LoginRequiredModal />
-                  </div>
-                ) : (
-                  <div className="flex h-screen w-full items-center justify-center ">
-                    <ConnectWalletButton />
-                  </div>
-                )}
-              </div>
-            }
-
+              )}
+            </div>
           </div>
           <StemPlayer />
           <FallingSnowflakes />

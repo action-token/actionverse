@@ -125,14 +125,6 @@ export function CustomizeStep({ onComplete, onBack, category, style }: Customize
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="space-y-2 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
-          <Wand2 className="h-7 w-7 text-primary" />
-        </div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Make it yours</h1>
-        <p className="text-lg text-muted-foreground">Customize your card with AI</p>
-      </div>
 
       <div className="mx-auto max-w-2xl space-y-6">
         {/* Creation mode toggle */}

@@ -26,7 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Progress } from "~/components/shadcn/ui/progress"
 import { format } from "date-fns"
-import type { MediaType } from "@prisma/client"
+import type { Beam, MediaType } from "@prisma/client"
 import { AssetType, MarketAssetType } from "~/types/market/market-asset-type"
 import useWindowDimensions from "~/lib/state/augmented-reality/useWindowWidth"
 import ArCard from "~/components/common/ar-card"
@@ -40,14 +40,14 @@ import { getUserBalances } from "~/lib/augmented-reality/get-balances"
 
 
 
-const QRARPage = () => {
+const BeamARPage = () => {
     const router = useRouter()
     const { id } = router.query as { id: string }
     const winDim = useWindowDimensions()
 
     const [show3DModal, setShow3DModal] = useState(false)
     const [mediaLoaded, setMediaLoaded] = useState(false)
-    const [qrItem, setQrItem] = useState<MarketAssetType | null>(null)
+    const [qrItem, setQrItem] = useState<Beam | null>(null)
 
     // State management
     const [fetchError, setFetchError] = useState<string | null>(null)
@@ -56,7 +56,6 @@ const QRARPage = () => {
     const [modelLoaded, setModelLoaded] = useState(false)
     const [showInfo, setShowInfo] = useState(false)
     const [modelError, setModelError] = useState<string | null>(null)
-    const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null)
     const [distanceToModel, setDistanceToModel] = useState<number>(0)
     const [debugMode, setDebugMode] = useState(false)
     const [loadingProgress, setLoadingProgress] = useState<number>(0)
@@ -72,7 +71,6 @@ const QRARPage = () => {
     const sceneRef = useRef<THREE.Scene | null>(null)
     const cameraRef = useRef<THREE.Camera | null>(null)
     const modelRef = useRef<THREE.Group | null>(null)
-    const clockRef = useRef<THREE.Clock>(new THREE.Clock())
     const mixerRef = useRef<THREE.AnimationMixer | null>(null)
     const locarRef = useRef<LocationBased | null>(null)
     const originalScaleRef = useRef<number>(1)
@@ -86,18 +84,13 @@ const QRARPage = () => {
     const modelOffsetDistance = 5
 
 
-    const balances = useQuery({
-        queryKey: ["balances"],
-        queryFn: getUserBalances,
-        onSuccess: (data) => {
-            console.log("User platform asset data:", data)
-            if (data?.balances) {
-                setBalance(data.balances);
-                setActive(true);
-            }
-        }
-    })
+    const { data: beam, isLoading, refetch, isError } = api.beam.getById.useQuery({ id })
 
+
+    useEffect(() => {
+        if (!beam) return
+        setQrItem(beam)
+    }, [beam, id])
 
     const requestDeviceOrientationPermission = async () => {
         return new Promise<boolean>((resolve) => {
@@ -344,8 +337,8 @@ const QRARPage = () => {
                     const modelPos = calculateOffsetPosition(latitude, longitude, 0, modelOffsetDistance)
 
                     void loadMedia({
-                        type: qrItem!.asset.mediaType as MediaType,
-                        url: qrItem!.asset.mediaUrl,
+                        type: qrItem?.type ?? "IMAGE",
+                        url: qrItem?.contentUrl ?? "",
                     }, locar, modelPos.lat, modelPos.lng, {
                         onProgress: setLoadingProgress,
                         onError: (error) => {
@@ -357,9 +350,9 @@ const QRARPage = () => {
                             setIsLoadingModel(false)
                             setLoadingProgress(100)
                             setMediaLoaded(true)
-                            if (qrItem?.asset?.mediaType === "THREE_D") {
-                                setShow3DModal(true)
-                            }
+                            // if (qrItem?.asset?.mediaType === "THREE_D") {
+                            //     setShow3DModal(true)
+                            // }
                         },
                         modelScale,
                         mixerRef,
@@ -472,33 +465,6 @@ const QRARPage = () => {
     }, [qrItem, debugMode, retryCount, permissionStep])
 
 
-
-    useEffect(() => {
-        const fetchQRItem = async () => {
-            if (!id) return
-            try {
-                setFetchError(null)
-                const response = await fetch(new URL("api/game/qr/get-qr-by-id", BASE_URL).toString(), {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ qrId: id }),
-                })
-                if (!response.ok) {
-                    throw new Error("Failed to fetch QR item")
-                }
-                console.log("Response received for QR item fetch")
-                const data = (await response.json()) as MarketAssetType
-                setQrItem(data)
-            } catch (err) {
-                console.error("Error fetching QR item:", err)
-                setFetchError("An unexpected error occurred while fetching QR item.")
-            }
-        }
-        void fetchQRItem()
-    }, [id])
 
     // Permission screen
     if (isInitializing && permissionStep !== "complete") {
@@ -672,7 +638,7 @@ const QRARPage = () => {
                 <FileText className="h-6 w-6" />
             </Button>
             {/* Info Card */}
-            {qrItem && (
+            {/* {qrItem && (
                 <ArCard
                     brandName={addrShort(qrItem.asset.creatorId ?? "Unknown")}
                     description={qrItem.asset.description ?? "No description available."}
@@ -680,8 +646,8 @@ const QRARPage = () => {
 
 
                 />
-            )}
-            {mediaLoaded && qrItem?.asset?.mediaType === "THREE_D" && (
+            )} */}
+            {/* {mediaLoaded && qrItem?.asset?.mediaType === "THREE_D" && (
                 <div className="absolute bottom-48 right-4 z-50 space-y-2">
                     <div className="bg-black/70 text-white px-2 py-1 rounded text-xs text-center">
                         Scale: {modelScale.toFixed(1)}x
@@ -701,7 +667,7 @@ const QRARPage = () => {
                         <Minus className="w-4 h-4" />
                     </Button>
                 </div>
-            )}
+            )} */}
 
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40">
                 <div className="w-8 h-8 border-2 border-white rounded-full opacity-70">
@@ -717,7 +683,7 @@ const QRARPage = () => {
                 {mediaLoaded && <p className="text-xs text-green-300">Media loaded successfully</p>}
             </div> */}
 
-            {showInfo && qrItem && (
+            {/* {showInfo && qrItem && (
                 <div className="absolute top-16 left-4 right-4 z-40 max-w-md mx-auto">
                     <Card className="bg-black/90 text-white border-gray-700">
                         <CardHeader>
@@ -766,9 +732,9 @@ const QRARPage = () => {
                         </CardContent>
                     </Card>
                 </div>
-            )}
+            )} */}
         </>
     )
 }
 
-export default QRARPage
+export default BeamARPage

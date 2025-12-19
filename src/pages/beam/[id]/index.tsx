@@ -304,7 +304,9 @@ export default function BeamPage() {
                     </Button>
                   )}
                   {beam.arEnabled && (
-                    <Button onClick={handleDownload} className="gap-2 col-span-2 ">
+                    <Button onClick={async () => {
+                      await router.push(`/beam/ar/${beam.id}`)
+                    }} className="gap-2 col-span-2 ">
                       <Link className="h-4 w-4" />
                       Open In Augmented Reality
                     </Button>
