@@ -410,7 +410,7 @@ const ARPage = () => {
         setTimeout(() => {
           setShowSuccess(false)
           setCollectedPin(null)
-          router.push("/action/home")
+          router.push("/actions/home")
         }, 2000)
       }, 4000)
     } catch (error) {

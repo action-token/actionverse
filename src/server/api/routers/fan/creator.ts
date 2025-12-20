@@ -757,7 +757,6 @@ export const creatorRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { limit, cursor } = input;
-
       // Parse the cursor (which is the last creator's ID)
       const cursorObj = cursor ? { id: cursor } : undefined;
 
@@ -765,14 +764,14 @@ export const creatorRouter = createTRPCRouter({
       const creators = await ctx.db.creator.findMany({
         where: {
           approved: true,
-          followers: {
+          temporalFollows: {
             none: {
               userId: ctx.session.user.id
             }
           }
         },
         orderBy: {
-          followers: {
+          temporalFollows: {
             _count: 'desc',
           },
         },
@@ -789,7 +788,7 @@ export const creatorRouter = createTRPCRouter({
           profileUrl: true,
           _count: {
             select: {
-              followers: true,
+              temporalFollows: true,
             },
           },
         },
@@ -803,7 +802,7 @@ export const creatorRouter = createTRPCRouter({
       }
 
       // Check if current user follows the creators
-      const followedCreators = await ctx.db.follow.findMany({
+      const followedCreators = await ctx.db.temporalFollow.findMany({
         where: {
           creatorId: {
             in: creators.map((creator) => creator.id),
@@ -828,6 +827,144 @@ export const creatorRouter = createTRPCRouter({
     }
     ),
 
+  getAllCreators: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().default(5),
+        cursor: z.string().nullish(), // cursor for pagination
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { limit, cursor } = input;
+      // Parse the cursor (which is the last creator's ID)
+      const cursorObj = cursor ? { id: cursor } : undefined;
+
+      // Fetch creators with cursor-based pagination
+      const creators = await ctx.db.creator.findMany({
+        where: {
+          approved: true,
+
+        },
+        orderBy: {
+          temporalFollows: {
+            _count: 'desc',
+          },
+        },
+        take: limit + 1, // take one extra to determine if there are more
+        ...(cursorObj && {
+          cursor: {
+            id: cursorObj.id,
+          },
+          skip: 1, // Skip the cursor
+        }),
+        select: {
+          id: true,
+          name: true,
+          profileUrl: true,
+          _count: {
+            select: {
+              temporalFollows: true,
+            },
+          },
+        },
+      });
+
+      // Check if we have more items
+      let nextCursor: typeof cursor = undefined;
+      if (creators.length > limit) {
+        const nextItem = creators.pop(); // Remove the extra item
+        nextCursor = nextItem?.id;
+      }
+
+      // Check if current user follows the creators
+      const followedCreators = await ctx.db.temporalFollow.findMany({
+        where: {
+          creatorId: {
+            in: creators.map((creator) => creator.id),
+          },
+          userId: ctx.session.user.id,
+        },
+      });
+
+      const creatorsWithFollow = creators.map((creator) => {
+        const isFollowed = followedCreators.some((follow) => follow.creatorId === creator.id);
+        return {
+          ...creator,
+          isFollowed,
+          isCurrentUser: creator.id === ctx.session.user.id,
+        };
+      });
+
+      return {
+        creators: creatorsWithFollow,
+        nextCursor,
+      };
+    }
+    ),
+
+  checkCurrentUserFollowsCreator: protectedProcedure
+    .input(z.object({ creatorId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const isFollowing = await ctx.db.temporalFollow.findUnique({
+        where: {
+          userId_creatorId: {
+            userId: ctx.session.user.id,
+            creatorId: input.creatorId,
+          },
+        },
+      });
+
+      return { isFollowing: !!isFollowing };
+    }),
+  checkCurrentUserMemberCreator: protectedProcedure
+    .input(z.object({ creatorId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      const creator = await ctx.db.creator.findUniqueOrThrow({
+        where: { id: input.creatorId },
+        include: { pageAsset: true },
+      });
+      if (!creator) {
+        throw new Error("Creator not found");
+      }
+      const isMemeber = await ctx.db.follow.findUnique({
+        where: {
+          userId_creatorId: {
+            userId: ctx.session.user.id,
+            creatorId: input.creatorId,
+          },
+        },
+      });
+      const userAcc = await StellarAccount.create(userId);
+      let wasMember = false;
+      if (creator.pageAsset) {
+        const { code, issuer } = creator.pageAsset;
+
+        const hasTrust = userAcc.hasTrustline(code, issuer);
+        if (hasTrust) {
+          wasMember = true;
+        }
+      }
+      else {
+        if (creator.customPageAssetCodeIssuer) {
+          const [code, issuer] = creator.customPageAssetCodeIssuer.split("-");
+          const issuerVal = z.string().length(56).safeParse(issuer);
+          if (issuerVal.success && code) {
+            const hasTrust = userAcc.hasTrustline(code, issuerVal.data);
+            if (hasTrust) {
+              wasMember = true;
+            }
+          }
+        }
+      }
+
+
+
+
+      return { isMemeber: !!isMemeber, wasMember };
+    }),
+
   getFollowedCreators: protectedProcedure
     .input(
       z.object({
@@ -845,14 +982,14 @@ export const creatorRouter = createTRPCRouter({
       const creators = await ctx.db.creator.findMany({
         where: {
           approved: true,
-          followers: {
+          temporalFollows: {
             some: {
               userId: ctx.session.user.id
             }
           }
         },
         orderBy: {
-          followers: {
+          temporalFollows: {
             _count: 'desc',
           },
         },
@@ -869,7 +1006,7 @@ export const creatorRouter = createTRPCRouter({
           profileUrl: true,
           _count: {
             select: {
-              followers: true,
+              temporalFollows: true,
             },
           },
           subscriptions: {

@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "~/lib/utils"
 import Image from "next/image"
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
-import { api } from "~/utils/api"
+
 import { useSession } from "next-auth/react"
 
 interface NavItem {
@@ -31,7 +31,7 @@ export default function ARLayout({
     const tabBarHeight = 100
     const curveHeight = 50
     const width = 375 // Assuming a fixed width for the SVG, can be dynamic based on screen size
-    const isARRoute = router.pathname.includes("/action/ar") || router.pathname.includes("/action/qr");
+    const isARRoute = router.pathname.includes("/actions/ar") || router.pathname.includes("/actions/qr");
 
 
     // Fix for mobile viewport height issues
@@ -60,12 +60,11 @@ export default function ARLayout({
         // Check if we're navigating away from an AR route
         const isLeavingARRoute =
             previousRoute &&
-            (previousRoute.includes("/action/ar") || previousRoute.includes("/action/qr/"))
+            (previousRoute.includes("/actions/ar") || previousRoute.includes("/actions/qr/"))
 
         const isEnteringARRoute =
             currentRoute &&
-            (currentRoute.includes("/action/ar") || currentRoute.includes("/action/qr/"))
-
+            (currentRoute.includes("/actions/ar") || currentRoute.includes("/actions/qr/"))
         if (isLeavingARRoute && !isEnteringARRoute) {
             console.log(`Navigating away from AR route: ${previousRoute} -> ${currentRoute}`)
             cleanupARResources()
@@ -165,25 +164,25 @@ export default function ARLayout({
         {
             id: 1,
             icon: Home,
-            href: "/action/home",
+            href: "/actions/home",
             label: "MAP",
         },
         {
             id: 2,
             icon: FolderOpen,
-            href: "/action/collections",
+            href: "/actions/collections",
             label: "COLLECTION",
         },
         {
             id: 3,
             icon: Globe,
-            href: "/action/organizations",
+            href: "/actions/organizations",
             label: "HUBS",
         },
         {
             id: 4,
             icon: User,
-            href: "/action/profile",
+            href: "/actions/profile",
             label: "PROFILE",
         },
     ]
@@ -197,7 +196,7 @@ export default function ARLayout({
         // Check if we're navigating away from an AR route
         const isLeavingARRoute =
             currentRoute &&
-            (currentRoute.includes("/action/ar") || currentRoute.includes("/action/qr/"))
+            (currentRoute.includes("/actions/ar") || currentRoute.includes("/actions/qr/"))
 
         if (isLeavingARRoute) {
             console.log(`Navigation triggered cleanup from: ${currentRoute} to: ${targetRoute}`)
@@ -230,9 +229,9 @@ export default function ARLayout({
             const currentRoute = router.pathname
             const isLeavingARRoute =
                 currentRoute &&
-                (currentRoute.includes("/action/ar") || currentRoute.includes("/action/qr/"))
+                (currentRoute.includes("/actions/ar") || currentRoute.includes("/actions/qr/"))
 
-            if (isLeavingARRoute && !url.includes("/action/ar") && !url.includes("/action/qr/")) {
+            if (isLeavingARRoute && !url.includes("/actions/ar") && !url.includes("/actions/qr/")) {
                 console.log(`Browser navigation cleanup from: ${currentRoute} to: ${url}`)
                 cleanupARResources()
             }
@@ -368,7 +367,7 @@ export default function ARLayout({
                                     id: 5,
                                     icon: Target,
                                     label: "AR",
-                                    href: "/action/actions",
+                                    href: "/actions/actions",
                                 })
                             }
                             className="absolute right-[42%] transform -translate-x-1/2 -top-10"

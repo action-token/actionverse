@@ -1,13 +1,13 @@
 "use client"
 
-
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
 import { format } from "date-fns"
-import { ImageIcon, MapPin } from "lucide-react"
+import { MapPin, DollarSign, Coins } from "lucide-react"
 import { ScrollArea } from "~/components/shadcn/ui/scroll-area"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { useFormContext } from "react-hook-form"
-import { ScavengerHuntFormValues } from "../modal/scavenger-hunt-modal"
+import type { ScavengerHuntFormValues } from "../modal/scavenger-hunt-modal"
+import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 
 export default function ReviewForm() {
     const { getValues } = useFormContext<ScavengerHuntFormValues>()
@@ -125,12 +125,45 @@ export default function ReviewForm() {
                             <li>
                                 <span className="font-medium">Number of Winners:</span> {formData.winners}
                             </li>
-                            <li>
-                                <span className="font-medium">Total Prize in USD:</span> ${formData.priceUSD}
+                            <li className="flex items-center gap-2">
+                                <span className="font-medium">Reward Type:</span>
+                                {formData.rewardType === "usdc" ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-800 text-xs font-medium">
+                                        <DollarSign className="h-3 w-3" />
+                                        USDC
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-medium">
+                                        <Coins className="h-3 w-3" />
+                                        {PLATFORM_ASSET.code.toUpperCase()}
+                                    </span>
+                                )}
                             </li>
                             <li>
-                                <span className="font-medium">Total Prize in Action:</span> {formData.priceBandcoin}
+                                <span className="font-medium">Total Prize:</span>{" "}
+                                {formData.rewardType === "usdc" ? (
+                                    <span className="text-green-600 font-semibold">${(formData.usdcAmount ?? 0).toFixed(2)} USDC</span>
+                                ) : (
+                                    <span className="text-blue-600 font-semibold">
+                                        {(formData.platformAssetAmount ?? 0).toFixed(5)} {PLATFORM_ASSET.code.toUpperCase()}
+                                    </span>
+                                )}
                             </li>
+                            {(formData.winners ?? 1) > 1 && (
+                                <li>
+                                    <span className="font-medium">Prize Per Winner:</span>{" "}
+                                    {formData.rewardType === "usdc" ? (
+                                        <span className="text-green-600">
+                                            ${((formData.usdcAmount ?? 0) / (formData.winners ?? 1)).toFixed(2)} USDC
+                                        </span>
+                                    ) : (
+                                        <span className="text-blue-600">
+                                            {((formData.platformAssetAmount ?? 0) / (formData.winners ?? 1)).toFixed(5)}{" "}
+                                            {PLATFORM_ASSET.code.toUpperCase()}
+                                        </span>
+                                    )}
+                                </li>
+                            )}
                             <li>
                                 <span className="font-medium">Required Balance:</span> {formData.requiredBalance}
                             </li>
@@ -155,7 +188,7 @@ export default function ReviewForm() {
                                                 <h5 className="font-medium">
                                                     {formData.useSameInfoForAllSteps
                                                         ? `${formData.defaultLocationInfo?.title ?? "Location"} ${index + 1}`
-                                                        : location.title ?? "Unnamed Location"}
+                                                        : (location.title ?? "Unnamed Location")}
                                                 </h5>
                                                 <p className="text-xs text-muted-foreground">
                                                     Coordinates: {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}

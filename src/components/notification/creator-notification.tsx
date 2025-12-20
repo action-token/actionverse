@@ -56,6 +56,8 @@ const getNotificationColor = (type: NotificationType) => {
             return "bg-blue-100"
         case NotificationType.FOLLOW:
             return "bg-purple-100"
+        case NotificationType.MEMBER:
+            return "bg-teal-100"
         case NotificationType.BOUNTY_PARTICIPANT:
         case NotificationType.BOUNTY_SUBMISSION:
             return "bg-amber-100"
@@ -375,8 +377,7 @@ const Notifications = () => {
                                                                 className="h-10 w-10 rounded-full object-cover border border-gray-200"
                                                                 src={
                                                                     notification.notificationObject.actor.image ??
-                                                                    "/images/icons/avatar-icon.png" ??
-                                                                    "/images/action/logo.png"
+                                                                    "https://app.action-tokens.com/images/logo.png"
                                                                 }
                                                                 alt={notification.notificationObject.actor.name ?? "User"}
                                                             />

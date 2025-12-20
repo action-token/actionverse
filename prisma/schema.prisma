@@ -46,6 +46,7 @@ enum NotificationType {
     POST
     SHOP_ASSET
     FOLLOW
+    MEMBER
     REPLY
     BOUNTY
     BOUNTY_PARTICIPANT
@@ -145,7 +146,23 @@ model User_Asset {
     buyAt DateTime @default(now())
 }
 
+// Be  a member 
 model Follow {
+    id     Int    @id @default(autoincrement())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    creatorId String
+    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+    followAt DateTime @default(now())
+
+    // Unique constraint on userId and subscriptionId
+    @@unique([userId, creatorId])
+}
+
+// General Follow
+model TemporalFollow {
     id     Int    @id @default(autoincrement())
     userId String
     user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -230,8 +247,9 @@ model Creator {
     createdAt          DateTime            @default(now())
     Appearance         Appearance[]
 
-    ActionLocation ActionLocation[]
-    SellPageAsset  SellPageAsset[]
+    ActionLocation  ActionLocation[]
+    SellPageAsset   SellPageAsset[]
+    temporalFollows TemporalFollow[]
 
     @@index([bio, name])
 }
@@ -360,11 +378,12 @@ model User {
 
     BountyWinner BountyWinner[]
 
-    RedeemConsumer RedeemConsumer[]
-    bountyRedeems  BountyRedeem[]
-    beams          Beam[]
-    beamReactions  BeamReaction[]
-    beamComments   BeamComment[]
+    RedeemConsumer  RedeemConsumer[]
+    bountyRedeems   BountyRedeem[]
+    beams           Beam[]
+    beamReactions   BeamReaction[]
+    beamComments    BeamComment[]
+    temporalFollows TemporalFollow[]
 }
 
 model VerificationToken {
@@ -425,7 +444,8 @@ enum ItemPrivacy {
     FOR_SALE
     NOT_FOR_SALE
     PUBLIC
-    PRIVATE // only for followers
+    FOLLOWER // only for followers
+    PRIVATE // only for members
     TIER // tier based
 }
 

@@ -107,6 +107,8 @@ const Notifications = () => {
                 return `${actorName} commented on a post`
             case NotificationType.FOLLOW:
                 return `${actorName} followed you`
+            case NotificationType.MEMBER:
+                return `${actorName} became a member`
             case NotificationType.REPLY:
                 return `${actorName} replied to a comment`
             case NotificationType.POST:
@@ -285,8 +287,8 @@ const Notifications = () => {
                                                             className="h-10 w-10 rounded-full object-cover border border-gray-200"
                                                             src={
                                                                 notification.notificationObject.actor.image ??
-                                                                "/images/icons/avatar-icon.png" ??
-                                                                "/images/action/logo.png"
+                                                                "https://app.action-tokens.com/images/logo.png"
+
                                                             }
                                                             alt={notification.notificationObject.actor.name ?? "User"}
                                                         />

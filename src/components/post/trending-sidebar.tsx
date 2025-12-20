@@ -2,7 +2,6 @@
 import { Button } from "~/components/shadcn/ui/button"
 import { api } from "~/utils/api"
 import CustomAvatar from "../common/custom-avatar"
-import { useToast } from "~/hooks/use-toast"
 import { clientsign } from "package/connect_wallet"
 import { useState } from "react"
 import { useSession } from "next-auth/react"
@@ -11,11 +10,9 @@ import useNeedSign from "~/lib/hook"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Edit, Loader2, UserRoundPlus } from "lucide-react"
 import Link from "next/link"
+import toast from "react-hot-toast"
 
 export default function TrendingSidebar() {
-    const session = useSession()
-    const { needSign } = useNeedSign()
-    const { toast } = useToast()
 
     // Use infinite query for trending creators
     const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, refetch } =
@@ -32,69 +29,17 @@ export default function TrendingSidebar() {
     // Mutations
     const follow = api.fan.member.followCreator.useMutation({
         onSuccess: () => {
-            toast({
-                title: "Creator Followed",
-                variant: "default",
-            })
-            refetch()
+            toast.success("Creator Followed")
         },
-        onError: (e) =>
-            toast({
-                title: "Failed to follow creator",
-                variant: "destructive",
-            }),
-
-
+        onError: (e) => toast.error("Failed to follow creator"),
     })
 
 
+    const handleFollowClick = (creatorId: string) => {
+        follow.mutate({ creatorId: creatorId })
+    }
 
-    const followXDR = api.fan.trx.followCreatorTRX.useMutation({
-        onSuccess: async (xdr, variables) => {
-            if (xdr) {
-                if (xdr === true) {
-                    toast({
-                        title: "User already has trust in page asset",
-                        variant: "default",
-                    })
-                    follow.mutate({ creatorId: variables.creatorId })
-                } else {
-                    try {
-                        const res = await clientsign({
-                            presignedxdr: xdr,
-                            pubkey: session.data?.user.id,
-                            walletType: session.data?.user.walletType,
-                            test: clientSelect(),
-                        })
 
-                        if (res) {
-                            follow.mutate({ creatorId: variables.creatorId })
-                        } else
-                            toast({
-                                title: "Transaction failed while signing.",
-                                variant: "destructive",
-                            })
-                    } catch (e) {
-                        toast({
-                            title: "Transaction failed while signing.",
-                            variant: "destructive",
-                        })
-                    } finally {
-                    }
-                }
-            } else {
-                toast({
-                    title: "Transaction failed while signing.",
-                    variant: "destructive",
-                })
-            }
-        },
-        onError: (e) =>
-            toast({
-                title: "Transaction failed while signing.",
-                variant: "destructive",
-            }),
-    })
 
     // Loading state for initial data fetch
     if (isLoading) {
@@ -133,7 +78,7 @@ export default function TrendingSidebar() {
                                     href={`/organization/${creator.id}`}
                                 >
                                     <p className="font-medium">{creator.name}</p>
-                                    <p className="text-xs text-gray-500">{creator._count.followers} followers</p>
+                                    <p className="text-xs text-gray-500">{creator._count.temporalFollows} followers</p>
                                 </Link>
                                 {creator.isCurrentUser ? (
                                     <Button variant="ghost" size="sm" className="">
@@ -144,15 +89,11 @@ export default function TrendingSidebar() {
                                         variant="default"
                                         size="sm"
                                         className=" shadow-sm shadow-foreground"
-                                        onClick={() =>
-                                            followXDR.mutate({
-                                                creatorId: creator.id,
-                                                signWith: needSign(),
-                                            })
-                                        }
-                                        disabled={followXDR.isLoading}
+                                        onClick={() => handleFollowClick(creator.id)}
+
+                                        disabled={follow.isLoading}
                                     >
-                                        {followXDR.isLoading && followXDR.variables?.creatorId === creator.id ? (
+                                        {follow.isLoading && follow.variables?.creatorId === creator.id ? (
                                             <div className="flex items-center justify-center gap-2">
                                                 <Loader2 className="h-4 w-4 animate-spin" />
                                             </div>

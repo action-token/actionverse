@@ -197,7 +197,7 @@ export const BountyRoute = createTRPCRouter({
         });
       }
 
-      const followers = await ctx.db.follow.findMany({
+      const followers = await ctx.db.temporalFollow.findMany({
         where: { creatorId: ctx.session.user.id },
         select: { userId: true },
       });
@@ -291,7 +291,7 @@ export const BountyRoute = createTRPCRouter({
         });
       }
 
-      const followers = await ctx.db.follow.findMany({
+      const followers = await ctx.db.temporalFollow.findMany({
         where: { creatorId: ctx.session.user.id },
         select: { userId: true },
       });
@@ -359,7 +359,7 @@ export const BountyRoute = createTRPCRouter({
         });
       }
 
-      const followers = await ctx.db.follow.findMany({
+      const followers = await ctx.db.temporalFollow.findMany({
         where: { creatorId: ctx.session.user.id },
         select: { userId: true },
       });
@@ -426,7 +426,7 @@ export const BountyRoute = createTRPCRouter({
         });
       }
 
-      const followers = await ctx.db.follow.findMany({
+      const followers = await ctx.db.temporalFollow.findMany({
         where: { creatorId: ctx.session.user.id },
         select: { userId: true },
       });

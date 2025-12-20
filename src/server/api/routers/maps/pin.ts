@@ -88,6 +88,8 @@ export const pinRouter = createTRPCRouter({
 
       if (!tier) {
         privacy = ItemPrivacy.PUBLIC;
+      } else if (tier == "follower") {
+        privacy = ItemPrivacy.FOLLOWER;
       } else if (tier == "public") {
         privacy = ItemPrivacy.PUBLIC;
       } else if (tier == "private") {
@@ -164,7 +166,10 @@ export const pinRouter = createTRPCRouter({
 
       if (!tier) {
         privacy = ItemPrivacy.PUBLIC;
-      } else if (tier == "public") {
+      } else if (tier == "follower") {
+        privacy = ItemPrivacy.FOLLOWER;
+      }
+      else if (tier == "public") {
         privacy = ItemPrivacy.PUBLIC;
       } else if (tier == "private") {
         privacy = ItemPrivacy.PRIVATE;

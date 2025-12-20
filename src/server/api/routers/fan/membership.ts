@@ -307,21 +307,6 @@ export const membershipRouter = createTRPCRouter({
   //   return subscriptiosn;
   // }),
 
-  isFollower: protectedProcedure
-    .input(z.object({ creatorId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const isFollower = await ctx.db.follow.findUnique({
-        where: {
-          userId_creatorId: {
-            creatorId: input.creatorId,
-            userId: ctx.session.user.id,
-          },
-        },
-      });
-      if (isFollower) return true;
-      else false;
-    }),
-
   followCreator: protectedProcedure
     .input(z.object({ creatorId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -329,7 +314,7 @@ export const membershipRouter = createTRPCRouter({
       if (userId === input.creatorId) {
         throw new Error("You can't follow yourself");
       }
-      const fol = await ctx.db.follow.create({
+      const fol = await ctx.db.temporalFollow.create({
         data: { creatorId: input.creatorId, userId },
       });
 
@@ -350,8 +335,55 @@ export const membershipRouter = createTRPCRouter({
         },
       });
     }),
+  becomeMember: protectedProcedure
+    .input(z.object({ creatorId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      if (userId === input.creatorId) {
+        throw new Error("You can't follow yourself");
+      }
+      const fol = await ctx.db.follow.create({
+        data: { creatorId: input.creatorId, userId },
+      });
 
+      await ctx.db.notificationObject.create({
+        data: {
+          actorId: ctx.session.user.id,
+          entityType: NotificationType.MEMBER,
+          entityId: fol.id,
+          isUser: false,
+          Notification: {
+            create: [
+              {
+                notifierId: input.creatorId,
+                isCreator: true, // Notification for the creator
+              },
+            ],
+          },
+        },
+      });
+    }),
   unFollowCreator: protectedProcedure
+    .input(z.object({ creatorId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      if (userId === input.creatorId) {
+        throw new Error("You can't unfollow yourself");
+      }
+      const fol = await ctx.db.temporalFollow.findFirst({
+        where: { creatorId: input.creatorId, userId },
+      });
+
+      if (!fol) {
+        throw new Error("You are not following this creator");
+      }
+
+      // delete his follow
+      await ctx.db.temporalFollow.delete({
+        where: { id: fol.id },
+      });
+    }),
+  removeFromMember: protectedProcedure
     .input(z.object({ creatorId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;

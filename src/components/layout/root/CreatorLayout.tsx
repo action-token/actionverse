@@ -402,7 +402,7 @@ const CreatorNavigation: DockerItem[] = [
   {
     href: "/organization/gift",
     icon: "creator",
-    label: "GIFT",
+    label: "Followers",
     color: "bg-emerald-500",
   },
   {

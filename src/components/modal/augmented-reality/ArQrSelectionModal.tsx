@@ -20,7 +20,7 @@ export default function ArQrSelectionModal() {
         setLoadingForAR(true)
         setTimeout(() => {
             onClose()
-            router.push("/action/ar")
+            router.push("/actions/ar")
             setLoadingForAR(false)
         }, 2000)
     }
@@ -29,7 +29,7 @@ export default function ArQrSelectionModal() {
         setLoadingForQR(true)
         setTimeout(() => {
             onClose()
-            router.push("/action/qr")
+            router.push("/actions/qr")
             setLoadingForQR(false)
         }, 2000)
     }

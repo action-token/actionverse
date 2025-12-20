@@ -98,7 +98,7 @@ export default function GiftPage() {
   );
   const [remainingToken, setRemainingToken] = useState<number>(0);
   const [tokenBalance, setTokenBalance] = useState<number>(0);
-  const [activeTab, setActiveTab] = useState<string>("gift");
+  const [activeTab, setActiveTab] = useState<string>("fans");
   const { needSign } = useNeedSign();
   const {
     register,
@@ -244,20 +244,21 @@ export default function GiftPage() {
           </motion.div>
 
           <Tabs
-            defaultValue="gift"
+            defaultValue="fans"
             value={activeTab}
             onValueChange={setActiveTab}
             className="w-full"
           >
             <TabsList className="mb-6 grid grid-cols-2">
-              <TabsTrigger value="gift" className="flex items-center gap-2">
-                <Gift className="h-4 w-4" />
-                <span>Send Gift</span>
-              </TabsTrigger>
               <TabsTrigger value="fans" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 <span>Your Fans</span>
               </TabsTrigger>
+              <TabsTrigger value="gift" className="flex items-center gap-2">
+                <Gift className="h-4 w-4" />
+                <span>Send Gift</span>
+              </TabsTrigger>
+
             </TabsList>
 
             <TabsContent value="gift">

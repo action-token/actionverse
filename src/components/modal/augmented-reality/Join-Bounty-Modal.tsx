@@ -57,7 +57,7 @@ const JoinBountyModal = () => {
       });
       setData({ item: data.bounty });
       onClose();
-      router.push(`/action/actions/${data.bounty?.id}`);
+      router.push(`/actions/actions/${data.bounty?.id}`);
     },
     onError: () => {
       toast.error("Failed to join bounty");

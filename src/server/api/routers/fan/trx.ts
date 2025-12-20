@@ -330,7 +330,7 @@ export const trxRouter = createTRPCRouter({
       const creatorId = ctx.session.user.id;
       const { pubkey, amount, assetCode, assetIssuer } = input
 
-      const isFollower = await ctx.db.follow.findUnique({
+      const isMemeber = await ctx.db.follow.findUnique({
         where: {
           userId_creatorId: {
             creatorId: creatorId,
@@ -338,7 +338,7 @@ export const trxRouter = createTRPCRouter({
           },
         },
       });
-      if (!isFollower) throw new Error("User is not a follower");
+      if (!isMemeber) throw new Error("User is not a Member of your fan club");
 
       const creator = await db.creator.findUniqueOrThrow({
         where: { id: creatorId },

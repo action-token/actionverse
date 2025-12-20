@@ -1,274 +1,355 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-
 import { ItemPrivacy } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 import { z } from "zod";
 import { EnableCors } from "~/server/api-cors";
 import { db } from "~/server/db";
 import { Location } from "~/types/game/location";
-import { avaterIconUrl as abaterIconUrl } from "../brands";
+import { avaterIconUrl } from "../brands";
 import { StellarAccount } from "~/lib/stellar/marketplace/test/Account";
-import { m } from "framer-motion";
+
+export const WadzzoIconURL = "https://app.action-tokens.com/images/action/logo.png";
+
+// Type definitions
+interface ScavengerData {
+  allGroupIds: Set<string>;
+  currentStepGroupIds: Set<string>;
+}
+
+interface FollowData {
+  followerOnlyIds: string[];
+  memberIds: string[];
+}
+
+interface LocationGroupQuery {
+  id: string;
+  title: string;
+  description: string | null;
+  link: string | null;
+  image: string | null;
+  remaining: number;
+  multiPin: boolean;
+  privacy: ItemPrivacy;
+  creatorId: string;
+  locations: Array<{
+    id: string;
+    latitude: number;
+    longitude: number;
+    autoCollect: boolean;
+    consumers: Array<{
+      userId: string;
+    }>;
+  }>;
+  Subscription: {
+    price: number;
+  } | null;
+  creator: {
+    name: string;
+    profileUrl: string | null;
+    pageAsset: {
+      code: string;
+      issuer: string;
+    } | null;
+  };
+}
+
+interface GetLocationsParams {
+  userId: string;
+  userAcc: StellarAccount;
+  scavengerData: ScavengerData;
+  followData: FollowData | null;
+}
+
+// Schema validation
+const querySchema = z.object({ filterId: z.string() });
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
   await EnableCors(req, res);
+
+  // Auth check
   const token = await getToken({ req });
-
-  if (!token) {
-    res.status(401).json({
-      error: "User is not authenticated",
-    });
-    return;
-  }
-  const data = z.object({ filterId: z.string() }).safeParse(req.query); // Use req.query instead of req.body
-
-  if (!data.success) {
-    console.log("data.error", data.error);
-    return res.status(400).json({
-      error: data.error,
-    });
-  }
-
-  const userId = token.sub;
+  const userId = token?.sub;
 
   if (!userId) {
-    return res.status(401).json({
-      error: "User is not authenticated",
-    });
+    return res.status(401).json({ error: "User is not authenticated" });
   }
 
-  const userAcc = await StellarAccount.create(userId);
+  // Validate query params
+  const queryResult = querySchema.safeParse(req.query);
+  if (!queryResult.success) {
+    console.error("Validation error:", queryResult.error);
+    return res.status(400).json({ error: queryResult.error });
+  }
 
-  // Step 1: Get all scavenger bounties user is participating in
-  const getUserActionBounties = await db.bounty.findMany({
+  try {
+    // Parallel execution of independent queries
+    const [userAcc, scavengerData, followData] = await Promise.all([
+      StellarAccount.create(userId),
+      getScavengerGroupIds(userId),
+      queryResult.data.filterId === "1" ? getFollowedCreators(userId) : Promise.resolve(null)
+    ]);
+
+    // Get locations with optimized query
+    const locations = await getLocations({
+      userId,
+      userAcc,
+      scavengerData,
+      followData
+    });
+
+    console.log("Locations found:", locations.length);
+    return res.status(200).json({ locations });
+
+  } catch (error) {
+    console.error("API error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+// Optimized: Filter at DB level, select only needed fields
+async function getScavengerGroupIds(userId: string): Promise<ScavengerData> {
+  const bounties = await db.bounty.findMany({
     where: {
       bountyType: "SCAVENGER_HUNT",
-
+      participants: {
+        some: { userId }
+      }
     },
     select: {
-      ActionLocation: true,
-      participants: {
+      ActionLocation: {
         select: {
-          userId: true,
-          currentStep: true,
-        },
+          locationGroupId: true,
+          serial: true
+        }
+      },
+      participants: {
+        where: { userId },
+        select: { currentStep: true }
       }
     }
-  })
+  });
 
-  // Collect all scavenger group IDs and currentStep+1 group IDs
-  const allScavengerGroupIdsSet = new Set<string>();
-  const currentStepGroupIdsSet = new Set<string>();
-  for (const bounty of getUserActionBounties) {
-    const currentStep = bounty.participants.find((p) => p.userId === userId)?.currentStep ?? -1;
+  const allGroupIds = new Set<string>();
+  const currentStepGroupIds = new Set<string>();
+
+  for (const bounty of bounties) {
+    const currentStep = bounty.participants[0]?.currentStep ?? -1;
+
     for (const action of bounty.ActionLocation) {
-      allScavengerGroupIdsSet.add(action.locationGroupId);
+      allGroupIds.add(action.locationGroupId);
       if (action.serial === currentStep + 1) {
-        currentStepGroupIdsSet.add(action.locationGroupId);
+        currentStepGroupIds.add(action.locationGroupId);
       }
     }
   }
 
-  let creatorsId: string[] | undefined = undefined;
-  if (data.data.filterId === "1") {
+  return { allGroupIds, currentStepGroupIds };
+}
 
-    const getAllFollowedBrand = await db.creator.findMany({
-      where: {
-        followers: {
-          some: {
-            userId: userId,
-          },
-        },
+// Optimized: Simplified query, select only needed fields
+async function getFollowedCreators(userId: string): Promise<FollowData> {
+  const creators = await db.creator.findMany({
+    where: {
+      OR: [
+        { followers: { some: { userId } } },
+        { temporalFollows: { some: { userId } } }
+      ]
+    },
+    select: {
+      id: true,
+      followers: {
+        where: { userId },
+        select: { userId: true }
       },
-      include: {
-        pageAsset: true,
-        subscriptions: true,
-      },
-    });
+      temporalFollows: {
+        where: { userId },
+        select: { userId: true }
+      }
+    }
+  });
 
-    // type Creator = {
-    //   id: string;
-    //   pageAsset: {
-    //     code: string;
-    //     issuer: string;
-    //   };
-    // };
+  const followerOnlyIds: string[] = [];
+  const memberIds: string[] = [];
 
-    // const creators: Creator[] = getAllFollowedBrand
-    //   .map((brand) => {
-    //     if (brand.pageAsset) {
-    //       const { code, issuer } = brand.pageAsset;
+  for (const creator of creators) {
+    const isMember = creator.followers.length > 0;
+    const isTemporalFollower = creator.temporalFollows.length > 0;
 
-    //       return {
-    //         id: brand.id,
-    //         pageAsset: {
-    //           code,
-    //           issuer,
-    //         },
-    //       };
-    //     }
-    //     return null;
-    //   })
-    //   .filter((creator): creator is Creator => creator !== null);
-
-    creatorsId = getAllFollowedBrand.map((brand) => brand.id);
+    if (isMember) {
+      memberIds.push(creator.id);
+    } else if (isTemporalFollower) {
+      followerOnlyIds.push(creator.id);
+    }
   }
 
-  // now i am extracting this brands pins
+  console.log("Temporal followers:", followerOnlyIds.length);
+  console.log("Members with private access:", memberIds.length);
 
-  async function pinsForCreators(creatorsId?: string[]) {
+  return { followerOnlyIds, memberIds };
+}
 
-    const locationGroup = await db.locationGroup.findMany({
-      where: {
-        AND: [
-          {
-            approved: true,
-            startDate: { lte: new Date() },
-            endDate: { gte: new Date() },
-            subscriptionId: null,
-            remaining: { gt: 0 },
-            hidden: false,
-          },
-          {
-            // Include only:
-            // - groups NOT in any scavenger (to avoid duplicates)
-            // OR
-            // - current step+1 scavenger pins
-            OR: [
-              {
-                NOT: {
-                  id: {
-                    in: Array.from(allScavengerGroupIdsSet),
-                  },
-                },
-              },
-              {
-                id: {
-                  in: Array.from(currentStepGroupIdsSet),
-                },
-              },
-            ],
-          },
-        ],
-        // Filter by creator if given (filterId = 1)
-        ...(creatorsId && {
-          creatorId: { in: creatorsId },
-          privacy: { in: [ItemPrivacy.PUBLIC, ItemPrivacy.PRIVATE, ItemPrivacy.TIER] },
-        }),
-        // Else only show public pins
-        ...(!creatorsId && {
-          privacy: { in: [ItemPrivacy.PUBLIC] },
-        }),
-      },
-      include: {
-        locations: {
-          include: {
-            consumers: {
-              select: {
-                userId: true,
-              },
-            },
-          },
-        },
-        Subscription: true,
-        creator: {
-          include: {
-            pageAsset: {
-              select: {
-                code: true,
-                issuer: true,
-              },
-            },
-          },
-        },
-      },
-    });
+async function getLocations({
+  userId,
+  userAcc,
+  scavengerData,
+  followData
+}: GetLocationsParams): Promise<Location[]> {
 
+  // Build privacy filter
+  const privacyConditions = buildPrivacyConditions(followData);
 
-    const pins = locationGroup
-      .flatMap((group) => {
-        const multiPin = group.multiPin;
-        const hasConsumedOne = group.locations.some((location) =>
-          location.consumers.some((consumer) => consumer.userId === userId),
-        );
-        if (group.privacy === ItemPrivacy.TIER) {
-          const creatorPageAsset = group.creator.pageAsset;
-          const subscription = group.Subscription;
+  // Build scavenger filter
+  const scavengerFilter = buildScavengerFilter(scavengerData);
 
-          if (creatorPageAsset && subscription) {
-            const bal = userAcc.getTokenBalance(
-              creatorPageAsset.code,
-              creatorPageAsset.issuer,
-            );
-            if (bal >= subscription.price) {
-              if (multiPin) {
-                return group.locations.map((location) => ({
-                  ...location,
-                  ...group,
-                  id: location.id,
-                  collected: location.consumers.some(
-                    (c) => c.userId === userId,
-                  ),
-                }));
-              } else {
-                return group.locations.map((location) => ({
-                  ...location,
-                  ...group,
-                  id: location.id,
-                  collected: hasConsumedOne,
-                }));
-              }
-            }
-          }
-        } else {
-          if (multiPin) {
-            return group.locations.map((location) => ({
-              ...location,
-              ...group,
-              id: location.id,
-              collected: location.consumers.some((c) => c.userId === userId),
-            }));
-          } else {
-            return group.locations.map((location) => ({
-              ...location,
-              ...group,
-              id: location.id,
-              collected: hasConsumedOne,
-            }));
+  // Single optimized query with all filters
+  const locationGroups = await db.locationGroup.findMany({
+    where: {
+      approved: true,
+      startDate: { lte: new Date() },
+      endDate: { gte: new Date() },
+      subscriptionId: null,
+      remaining: { gt: 0 },
+      hidden: false,
+      ...scavengerFilter,
+      ...privacyConditions
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      link: true,
+      image: true,
+      remaining: true,
+      multiPin: true,
+      privacy: true,
+      creatorId: true,
+      locations: {
+        select: {
+          id: true,
+          latitude: true,
+          longitude: true,
+          autoCollect: true,
+          consumers: {
+            where: { userId },
+            select: { userId: true }
           }
         }
-      })
-      .filter((location) => location !== undefined);
+      },
+      Subscription: {
+        select: {
+          price: true
+        }
+      },
+      creator: {
+        select: {
+          name: true,
+          profileUrl: true,
+          pageAsset: {
+            select: {
+              code: true,
+              issuer: true
+            }
+          }
+        }
+      }
+    }
+  });
 
-    const locations: Location[] = pins.map((location) => {
-      return {
+  return processLocationGroups(locationGroups, userId, userAcc);
+}
+
+function buildPrivacyConditions(followData: FollowData | null) {
+  if (!followData) {
+    return { privacy: ItemPrivacy.PUBLIC };
+  }
+
+  const { followerOnlyIds, memberIds } = followData;
+  const conditions: Array<{
+    creatorId: { in: string[] };
+    privacy: { in: ItemPrivacy[] };
+  }> = [];
+
+  if (followerOnlyIds.length > 0) {
+    conditions.push({
+      creatorId: { in: followerOnlyIds },
+      privacy: { in: [ItemPrivacy.PUBLIC, ItemPrivacy.FOLLOWER] }
+    });
+  }
+
+  if (memberIds.length > 0) {
+    conditions.push({
+      creatorId: { in: memberIds },
+      privacy: { in: [ItemPrivacy.PUBLIC, ItemPrivacy.FOLLOWER, ItemPrivacy.PRIVATE, ItemPrivacy.TIER] }
+    });
+  }
+
+  return conditions.length > 0 ? { OR: conditions } : { privacy: ItemPrivacy.PUBLIC };
+}
+
+function buildScavengerFilter(scavengerData: ScavengerData) {
+  const { allGroupIds, currentStepGroupIds } = scavengerData;
+
+  if (allGroupIds.size === 0) {
+    return {};
+  }
+
+  return {
+    OR: [
+      { id: { notIn: Array.from(allGroupIds) } },
+      { id: { in: Array.from(currentStepGroupIds) } }
+    ]
+  };
+}
+
+function processLocationGroups(
+  locationGroups: LocationGroupQuery[],
+  userId: string,
+  userAcc: StellarAccount
+): Location[] {
+  const locations: Location[] = [];
+
+  for (const group of locationGroups) {
+    const hasConsumedAny = group.locations.some((loc) =>
+      loc.consumers.length > 0
+    );
+
+    // Check TIER privacy eligibility
+    if (group.privacy === ItemPrivacy.TIER) {
+      const asset = group.creator.pageAsset;
+      const subscription = group.Subscription;
+
+      if (!asset || !subscription) continue;
+
+      const balance = userAcc.getTokenBalance(asset.code, asset.issuer);
+      if (balance < subscription.price) continue;
+    }
+
+    // Process locations based on multiPin setting
+    for (const location of group.locations) {
+      const collected = group.multiPin
+        ? location.consumers.length > 0
+        : hasConsumedAny;
+
+      locations.push({
         id: location.id,
         lat: location.latitude,
         lng: location.longitude,
-        title: location.title,
-        description: location.description ?? "No description provided",
-        brand_name: location.creator.name,
-        url: location.link ?? "https://app.action-tokens.com/",
-        image_url:
-          location.image ?? location.creator.profileUrl ?? WadzzoIconURL,
-        collected: location.collected,
-        collection_limit_remaining: location.remaining,
+        title: group.title,
+        description: group.description ?? "No description provided",
+        brand_name: group.creator.name,
+        url: group.link ?? "https://app.action-tokens.com/",
+        image_url: group.image ?? group.creator.profileUrl ?? WadzzoIconURL,
+        collected,
+        collection_limit_remaining: group.remaining,
         auto_collect: location.autoCollect,
-        brand_image_url: location.creator.profileUrl ?? abaterIconUrl,
-        brand_id: location.creatorId,
-        public: true,
-      };
-    });
-
-    return locations;
+        brand_image_url: group.creator.profileUrl ?? avaterIconUrl,
+        brand_id: group.creatorId,
+      });
+    }
   }
 
-  const locations = await pinsForCreators(creatorsId);
-
-  res.status(200).json({ locations });
+  return locations;
 }
-
-export const WadzzoIconURL = "https://app.action-tokens.com/images/action/logo.png";

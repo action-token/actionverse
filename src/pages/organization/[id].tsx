@@ -41,7 +41,7 @@ import MarketAssetComponent from "~/components/common/market-asset"
 import { getAssetBalanceFromBalance } from "~/lib/stellar/marketplace/test/acc"
 import { clientsign } from "package/connect_wallet"
 import { clientSelect } from "~/lib/stellar/fan/utils"
-import FollowCreatorButton from "~/components/creator/follow-creator-button"
+import FollowAndMembershipButton from "~/components/creator/follow-creator-button"
 
 export default function ArtistProfile() {
     const router = useRouter();
@@ -60,7 +60,6 @@ export default function ArtistProfile() {
     // API calls
     const creator = api.fan.creator.getCreator.useQuery({ id: id ?? "" })
     const subscriptionPackages = api.fan.creator.getCreatorPackages.useQuery({ id: id ?? "" })
-    const isFollowing = api.fan.member.isFollower.useQuery({ creatorId: id ?? "" })
     const accBalances = api.wallate.acc.getUserPubAssetBallances.useQuery(undefined, {
         enabled: !!session.data?.user?.id,
     })
@@ -350,7 +349,9 @@ export default function ArtistProfile() {
                             <div className="flex items-center justify-between mb-8">
                                 <h1 className="text-2xl md:text-3xl font-bold">{creator.data.name}{"'s"} Profile</h1>
                                 <div className="flex items-center gap-2">
-                                    <FollowCreatorButton creatorId={creator.data.id} />
+                                    <FollowAndMembershipButton creatorId={creator.data.id} creatorName={creator.data.name}
+                                        hasPageAsset={!!creator.data.pageAsset || !!creator.data.customPageAssetCodeIssuer}
+                                    />
 
                                 </div>
                             </div>
