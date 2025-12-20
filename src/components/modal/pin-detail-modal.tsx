@@ -145,7 +145,7 @@ const PinDetailAndActionsModal = () => {
         onSuccess: async (data) => {
             if (data.item) {
                 await utils.maps.pin.getCreatorPins.refetch()
-
+                await utils.maps.pin.getMyPins.refetch()
                 toast.success("Pin deleted successfully")
                 handleClose()
             } else {
