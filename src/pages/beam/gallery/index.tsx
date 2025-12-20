@@ -217,7 +217,7 @@ export default function GalleryPage() {
                       </div>
                     ) : (
                       <img
-                        src={beam.contentUrl ?? "/placeholder.svg?height=400&width=400&query=beam content"}
+                        src={beam.contentUrl ?? "https://app.action-tokens.com/images/logo.png"}
                         alt={`${beam.type} Beam`}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                       />

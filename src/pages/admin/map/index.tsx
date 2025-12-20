@@ -263,7 +263,7 @@ const CreatorPins = memo(function CreatorPins({
     <>
       {adminPins.map((pin) => {
         const PinIcon = getPinIcon(pin.locationGroup?.type ?? PinType.OTHER)
-        const isExpired = pin.locationGroup?.endDate && new Date(pin.locationGroup.endDate) < new Date()
+        const isExpired = (pin.locationGroup?.endDate && new Date(pin.locationGroup.endDate) < new Date()) ?? false
         const isApproved = pin.locationGroup?.approved === true
         const isRemainingZero = pin.locationGroup?.remaining !== undefined && pin.locationGroup?.remaining <= 0
 
@@ -277,7 +277,7 @@ const CreatorPins = memo(function CreatorPins({
           >
             <div
               className={`relative flex items-center justify-center  shadow-xl transition-all duration-300 hover:scale-125 hover:shadow-2xl cursor-pointer group
-                ${(isExpired ?? isRemainingZero) ? "opacity-60 grayscale" : "opacity-100"}
+                ${(isExpired || isRemainingZero || !isApproved) ? "opacity-60 grayscale" : "opacity-100"}
                 ${!isApproved ? "opacity-80 bg-gray-500" : "bg-white/80 hover:bg-white/100"}
                ${pin.hidden ? "border-dashed border-red-500 border-2 opacity-60 disabled" : ""}
                 ${pin.autoCollect ? "rounded-none " : " ring-2 ring-green-400 rounded-full"}

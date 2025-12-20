@@ -137,8 +137,11 @@ async function generateGeminiImage(
                 if (response.candidates?.[0]?.content?.parts) {
                     for (const part of response.candidates[0].content.parts) {
                         if (part.inlineData?.data && part.inlineData?.mimeType) {
-                            const generatedImageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-                            items.push({ url: generatedImageUrl, type: "image" })
+                            const awsURL = await S3UploadService.uploadBase64Image(
+                                part.inlineData?.data,
+                                part.inlineData?.mimeType ?? "image/png",
+                            )
+                            items.push({ url: awsURL, type: "image" })
                             break
                         }
                     }

@@ -33,7 +33,7 @@ export function BeamContentCard({
 
   return (
     <div
-      className="relative cursor-pointer group h-[70vh]"
+      className="relative cursor-pointer group"
       style={{ perspective: "1400px" }}
       onClick={() => setIsFlipped(!isFlipped)}
     >
@@ -50,7 +50,7 @@ export function BeamContentCard({
           style={{ backfaceVisibility: "hidden" }}
         >
           <img
-            src={contentUrl ?? "/placeholder.svg?height=800&width=1200&query=beautiful beam content"}
+            src={contentUrl ?? "https://app.action-tokens.com/images/logo.png"}
             alt="Beam content"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
           />

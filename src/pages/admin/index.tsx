@@ -6,7 +6,7 @@ const AdminHome: React.FC = () => {
     const router = useRouter();
 
     useEffect(() => {
-        router.push("/admin/wallet");
+        router.push("/admin/admins");
     }, [router]);
 
     return (
