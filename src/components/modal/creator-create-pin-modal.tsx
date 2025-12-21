@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Controller, FormProvider, type SubmitHandler, useForm, useFormContext } from "react-hook-form"
 import { z } from "zod"
 import toast from "react-hot-toast"
-import { Loader, MapPin, ImageIcon, Settings, CheckCircle, Coins } from "lucide-react"
+import { Loader, MapPin, ImageIcon, Settings, CheckCircle, Coins, Calendar } from "lucide-react"
 import Image from "next/image"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
 import { Input } from "~/components/shadcn/ui/input"
@@ -326,7 +326,7 @@ export default function CreatePinModal() {
 
                                                     <div className="space-y-2">
                                                         <Label htmlFor="title" className="text-sm font-medium">
-                                                            Pin Title *
+                                                            Pin Title <span className="text-destructive">*</span>
                                                         </Label>
                                                         <Input
                                                             id="title"
@@ -379,7 +379,7 @@ export default function CreatePinModal() {
 
                                                         <div className="space-y-2">
                                                             <Label htmlFor="url" className="text-sm font-medium">
-                                                                URL / Link
+                                                                URL / Link <span className="text-destructive">*</span>
                                                             </Label>
                                                             <Input
                                                                 id="url"
@@ -393,76 +393,89 @@ export default function CreatePinModal() {
 
                                                     <ImageUploadField coverUrl={coverUrl} setCover={setCover} setValue={setValue} />
 
-                                                    <div className="flex flex-col gap-2">
-                                                        <div className="space-y-2">
-                                                            <Label htmlFor="startDate" className="text-sm font-medium">
-                                                                Start Date
-                                                            </Label>
-                                                            <Controller
-                                                                name="startDate"
-                                                                control={control}
-                                                                render={({ field }) => (
-                                                                    <Input
-                                                                        type="datetime-local"
-                                                                        id="startDate"
-                                                                        value={field.value ? formatDateForInput(new Date(field.value)) : formatDateForInput(today)}
-                                                                        onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                                                            const v = e.target.value
-                                                                            field.onChange(v ? new Date(v) : undefined)
-                                                                        }}
-                                                                        className="bg-input border-border focus:ring-ring"
-                                                                    />
-                                                                )}
-                                                            />
-                                                        </div>
 
-                                                        <div className="space-y-2">
-                                                            <Label htmlFor="endDate" className="text-sm font-medium">
-                                                                End Date
-                                                            </Label>
-                                                            <Controller
-                                                                name="endDate"
-                                                                control={control}
-                                                                render={({ field }) => (
-                                                                    <Input
-                                                                        type="datetime-local"
-                                                                        id="endDate"
-                                                                        value={field.value ? formatDateForInput(new Date(field.value)) : formatDateForInput(tomorrow)}
-                                                                        onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                                                            const v = e.target.value
-                                                                            field.onChange(v ? new Date(v) : undefined)
-                                                                        }}
-                                                                        className="bg-input border-border focus:ring-ring "
-                                                                    />
-                                                                )}
-                                                            />
-                                                            {errors.endDate && <p className="text-destructive text-sm">{errors.endDate.message}</p>}
-                                                        </div>
-                                                    </div>
                                                 </CardContent>
                                             </Card>
 
-                                            <Card>
-                                                <CardHeader>
-                                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                                        <Settings className="w-5 h-5 text-primary" />
-                                                        Collection & Tier Settings
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent className="flex flex-col gap-2">
-                                                    <TiersOptions />
-                                                    <CollectionInputs
+                                            <div className="flex flex-col gap-8">
+                                                <Card>
+                                                    <CardHeader>
+                                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                                            <Settings className="w-5 h-5 text-primary" />
+                                                            Collection & Tier Settings
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent className="flex flex-col gap-2">
+                                                        <TiersOptions />
+                                                        <CollectionInputs
 
 
-                                                        setSelectedToken={setSelectedToken}
-                                                        setRemainingBalance={setRemainingBalance}
-                                                        assetsQuery={assetsQuery}
+                                                            setSelectedToken={setSelectedToken}
+                                                            setRemainingBalance={setRemainingBalance}
+                                                            assetsQuery={assetsQuery}
 
-                                                        selectedToken={selectedToken}
-                                                        remainingBalance={remainingBalance}
-                                                    />
-                                                </CardContent>
-                                            </Card>
+                                                            selectedToken={selectedToken}
+                                                            remainingBalance={remainingBalance}
+                                                        />
+                                                    </CardContent>
+                                                </Card>
+                                                <Card>
+                                                    <CardHeader>
+                                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                                            <Calendar className="w-5 h-5 text-primary" />
+                                                            Schedule
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="flex flex-col gap-2">
+                                                            <div className="space-y-2">
+                                                                <Label htmlFor="startDate" className="text-sm font-medium">
+                                                                    Start Date <span className="text-destructive">*</span>
+                                                                </Label>
+                                                                <Controller
+                                                                    name="startDate"
+                                                                    control={control}
+                                                                    render={({ field }) => (
+                                                                        <Input
+                                                                            type="datetime-local"
+                                                                            id="startDate"
+                                                                            value={field.value ? formatDateForInput(new Date(field.value)) : formatDateForInput(today)}
+                                                                            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                                                                const v = e.target.value
+                                                                                field.onChange(v ? new Date(v) : undefined)
+                                                                            }}
+                                                                            className="bg-input border-border focus:ring-ring"
+                                                                        />
+                                                                    )}
+                                                                />
+                                                            </div>
+
+                                                            <div className="space-y-2">
+                                                                <Label htmlFor="endDate" className="text-sm font-medium">
+                                                                    End Date <span className="text-destructive">*</span>
+                                                                </Label>
+                                                                <Controller
+                                                                    name="endDate"
+                                                                    control={control}
+                                                                    render={({ field }) => (
+                                                                        <Input
+                                                                            type="datetime-local"
+                                                                            id="endDate"
+                                                                            value={field.value ? formatDateForInput(new Date(field.value)) : formatDateForInput(tomorrow)}
+                                                                            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                                                                const v = e.target.value
+                                                                                field.onChange(v ? new Date(v) : undefined)
+                                                                            }}
+                                                                            className="bg-input border-border focus:ring-ring "
+                                                                        />
+                                                                    )}
+                                                                />
+                                                                {errors.endDate && <p className="text-destructive text-sm">{errors.endDate.message}</p>}
+                                                            </div>
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
 
                                         </div>
 
@@ -522,8 +535,8 @@ export default function CreatePinModal() {
                                                             </div>
                                                         </div>
                                                         <div className="p-3 bg-muted rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">Radius</div>
-                                                            <div className="font-medium">{getValues("radius")} meters</div>
+                                                            <div className="text-sm text-muted-foreground">Radius </div>
+                                                            <div className="font-medium">{getValues("radius")} meters </div>
                                                         </div>
                                                     </div>
 
@@ -763,7 +776,7 @@ function CollectionInputs({
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                     <Label htmlFor="radius" className="text-sm font-medium">
-                        Radius (meters)
+                        Radius (meters) <span className="text-destructive">*</span>
                     </Label>
                     <Input
                         type="number"
@@ -778,7 +791,7 @@ function CollectionInputs({
 
                 <div className="space-y-2">
                     <Label htmlFor="pinNumber" className="text-sm font-medium">
-                        Number of Pins
+                        Number of Pins <span className="text-destructive">*</span>
                     </Label>
                     <Input
                         type="number"
@@ -794,7 +807,7 @@ function CollectionInputs({
 
             <div className="space-y-2">
                 <Label htmlFor="pinCollectionLimit" className="text-sm font-medium">
-                    Pin Collection Limit
+                    Pin Collection Limit <span className="text-destructive">*</span>
                 </Label>
                 <Input
                     type="number"
@@ -919,7 +932,7 @@ interface ImageUploadFieldProps {
 function ImageUploadField({ coverUrl, setCover, setValue }: ImageUploadFieldProps) {
     return (
         <div className="space-y-3">
-            <Label className="text-sm font-semibold text-gray-700">Pin Cover Image</Label>
+            <Label className="text-sm font-semibold text-gray-700">Pin Cover Image <span className="text-destructive">*</span></Label>
             <Card className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors duration-200">
                 <CardContent className="p-6 text-center">
                     <UploadS3Button
@@ -1001,7 +1014,7 @@ function TiersOptions() {
     if (tiersQuery.data) {
         return (
             <div className="space-y-2">
-                <Label className="text-sm font-medium">Choose Tier</Label>
+                <Label className="text-sm font-medium">Choose Tier <span className="text-destructive">*</span></Label>
                 <Controller
                     name="tier"
                     control={control}

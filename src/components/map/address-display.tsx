@@ -13,8 +13,8 @@ export function LocationAddressDisplay({
     const { address, loading } = useReverseGeolocation(latitude, longitude);
     return (
         <Badge>
-            <div className="flex items-center justify-between">
-                <span className="text-sm font-bold truncate">{loading ? "Loading..." : address}</span>
+            <div className="flex items-center justify-between text-center">
+                <span className="text-sm font-bold ">{loading ? "Loading..." : address}</span>
             </div>
         </Badge>
     )
