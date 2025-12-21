@@ -1,10 +1,9 @@
 "use client"
 
-import { Plus, Search, ChevronDown, MapPin, Target, Trophy } from "lucide-react"
+import { Plus, Search, MapPin, Target, Trophy } from "lucide-react"
 import { Input } from "~/components/shadcn/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/shadcn/ui/select"
 import type { sortOptionEnum } from "~/types/bounty/bounty-type"
-import { Button } from "~/components/shadcn/ui/button"
 import type { filterEnum } from "~/pages/bounty"
 import { Tabs, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
 import { useRouter } from "next/router"
@@ -12,13 +11,7 @@ import { useState } from "react"
 import CreateBountyModal from "~/components/modal/create-bounty-modal"
 import ScavengerHuntDialog from "~/components/modal/scavenger-hunt-modal"
 import CreateLocationBasedBountyModal from "~/components/modal/create-locationbased-bounty"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger
-} from "../shadcn/ui/dropdown-menu"
+
 export enum BountyTypeFilter {
     ALL = "ALL",
     GENERAL = "GENERAL",
@@ -45,44 +38,58 @@ export default function SearchAndSort({
     setTypeFilter: (value: BountyTypeFilter) => void
 }) {
     const router = useRouter()
-    const [dropdownOpen, setDropdownOpen] = useState(false)
     const [createBountyOpen, setCreateBountyOpen] = useState(false)
     const [scavengerHuntOpen, setScavengerHuntOpen] = useState(false)
     const [locationBasedOpen, setLocationBasedOpen] = useState(false)
+
+    const handleCreateBountySelect = (value: string) => {
+        switch (value) {
+            case "general":
+                setCreateBountyOpen(true)
+                break
+            case "scavenger":
+                setScavengerHuntOpen(true)
+                break
+            case "location":
+                setLocationBasedOpen(true)
+                break
+        }
+    }
+
     return (
         <div className="bg-card rounded-lg shadow-sm p-5 m-4">
             <div className="flex flex-col gap-5">
                 <div className="flex items-center justify-between">
-                    <h1 className="text-2xl font-bold hidden md:block">{
-                        router.pathname === "/organization/bounty"
-                            ? "Your Bounties"
-                            : "Discover Bounties"
-                    }</h1>
+                    <h1 className="text-2xl font-bold hidden md:block">
+                        {router.pathname === "/organization/bounty" ? "Your Bounties" : "Discover Bounties"}
+                    </h1>
 
                     {router.pathname === "/organization/bounty" && (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button className="ml-auto">
-                                    <Plus className="h-4 w-4 mr-2" /> Create <ChevronDown className="h-4 w-4 ml-2" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => { setCreateBountyOpen(true); setDropdownOpen(false) }} className="cursor-pointer">
-                                    <Trophy className="h-4 w-4 mr-2" />
-                                    <span>Create Bounty</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => { setScavengerHuntOpen(true); setDropdownOpen(false) }} className="cursor-pointer">
-                                    <Target className="h-4 w-4 mr-2" />
-                                    <span>Create Scavenger Hunt</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => { setLocationBasedOpen(true); setDropdownOpen(false) }} className="cursor-pointer">
-                                    <MapPin className="h-4 w-4 mr-2" />
-                                    <span>Create Location Based</span>
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        <Select onValueChange={handleCreateBountySelect}>
+                            <SelectTrigger className="w-auto gap-2 bg-primary text-primary-foreground hover:bg-primary/90 border-0 shadow-sm transition-colors">
+                                <SelectValue className="" placeholder="Create Bounty" />
+                            </SelectTrigger>
+                            <SelectContent className="min-w-[220px]">
+                                <SelectItem value="general" className="cursor-pointer">
+                                    <div className="flex items-center gap-3 py-1">
+                                        <Trophy className="h-4 w-4 text-amber-500" />
+                                        <span className="font-medium">Create Bounty</span>
+                                    </div>
+                                </SelectItem>
+                                <SelectItem value="scavenger" className="cursor-pointer">
+                                    <div className="flex items-center gap-3 py-1">
+                                        <Target className="h-4 w-4 text-red-500" />
+                                        <span className="font-medium">Create Scavenger Hunt</span>
+                                    </div>
+                                </SelectItem>
+                                <SelectItem value="location" className="cursor-pointer">
+                                    <div className="flex items-center gap-3 py-1">
+                                        <MapPin className="h-4 w-4 text-blue-500" />
+                                        <span className="font-medium">Create Location Based</span>
+                                    </div>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     )}
                 </div>
 
@@ -125,18 +132,19 @@ export default function SearchAndSort({
                     {setTypeFilter && typeFilter && (
                         <Tabs
                             value={typeFilter}
-                            onValueChange={(value) => setTypeFilter(
-                                value as BountyTypeFilter,
-                            )}
+                            onValueChange={(value) => setTypeFilter(value as BountyTypeFilter)}
                             className="w-full md:w-auto"
                         >
                             <TabsList className="grid w-full grid-cols-4">
                                 <TabsTrigger value="ALL">All Types</TabsTrigger>
-                                <TabsTrigger value="GENERAL">General  <p className="hidden md:block">&nbsp;Bounty</p>
+                                <TabsTrigger value="GENERAL">
+                                    General <p className="hidden md:block">&nbsp;Bounty</p>
                                 </TabsTrigger>
-                                <TabsTrigger value="LOCATION_BASED">Location <p className="hidden md:block">&nbsp;Bounty</p>
+                                <TabsTrigger value="LOCATION_BASED">
+                                    Location <p className="hidden md:block">&nbsp;Bounty</p>
                                 </TabsTrigger>
-                                <TabsTrigger value="SCAVENGER_HUNT">Scavenger <p className="hidden md:block">&nbsp;Bounty</p>
+                                <TabsTrigger value="SCAVENGER_HUNT">
+                                    Scavenger <p className="hidden md:block">&nbsp;Bounty</p>
                                 </TabsTrigger>
                             </TabsList>
                         </Tabs>
