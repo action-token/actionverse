@@ -54,7 +54,6 @@ import { api } from "~/utils/api"
 import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
 import { UploadS3Button } from "../common/upload-button"
 import { Editor } from "../common/quill-editor"
-import { useCreateBountyStore } from "../store/create-bounty-store"
 import { cn } from "~/lib/utils"
 import { USDC_ASSET_CODE, USDC_ISSUER } from "~/lib/usdc"
 
