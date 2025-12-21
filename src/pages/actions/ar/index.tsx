@@ -965,32 +965,6 @@ const ARPage = () => {
         <ArrowLeft className="h-6 w-6" /> Back
       </Button>
 
-      {/* Coins Counter */}
-      <div className="absolute top-4 right-4 z-50 bg-black/70 text-white px-3 py-2 rounded-lg">
-        <div className="flex items-center space-x-2">
-          <Coins className="w-5 h-5 text-yellow-400" />
-          <span className="font-semibold">{coinsLoaded} coins nearby</span>
-        </div>
-      </div>
-
-      {/* Navigation Controls */}
-      <div className="absolute top-20 right-4 z-50 space-y-2">
-        {!showPathToNearest ? (
-          <Button
-            onClick={showPathToNearestCoin}
-            className="bg-green-500/80 hover:bg-green-600/80 text-white border-none"
-            size="sm"
-          >
-            <Navigation className="w-4 h-4 mr-2" />
-            Show Path
-          </Button>
-        ) : (
-          <Button onClick={clearPath} className="bg-red-500/80 hover:bg-red-600/80 text-white border-none" size="sm">
-            <X className="w-4 h-4 mr-2" />
-            Clear Path
-          </Button>
-        )}
-      </div>
 
 
 

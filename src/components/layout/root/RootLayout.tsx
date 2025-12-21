@@ -75,7 +75,7 @@ export default function Layout({
     return (
       <>
         {session?.status === "authenticated" || router.pathname.includes("/actions/qr") ? (
-          <div className="h-screen w-full ">
+          <div className="h-screen w-full  overflow-hidden fixed inset-0 ">
             {
               isAugmentedRealityRoute ? (
 
@@ -85,11 +85,11 @@ export default function Layout({
                 </>
               ) : (
                 <>
-               
-                <ARLayout>
-                  <ARModalProvider />
-                  {children}
-                </ARLayout>
+
+                  <ARLayout>
+                    <ARModalProvider />
+                    {children}
+                  </ARLayout>
                 </>
               )
             }
