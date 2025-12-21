@@ -9,7 +9,7 @@ export default function AugmentedRealityPage() {
 
     useEffect(() => {
         // Redirect to the home page immediately when component mounts
-        router.push("/actions/home")
+        router.push("/action/home")
     }, [router])
 
     // Return a loading state while redirecting

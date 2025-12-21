@@ -290,7 +290,7 @@ const SingleCollectionItem = () => {
                         nearbyPins: data.collections ? [data.collections] : [],
                         singleAR: true,
                       })
-                      router.push("/actions/ar")
+                      router.push("/action/ar")
                     }}
                     className="w-full h-12 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-semibold rounded-2xl shadow-lg shadow-violet-500/25"
                   >

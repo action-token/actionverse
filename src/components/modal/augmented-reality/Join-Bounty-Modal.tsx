@@ -34,7 +34,7 @@ const JoinBountyModal = () => {
     onSuccess: async (data, variables) => {
       await utils.bounty.Bounty.getAllBounties.invalidate()
       onClose()
-      router.push(`/actions/actions/${variables.BountyId}`)
+      router.push(`/action/action/${variables.BountyId}`)
     },
     onError: (error) => {
       toast({

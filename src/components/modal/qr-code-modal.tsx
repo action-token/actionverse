@@ -50,7 +50,7 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
     const mediaUrl = qrItem.asset.mediaUrl
 
     // Generate QR code data URL
-    const qrData = `${BASE_URL}/actions/qr/${qrItem?.id}`
+    const qrData = `${BASE_URL}/action/qr/${qrItem?.id}`
 
     const getMediaTabLabel = () => {
         const labelMap: Record<string, { label: string; icon: React.ReactNode }> = {
@@ -144,7 +144,7 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                         <div className="bg-white p-4 rounded-lg shadow-sm border">
                                             <QRCode
                                                 id="qr-code-svg"
-                                                value={`${BASE_URL}/actions/qr/${qrItem?.id}`}
+                                                value={`${BASE_URL}/action/qr/${qrItem?.id}`}
                                                 size={256}
                                                 style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                                                 viewBox="0 0 256 256"

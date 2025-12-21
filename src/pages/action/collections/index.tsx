@@ -150,7 +150,7 @@ export default function CollectionsPage() {
 
     const handleCollectionClick = (location: ConsumedLocation) => {
         setData({ collections: location })
-        router.push(`/actions/collections/${location.id}`)
+        router.push(`/action/collections/${location.id}`)
     }
 
     if (locationsRes.isLoading) {

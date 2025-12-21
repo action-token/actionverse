@@ -54,7 +54,7 @@ export default function Layout({
     "/beam/[id]"
   ];
   const isPublicRoute = publicRoutes.includes(router.pathname);
-  const isAugmentedRealityRoute = router.pathname.startsWith("/actions/ar");
+  const isAugmentedRealityRoute = router.pathname.startsWith("/action/ar");
 
   const isHomeRoute = router.pathname === "/";
   const handleToggle = () => {
@@ -64,17 +64,17 @@ export default function Layout({
   if (router.pathname.includes("/albedo")) {
     return <div>{children}</div>;
   }
-  if (router.pathname.includes("/actions/")) {
-    if (router.pathname.includes("/actions/enter")) {
+  if (router.pathname.includes("/action/")) {
+    if (router.pathname.includes("/action/enter")) {
       return <>{children}</>;
 
     }
-    // if (router.pathname.includes("/actions/enter")) {
+    // if (router.pathname.includes("/action/enter")) {
     //   return <>{children}</>;
     // }
     return (
       <>
-        {session?.status === "authenticated" || router.pathname.includes("/actions/qr") ? (
+        {session?.status === "authenticated" || router.pathname.includes("/action/qr") ? (
           <div className="h-screen w-full  overflow-hidden fixed inset-0 ">
             {
               isAugmentedRealityRoute ? (

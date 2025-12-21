@@ -78,7 +78,7 @@ export default function QRScannerPage() {
                         const qrIndex = parts.indexOf("qr");
                         if (qrIndex !== -1 && parts[qrIndex + 1]) {
                             const id = parts[qrIndex + 1];
-                            router.push(`/actions/qr/${id}`);
+                            router.push(`/action/qr/${id}`);
                             return;
                         }
                     } catch { }
