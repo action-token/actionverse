@@ -127,15 +127,6 @@ export default function ARLayout({
                 }
             })
 
-            // Clear any remaining AR-related intervals or timeouts
-            // This is a bit aggressive but ensures cleanup
-            const highestTimeoutId = setTimeout(() => {
-                // Empty function for getting the highest timeout ID
-            }, 0)
-            for (let i = 0; i < Number(highestTimeoutId); i++) {
-                clearTimeout(i)
-            }
-
             // Force garbage collection if available (development only)
             if (typeof window !== "undefined" && "gc" in window) {
                 const windowWithGC = window as Window & { gc?: () => void }
@@ -255,7 +246,7 @@ export default function ARLayout({
             {/* Content area */}
             <AnimatePresence mode="wait">
                 <motion.div
-                    key={router.pathname}
+                    // key={router.pathname}
                     className="flex-1 relative z-10 pb-20 overflow-y-auto"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}

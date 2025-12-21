@@ -9,15 +9,13 @@ import { ConnectWalletButton } from "package/connect_wallet";
 import { ThemeProvider } from "../../providers/theme-provider";
 
 import { useRouter } from "next/router";
+import FallingSnowflakes from "~/components/christmas/FallingSnowflakes";
 import LoginRequiredModal from "~/components/modal/login-required-modal";
+import { StemPlayer } from "~/components/player/bottom-player";
+import { BottomPlayerProvider } from "~/components/player/context/bottom-player-context";
 import { MiniPlayerProvider } from "~/components/player/mini-player-provider";
+import ARModalProvider from "~/components/providers/augmented-reality/augmented-modal-provider";
 import ModalProvider from "~/components/providers/modal-provider";
-import { Toaster } from "~/components/shadcn/ui/toaster";
-import { useSidebar } from "~/hooks/use-sidebar";
-import { cn } from "~/lib/utils";
-import Header from "../Header";
-import Sidebar from "../Left-sidebar/sidebar";
-import CreatorLayout from "./CreatorLayout";
 import {
   Card,
   CardContent,
@@ -25,13 +23,13 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/shadcn/ui/card";
+import { Toaster } from "~/components/shadcn/ui/toaster";
+import { useSidebar } from "~/hooks/use-sidebar";
+import { cn } from "~/lib/utils";
+import Header from "../Header";
+import Sidebar from "../Left-sidebar/sidebar";
 import ARLayout from "./ARLayout";
-import ARModalProvider from "~/components/providers/augmented-reality/augmented-modal-provider";
-import { BottomPlayerProvider } from "~/components/player/context/bottom-player-context";
-import { StemPlayer } from "~/components/player/bottom-player";
-import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
-import { api } from "~/utils/api";
-import FallingSnowflakes from "~/components/christmas/FallingSnowflakes";
+import CreatorLayout from "./CreatorLayout";
 export default function Layout({
   children,
   className,
@@ -66,14 +64,15 @@ export default function Layout({
   if (router.pathname.includes("/albedo")) {
     return <div>{children}</div>;
   }
-  if (router.pathname.includes("/action/")) {
-    // if (router.pathname.includes("/actions/enter")) {
-    //   return <>{children}</>;
-    // }
+  if (router.pathname.includes("/actions/")) {
+    if (router.pathname.includes("/actions/enter")) {
+      return <>{children}</>;
+
+    }
     return (
       <>
         {session?.status === "authenticated" || router.pathname.includes("/actions/qr") ? (
-          <div className="h-screen w-full overflow-hidden fixed inset-0">
+          <div className="h-screen w-full ">
             {
               isAugmentedRealityRoute ? (
 
@@ -82,10 +81,13 @@ export default function Layout({
                   {children}
                 </>
               ) : (
+                <>
+               
                 <ARLayout>
                   <ARModalProvider />
                   {children}
                 </ARLayout>
+                </>
               )
             }
 
