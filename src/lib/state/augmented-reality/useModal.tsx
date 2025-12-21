@@ -1,5 +1,5 @@
+import { Bounty } from "@prisma/client";
 import { create } from "zustand";
-import { Bounty } from "~/types/game/bounty";
 import { ConsumedLocation } from "~/types/game/location";
 import { LocationCoords } from "~/utils/location";
 
@@ -16,7 +16,12 @@ export interface ModalData {
   Collection?: ConsumedLocation;
   userCurrentBalance?: number;
   balance?: number;
-  bounty?: Bounty;
+  bounty?: Bounty & {
+    ActionLocation?: ConsumedLocation[];
+    isJoined: boolean;
+    isOwner: boolean;
+  };
+
   userLocation?: LocationCoords | null;
 }
 
