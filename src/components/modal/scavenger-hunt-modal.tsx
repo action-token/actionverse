@@ -12,7 +12,6 @@ import { z } from "zod"
 import PrizeDetailsForm from "~/components/scavenger-hunt/prize-details-form"
 
 import { ChevronLeft, ChevronRight, Coins, Loader2 } from "lucide-react"
-import { useScavengerHuntModalStore } from "../store/scavenger-hunt-modal-store"
 import { api } from "~/utils/api"
 import { clientsign } from "package/connect_wallet"
 import { useSession } from "next-auth/react"
@@ -272,8 +271,7 @@ export const scavengerHuntSchema = z
 
 export type ScavengerHuntFormValues = z.infer<typeof scavengerHuntSchema>
 
-export default function ScavengerHuntDialog() {
-    const { isOpen: isScavengerModalOpen, setIsOpen: SetIsScavengerModalOpen } = useScavengerHuntModalStore()
+const ScavengerHuntDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
     const { isOpen, setIsOpen, paymentMethod, setPaymentMethod } = usePaymentMethodStore()
 
     const [currentStep, setCurrentStep] = useState(0)
@@ -329,13 +327,13 @@ export default function ScavengerHuntDialog() {
             setTimeout(() => {
                 handleClose()
             }, 2000)
-            SetIsScavengerModalOpen(false)
+            onOpenChange(false)
         },
         onError: (error) => {
             console.error("Error creating bounty", error)
             toast.error(error.message)
             setLoading(false)
-            SetIsScavengerModalOpen(false)
+            onOpenChange(false)
         },
     })
     const XLMRate = api.bounty.Bounty.getXLMPrice.useQuery().data
@@ -387,7 +385,7 @@ export default function ScavengerHuntDialog() {
             console.error("Error creating bounty", error)
             toast.error(error.message)
             setLoading(false)
-            SetIsScavengerModalOpen(false)
+            onOpenChange(false)
         },
     })
 
@@ -498,7 +496,7 @@ export default function ScavengerHuntDialog() {
     const CurrentStepComponent = steps[currentStep]?.component
 
     const handleClose = () => {
-        SetIsScavengerModalOpen(false)
+        onOpenChange(false)
         setCurrentStep(0)
         methods.reset()
     }
@@ -582,7 +580,7 @@ export default function ScavengerHuntDialog() {
     }
 
     return (
-        <Dialog open={isScavengerModalOpen} onOpenChange={handleClose}>
+        <Dialog open={open} onOpenChange={handleClose}>
             <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Create a New Scavenger Hunt</DialogTitle>
@@ -682,3 +680,4 @@ export default function ScavengerHuntDialog() {
         </Dialog>
     )
 }
+export default ScavengerHuntDialog

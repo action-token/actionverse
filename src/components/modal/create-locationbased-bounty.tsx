@@ -56,7 +56,6 @@ import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
 import { UploadS3Button } from "../common/upload-button"
 import { Editor } from "../common/quill-editor"
 import { useCreatorMapModalStore } from "../store/creator-map-modal-store"
-import { useCreateLocationBasedBountyStore } from "../store/create-locationbased-bounty-store"
 import { cn } from "~/lib/utils"
 import { USDC_ASSET_CODE, USDC_ISSUER } from "~/lib/usdc"
 
@@ -145,7 +144,7 @@ type LocationBasedBountyFormType = z.infer<typeof LocationBasedBountyFormSchema>
 type FormStep = "details" | "location" | "media" | "settings" | "review"
 const FORM_STEPS: FormStep[] = ["details", "location", "media", "settings", "review"]
 
-export default function CreateLocationBasedBountyModal() {
+const CreateLocationBasedBountyModal = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
     // State management
     const [media, setMedia] = useState<MediaInfoType[]>([])
     const [activeStep, setActiveStep] = useState<FormStep>("details")
@@ -154,7 +153,6 @@ export default function CreateLocationBasedBountyModal() {
     const [showConfetti, setShowConfetti] = useState(false)
 
     // Hooks
-    const { setIsOpen: SetIsBountyOpen, data, isOpen: isBountyOpen } = useCreateLocationBasedBountyStore()
     const { isOpen, setIsOpen, paymentMethod, setPaymentMethod } = usePaymentMethodStore()
     const { platformAssetBalance } = useUserStellarAcc()
     const totalFees = 0
@@ -193,12 +191,12 @@ export default function CreateLocationBasedBountyModal() {
     } = methods
     const utils = api.useUtils()
 
-    useEffect(() => {
-        if (data) {
-            setValue("latitude", data.lat.toString())
-            setValue("longitude", data.lng.toString())
-        }
-    }, [data, setValue])
+    // useEffect(() => {
+    //     if (data) {
+    //         setValue("latitude", data.lat.toString())
+    //         setValue("longitude", data.lng.toString())
+    //     }
+    // }, [data, setValue])
 
     // Update progress based on active step
     useEffect(() => {
@@ -385,7 +383,7 @@ export default function CreateLocationBasedBountyModal() {
     }
 
     const handleClose = () => {
-        SetIsBountyOpen(false)
+        onOpenChange(false)
         reset()
         setMedia([])
         setActiveStep("details")
@@ -417,7 +415,7 @@ export default function CreateLocationBasedBountyModal() {
     }, [watchedRewardType, setPaymentMethod])
 
     return (
-        <Dialog open={isBountyOpen} onOpenChange={handleClose}>
+        <Dialog open={open} onOpenChange={handleClose}>
             <DialogContent
                 className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-2"
             >
@@ -1659,3 +1657,4 @@ function ReviewStep({
         </motion.div>
     )
 }
+export default CreateLocationBasedBountyModal

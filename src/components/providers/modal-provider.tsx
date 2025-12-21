@@ -15,10 +15,8 @@ import NftCreateModal from "../modal/nft-create-modal";
 import CreatorStoredAssetModal from "../modal/creator-stored-asset-modal";
 import CreateSongModal from "../modal/create-song-modal";
 import ShareModal from "../modal/share-post-modal";
-import CreateLocationBasedBountyModal from "../modal/create-locationbased-bounty";
 import { CreatePostModal } from "../modal/create-post-modal";
 import AddSubscriptionModal from "../modal/create-subscription-modal";
-import ScavengerHuntModal from "../modal/scavenger-hunt-modal";
 import SellPageAssetModal from "../modal/sell-page-asset-modal";
 import PinDetailAndActionsModal from "../modal/pin-detail-modal";
 
@@ -41,7 +39,6 @@ const ModalProvider = () => {
       <EditBountyModal />
       <BountyFileUploadModal />
       <ViewBountyAttachmentModal />
-      <CreateBountyModal />
       {/* <CreatorCreatePinModal /> */}
       <CreateAlbumModal />
       <NftCreateModal />
@@ -49,10 +46,8 @@ const ModalProvider = () => {
       <CreateSongModal />
       <ShareModal />
       {/* <PinDetailAndActionsModal /> */}
-      <CreateLocationBasedBountyModal />
       <CreatePostModal />
       <AddSubscriptionModal />
-      <ScavengerHuntModal />
       <SellPageAssetModal />
     </>
   );

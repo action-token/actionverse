@@ -6,18 +6,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~
 import type { sortOptionEnum } from "~/types/bounty/bounty-type"
 import { Button } from "~/components/shadcn/ui/button"
 import type { filterEnum } from "~/pages/bounty"
-import { useCreateBountyStore } from "../store/create-bounty-store"
-import { useScavengerHuntModalStore } from "../store/scavenger-hunt-modal-store"
+import { Tabs, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
+import { useRouter } from "next/router"
+import { useState } from "react"
+import CreateBountyModal from "~/components/modal/create-bounty-modal"
+import ScavengerHuntDialog from "~/components/modal/scavenger-hunt-modal"
+import CreateLocationBasedBountyModal from "~/components/modal/create-locationbased-bounty"
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuTrigger,
     DropdownMenuSeparator,
-} from "~/components/shadcn/ui/dropdown-menu"
-import { useCreateLocationBasedBountyStore } from "../store/create-locationbased-bounty-store"
-import { Tabs, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
-import { useRouter } from "next/router"
+    DropdownMenuTrigger
+} from "../shadcn/ui/dropdown-menu"
 export enum BountyTypeFilter {
     ALL = "ALL",
     GENERAL = "GENERAL",
@@ -43,10 +44,11 @@ export default function SearchAndSort({
     typeFilter: BountyTypeFilter
     setTypeFilter: (value: BountyTypeFilter) => void
 }) {
-    const { setIsOpen } = useCreateBountyStore()
-    const { setIsOpen: setIsOpenScavengerModal } = useScavengerHuntModalStore()
-    const { setIsOpen: setIsOpenLocationModal } = useCreateLocationBasedBountyStore()
     const router = useRouter()
+    const [dropdownOpen, setDropdownOpen] = useState(false)
+    const [createBountyOpen, setCreateBountyOpen] = useState(false)
+    const [scavengerHuntOpen, setScavengerHuntOpen] = useState(false)
+    const [locationBasedOpen, setLocationBasedOpen] = useState(false)
     return (
         <div className="bg-card rounded-lg shadow-sm p-5 m-4">
             <div className="flex flex-col gap-5">
@@ -65,17 +67,17 @@ export default function SearchAndSort({
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setIsOpen(true)} className="cursor-pointer">
+                                <DropdownMenuItem onClick={() => { setCreateBountyOpen(true); setDropdownOpen(false) }} className="cursor-pointer">
                                     <Trophy className="h-4 w-4 mr-2" />
                                     <span>Create Bounty</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setIsOpenScavengerModal(true)} className="cursor-pointer">
+                                <DropdownMenuItem onClick={() => { setScavengerHuntOpen(true); setDropdownOpen(false) }} className="cursor-pointer">
                                     <Target className="h-4 w-4 mr-2" />
                                     <span>Create Scavenger Hunt</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setIsOpenLocationModal(true)} className="cursor-pointer">
+                                <DropdownMenuItem onClick={() => { setLocationBasedOpen(true); setDropdownOpen(false) }} className="cursor-pointer">
                                     <MapPin className="h-4 w-4 mr-2" />
                                     <span>Create Location Based</span>
                                 </DropdownMenuItem>
@@ -142,6 +144,9 @@ export default function SearchAndSort({
                 </div>
             </div>
 
+            <CreateBountyModal open={createBountyOpen} onOpenChange={setCreateBountyOpen} />
+            <ScavengerHuntDialog open={scavengerHuntOpen} onOpenChange={setScavengerHuntOpen} />
+            <CreateLocationBasedBountyModal open={locationBasedOpen} onOpenChange={setLocationBasedOpen} />
         </div>
     )
 }
