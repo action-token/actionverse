@@ -8,7 +8,6 @@ import { db } from "~/server/db";
 import { Location } from "~/types/game/location";
 import { avaterIconUrl as abaterIconUrl } from "../brands";
 import { StellarAccount } from "~/lib/stellar/marketplace/test/Account";
-import { m } from "framer-motion";
 
 export default async function handler(
   req: NextApiRequest,
@@ -23,7 +22,7 @@ export default async function handler(
     });
     return;
   }
-  const data = z.object({ filterId: z.string() }).safeParse(req.query); // Use req.query instead of req.body
+  const data = z.object({ filterId: z.string() }).safeParse(req.query);
 
   if (!data.success) {
     console.log("data.error", data.error);
@@ -46,7 +45,6 @@ export default async function handler(
   const getUserActionBounties = await db.bounty.findMany({
     where: {
       bountyType: "SCAVENGER_HUNT",
-
     },
     select: {
       ActionLocation: true,
@@ -72,66 +70,100 @@ export default async function handler(
     }
   }
 
-  let creatorsId: string[] | undefined = undefined;
-  if (data.data.filterId === "1") {
-
-    const getAllFollowedBrand = await db.creator.findMany({
-      where: {
-        OR: [
-          {
-            followers: {
-              some: {
-                userId: userId,
-              },
+  // Get user's follower relationships
+  const userFollowerRelationships = await db.creator.findMany({
+    where: {
+      OR: [
+        {
+          followers: {
+            some: {
+              userId: userId,
             },
           },
-          {
-            temporalFollows: {
-              some: {
-                userId: userId,
-              },
+        },
+        {
+          temporalFollows: {
+            some: {
+              userId: userId,
             },
           },
-        ],
+        },
+      ],
+    },
+    select: {
+      id: true,
+      followers: {
+        where: { userId: userId },
+        select: { userId: true }
       },
-      include: {
-        pageAsset: true,
-        subscriptions: true,
+      temporalFollows: {
+        where: { userId: userId },
+        select: { userId: true }
       },
-    });
+      pageAsset: {
+        select: {
+          code: true,
+          issuer: true,
+        },
+      },
+    },
+  });
 
-    // type Creator = {
-    //   id: string;
-    //   pageAsset: {
-    //     code: string;
-    //     issuer: string;
-    //   };
-    // };
+  // Categorize creators by follower type
+  const memberCreatorIds: string[] = [];
+  const temporalFollowerCreatorIds: string[] = [];
 
-    // const creators: Creator[] = getAllFollowedBrand
-    //   .map((brand) => {
-    //     if (brand.pageAsset) {
-    //       const { code, issuer } = brand.pageAsset;
-
-    //       return {
-    //         id: brand.id,
-    //         pageAsset: {
-    //           code,
-    //           issuer,
-    //         },
-    //       };
-    //     }
-    //     return null;
-    //   })
-    //   .filter((creator): creator is Creator => creator !== null);
-
-    creatorsId = getAllFollowedBrand.map((brand) => brand.id);
-    console.log("creatorsId", creatorsId);
+  for (const creator of userFollowerRelationships) {
+    if (creator.followers.length > 0) {
+      memberCreatorIds.push(creator.id);
+    } else if (creator.temporalFollows.length > 0) {
+      temporalFollowerCreatorIds.push(creator.id);
+    }
   }
 
-  // now i am extracting this brands pins
+  console.log("memberCreatorIds", memberCreatorIds);
+  console.log("temporalFollowerCreatorIds", temporalFollowerCreatorIds);
 
-  async function pinsForCreators(creatorsId?: string[]) {
+  async function pinsForUser(filterId: string) {
+    let privacyConditions;
+
+    if (filterId === "1") {
+      // Filter mode 1: Only followed creators
+      privacyConditions = {
+        OR: [
+          // Temporal followers: PUBLIC + FOLLOWER
+          {
+            creatorId: { in: temporalFollowerCreatorIds },
+            privacy: { in: [ItemPrivacy.PUBLIC, ItemPrivacy.FOLLOWER] },
+          },
+          // Members: PUBLIC + PRIVATE + FOLLOWER + TIER
+          {
+            creatorId: { in: memberCreatorIds },
+            privacy: { in: [ItemPrivacy.PUBLIC, ItemPrivacy.PRIVATE, ItemPrivacy.FOLLOWER, ItemPrivacy.TIER] },
+          },
+        ],
+      };
+    } else {
+      // Filter mode 0: All public + followed creators
+      privacyConditions = {
+        OR: [
+          // All public pins
+          {
+            privacy: ItemPrivacy.PUBLIC,
+          },
+          // Temporal followers: FOLLOWER (PUBLIC already included above)
+          {
+            creatorId: { in: temporalFollowerCreatorIds },
+            privacy: ItemPrivacy.FOLLOWER,
+          },
+          // Members: PRIVATE + FOLLOWER + TIER
+          {
+            creatorId: { in: memberCreatorIds },
+            privacy: { in: [ItemPrivacy.PRIVATE, ItemPrivacy.FOLLOWER, ItemPrivacy.TIER] },
+          },
+        ],
+      };
+    }
 
     const locationGroup = await db.locationGroup.findMany({
       where: {
@@ -164,16 +196,8 @@ export default async function handler(
               },
             ],
           },
+          privacyConditions,
         ],
-        // Filter by creator if given (filterId = 1)
-        ...(creatorsId && {
-          creatorId: { in: creatorsId },
-          privacy: { in: [ItemPrivacy.PUBLIC, ItemPrivacy.PRIVATE, ItemPrivacy.TIER, ItemPrivacy.FOLLOWER] },
-        }),
-        // Else only show public pins
-        ...(!creatorsId && {
-          privacy: { in: [ItemPrivacy.PUBLIC] },
-        }),
       },
       include: {
         locations: {
@@ -199,13 +223,14 @@ export default async function handler(
       },
     });
 
-
     const pins = locationGroup
       .flatMap((group) => {
         const multiPin = group.multiPin;
         const hasConsumedOne = group.locations.some((location) =>
           location.consumers.some((consumer) => consumer.userId === userId),
         );
+
+        // Check Tier eligibility
         if (group.privacy === ItemPrivacy.TIER) {
           const creatorPageAsset = group.creator.pageAsset;
           const subscription = group.Subscription;
@@ -215,42 +240,32 @@ export default async function handler(
               creatorPageAsset.code,
               creatorPageAsset.issuer,
             );
-            if (bal >= subscription.price) {
-              if (multiPin) {
-                return group.locations.map((location) => ({
-                  ...location,
-                  ...group,
-                  id: location.id,
-                  collected: location.consumers.some(
-                    (c) => c.userId === userId,
-                  ),
-                }));
-              } else {
-                return group.locations.map((location) => ({
-                  ...location,
-                  ...group,
-                  id: location.id,
-                  collected: hasConsumedOne,
-                }));
-              }
+
+            // Not eligible for tier - skip this group
+            if (bal < subscription.price) {
+              return [];
             }
-          }
-        } else {
-          if (multiPin) {
-            return group.locations.map((location) => ({
-              ...location,
-              ...group,
-              id: location.id,
-              collected: location.consumers.some((c) => c.userId === userId),
-            }));
           } else {
-            return group.locations.map((location) => ({
-              ...location,
-              ...group,
-              id: location.id,
-              collected: hasConsumedOne,
-            }));
+            // Missing pageAsset or subscription data - skip
+            return [];
           }
+        }
+
+        // Map locations with collected status
+        if (multiPin) {
+          return group.locations.map((location) => ({
+            ...location,
+            ...group,
+            id: location.id,
+            collected: location.consumers.some((c) => c.userId === userId),
+          }));
+        } else {
+          return group.locations.map((location) => ({
+            ...location,
+            ...group,
+            id: location.id,
+            collected: hasConsumedOne,
+          }));
         }
       })
       .filter((location) => location !== undefined);
@@ -278,7 +293,7 @@ export default async function handler(
     return locations;
   }
 
-  const locations = await pinsForCreators(creatorsId);
+  const locations = await pinsForUser(data.data.filterId);
   console.log("locations.length", locations.length);
   res.status(200).json({ locations });
 }
