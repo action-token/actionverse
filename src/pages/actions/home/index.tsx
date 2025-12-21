@@ -496,7 +496,7 @@ export default function HomeScreen() {
                     )}
 
                     {/* Map Controls - Fixed positioning */}
-                    <div className={`absolute right-2 bottom-36 flex flex-col gap-3 z-20`}>
+                    <div className={`absolute right-2 bottom-40 flex flex-col gap-3 z-20`}>
                         {/* AR Scan Button - Main Action */}
                         <motion.button
                             ref={arButtonRef}
@@ -523,7 +523,7 @@ export default function HomeScreen() {
 
                     </div>
                     {/* Refresh Button */}
-                    <div className={`absolute right-16 bottom-36 flex flex-col gap-3 z-20`}>
+                    <div className={`absolute right-16 bottom-40 flex flex-col gap-3 z-20`}>
                         <motion.button
                             ref={refreshButtonRef}
                             onClick={() => response.refetch()}
