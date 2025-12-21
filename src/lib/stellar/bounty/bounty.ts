@@ -334,8 +334,7 @@ export async function claimBandCoinReward({
   const buildTrx = transaction.build();
   buildTrx.sign(motherAcc);
   const xdr = buildTrx.toXDR()
-  const singedXdr = WithSing({ xdr, signWith: signWith });
-  return singedXdr;
+  return xdr;
 }
 export async function claimUSDCReward({
   pubKey,

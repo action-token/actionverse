@@ -121,7 +121,7 @@ export default function BountyScreen() {
   const handleBountyAction = (bounty: BountyTypes) => {
     if (bounty.isJoined || bounty.isOwner) {
       setData({ item: bounty })
-      router.push(`/action/action/${bounty.id}`)
+      router.push(`/action/actions/${bounty.id}`)
     } else {
       onOpen("JoinBounty", { bounty: bounty })
     }

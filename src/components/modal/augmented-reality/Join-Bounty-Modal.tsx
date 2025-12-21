@@ -34,7 +34,7 @@ const JoinBountyModal = () => {
     onSuccess: async (data, variables) => {
       await utils.bounty.Bounty.getAllBounties.invalidate()
       onClose()
-      router.push(`/action/action/${variables.BountyId}`)
+      router.push(`/action/actions/${variables.BountyId}`)
     },
     onError: (error) => {
       toast({
@@ -88,6 +88,7 @@ const JoinBountyModal = () => {
     code: bounty.requiredBalanceCode,
     issuer: bounty.requiredBalanceIssuer,
   })
+  console.log("User balance for", bounty.requiredBalanceCode, "is", balance)
   const hasRequiredBalance = bounty.requiredBalance <= Number(balance)
   const canJoin = hasRequiredBalance && canJoinLocationBased()
   const radiusKm = ((bounty.radius ?? 500) / 1000).toFixed(2)
@@ -157,15 +158,10 @@ const JoinBountyModal = () => {
                   <Trophy className="h-3.5 w-3.5 text-red-600" />
                 </div>
                 <p className="text-xs text-red-700 dark:text-red-400 leading-relaxed">
-                  You have{" "}
-                  <span className="font-bold">
-                    {balance} {bounty.requiredBalanceCode}
-                  </span>{" "}
-                  but need{" "}
-                  <span className="font-bold">
-                    {bounty.requiredBalance} {bounty.requiredBalanceCode}
-                  </span>{" "}
-                  to join.
+                  {
+                    balance === undefined ? "You do not have trust on the required asset in your wallet."
+                      : `You need at least ${bounty.requiredBalance} ${bounty.requiredBalanceCode} to join this bounty.`
+                  }
                 </p>
               </div>
             )}
