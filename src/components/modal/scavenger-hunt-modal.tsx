@@ -42,15 +42,15 @@ export const scavengerHuntSchema = z
         useSameInfoForAllSteps: z.boolean(),
         defaultLocationInfo: z
             .object({
-                title: z.string().min(1, { message: "Title is required" }),
+                title: z.string().optional(),
                 description: z.string().optional(),
-                pinImage: z.string().min(1, { message: "Pin image is required" }),
-                pinUrl: z.string().url({ message: "Must be a valid URL" }),
-                startDate: z.date({ required_error: "Start date is required" }),
-                endDate: z.date({ required_error: "End date is required" }),
-                collectionLimit: z.coerce.number().int().positive({ message: "Collection limit must be positive" }),
-                radius: z.coerce.number().positive({ message: "Radius must be positive" }),
-                autoCollect: z.boolean(),
+                pinImage: z.string().optional(),
+                pinUrl: z.string().optional(),
+                startDate: z.date().optional(),
+                endDate: z.date().optional(),
+                collectionLimit: z.coerce.number().optional(),
+                radius: z.coerce.number().optional(),
+                autoCollect: z.boolean().optional(),
             })
             .optional(),
         priceInXLM: z.coerce.number().nonnegative({ message: "Price must be a positive number" }).optional(),
@@ -61,8 +61,8 @@ export const scavengerHuntSchema = z
         priceUSD: z.coerce.number().nonnegative({ message: "Price must be a positive number" }),
         priceBandcoin: z.coerce.number().nonnegative({ message: "Price must be a positive number" }),
         requiredBalance: z.coerce.number().nonnegative({ message: "Required balance must be a positive number" }),
-        requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
-        requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
+        requiredBalanceCode: z.string().optional(),
+        requiredBalanceIssuer: z.string().optional(),
         locations: z
             .array(
                 z.object({
@@ -94,20 +94,180 @@ export const scavengerHuntSchema = z
             }),
     })
     .superRefine((data, ctx) => {
-        if (!data.useSameInfoForAllSteps && data.locations.length > 0) {
-            const invalidLocations = data.locations.filter(
-                (loc) => typeof loc.latitude !== "number" || typeof loc.longitude !== "number",
-            )
-
-            if (invalidLocations.length > 0) {
+        if (data.useSameInfoForAllSteps) {
+            if (!data.defaultLocationInfo) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
-                    message: "All locations must have valid coordinates",
-                    path: ["locations"],
+                    message: "Default location information is required when using same info for all steps",
+                    path: ["defaultLocationInfo"],
+                })
+                return
+            }
+
+            const { title, pinImage, pinUrl, startDate, endDate, collectionLimit, radius } = data.defaultLocationInfo
+
+            if (!title || title.length < 1) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Title is required",
+                    path: ["defaultLocationInfo", "title"],
+                })
+            }
+
+            if (!pinImage || pinImage.length < 1) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Pin image is required",
+                    path: ["defaultLocationInfo", "pinImage"],
+                })
+            }
+
+            if (!pinUrl || pinUrl.length < 1) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Pin URL is required",
+                    path: ["defaultLocationInfo", "pinUrl"],
+                })
+            } else {
+                try {
+                    new URL(pinUrl)
+                } catch {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Must be a valid URL",
+                        path: ["defaultLocationInfo", "pinUrl"],
+                    })
+                }
+            }
+
+            if (!startDate) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Start date is required",
+                    path: ["defaultLocationInfo", "startDate"],
+                })
+            }
+
+            if (!endDate) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "End date is required",
+                    path: ["defaultLocationInfo", "endDate"],
+                })
+            }
+
+            if (!collectionLimit || collectionLimit <= 0) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Collection limit must be positive",
+                    path: ["defaultLocationInfo", "collectionLimit"],
+                })
+            }
+
+            if (!radius || radius <= 0) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Radius must be positive",
+                    path: ["defaultLocationInfo", "radius"],
                 })
             }
         }
 
+        if (data.requiredBalance > 0) {
+            if (!data.requiredBalanceCode || data.requiredBalanceCode.length < 2) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Asset Code is required when setting a required balance",
+                    path: ["requiredBalanceCode"],
+                })
+            }
+
+            if (!data.requiredBalanceIssuer || data.requiredBalanceIssuer.length < 2) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Asset Issuer is required when setting a required balance",
+                    path: ["requiredBalanceIssuer"],
+                })
+            }
+        }
+
+        if (!data.useSameInfoForAllSteps && data.locations.length > 0) {
+            data.locations.forEach((location, index) => {
+                if (!location.latitude || !location.longitude) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Location coordinates are required",
+                        path: ["locations", index, "latitude"],
+                    })
+                }
+
+                if (!location.title || location.title.length < 1) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Title is required for each location",
+                        path: ["locations", index, "title"],
+                    })
+                }
+
+                if (!location.pinImage || location.pinImage.length < 1) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Pin image is required for each location",
+                        path: ["locations", index, "pinImage"],
+                    })
+                }
+
+                if (!location.pinUrl || location.pinUrl.length < 1) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Pin URL is required for each location",
+                        path: ["locations", index, "pinUrl"],
+                    })
+                } else {
+                    try {
+                        new URL(location.pinUrl)
+                    } catch {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            message: "Must be a valid URL",
+                            path: ["locations", index, "pinUrl"],
+                        })
+                    }
+                }
+
+                if (!location.startDate) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Start date is required for each location",
+                        path: ["locations", index, "startDate"],
+                    })
+                }
+
+                if (!location.endDate) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "End date is required for each location",
+                        path: ["locations", index, "endDate"],
+                    })
+                }
+
+                if (!location.collectionLimit || location.collectionLimit <= 0) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Collection limit must be positive for each location",
+                        path: ["locations", index, "collectionLimit"],
+                    })
+                }
+
+                if (!location.radius || location.radius <= 0) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Radius must be positive for each location",
+                        path: ["locations", index, "radius"],
+                    })
+                }
+            })
+        }
     })
 
 export type ScavengerHuntFormValues = z.infer<typeof scavengerHuntSchema>
@@ -148,8 +308,8 @@ export default function ScavengerHuntDialog() {
             rewardType: "usdc",
             usdcAmount: 0,
             platformAssetAmount: 0,
-            priceUSD: 1,
-            priceBandcoin: 1,
+            priceUSD: 0,
+            priceBandcoin: 0,
             requiredBalance: 0,
             locations: [],
         },
@@ -196,9 +356,10 @@ export default function ScavengerHuntDialog() {
                         const rewardType = getValues("rewardType")
                         CreateBountyMutation.mutate({
                             title: getValues("title"),
-                            priceBandcoin: rewardType === "platform_asset" ? (getValues("platformAssetAmount") ?? 0) : getValues("priceBandcoin"),
+                            priceBandcoin:
+                                rewardType === "platform_asset" ? (getValues("platformAssetAmount") ?? 0) : 0,
                             winners: getValues("winners"),
-                            priceUSD: rewardType === "usdc" ? (getValues("usdcAmount") ?? 0) : getValues("priceUSD"),
+                            priceUSD: rewardType === "usdc" ? (getValues("usdcAmount") ?? 0) : 0,
                             requiredBalance: getValues("requiredBalance") ?? 0,
                             priceInXLM: method == "xlm" ? getValues("priceUSD") * 0.7 : undefined,
                             description: getValues("description"),
@@ -209,7 +370,7 @@ export default function ScavengerHuntDialog() {
                             coverImageUrl: getValues("coverImageUrl"),
                             requiredBalanceCode: getValues("requiredBalanceCode"),
                             requiredBalanceIssuer: getValues("requiredBalanceIssuer"),
-                            rewardType: rewardType
+                            rewardType: rewardType,
                         })
                         setLoading(false)
                     } else {

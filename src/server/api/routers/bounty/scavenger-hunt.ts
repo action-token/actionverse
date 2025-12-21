@@ -2,6 +2,7 @@ import { scavengerHuntSchema } from "~/components/modal/scavenger-hunt-modal"
 import { createTRPCRouter, creatorProcedure } from "../../trpc"
 import { BountyType, ItemPrivacy } from "@prisma/client"
 import { randomLocation } from "~/utils/map"
+import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 
 export const ScavengerHuntRoute = createTRPCRouter({
     // Create
@@ -43,8 +44,8 @@ export const ScavengerHuntRoute = createTRPCRouter({
             priceInBand: priceBandcoin,
             requiredBalance,
             creatorId: userId,
-            requiredBalanceCode,
-            requiredBalanceIssuer,
+            requiredBalanceCode: requiredBalanceCode ? requiredBalanceCode : PLATFORM_ASSET.code,
+            requiredBalanceIssuer: requiredBalanceIssuer ? requiredBalanceIssuer : PLATFORM_ASSET.issuer,
             bountyType: BountyType.SCAVENGER_HUNT,
             imageUrls: coverImageUrl ? coverImageUrl.map((media) => media.url) : [],
         }

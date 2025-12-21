@@ -69,6 +69,9 @@ export default function Layout({
       return <>{children}</>;
 
     }
+    // if (router.pathname.includes("/actions/enter")) {
+    //   return <>{children}</>;
+    // }
     return (
       <>
         {session?.status === "authenticated" || router.pathname.includes("/actions/qr") ? (

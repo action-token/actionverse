@@ -7,7 +7,7 @@ import { Input } from "~/components/shadcn/ui/input"
 import { Checkbox } from "~/components/shadcn/ui/checkbox"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Settings, Layers } from "lucide-react"
-import { ScavengerHuntFormValues } from "../modal/scavenger-hunt-modal"
+import type { ScavengerHuntFormValues } from "../modal/scavenger-hunt-modal"
 
 export default function ConfigForm() {
     const { control } = useFormContext<ScavengerHuntFormValues>()
@@ -34,7 +34,15 @@ export default function ConfigForm() {
                                         <FormItem>
                                             <FormLabel>Number of Steps*</FormLabel>
                                             <FormControl>
-                                                <Input type="number" min="1" {...field} />
+                                                <Input
+                                                    type="number"
+                                                    min="1"
+                                                    {...field}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value ? Number.parseInt(e.target.value, 10) : 1
+                                                        field.onChange(value)
+                                                    }}
+                                                />
                                             </FormControl>
                                             <FormDescription>How many locations/steps will be in your scavenger hunt</FormDescription>
                                             <FormMessage />
@@ -62,8 +70,9 @@ export default function ConfigForm() {
                                             <div className="space-y-1 leading-none">
                                                 <FormLabel>Use same information for all steps</FormLabel>
                                                 <FormDescription>
-                                                    When enabled, all locations will share the same details (except coordinates). You{"'ll"} only need
-                                                    to enter location information once.
+                                                    When enabled, all locations will share the same details (title, pin image, pin URL, date
+                                                    range, collection limit, radius, auto collect). You{"'"}ll only need to enter location information
+                                                    once.
                                                 </FormDescription>
                                             </div>
                                         </FormItem>
