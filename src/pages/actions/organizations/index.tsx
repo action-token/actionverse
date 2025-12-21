@@ -60,6 +60,8 @@ type FilterOption = "all" | "following" | "not-following"
 interface Creator {
   isFollowed: boolean;
   isCurrentUser: boolean;
+  wasMember?: boolean;
+  isMember?: boolean;
   name: string;
   id: string;
   _count: {
@@ -86,9 +88,7 @@ export default function CreatorPage() {
   const [showCancelMemberDialog, setShowCancelMemberDialog] = useState(false)
   const [showRejoinMemberDialog, setShowRejoinMemberDialog] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Creator | null>(null)
-  const [isFollowing, setIsFollowing] = useState(false)
-  const [wasMember, setWasMember] = useState(false)
-  const [isMember, setIsMember] = useState(false)
+
   const queryClient = useQueryClient()
   const accountActionData = useAccountAction()
   const { needSign } = useNeedSign()
@@ -262,9 +262,9 @@ export default function CreatorPage() {
     setSelectedBrand(brand)
 
     // Check if user is already a member or was a member
-    if (isMember) {
+    if (brand.isMember) {
       setShowCancelMemberDialog(true)
-    } else if (wasMember) {
+    } else if (brand.wasMember) {
       setShowRejoinMemberDialog(true)
     } else {
       setShowBecomeMemberDialog(true)
@@ -273,8 +273,8 @@ export default function CreatorPage() {
 
   const getMembershipButtonProps = (brand: Creator) => {
     const isLoading = memberLoadingId === brand.id
-
-    if (isMember) {
+    console.log("brand membership status", brand);
+    if (brand.isMember) {
       return {
         variant: "outline" as const,
         className: "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300",
@@ -288,7 +288,7 @@ export default function CreatorPage() {
         ),
         disabled: isLoading,
       }
-    } else if (wasMember) {
+    } else if (brand.wasMember) {
       return {
         variant: "outline" as const,
         className: "border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-400",
@@ -402,7 +402,7 @@ export default function CreatorPage() {
       const matchesSearch = brand.name?.toLowerCase().includes(searchQuery.toLowerCase())
 
       // Tab filter (available vs followed)
-      const matchesTab = activeTab === "available" ? brand.isFollowed : brand.isFollowed
+      const matchesTab = activeTab === "available" ? !brand.isFollowed : brand.isFollowed
 
       // Additional filter option
       let matchesFilter = true
@@ -434,7 +434,9 @@ export default function CreatorPage() {
       isCurrentUser: creator.isCurrentUser ?? false,
       _count: {
         temporalFollows: creator._count?.temporalFollows ?? 0,
-      }
+      },
+      isMember: creator.isMember ?? false,
+      wasMember: creator.wasMember ?? false,
     }))
 
   if (isLoading) return <Loading />
@@ -596,7 +598,7 @@ export default function CreatorPage() {
       </AnimatePresence>
 
       {/* Brand List */}
-      <div className="px-6 py-6 pb-32">
+      <div className="px-2 py-6 pb-32">
         <AnimatePresence mode="wait">
           {viewMode === "grid" ? (
             <motion.div
@@ -620,7 +622,7 @@ export default function CreatorPage() {
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
-                      <Card className="bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
+                      <Card className="bg-white  dark:bg-slate-800 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
                         <CardContent className="p-0">
                           <div className="aspect-square bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 relative">
                             <Image
@@ -807,6 +809,26 @@ export default function CreatorPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Load More Button */}
+        {hasNextPage && (
+          <div className="flex justify-center mt-6">
+            <Button
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white"
+            >
+              {isFetchingNextPage ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Loading...
+                </>
+              ) : (
+                "Load More"
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Become a Member Dialog */}

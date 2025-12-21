@@ -305,7 +305,7 @@ const SingleCollectionItem = () => {
               <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-lg hover:shadow-xl transition-all duration-200">
                 <CardContent className="p-6">
                   <Button
-                    onClick={() => window.open(new URL("maps/pins/my", BASE_URL).href, "_blank")}
+                    onClick={() => window.open(new URL("/pins", BASE_URL).href, "_blank")}
                     className="w-full h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-2xl shadow-lg shadow-emerald-500/25"
                   >
                     <HandIcon className="mr-2 h-5 w-5" />

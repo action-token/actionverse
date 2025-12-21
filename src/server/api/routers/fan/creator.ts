@@ -824,43 +824,46 @@ export const creatorRouter = createTRPCRouter({
         creators: creatorsWithFollow,
         nextCursor,
       };
-    }
-    ),
+    }),
 
   getAllCreators: protectedProcedure
     .input(
       z.object({
         limit: z.number().default(5),
-        cursor: z.string().nullish(), // cursor for pagination
+        cursor: z.string().nullish(),
       })
     )
     .query(async ({ ctx, input }) => {
       const { limit, cursor } = input;
-      // Parse the cursor (which is the last creator's ID)
       const cursorObj = cursor ? { id: cursor } : undefined;
 
-      // Fetch creators with cursor-based pagination
       const creators = await ctx.db.creator.findMany({
         where: {
           approved: true,
-
         },
         orderBy: {
           temporalFollows: {
             _count: 'desc',
           },
         },
-        take: limit + 1, // take one extra to determine if there are more
+        take: limit + 1,
         ...(cursorObj && {
           cursor: {
             id: cursorObj.id,
           },
-          skip: 1, // Skip the cursor
+          skip: 1,
         }),
         select: {
           id: true,
           name: true,
           profileUrl: true,
+          pageAsset: {
+            select: {
+              code: true,
+              issuer: true,
+            }
+          },
+          customPageAssetCodeIssuer: true,
           _count: {
             select: {
               temporalFollows: true,
@@ -869,14 +872,12 @@ export const creatorRouter = createTRPCRouter({
         },
       });
 
-      // Check if we have more items
       let nextCursor: typeof cursor = undefined;
       if (creators.length > limit) {
-        const nextItem = creators.pop(); // Remove the extra item
+        const nextItem = creators.pop();
         nextCursor = nextItem?.id;
       }
 
-      // Check if current user follows the creators
       const followedCreators = await ctx.db.temporalFollow.findMany({
         where: {
           creatorId: {
@@ -885,22 +886,52 @@ export const creatorRouter = createTRPCRouter({
           userId: ctx.session.user.id,
         },
       });
+      const memberofCreator = await ctx.db.follow.findMany({
+        where: {
+          creatorId: {
+            in: creators.map((creator) => creator.id),
+          },
+          userId: ctx.session.user.id,
+        }
+      })
+
+
+      const userAcc = await StellarAccount.create(ctx.session.user.id);
 
       const creatorsWithFollow = creators.map((creator) => {
         const isFollowed = followedCreators.some((follow) => follow.creatorId === creator.id);
+        const isMember = memberofCreator.some((follow) => follow.creatorId === creator.id);
+        let wasMember = false;
+
+        if (creator.pageAsset) {
+          const { code, issuer } = creator.pageAsset;
+          if (userAcc.hasTrustline(code, issuer)) {
+            wasMember = true;
+          }
+        } else if (creator.customPageAssetCodeIssuer) {
+          const [code, issuer] = creator.customPageAssetCodeIssuer.split("-");
+          const issuerVal = z.string().length(56).safeParse(issuer);
+          if (issuerVal.success && code) {
+            if (userAcc.hasTrustline(code, issuerVal.data)) {
+              wasMember = true;
+            }
+          }
+        }
+
         return {
           ...creator,
+          isMember,
+          wasMember,
           isFollowed,
           isCurrentUser: creator.id === ctx.session.user.id,
         };
       });
-
+      // console.log("creatorsWithFollow", creatorsWithFollow);
       return {
         creators: creatorsWithFollow,
         nextCursor,
       };
-    }
-    ),
+    }),
 
   checkCurrentUserFollowsCreator: protectedProcedure
     .input(z.object({ creatorId: z.string() }))
