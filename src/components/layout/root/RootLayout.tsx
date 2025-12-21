@@ -66,7 +66,7 @@ export default function Layout({
   if (router.pathname.includes("/albedo")) {
     return <div>{children}</div>;
   }
-  if (router.pathname.includes("/action/")) {
+  if (router.pathname.includes("/actions/")) {
     // if (router.pathname.includes("/actions/enter")) {
     //   return <>{children}</>;
     // }

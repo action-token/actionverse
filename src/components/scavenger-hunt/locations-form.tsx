@@ -8,7 +8,7 @@ import { Label } from "~/components/shadcn/ui/label"
 import { Slider } from "~/components/shadcn/ui/slider"
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
 import { APIProvider, AdvancedMarker, Map, type MapMouseEvent } from "@vis.gl/react-google-maps"
-import { Edit, MapPin, Trash2, UploadCloud, X } from "lucide-react"
+import { Edit, MapPin, Trash2, UploadCloud, X, AlertCircle, CalendarIcon } from "lucide-react"
 import { Alert, AlertDescription } from "~/components/shadcn/ui/alert"
 import { format, addDays } from "date-fns"
 import { ScrollArea } from "~/components/shadcn/ui/scroll-area"
@@ -23,9 +23,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "~/components/shadcn/ui/dialog"
-import { CalendarIcon } from "lucide-react"
 import { cn } from "~/lib/utils"
-import type { DateRange } from "react-day-picker"
 import { FormMessage } from "~/components/shadcn/ui/form"
 import type { ScavengerHuntFormValues } from "../modal/scavenger-hunt-modal"
 import { Textarea } from "../shadcn/ui/textarea"
@@ -70,6 +68,15 @@ export default function LocationsForm() {
     const [locationError, setLocationError] = useState("")
     const [mapCenter, setMapCenter] = useState({ lat: 40.7128, lng: -74.006 })
     const [editingLocationId, setEditingLocationId] = useState<string | null>(null)
+
+    const [locationValidationErrors, setLocationValidationErrors] = useState<{
+        title?: string
+        pinImage?: string
+        pinUrl?: string
+        collectionLimit?: string
+        radius?: string
+        dateRange?: string
+    }>({})
 
     // Form state for the location dialog
     const [newLocationData, setNewLocationData] = useState({
@@ -129,6 +136,7 @@ export default function LocationsForm() {
 
         // If using same info for all pins, validate default info first
         if (useSameInfoForAllSteps && !isDefaultInfoValid) {
+            toast.error("Please complete the Default Information step before adding locations.")
             return
         }
 
@@ -141,6 +149,7 @@ export default function LocationsForm() {
 
             // Reset editing state
             setEditingLocationId(null)
+            setLocationValidationErrors({})
 
             // If using same info for all steps, pre-populate with default info
             if (useSameInfoForAllSteps && defaultLocationInfo) {
@@ -152,8 +161,8 @@ export default function LocationsForm() {
                     collectionLimit: defaultLocationInfo.collectionLimit ?? 1,
                     radius: defaultLocationInfo.radius ?? 100,
                     autoCollect: defaultLocationInfo.autoCollect ?? false,
-                    startDate: defaultLocationInfo.startDate || new Date(),
-                    endDate: defaultLocationInfo.endDate || addDays(new Date(), 7),
+                    startDate: defaultLocationInfo.startDate ?? new Date(),
+                    endDate: defaultLocationInfo.endDate ?? addDays(new Date(), 7),
                 })
             } else {
                 // Reset form for new location
@@ -183,6 +192,7 @@ export default function LocationsForm() {
             latitude: locationToEdit.latitude,
             longitude: locationToEdit.longitude,
         })
+        setLocationValidationErrors({})
 
         if (!useSameInfoForAllSteps) {
             // Set the form data for the specific location being edited
@@ -211,7 +221,6 @@ export default function LocationsForm() {
         })
     }
 
-    // Update the validateLocationData function to properly validate all required fields
     const validateLocationData = () => {
         if (!selectedLocation) {
             setLocationError("Location coordinates are required")
@@ -219,13 +228,51 @@ export default function LocationsForm() {
         }
 
         if (!useSameInfoForAllSteps) {
-            // When not using same info, only validate that the user clicked a location on the map
-            // We already have the coordinates from the click, so we don't need to validate them again
-            return true
+            // Validate all required fields for individual locations
+            const errors: typeof locationValidationErrors = {}
+
+            if (!newLocationData.title || newLocationData.title.trim().length === 0) {
+                errors.title = "Location title is required"
+            }
+
+            if (!newLocationData.pinImage || newLocationData.pinImage.trim().length === 0) {
+                errors.pinImage = "Pin image is required"
+            }
+
+            if (!newLocationData.pinUrl || newLocationData.pinUrl.trim().length === 0) {
+                errors.pinUrl = "Pin URL is required"
+            } else {
+                // Validate URL format
+                try {
+                    new URL(newLocationData.pinUrl)
+                } catch {
+                    errors.pinUrl = "Must be a valid URL"
+                }
+            }
+
+            if (!newLocationData.collectionLimit || newLocationData.collectionLimit < 1) {
+                errors.collectionLimit = "Collection limit must be at least 1"
+            }
+
+            if (!newLocationData.radius || newLocationData.radius < 10) {
+                errors.radius = "Radius must be at least 10 meters"
+            }
+
+            if (!newLocationData.startDate || !newLocationData.endDate) {
+                errors.dateRange = "Date range is required"
+            } else if (newLocationData.startDate >= newLocationData.endDate) {
+                errors.dateRange = "End date must be after start date"
+            }
+
+            setLocationValidationErrors(errors)
+
+            if (Object.keys(errors).length > 0) {
+                toast.error("Please fill in all required fields correctly")
+                return false
+            }
         }
 
-        // When using same info for all steps, we only need to validate coordinates
-        // which are already set when clicking on the map
+        setLocationValidationErrors({})
         return true
     }
 
@@ -233,7 +280,6 @@ export default function LocationsForm() {
     const handleSaveLocation = () => {
         if (!selectedLocation) return
 
-        // Validate location data with our updated validation function
         if (!validateLocationData()) {
             return
         }
@@ -313,6 +359,8 @@ export default function LocationsForm() {
         setLocationError("")
         setEditingLocationId(null)
         setCurrentImagePreview(null) // Reset the current image preview
+        setLocationValidationErrors({})
+        toast.success(editingLocationId ? "Location updated successfully" : "Location added successfully")
     }
 
     const handleRemoveLocation = (id: string) => {
@@ -322,6 +370,7 @@ export default function LocationsForm() {
             shouldDirty: true,
             shouldTouch: true,
         })
+        toast.success("Location removed successfully")
     }
 
     return (
@@ -338,6 +387,7 @@ export default function LocationsForm() {
 
             {useSameInfoForAllSteps && !isDefaultInfoValid && (
                 <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
                     <AlertDescription>Please complete the Default Information step before adding locations.</AlertDescription>
                 </Alert>
             )}
@@ -351,10 +401,35 @@ export default function LocationsForm() {
                 </Alert>
             )}
 
+            <Card>
+                <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Locations Added</span>
+                        <span
+                            className={cn(
+                                "text-sm font-semibold",
+                                locations.length === numberOfSteps ? "text-green-600" : "text-orange-600",
+                            )}
+                        >
+                            {locations.length} / {numberOfSteps}
+                        </span>
+                    </div>
+                    <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                            className={cn(
+                                "h-full transition-all duration-300",
+                                locations.length === numberOfSteps ? "bg-green-500" : "bg-blue-500",
+                            )}
+                            style={{ width: `${(locations.length / numberOfSteps) * 100}%` }}
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
             <div
                 className={cn(
                     "h-[300px] w-full rounded-md border",
-                    ((useSameInfoForAllSteps && !isDefaultInfoValid) ?? locations.length >= numberOfSteps) &&
+                    ((useSameInfoForAllSteps && !isDefaultInfoValid) || locations.length >= numberOfSteps) &&
                     "opacity-50 pointer-events-none",
                 )}
             >
@@ -393,7 +468,7 @@ export default function LocationsForm() {
                         <DialogDescription>
                             {useSameInfoForAllSteps
                                 ? "Confirm the coordinates for this location."
-                                : `${editingLocationId ? "Edit" : "Enter"} details for this scavenger hunt location.`}
+                                : `${editingLocationId ? "Edit" : "Enter"} details for this scavenger hunt location. All fields marked with * are required.`}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -417,32 +492,35 @@ export default function LocationsForm() {
                                         id="title"
                                         value={newLocationData.title}
                                         onChange={(e) => setNewLocationData({ ...newLocationData, title: e.target.value })}
-                                        placeholder="Enter a title for this location"
-                                        required
+                                        placeholder="Enter location title"
                                     />
+                                    {locationValidationErrors.title && (
+                                        <p className="text-sm text-destructive mt-1">{locationValidationErrors.title}</p>
+                                    )}
                                 </div>
 
                                 <div>
-                                    <Label htmlFor="description">Description (Optional)</Label>
+                                    <Label htmlFor="description">Location Description (Optional)</Label>
                                     <Textarea
                                         id="description"
                                         value={newLocationData.description}
                                         onChange={(e) => setNewLocationData({ ...newLocationData, description: e.target.value })}
-                                        placeholder="Enter a description for this location"
+                                        placeholder="Enter location description"
+                                        rows={3}
                                     />
                                 </div>
 
                                 <div>
                                     <Label htmlFor="pinImage">Pin Image*</Label>
-                                    <div className={cn("space-y-2")}>
+                                    <div className="space-y-2">
                                         {!currentImagePreview ? (
                                             <div
                                                 className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 transition-colors hover:border-gray-400 cursor-pointer"
-                                                onClick={() => document.getElementById("pincoverimage")?.click()}
+                                                onClick={() => document.getElementById("locationpinimage")?.click()}
                                             >
                                                 <UploadCloud className="h-10 w-10 text-muted-foreground mb-2" />
                                                 <p className="text-sm text-muted-foreground mb-1">Click to upload image</p>
-                                                <p className="text-xs text-muted-foreground mb-4">PNG, JPG, GIF up to 1GB</p>
+                                                <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 1GB</p>
                                             </div>
                                         ) : (
                                             <div className="relative border rounded-lg overflow-hidden">
@@ -463,12 +541,11 @@ export default function LocationsForm() {
                                             </div>
                                         )}
                                         <UploadS3Button
-                                            id="pincoverimage"
+                                            id="locationpinimage"
                                             endpoint="imageUploader"
                                             variant="hidden"
                                             onUploadProgress={(progress) => {
                                                 setIsUploading(true)
-
                                                 if (progress === 100) {
                                                     setIsUploading(false)
                                                 }
@@ -488,6 +565,9 @@ export default function LocationsForm() {
                                         />
                                         {error && <p className="text-sm text-red-500">{error}</p>}
                                         {isUploading && <p className="text-sm text-muted-foreground">Uploading...</p>}
+                                        {locationValidationErrors.pinImage && (
+                                            <p className="text-sm text-destructive">{locationValidationErrors.pinImage}</p>
+                                        )}
                                     </div>
                                 </div>
 
@@ -495,21 +575,26 @@ export default function LocationsForm() {
                                     <Label htmlFor="pinUrl">Pin URL*</Label>
                                     <Input
                                         id="pinUrl"
+                                        type="url"
                                         value={newLocationData.pinUrl}
                                         onChange={(e) => setNewLocationData({ ...newLocationData, pinUrl: e.target.value })}
                                         placeholder="https://example.com"
-                                        required
                                     />
+                                    {locationValidationErrors.pinUrl && (
+                                        <p className="text-sm text-destructive mt-1">{locationValidationErrors.pinUrl}</p>
+                                    )}
                                 </div>
 
                                 <div>
                                     <Label>Date Range*</Label>
-                                    {/* Replace Popover with DateRangeDialog */}
                                     <DateRangeDialog
                                         startDate={newLocationData.startDate}
                                         endDate={newLocationData.endDate}
                                         onDateChange={handleDateRangeChange}
                                     />
+                                    {locationValidationErrors.dateRange && (
+                                        <p className="text-sm text-destructive mt-1">{locationValidationErrors.dateRange}</p>
+                                    )}
                                 </div>
 
                                 <div>
@@ -520,262 +605,185 @@ export default function LocationsForm() {
                                         min="1"
                                         value={newLocationData.collectionLimit}
                                         onChange={(e) =>
-                                            setNewLocationData({ ...newLocationData, collectionLimit: Number.parseInt(e.target.value) })
+                                            setNewLocationData({
+                                                ...newLocationData,
+                                                collectionLimit: Number.parseInt(e.target.value) || 1,
+                                            })
                                         }
-                                        required
                                     />
+                                    {locationValidationErrors.collectionLimit && (
+                                        <p className="text-sm text-destructive mt-1">{locationValidationErrors.collectionLimit}</p>
+                                    )}
                                 </div>
 
                                 <div>
                                     <Label htmlFor="radius">Radius (meters)*</Label>
                                     <div className="flex items-center space-x-4">
                                         <Slider
-                                            id="radius"
                                             min={10}
                                             max={1000}
                                             step={10}
                                             value={[newLocationData.radius]}
-                                            onValueChange={(value) => setNewLocationData({ ...newLocationData, radius: value[0] ?? 0 })}
+                                            onValueChange={(value) => setNewLocationData({ ...newLocationData, radius: value[0] ?? 100 })}
                                             className="flex-1"
                                         />
-                                        <span className="w-12 text-right">{newLocationData.radius}m</span>
+                                        <span className="w-16 text-right">{newLocationData.radius}m</span>
                                     </div>
+                                    {locationValidationErrors.radius && (
+                                        <p className="text-sm text-destructive mt-1">{locationValidationErrors.radius}</p>
+                                    )}
                                 </div>
 
-                                <div className="flex items-start space-x-3 space-y-0 rounded-md border p-4">
+                                <div className="flex items-center space-x-2">
                                     <Checkbox
                                         id="autoCollect"
                                         checked={newLocationData.autoCollect}
                                         onCheckedChange={(checked) =>
-                                            setNewLocationData({ ...newLocationData, autoCollect: checked === true })
+                                            setNewLocationData({ ...newLocationData, autoCollect: checked as boolean })
                                         }
                                     />
-                                    <div className="space-y-1 leading-none">
-                                        <Label htmlFor="autoCollect">Auto Collect*</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                            When enabled, this location will be automatically collected when users enter the radius
-                                        </p>
-                                    </div>
+                                    <Label htmlFor="autoCollect" className="cursor-pointer">
+                                        Auto Collect*
+                                    </Label>
                                 </div>
                             </>
                         )}
-
-                        {locationError && <div className="text-sm font-medium text-destructive">{locationError}</div>}
                     </div>
 
+                    {locationError && <p className="text-sm text-destructive">{locationError}</p>}
+
                     <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                setLocationDialogOpen(false)
-                                setLocationError("")
-                                setEditingLocationId(null)
-                                setCurrentImagePreview(null) // Reset the current image preview
-                            }}
-                        >
+                        <Button type="button" variant="outline" onClick={() => setLocationDialogOpen(false)}>
                             Cancel
                         </Button>
-                        <Button onClick={handleSaveLocation}>{editingLocationId ? "Update Location" : "Add Location"}</Button>
+                        <Button type="button" onClick={handleSaveLocation}>
+                            {editingLocationId ? "Update Location" : "Save Location"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            <div className="space-y-4">
-                <h3 className="text-base font-medium">
-                    Added Locations ({locations.length}/{numberOfSteps})
-                </h3>
-                {locations.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No locations added yet. Click on the map to add locations.</p>
-                ) : (
-                    <ScrollArea className="h-[200px]">
-                        <div className="space-y-4">
-                            {locations.map((location, index) => (
-                                <Card key={location.id}>
-                                    <CardHeader className="p-4">
-                                        <div className="flex items-center justify-between">
-                                            <CardTitle className="text-base">
-                                                {useSameInfoForAllSteps
-                                                    ? `${defaultLocationInfo?.title ?? "Location"} ${index + 1}`
-                                                    : (location.title ?? "Unnamed Location")}
-                                            </CardTitle>
-                                            <div className="flex space-x-2">
-                                                {
-                                                    !useSameInfoForAllSteps && (
-                                                        <Button variant="ghost" size="icon" onClick={() => handleEditLocation(location.id)}>
-                                                            <Edit className="h-4 w-4" />
-                                                        </Button>
-                                                    )
-                                                }
-                                                <Button variant="ghost" size="icon" onClick={() => handleRemoveLocation(location.id)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="p-4 pt-0">
-                                        <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
+            {/* Location List */}
+            {locations.length > 0 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Added Locations</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ScrollArea className="h-[200px]">
+                            <div className="space-y-2">
+                                {locations.map((location, index) => (
+                                    <div key={location.id} className="flex items-center justify-between border rounded-lg p-3">
+                                        <div className="flex items-center space-x-3">
+                                            <MapPin className="h-5 w-5 text-red-500" />
                                             <div>
-                                                <span className="font-medium">Coordinates:</span> {location.latitude.toFixed(6)},{" "}
-                                                {location.longitude.toFixed(6)}
-                                            </div>
-                                            {!useSameInfoForAllSteps && (
-                                                <>
-                                                    {location.collectionLimit && (
-                                                        <div>
-                                                            <span className="font-medium">Collection Limit:</span> {location.collectionLimit}
-                                                        </div>
-                                                    )}
-                                                    {location.radius && (
-                                                        <div>
-                                                            <span className="font-medium">Radius:</span> {location.radius}m
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-
-                                            {/* Add pin image preview */}
-                                            <div className="col-span-full mt-2">
-                                                <span className="font-medium">Pin Image:</span>
-                                                <div className="mt-1 h-16 w-full overflow-hidden rounded-md border">
-                                                    {useSameInfoForAllSteps ? (
-                                                        defaultLocationInfo?.pinImage ? (
-                                                            <img
-                                                                src={defaultLocationInfo.pinImage ?? "/images/action/logo.png"}
-                                                                alt="Pin"
-                                                                className="h-full w-16 object-cover"
-                                                            />
-                                                        ) : (
-                                                            <div className="flex h-full w-full items-center justify-center bg-muted">
-                                                                <p className="text-xs text-muted-foreground">No image</p>
-                                                            </div>
-                                                        )
-                                                    ) : location.pinImage ? (
-                                                        <img
-                                                            src={location.pinImage ?? "/images/action/logo.png"}
-                                                            alt="Pin"
-                                                            className="h-full w-16 object-cover"
-                                                        />
-                                                    ) : (
-                                                        <div className="flex h-full w-full items-center justify-center bg-muted">
-                                                            <p className="text-xs text-muted-foreground">No image</p>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <p className="font-medium">
+                                                    {useSameInfoForAllSteps
+                                                        ? `${defaultLocationInfo?.title ?? "Location"} ${index + 1}`
+                                                        : (location.title ?? "Unnamed Location")}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                                                </p>
                                             </div>
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    </ScrollArea>
-                )}
-            </div>
+                                        <div className="flex space-x-2">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => handleEditLocation(location.id)}
+                                            >
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="destructive"
+                                                size="icon"
+                                                onClick={() => handleRemoveLocation(location.id)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </ScrollArea>
+                    </CardContent>
+                </Card>
+            )}
         </div>
     )
 }
-interface DateRangeDialogProps {
-    startDate: Date
-    endDate: Date
-    onDateChange: (startDate: Date, endDate: Date) => void
-    className?: string
-    disabled?: boolean
-}
 
-export function DateRangeDialog({
+// Date Range Dialog Component
+function DateRangeDialog({
     startDate,
     endDate,
     onDateChange,
-    className,
-    disabled = false,
-}: DateRangeDialogProps) {
-    const [isOpen, setIsOpen] = useState(false)
-    const [dateRange, setDateRange] = useState<DateRange | undefined>({
-        from: startDate,
-        to: endDate,
-    })
+}: {
+    startDate: Date
+    endDate: Date
+    onDateChange: (startDate: Date, endDate: Date) => void
+}) {
+    const [open, setOpen] = useState(false)
+    const [localStartDate, setLocalStartDate] = useState<Date | undefined>(startDate)
+    const [localEndDate, setLocalEndDate] = useState<Date | undefined>(endDate)
 
-    // Update internal state when props change
-    useEffect(() => {
-        setDateRange({
-            from: startDate,
-            to: endDate,
-        })
-    }, [startDate, endDate])
-
-    const handleSelect = (range: DateRange | undefined) => {
-        setDateRange(range)
-
-        if (range?.from) {
-            // If only the start date is selected, set end date to 7 days later by default
-            if (!range.to) {
-                const defaultEndDate = addDays(range.from, 7)
-                setDateRange({ from: range.from, to: defaultEndDate })
-            }
-        }
-    }
-
-    const handleConfirm = () => {
-        if (dateRange?.from && dateRange?.to) {
-            onDateChange(dateRange.from, dateRange.to)
-            setIsOpen(false)
+    const handleApply = () => {
+        if (localStartDate && localEndDate) {
+            onDateChange(localStartDate, localEndDate)
+            setOpen(false)
         }
     }
 
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" className={cn("w-full pl-3 text-left font-normal", className)} disabled={disabled}>
+                <Button
+                    variant="outline"
+                    className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}
+                    type="button"
+                >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
                     {startDate && endDate ? (
                         <>
-                            {format(startDate, "LLL dd, y")} - {format(endDate, "LLL dd, y")}
+                            {format(startDate, "PPP")} - {format(endDate, "PPP")}
                         </>
                     ) : (
                         <span>Pick a date range</span>
                     )}
-                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[700px]">
-                <DialogHeader>
+            <DialogContent className="w-auto p-0">
+                <DialogHeader className="p-6 pb-0">
                     <DialogTitle>Select Date Range</DialogTitle>
                 </DialogHeader>
-
-                <div className="p-4">
-                    <div className="border rounded-md p-3 mb-4">
-                        <div className="flex items-center mb-2">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            <span className="text-sm font-medium">
-                                {dateRange?.from ? (
-                                    dateRange.to ? (
-                                        <>
-                                            {format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}
-                                        </>
-                                    ) : (
-                                        format(dateRange.from, "LLL dd, y")
-                                    )
-                                ) : (
-                                    <span>Select date range</span>
-                                )}
-                            </span>
-                        </div>
-
-                        <div className="flex justify-center">
-                            <Calendar
-                                mode="range"
-                                defaultMonth={dateRange?.from}
-                                selected={dateRange}
-                                onSelect={handleSelect}
-                                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                                numberOfMonths={2}
-                                initialFocus
-                                className="rounded border shadow-sm"
-                            />
-                        </div>
+                <div className="p-6 space-y-4">
+                    <div className="space-y-2">
+                        <Label>Start Date</Label>
+                        <Calendar
+                            mode="single"
+                            selected={localStartDate}
+                            onSelect={setLocalStartDate}
+                            disabled={(date) => date < new Date()}
+                        />
                     </div>
-
-                    <div className="mt-6 flex justify-end">
-                        <Button onClick={handleConfirm} disabled={!dateRange?.from || !dateRange?.to}>
-                            Confirm Selection
+                    <div className="space-y-2">
+                        <Label>End Date</Label>
+                        <Calendar
+                            mode="single"
+                            selected={localEndDate}
+                            onSelect={setLocalEndDate}
+                            disabled={(date) => !localStartDate || date <= localStartDate}
+                        />
+                    </div>
+                    <div className="flex justify-end space-x-2 pt-4">
+                        <Button variant="outline" onClick={() => setOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleApply} disabled={!localStartDate || !localEndDate}>
+                            Apply
                         </Button>
                     </div>
                 </div>

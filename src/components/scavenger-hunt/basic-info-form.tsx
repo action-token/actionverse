@@ -182,8 +182,6 @@ export default function BasicInfoForm() {
                         </FormItem>
                     )}
                 />
-
-
             </div>
         </div>
     )

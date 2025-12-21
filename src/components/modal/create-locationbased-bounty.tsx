@@ -419,7 +419,6 @@ export default function CreateLocationBasedBountyModal() {
     return (
         <Dialog open={isBountyOpen} onOpenChange={handleClose}>
             <DialogContent
-                onInteractOutside={(e) => e.preventDefault()}
                 className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-2"
             >
                 {/* {showConfetti && (

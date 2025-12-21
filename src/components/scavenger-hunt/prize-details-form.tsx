@@ -3,7 +3,7 @@
 import { Button } from "~/components/shadcn/ui/button"
 
 import { useFormContext } from "react-hook-form"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "~/components/shadcn/ui/form"
@@ -64,6 +64,22 @@ export default function PrizeDetailsForm() {
     const session = useSession()
     const { needSign } = useNeedSign()
     const apiUtils = api.useUtils() // Moved to top level
+
+    // Set default selected asset to PLATFORM_ASSET when available
+    useEffect(() => {
+        if (!selectedAsset && typeof platformAssetBalance !== "undefined") {
+            setSelectedAsset({
+                assetCode: PLATFORM_ASSET.code,
+                assetIssuer: PLATFORM_ASSET.issuer,
+                balance: Number(platformAssetBalance ?? 0),
+                assetType: assetType.PLATFORMASSET,
+            })
+
+            setValue("requiredBalanceCode", PLATFORM_ASSET.code)
+            setValue("requiredBalanceIssuer", PLATFORM_ASSET.issuer)
+            setValue("requiredBalance", 0)
+        }
+    }, [platformAssetBalance, selectedAsset, setValue])
 
     const rewardType = watch("rewardType")
     const usdcAmount = watch("usdcAmount")
@@ -308,6 +324,11 @@ export default function PrizeDetailsForm() {
                         <div className="space-y-3">
                             <Label className="text-sm font-medium text-purple-800">Select Required Asset</Label>
                             <Select
+                                value={
+                                    selectedAsset
+                                        ? `${selectedAsset.assetCode} ${selectedAsset.assetIssuer} ${selectedAsset.balance} ${selectedAsset.assetType}`
+                                        : undefined
+                                }
                                 onValueChange={(value) => {
                                     const parts = value.split(" ")
                                     if (parts.length === 4) {
@@ -322,6 +343,8 @@ export default function PrizeDetailsForm() {
                                     } else {
                                         setSelectedAsset(null)
                                         setValue("requiredBalance", 0)
+                                        setValue("requiredBalanceCode", "")
+                                        setValue("requiredBalanceIssuer", "")
                                     }
                                 }}
                             >
@@ -439,6 +462,11 @@ export default function PrizeDetailsForm() {
                                         })}
                                         className="pl-10 bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-purple-500/20"
                                         placeholder={`Min ${selectedAsset.assetCode} balance`}
+                                        onBlur={(e) => {
+                                            if (!e.target.value || Number(e.target.value) <= 0) {
+                                                setValue("requiredBalance", 0)
+                                            }
+                                        }}
                                     />
                                 </div>
                                 {errors.requiredBalance && (
