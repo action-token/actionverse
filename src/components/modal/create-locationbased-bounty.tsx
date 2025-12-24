@@ -58,6 +58,7 @@ import { Editor } from "../common/quill-editor"
 import { useCreatorMapModalStore } from "../store/creator-map-modal-store"
 import { cn } from "~/lib/utils"
 import { USDC_ASSET_CODE, USDC_ISSUER } from "~/lib/usdc"
+import { toast as sonner } from "sonner"
 
 // Schema definitions
 const MediaInfo = z.object({
@@ -315,11 +316,24 @@ const CreateLocationBasedBountyModal = ({ open, onOpenChange }: { open: boolean;
                         setMedia([])
                     }
                     setIsOpen(false)
-                } catch (error) {
-                    setIsSubmitting(false)
-                    console.error("Error sending balance to bounty mother", error)
-                    reset()
-                    setMedia([])
+                } catch (error: unknown) {
+                    console.error("Error in test transaction", error)
+
+                    const err = error as {
+                        message?: string
+                        details?: string
+                        errorCode?: string
+                    }
+
+                    sonner.error(
+                        typeof err?.message === "string"
+                            ? err.message
+                            : "Transaction Failed",
+                        {
+                            description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                            duration: 8000,
+                        }
+                    )
                 }
             }
         },
@@ -694,13 +708,24 @@ function DetailsStep() {
                 } else {
                     toast.error("No Data Found at TrustLine Operation")
                 }
-            } catch (error) {
-                if (error instanceof Error) {
-                    toast.error(`Error: ${error.message}`)
-                } else {
-                    toast.error("An unknown error occurred.")
+            } catch (error: unknown) {
+                console.error("Error in test transaction", error)
+
+                const err = error as {
+                    message?: string
+                    details?: string
+                    errorCode?: string
                 }
-                console.log("Error", error)
+
+                sonner.error(
+                    typeof err?.message === "string"
+                        ? err.message
+                        : "Transaction Failed",
+                    {
+                        description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                        duration: 8000,
+                    }
+                )
             } finally {
                 setLoading(false)
             }

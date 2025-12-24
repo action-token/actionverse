@@ -26,6 +26,7 @@ import { FormProvider, useForm, useFormContext, type SubmitHandler } from "react
 import toast from "react-hot-toast"
 import { z } from "zod"
 import { motion, AnimatePresence } from "framer-motion"
+import { toast as sonner } from "sonner"
 
 import {
     Select,
@@ -284,11 +285,26 @@ const CreateBountyModal = ({ open, onOpenChange }: { open: boolean; onOpenChange
                         setMedia([])
                     }
                     setIsOpen(false)
-                } catch (error) {
+                } catch (error: unknown) {
+                    console.error("Error in test transaction", error)
                     setLoading(false)
-                    console.error("Error sending balance to bounty mother", error)
                     reset()
                     setMedia([])
+                    const err = error as {
+                        message?: string
+                        details?: string
+                        errorCode?: string
+                    }
+
+                    sonner.error(
+                        typeof err?.message === "string"
+                            ? err.message
+                            : "Transaction Failed",
+                        {
+                            description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                            duration: 8000,
+                        }
+                    )
                 }
             }
         },
@@ -657,13 +673,24 @@ function DetailsStep() {
                     } else {
                         toast.error("No Data Found at TrustLine Operation");
                     }
-                } catch (error) {
-                    if (error instanceof Error) {
-                        toast.error(`Error: ${error.message}`);
-                    } else {
-                        toast.error("An unknown error occurred.");
+                } catch (error: unknown) {
+                    console.error("Error in test transaction", error)
+
+                    const err = error as {
+                        message?: string
+                        details?: string
+                        errorCode?: string
                     }
-                    console.log("Error", error);
+
+                    sonner.error(
+                        typeof err?.message === "string"
+                            ? err.message
+                            : "Transaction Failed",
+                        {
+                            description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                            duration: 8000,
+                        }
+                    )
                 } finally {
                     setLoading(false);
                 }

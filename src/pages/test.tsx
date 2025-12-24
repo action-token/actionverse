@@ -20,8 +20,7 @@ import {
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import Image from "next/image"
-import { clientsign } from "package/connect_wallet"
-import toast from "react-hot-toast"
+import { clientsign, WalletType } from "package/connect_wallet"
 import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Input } from "~/components/shadcn/ui/input"
@@ -45,6 +44,8 @@ import { useAccountAction } from "~/lib/state/augmented-reality/useAccountAction
 import Loading from "~/components/common/loading"
 import { Walkthrough } from "~/components/common/walkthrough"
 import { useWalkThrough } from "~/hooks/useWalkthrough"
+import { submitSignedXDRToServer4UserTestnet } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g"
+import { toast as sonner } from "sonner"
 
 type ButtonLayout = {
     x: number
@@ -69,38 +70,48 @@ interface Creator {
 }
 
 export default function CreatorPage() {
-    const { data, fetchNextPage, hasNextPage, isFetchingNextPage, error, isLoading, refetch } =
-        api.fan.creator.getTrandingCreators.useInfiniteQuery(
-            { limit: 5 },
-            {
-                getNextPageParam: (lastPage) => lastPage.nextCursor,
-            },
-        )
-    const dummyData = {
-        user: {
-            id: "user_123",
-            name: "John Doe",
+    const session = useSession()
+    const { needSign } = useNeedSign()
+    const queryClient = useQueryClient()
+    const handleSubmit = async () => {
+        const preSignedXDR = "AAAAAgAAAAAMBJlzptvGE55Aj2jMQpQEa3l9z5iz8MRXeSO7TppTLwAAAGQAAY/hAAAAKAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAABAAAAAB/Cdzv5w1w6bPRA+ND5dleKmoV44XurkstNKxUsQrpcAAAAAQAAAAAMBJlzptvGE55Aj2jMQpQEa3l9z5iz8MRXeSO7TppTLwAAAAJCYW5kY29pbgAAAAAAAAAA7ZeIY9ir45ovHmBpuOXCEin9skXH01KLGiXiOiF/4bsAAAAAeZfuAAAAAAAAAAABTppTLwAAAEDIAz1qDsXXfAU35XmeX0IeBvdI5X6XASwUTxmCsaytuxaCRNk5alrmZOZ3RKKHayQmVbbcuyo2b3oO4raUk4sO"
+        try {
+            const result = await clientsign({
+                presignedxdr: preSignedXDR,
+                pubkey: session.data?.user.id,
+                walletType: WalletType.isAdmin,
+                test: clientSelect(),
+            })
+
+        } catch (error: unknown) {
+            console.error("Error in test transaction", error)
+
+            const err = error as {
+                message?: string
+                details?: string
+                errorCode?: string
+            }
+
+            sonner.error(
+                typeof err?.message === "string"
+                    ? err.message
+                    : "Transaction Failed",
+                {
+                    description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                    duration: 8000,
+                }
+            )
+
         }
+
     }
-    console.log(data, error,)
     return (
         <>
-            <div>
-                {
-                    JSON.stringify(data, null, 2)
-                }
-
-            </div>
-            <div>
-                {
-                    JSON.stringify(dummyData, null, 2)
-                }
-            </div>
-            <div>
-                {
-                    JSON.stringify(error, null, 2)
-                }
-            </div>
+            <Button
+                onClick={handleSubmit}
+            >
+                Click Me
+            </Button >
         </>
     )
 

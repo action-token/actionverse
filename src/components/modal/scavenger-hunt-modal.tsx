@@ -10,6 +10,7 @@ import { useForm, FormProvider } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import PrizeDetailsForm from "~/components/scavenger-hunt/prize-details-form"
+import { toast as sonner } from "sonner"
 
 import { ChevronLeft, ChevronRight, Coins, Loader2 } from "lucide-react"
 import { api } from "~/utils/api"
@@ -375,9 +376,24 @@ const ScavengerHuntDialog = ({ open, onOpenChange }: { open: boolean; onOpenChan
                         setLoading(false)
                         toast.error("Error in signing transaction")
                     }
-                } catch (error) {
+                } catch (error: unknown) {
+                    console.error("Error in test transaction", error)
                     setLoading(false)
-                    console.error("Error sending balance to bounty mother", error)
+                    const err = error as {
+                        message?: string
+                        details?: string
+                        errorCode?: string
+                    }
+
+                    sonner.error(
+                        typeof err?.message === "string"
+                            ? err.message
+                            : "Transaction Failed",
+                        {
+                            description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                            duration: 8000,
+                        }
+                    )
                 }
             }
         },

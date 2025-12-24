@@ -10,6 +10,7 @@ import { clientsign } from "package/connect_wallet"
 import { clientSelect } from "~/lib/stellar/fan/utils"
 import useNeedSign from "~/lib/hook"
 import toast from "react-hot-toast"
+import { toast as sonner } from "sonner"
 
 interface FollowAndMembershipButtonProps {
   creatorId: string
@@ -116,8 +117,24 @@ export default function FollowAndMembershipButton({
             } else {
               toast.error("Transaction failed while signing.")
             }
-          } catch (e) {
-            toast.error("Transaction failed while signing.")
+          } catch (error: unknown) {
+            console.error("Error in test transaction", error)
+
+            const err = error as {
+              message?: string
+              details?: string
+              errorCode?: string
+            }
+
+            sonner.error(
+              typeof err?.message === "string"
+                ? err.message
+                : "Transaction Failed",
+              {
+                description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                duration: 8000,
+              }
+            )
           }
         }
       } else {

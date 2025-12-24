@@ -64,6 +64,7 @@ import {
 } from "~/components/shadcn/ui/tabs";
 import { Skeleton } from "~/components/shadcn/ui/skeleton";
 import CustomAvatar from "~/components/common/custom-avatar";
+import { toast as sonner } from "sonner"
 
 enum assetType {
   PAGEASSET = "PAGEASSET",
@@ -149,12 +150,24 @@ export default function GiftPage() {
             toast.error("Transaction failed");
             setIsDialogOpen(false);
           }
-        } catch (signError) {
-          if (signError instanceof Error) {
-            toast.error(`Error: ${signError.message}`);
-          } else {
-            toast.error("Something went wrong.");
+        } catch (error: unknown) {
+          console.error("Error in test transaction", error)
+
+          const err = error as {
+            message?: string
+            details?: string
+            errorCode?: string
           }
+
+          sonner.error(
+            typeof err?.message === "string"
+              ? err.message
+              : "Transaction Failed",
+            {
+              description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+              duration: 8000,
+            }
+          )
         } finally {
           setIsDialogOpen(false);
         }

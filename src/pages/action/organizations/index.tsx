@@ -45,6 +45,7 @@ import { useAccountAction } from "~/lib/state/augmented-reality/useAccountAction
 import Loading from "~/components/common/loading"
 import { Walkthrough } from "~/components/common/walkthrough"
 import { useWalkThrough } from "~/hooks/useWalkthrough"
+import { toast as sonner } from "sonner"
 
 type ButtonLayout = {
   x: number
@@ -211,9 +212,24 @@ export default function CreatorPage() {
               toast.error("Transaction failed while signing.")
               setMemberLoadingId(null)
             }
-          } catch (e) {
-            toast.error("Transaction failed while signing.")
+          } catch (error: unknown) {
+            console.error("Error in test transaction", error)
             setMemberLoadingId(null)
+            const err = error as {
+              message?: string
+              details?: string
+              errorCode?: string
+            }
+
+            sonner.error(
+              typeof err?.message === "string"
+                ? err.message
+                : "Transaction Failed",
+              {
+                description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                duration: 8000,
+              }
+            )
           }
         }
       } else {

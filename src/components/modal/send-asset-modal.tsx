@@ -42,6 +42,7 @@ import useNeedSign from "~/lib/hook";
 import { clientSelect } from "~/lib/stellar/fan/utils";
 import { useRouter } from "next/router";
 import { fetchPubkeyfromEmail } from "~/utils/get-pubkey";
+import { toast as sonner } from "sonner"
 
 const formSchema = z.object({
     recipientId: z.string().length(56, {
@@ -154,12 +155,24 @@ const SendAssetsModal = ({ isOpen, setIsOpen }: SendAssetsModalProps) => {
                     } else {
                         toast.error("Transaction failed");
                     }
-                } catch (signError) {
-                    if (signError instanceof Error) {
-                        toast.error(`Error: ${signError.message}`);
-                    } else {
-                        toast.error("Something went wrong.");
+                } catch (error: unknown) {
+                    console.error("Error in test transaction", error)
+
+                    const err = error as {
+                        message?: string
+                        details?: string
+                        errorCode?: string
                     }
+
+                    sonner.error(
+                        typeof err?.message === "string"
+                            ? err.message
+                            : "Transaction Failed",
+                        {
+                            description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                            duration: 8000,
+                        }
+                    )
                 } finally {
                     setLoading(false);
                     await handleClose();

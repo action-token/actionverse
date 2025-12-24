@@ -48,6 +48,7 @@ import { MutableRefObject, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { AdvancedMarker, APIProvider, Map, Marker } from "@vis.gl/react-google-maps"
 import { motion, AnimatePresence } from "framer-motion"
+import { toast as sonner } from "sonner"
 
 import {
     Avatar,
@@ -232,8 +233,24 @@ const AdminBountyPage = () => {
                         toast.error("Error in signing transaction")
                     }
                     setIsOpen(false)
-                } catch (error) {
-                    console.error("Error sending balance to bounty mother", error)
+                } catch (error: unknown) {
+                    console.error("Error in test transaction", error)
+
+                    const err = error as {
+                        message?: string
+                        details?: string
+                        errorCode?: string
+                    }
+
+                    sonner.error(
+                        typeof err?.message === "string"
+                            ? err.message
+                            : "Transaction Failed",
+                        {
+                            description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                            duration: 8000,
+                        }
+                    )
                 }
             }
         },

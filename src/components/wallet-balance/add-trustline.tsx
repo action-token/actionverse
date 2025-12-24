@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 
 import { Input } from "~/components/shadcn/ui/input";
 import { clientSelect } from "~/lib/stellar/fan/utils";
+import { toast as sonner } from "sonner"
 
 import {
   Form,
@@ -73,13 +74,24 @@ const AddTrustLine = () => {
           } else {
             toast.error("No Data Found at TrustLine Operation");
           }
-        } catch (error) {
-          if (error instanceof Error) {
-            toast.error(`Error: ${error.message}`);
-          } else {
-            toast.error("An unknown error occurred.");
+        } catch (error: unknown) {
+          console.error("Error in test transaction", error)
+
+          const err = error as {
+            message?: string
+            details?: string
+            errorCode?: string
           }
-          console.log("Error", error);
+
+          sonner.error(
+            typeof err?.message === "string"
+              ? err.message
+              : "Transaction Failed",
+            {
+              description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+              duration: 8000,
+            }
+          )
         } finally {
           setLoading(false);
           handleClose();

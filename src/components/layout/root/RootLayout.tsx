@@ -30,6 +30,8 @@ import Header from "../Header";
 import Sidebar from "../Left-sidebar/sidebar";
 import ARLayout from "./ARLayout";
 import CreatorLayout from "./CreatorLayout";
+import { Toaster as Sonner } from "~/components/shadcn/ui/sonner"
+
 export default function Layout({
   children,
   className,
@@ -161,6 +163,7 @@ export default function Layout({
             </div>
           </div>
           <StemPlayer />
+          <Sonner richColors closeButton />
           <FallingSnowflakes />
         </BottomPlayerProvider>
       </MiniPlayerProvider>

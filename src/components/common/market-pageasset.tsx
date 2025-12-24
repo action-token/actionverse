@@ -31,6 +31,7 @@ import {
 import { Clock, Coins, ShoppingCart, Star, User } from "lucide-react";
 import toast from "react-hot-toast";
 import useNeedSign from "~/lib/hook";
+import { toast as sonner } from "sonner"
 
 interface PageAssetWithCreator {
     id: number;
@@ -95,9 +96,24 @@ const MarketPageAssets = () => {
 
                         toast.error("Error in signing transaction");
                     }
-                } catch (error) {
+                } catch (error: unknown) {
+                    console.error("Error in test transaction", error)
                     setBuyLoading(null);
-                    console.error("Error ", error);
+                    const err = error as {
+                        message?: string
+                        details?: string
+                        errorCode?: string
+                    }
+
+                    sonner.error(
+                        typeof err?.message === "string"
+                            ? err.message
+                            : "Transaction Failed",
+                        {
+                            description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                            duration: 8000,
+                        }
+                    )
                 }
             }
         },
