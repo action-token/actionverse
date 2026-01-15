@@ -673,8 +673,8 @@ model Bounty {
     currentWinnerCount    Int                 @default(0)
     priceInXLM            Float?
     requiredBalance       Float
-    requiredBalanceCode   String
-    requiredBalanceIssuer String
+    requiredBalanceCode   String?
+    requiredBalanceIssuer String?
     imageUrls             String[]
     createdAt             DateTime            @default(now())
     endDate               DateTime?

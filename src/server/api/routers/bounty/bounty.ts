@@ -151,8 +151,8 @@ export const BountyRoute = createTRPCRouter({
             .min(0, { message: "Required Balance can't be less than 0" }),
           content: z.string().min(2, { message: "Description can't be empty" }),
           priceInXLM: z.number().optional(),
-          requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
-          requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
+          requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }).nullable(),
+          requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }).nullable(),
           medias: z.array(MediaInfo).optional(),
           generateRedeemCodes: z.boolean().default(false), // <-- NEW FIELD
         })
@@ -245,8 +245,8 @@ export const BountyRoute = createTRPCRouter({
             .min(0, { message: "Required Balance can't be less than 0" }),
           content: z.string().min(2, { message: "Description can't be empty" }),
           priceInXLM: z.number().optional(),
-          requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
-          requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
+          requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }).nullable(),
+          requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }).nullable(),
           medias: z.array(MediaInfo).optional(),
           generateRedeemCodes: z.boolean().default(false), // <-- NEW FIELD
         })

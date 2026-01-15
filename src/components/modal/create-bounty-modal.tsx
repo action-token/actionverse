@@ -91,8 +91,8 @@ const BountySchema = z
             })
             .nonnegative({ message: "Required Balance can't be less than 0" })
             .default(0),
-        requiredBalanceCode: z.string().min(1, { message: "Please select an asset" }),
-        requiredBalanceIssuer: z.string().min(1, { message: "Please select an asset" }),
+        requiredBalanceCode: z.string().min(1, { message: "Please select an asset" }).nullable().default(null),
+        requiredBalanceIssuer: z.string().min(1, { message: "Please select an asset" }).nullable().default(null),
         content: z.string().min(2, { message: "Description can't be empty" }),
         medias: z.array(MediaInfo).optional(),
         generateRedeemCodes: z.boolean().default(false),
@@ -157,8 +157,8 @@ const CreateBountyModal = ({ open, onOpenChange }: { open: boolean; onOpenChange
             usdcAmount: 0,
             platformAssetAmount: 0,
             requiredBalance: 0,
-            requiredBalanceCode: "",
-            requiredBalanceIssuer: "",
+            requiredBalanceCode: null,
+            requiredBalanceIssuer: null,
             generateRedeemCodes: false,
         },
     })
@@ -203,7 +203,7 @@ const CreateBountyModal = ({ open, onOpenChange }: { open: boolean; onOpenChange
         const fieldsToValidate: Record<FormStep, (keyof z.infer<typeof BountySchema>)[]> = {
             details: ["title", "content", "rewardType", "totalWinner"],
             media: [],
-            settings: ["requiredBalanceCode", "requiredBalanceIssuer"],
+            settings: [],
             review: [],
         }
         return await trigger(fieldsToValidate[activeStep])
@@ -1081,7 +1081,7 @@ function SettingsStep() {
                         {/* Required Asset Selection */}
                         <div className="space-y-2">
                             <Label className="text-sm font-medium">
-                                Required Asset <span className="text-red-500">*</span>
+                                Required Asset
                             </Label>
                             <Select
                                 onValueChange={(value) => {
@@ -1349,7 +1349,7 @@ function ReviewStep({
     platformAssetAmount?: number
     winners: number
     requiredBalance?: number
-    requiredBalanceCode?: string
+    requiredBalanceCode?: string | null
     generateRedeemCodes?: boolean
 }) {
     return (

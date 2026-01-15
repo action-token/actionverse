@@ -111,8 +111,8 @@ export const LocationBasedBountyFormSchema = z
         // Platform asset amount (used when rewardType is 'platform_asset')
         platformAssetAmount: z.number().optional(),
         winners: z.number().int().min(1, "Must have at least 1 winner").max(100, "Cannot have more than 100 winners"),
-        requiredBalanceCode: z.string().min(1, { message: "Please select an asset" }),
-        requiredBalanceIssuer: z.string().min(1, { message: "Please select an asset" }),
+        requiredBalanceCode: z.string().min(1, { message: "Please select an asset" }).nullable().default(null),
+        requiredBalanceIssuer: z.string().min(1, { message: "Please select an asset" }).nullable().default(null),
         requiredBalance: z
             .number({
                 required_error: "Required Balance must be a number",
@@ -174,8 +174,8 @@ const CreateLocationBasedBountyModal = ({ open, onOpenChange }: { open: boolean;
             platformAssetAmount: 0,
             winners: 1,
             requiredBalance: 0,
-            requiredBalanceCode: "",
-            requiredBalanceIssuer: "",
+            requiredBalanceCode: null,
+            requiredBalanceIssuer: null,
             generateRedeemCodes: false,
         },
     })
@@ -232,7 +232,7 @@ const CreateLocationBasedBountyModal = ({ open, onOpenChange }: { open: boolean;
             details: ["title", "description", "rewardType", "winners"],
             location: ["latitude", "longitude", "radius"],
             media: [],
-            settings: ["requiredBalanceCode", "requiredBalanceIssuer"],
+            settings: [],
             review: [],
         }
         return await trigger(fieldsToValidate[activeStep])
@@ -433,7 +433,7 @@ const CreateLocationBasedBountyModal = ({ open, onOpenChange }: { open: boolean;
             <DialogContent
                 className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-2"
             >
-                {/* {showConfetti && (
+                {showConfetti && (
                     <div className="pointer-events-none fixed inset-0 z-50">
                         <div className="absolute inset-0 flex items-center justify-center">
                             <motion.div
@@ -475,7 +475,7 @@ const CreateLocationBasedBountyModal = ({ open, onOpenChange }: { open: boolean;
                             />
                         ))}
                     </div>
-                )} */}
+                )}
 
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -1514,7 +1514,7 @@ function ReviewStep({
     platformAssetAmount?: number
     winners: number
     requiredBalance?: number
-    requiredBalanceCode?: string
+    requiredBalanceCode?: string | null
     generateRedeemCodes?: boolean
     latitude: string
     longitude: string
