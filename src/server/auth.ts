@@ -305,7 +305,7 @@ async function getUserPublicKey({
       params: {
         uid,
         email,
-        from: env.NEXT_PUBLIC_ASSET_CODE ?? "Wadzzo",
+        from: env.NEXT_PUBLIC_ASSET_CODE ?? "ACTION",
         fromAppSign: fromAppSign ? "true" : "false",
       },
     },
