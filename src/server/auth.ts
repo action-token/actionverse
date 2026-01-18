@@ -89,11 +89,10 @@ export const authOptions: NextAuthOptions = {
       credentials: {},
       async authorize(credentials): Promise<User | null> {
         const cred = credentials as AuthCredentialType;
-        console.log("cred", cred);
+
         // email pass login
         if (cred.walletType == WalletType.emailPass) {
           const { email, password, fromAppSign } = cred;
-          console.log("calling", cred);
           const userCredential = await signInWithEmailAndPassword(
             auth,
             email,
@@ -103,11 +102,16 @@ export const authOptions: NextAuthOptions = {
 
           if (!user.emailVerified) {
             await sendEmailVerification(user);
-            throw new Error("Email is not verified");
+            const errorCode = "auth/unverified-email";
+            throw new Error(`Firebase: Error (${errorCode}).`);
           }
-          const data = await getUserPublicKey({ email: email, uid: user.uid });
-          const sessionUser = await dbUser(data.publicKey, fromAppSign);
-          console.log("sessionUser", sessionUser);
+          const data = await getUserPublicKey({ email: email, uid: user.uid, fromAppSign });
+          const sessionUser = await dbUser(
+            data.publicKey,
+            fromAppSign,
+            email,
+            WalletType.emailPass,
+          );
           return {
             ...sessionUser,
             walletType: WalletType.emailPass,
@@ -117,13 +121,17 @@ export const authOptions: NextAuthOptions = {
         }
 
         // wallet login
-
         if (cred.walletType == WalletType.albedo) {
           const { pubkey, signature, token, fromAppSign } = cred;
 
           const isValid = verifyMessageSignature(pubkey, token, signature);
           if (isValid) {
-            const sessionUser = await dbUser(pubkey, fromAppSign);
+            const sessionUser = await dbUser(
+              pubkey,
+              fromAppSign,
+              undefined,
+              cred.walletType,
+            );
             return {
               ...sessionUser,
               walletType: WalletType.albedo,
@@ -144,7 +152,12 @@ export const authOptions: NextAuthOptions = {
             xdr: signedXDR,
           });
           if (isValid) {
-            const sessionUser = await dbUser(pubkey, fromAppSign);
+            const sessionUser = await dbUser(
+              pubkey,
+              fromAppSign,
+              undefined,
+              cred.walletType,
+            );
             return {
               ...sessionUser,
               walletType: cred.walletType,
@@ -162,8 +175,13 @@ export const authOptions: NextAuthOptions = {
           const { token, email, fromAppSign } = cred;
 
           const { uid } = await verifyIdToken(token);
-          const data = await getUserPublicKey({ uid, email });
-          const sessionUser = await dbUser(data.publicKey, fromAppSign);
+          const data = await getUserPublicKey({ uid, email, fromAppSign });
+          const sessionUser = await dbUser(
+            data.publicKey,
+            fromAppSign,
+            email,
+            cred.walletType,
+          );
           return {
             ...sessionUser,
             walletType: cred.walletType,
@@ -177,8 +195,13 @@ export const authOptions: NextAuthOptions = {
 
           if (token) {
             const { uid } = await verifyIdToken(token);
-            const data = await getUserPublicKey({ uid, email });
-            const sessionUser = await dbUser(data.publicKey, fromAppSign);
+            const data = await getUserPublicKey({ uid, email, fromAppSign });
+            const sessionUser = await dbUser(
+              data.publicKey,
+              fromAppSign,
+              email,
+              cred.walletType,
+            );
             return {
               ...sessionUser,
               walletType: cred.walletType,
@@ -189,12 +212,18 @@ export const authOptions: NextAuthOptions = {
             if (appleToken) {
               const { uid } = await appleTokenToUser(appleToken, email);
 
-              const data = await getUserPublicKey({ uid, email });
-              const sessionUser = await dbUser(data.publicKey, fromAppSign);
+              const data = await getUserPublicKey({ uid, email, fromAppSign });
+              const sessionUser = await dbUser(
+                data.publicKey,
+                fromAppSign,
+                email,
+                cred.walletType,
+              );
               return {
                 ...sessionUser,
                 walletType: cred.walletType,
                 emailVerified: true,
+                email: email,
               };
             }
           }
@@ -204,6 +233,8 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+
+
 };
 
 /**
@@ -218,10 +249,32 @@ export const getServerAuthSession = (ctx: {
   return getServerSession(ctx.req, ctx.res, authOptions);
 };
 
-async function dbUser(pubkey: string, fromAppSign?: string) {
+async function dbUser(
+  pubkey: string,
+  fromAppSign?: string,
+  email?: string,
+  signUpMethod?: string,
+) {
   const user = await db.user.findUnique({ where: { id: pubkey } });
-  console.log("user", user);
+  // if user exists, check if email is set, if not set it
   if (user) {
+    const profileEmail = user.email;
+    if (!profileEmail && email) {
+      await db.user.update({
+        where: { id: pubkey },
+        data: { email: email },
+      });
+    }
+    const firstSignUpMethod = user.firstSignUpMethod;
+    if (!firstSignUpMethod && signUpMethod) {
+      await db.user.update({
+        where: { id: pubkey },
+        data: {
+          firstSignUpMethod: signUpMethod,
+        },
+      });
+    }
+
     return user;
   } else {
     const data = await db.user.create({
@@ -229,6 +282,8 @@ async function dbUser(pubkey: string, fromAppSign?: string) {
         id: pubkey,
         name: truncateString(pubkey),
         fromAppSignup: fromAppSign === "true" ? true : false,
+        email: email,
+        firstSignUpMethod: signUpMethod,
       },
     });
     return data;
@@ -238,9 +293,11 @@ async function dbUser(pubkey: string, fromAppSign?: string) {
 async function getUserPublicKey({
   uid,
   email,
+  fromAppSign
 }: {
   uid: string;
   email: string;
+  fromAppSign: string | undefined;
 }) {
   const res = await axios.get<z.infer<typeof getPublicKeyAPISchema>>(
     USER_ACCOUNT_URL,
@@ -248,8 +305,8 @@ async function getUserPublicKey({
       params: {
         uid,
         email,
-        from: env.NEXT_PUBLIC_ASSET_CODE
-
+        from: env.NEXT_PUBLIC_ASSET_CODE ?? "Wadzzo",
+        fromAppSign: fromAppSign ? "true" : "false",
       },
     },
   );
