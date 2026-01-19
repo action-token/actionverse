@@ -45,7 +45,7 @@ function Header() {
                     className="object-cover object-top"
                     priority
                 />
-                <ChristmasWindChimeAnimation />
+                {/* <ChristmasWindChimeAnimation /> */}
                 <div className="relative z-10 flex items-center justify-between">
                     <div className="flex items-center gap-0">
                         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
@@ -104,14 +104,14 @@ function Header() {
                         </div>
                         <h1 className="hidden md:block relative text-xl font-bold capitalize text-white  md:text-4xl">
                             ACTIONVERSE
-                            <ChristmasSleighAnimation />
+                            {/* <ChristmasSleighAnimation /> */}
                             <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
                         </h1>
                     </div>
                     <HeaderButtons />
                 </div>
             </div>
-            <div className="absolute top-[4rem] left-0 right-0 w-full z-50 flex overflow-hidden  pointer-events-none">
+            {/* <div className="absolute top-[4rem] left-0 right-0 w-full z-50 flex overflow-hidden  pointer-events-none">
                 <div className="flex  h-12 pointer-events-none">
                     {Array.from({ length: 20 }, (_, index) => (
                         <Image
@@ -126,7 +126,7 @@ function Header() {
                     ))}
                 </div>
 
-            </div>
+            </div> */}
 
         </header>
     );

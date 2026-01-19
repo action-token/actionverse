@@ -164,7 +164,7 @@ export default function Layout({
           </div>
           <StemPlayer />
           <Sonner richColors closeButton />
-          <FallingSnowflakes />
+          {/* <FallingSnowflakes /> */}
         </BottomPlayerProvider>
       </MiniPlayerProvider>
     </ThemeProvider>
