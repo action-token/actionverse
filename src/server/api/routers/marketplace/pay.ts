@@ -138,7 +138,7 @@ export const payRouter = createTRPCRouter({
           sourceId: input.token,
           amountMoney: {
             currency: "USD",
-            amount: BigInt(2),
+            amount: BigInt(200), // $2.00 for account activation
           },
         });
 
