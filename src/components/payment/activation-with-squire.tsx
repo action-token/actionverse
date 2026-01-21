@@ -32,8 +32,9 @@ export function PayForActivation({ isOpen, selectedPlatforms, onClose, xdr }: Pa
     const ActivateAccountCardPayment = api.marketplace.pay.activateAccount.useMutation({
         onSuccess: (data) => {
             if (data) {
-                const id = data;
+
                 const tostId = toast.loading("Submitting transaction");
+                console.log("Activation Payment XDR: ", xdr)
                 submitSignedXDRToServer4User(xdr)
                     .then((data) => {
                         if (data) {
@@ -41,7 +42,7 @@ export function PayForActivation({ isOpen, selectedPlatforms, onClose, xdr }: Pa
                         }
                     })
                     .catch((e) => {
-
+                        console.error("Error submitting XDR: ", e);
                         toast.error("Payment failed");
                     })
                     .finally(() => {
@@ -134,26 +135,60 @@ export function PayForActivation({ isOpen, selectedPlatforms, onClose, xdr }: Pa
 
                         {/* Divider */}
                         <div className="h-px bg-gradient-to-r from-transparent via-[hsl(var(--border))] to-transparent" />
-
-                        {/* Payment Details */}
                         <PaymentForm
                             applicationId={env.NEXT_PUBLIC_SQUARE_APP_ID}
+                            cardTokenizeResponseReceived={(token, verifiedBuyer) => {
 
-                            cardTokenizeResponseReceived={(token, verifiedBuyer) =>
-                                void (async () => {
-                                    if (token.token) {
-                                        ActivateAccountCardPayment.mutate({
-                                            token: token.token,
-                                        });
-                                    } else {
-                                        toast.error("Error squire in token");
-                                    }
-                                })()
-                            }
+
+                                ActivateAccountCardPayment.mutate({
+                                    token: token.token,
+                                });
+                            }}
                             locationId={env.NEXT_PUBLIC_SQUARE_LOCATION}
+                            createPaymentRequest={() => ({
+                                countryCode: "US",
+                                currencyCode: "USD",
+                                total: {
+                                    amount: `${0.01}`,
+                                    label: `Account Activation`,
+                                },
+                            })}
+                        >
+                            <CreditCard
+                                style={{
+                                    ".message-text": {
+                                        color: "green",
+                                    },
+                                    ".message-icon": {
+                                        color: "green",
+                                    },
+                                }}
+                            />
+
+                        </PaymentForm>
+                        {/* Payment Details */}
+                        {/* <PaymentForm
+                            applicationId={env.NEXT_PUBLIC_SQUARE_APP_ID}
+                            cardTokenizeResponseReceived={(token, verifiedBuyer) => {
+
+                                ActivateAccountCardPayment.mutate({
+                                    token: token.token,
+
+                                });
+                            }}
+
+                            locationId={env.NEXT_PUBLIC_SQUARE_LOCATION}
+                            createPaymentRequest={() => ({
+                                countryCode: "US",
+                                currencyCode: "USD",
+                                total: {
+                                    amount: `${.01}`,
+                                    label: `Account Activation`,
+                                },
+                            })}
                         >
                             <CreditCard />
-                        </PaymentForm>
+                        </PaymentForm> */}
 
                         {/* Security Notice */}
                         <div className="p-3 bg-[hsl(var(--muted))] border border-[hsl(var(--muted))] rounded-lg flex items-start gap-2">

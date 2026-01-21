@@ -1,4 +1,3 @@
-
 import {
     Asset,
     BASE_FEE,
@@ -13,8 +12,6 @@ import { env } from "~/env";
 import { USDC_ASSET_CODE, USDC_ISSUER } from "~/lib/usdc"
 import { networkPassphrase, STELLAR_URL, TrxBaseFee } from "../constant";
 import { MOTHER_SECRET } from "../marketplace/SECRET";
-
-const log = console;
 
 export async function createAccountXDRForPlatforms({
     selectedPlatforms,

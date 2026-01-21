@@ -125,36 +125,35 @@ export const payRouter = createTRPCRouter({
   activateAccount: protectedProcedure
     .input(
       z.object({
-        token: z.string(),
+        token: z.string().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-
-
-      const result = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      if (!input.token) {
+        throw new Error("Token is required for payment");
+      }
+      try {
+        const { result } = await paymentsApi.createPayment({
+          idempotencyKey: randomUUID(),
           sourceId: input.token,
-          priceUSD: 0.01,
-        }),
-      });
+          amountMoney: {
+            currency: "USD",
+            amount: BigInt(2),
+          },
+        });
 
-      if (result.ok) {
-        const data = (await result.json()) as { id: string; status: string };
-
-        if (data.status === "COMPLETED") {
-          return true;
-        } else {
-          throw new Error("Payment was not successful");
+        if (result.errors) {
+          console.error("Payment errors:", result.errors);
+          throw new Error("Payment failed due to errors");
         }
-      }
 
-      if (result.status === 400) {
-        throw new Error("Something went wrong with the payment");
+        if (result.payment?.status === "COMPLETED") {
+          return true;
+        }
+      } catch (error) {
+        console.error("Error creating payment:", error);
       }
+      return false
     }),
   getOffers: protectedProcedure.query(async ({ ctx }) => {
     // const tokenNumber = await getPlatfromAssetPrice();
