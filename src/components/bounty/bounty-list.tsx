@@ -23,6 +23,7 @@ import { Preview } from "../common/quill-preview";
 import { Slider } from "../shadcn/ui/slider";
 import { Progress } from "../shadcn/ui/progress";
 import { useState } from "react";
+import { ActivationModal } from "../modal/activation-modal";
 export enum BountyTypeEnum {
     GENERAL = "GENERAL",
     LOCATION_BASED = "LOCATION_BASED",
@@ -56,8 +57,16 @@ const getBountyTypeLabel = (type: BountyTypeEnum) => {
     }
 };
 
-export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
+export default function BountyList({ bounties,
+    isActive,
+    isActiveStatusLoading
+}: {
+    bounties: BountyTypes[],
+    isActive: boolean,
+    isActiveStatusLoading: boolean
+}) {
     const router = useRouter();
+    const [dialogOpen, setDialogOpen] = useState(false);
     const { getAssetBalance } = useUserStellarAcc();
     const [failedReasons, setFailedReasons] = useState<Record<number, string>>(
         {},
@@ -358,7 +367,7 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
                                             </div>
                                         )}
                                 </div>
-                            ) : (
+                            ) : (isActive && isActiveStatusLoading) ? (
                                 <div className="w-full">
                                     <Button
                                         variant="default"
@@ -405,11 +414,27 @@ export default function BountyList({ bounties }: { bounties: BountyTypes[] }) {
                                         </p>
                                     )}
                                 </div>
+                            ) : (!isActive && !isActiveStatusLoading) && (
+                                <div className="w-full">
+                                    <Button
+                                        onClick={() => setDialogOpen(true)}
+                                        variant="destructive"
+                                        className="w-full"
+                                    >
+                                        Join Bounty
+
+                                    </Button>
+
+                                </div>
                             )}
                         </CardFooter>
                     </Card>
                 );
             })}
+            <ActivationModal
+                dialogOpen={dialogOpen}
+                setDialogOpen={setDialogOpen}
+            />
         </div>
     );
 }

@@ -46,6 +46,7 @@ import { Walkthrough } from "~/components/common/walkthrough"
 import { useWalkThrough } from "~/hooks/useWalkthrough"
 import { submitSignedXDRToServer4UserTestnet } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g"
 import { toast as sonner } from "sonner"
+import { ActivationModal } from "~/components/modal/activation-modal"
 
 type ButtonLayout = {
     x: number
@@ -70,48 +71,19 @@ interface Creator {
 }
 
 export default function CreatorPage() {
-    const session = useSession()
-    const { needSign } = useNeedSign()
-    const queryClient = useQueryClient()
-    const handleSubmit = async () => {
-        const preSignedXDR = "AAAAAgAAAAAMBJlzptvGE55Aj2jMQpQEa3l9z5iz8MRXeSO7TppTLwAAAGQAAY/hAAAAKAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAABAAAAAB/Cdzv5w1w6bPRA+ND5dleKmoV44XurkstNKxUsQrpcAAAAAQAAAAAMBJlzptvGE55Aj2jMQpQEa3l9z5iz8MRXeSO7TppTLwAAAAJCYW5kY29pbgAAAAAAAAAA7ZeIY9ir45ovHmBpuOXCEin9skXH01KLGiXiOiF/4bsAAAAAeZfuAAAAAAAAAAABTppTLwAAAEDIAz1qDsXXfAU35XmeX0IeBvdI5X6XASwUTxmCsaytuxaCRNk5alrmZOZ3RKKHayQmVbbcuyo2b3oO4raUk4sO"
-        try {
-            const result = await clientsign({
-                presignedxdr: preSignedXDR,
-                pubkey: session.data?.user.id,
-                walletType: WalletType.isAdmin,
-                test: clientSelect(),
-            })
+    const [dialogOpen, setDialogOpen] = useState(false)
 
-        } catch (error: unknown) {
-            console.error("Error in test transaction", error)
-
-            const err = error as {
-                message?: string
-                details?: string
-                errorCode?: string
-            }
-
-            sonner.error(
-                typeof err?.message === "string"
-                    ? err.message
-                    : "Transaction Failed",
-                {
-                    description: `Error Code : ${err?.errorCode ?? "unknown"}`,
-                    duration: 8000,
-                }
-            )
-
-        }
-
-    }
     return (
         <>
             <Button
-                onClick={handleSubmit}
+                onClick={() => setDialogOpen(true)}
             >
                 Click Me
             </Button >
+            <ActivationModal
+                dialogOpen={dialogOpen}
+                setDialogOpen={setDialogOpen}
+            />
         </>
     )
 

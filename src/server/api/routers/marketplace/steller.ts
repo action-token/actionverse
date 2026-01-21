@@ -142,6 +142,8 @@ export const stellarRouter = createTRPCRouter({
       const user = ctx.session.user;
 
       if (user.email) {
+        console.log("Converting site asset to XLM for user:", user.id);
+        console.log("Site asset email:", user.email);
         const secret = await getAccSecretFromRubyApi(user.email);
 
         const xdr = await covertSiteAsset2XLM({

@@ -530,8 +530,8 @@ const FilterTabs = () => {
                     )}
                     {activeTab === "PAGE ASSETS" && (
                         <div>
-                            <MarketPageAssets 
-                                
+                            <MarketPageAssets
+
                             />
                         </div>
                     )}

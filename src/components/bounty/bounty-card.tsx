@@ -17,8 +17,14 @@ import { useRouter } from "next/router"
 import { Spinner } from "../shadcn/ui/spinner"
 import { FaDollarSign } from "react-icons/fa"
 import { useSession } from "next-auth/react"
+import BountyList from "./bounty-list"
+import { useEffect, useState } from "react"
+import { checkStellarAccountActivity } from "~/lib/helper/helper_client"
 
 export function BountySection() {
+    const session = useSession()
+    const [isActive, setIsActive] = useState<boolean>(false);
+    const [isActiveStatusLoading, setIsActiveStatusLoading] = useState<boolean>(false);
     const { data, isLoading, error, fetchNextPage, isFetchingNextPage } = api.bounty.Bounty.getPaginatedBounty.useInfiniteQuery(
         {
             limit: 7,
@@ -35,7 +41,17 @@ export function BountySection() {
             await fetchNextPage()
         }
     }
-
+    useEffect(() => {
+        const checkAccountActivity = async () => {
+            if (session.data?.user.id) {
+                setIsActiveStatusLoading(true);
+                const active = await checkStellarAccountActivity(session.data.user.id);
+                setIsActive(active);
+                setIsActiveStatusLoading(false);
+            }
+        }
+        checkAccountActivity();
+    }, [session.data?.user.id]);
     if (isLoading) {
         return (
             <section id="bounties-section" className="bg-muted py-20">
@@ -89,9 +105,11 @@ export function BountySection() {
                 </div>
 
                 <HorizontalScroll onNavigate={handleLoadMore} isLoadingMore={isFetchingNextPage}>
-                    {bounties.map((bounty) => (
-                        <BountyCard key={bounty.id} {...bounty} />
-                    ))}
+                    <BountyList
+                        isActive={isActive}
+                        isActiveStatusLoading={isActiveStatusLoading}
+                        bounties={bounties} />
+
                 </HorizontalScroll>
             </div>
         </section>

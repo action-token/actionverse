@@ -122,7 +122,40 @@ export const payRouter = createTRPCRouter({
         throw new Error("Something went wrong with the payment");
       }
     }),
+  activateAccount: protectedProcedure
+    .input(
+      z.object({
+        token: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
 
+
+      const result = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sourceId: input.token,
+          priceUSD: 2,
+        }),
+      });
+
+      if (result.ok) {
+        const data = (await result.json()) as { id: string; status: string };
+
+        if (data.status === "COMPLETED") {
+          return true;
+        } else {
+          throw new Error("Payment was not successful");
+        }
+      }
+
+      if (result.status === 400) {
+        throw new Error("Something went wrong with the payment");
+      }
+    }),
   getOffers: protectedProcedure.query(async ({ ctx }) => {
     // const tokenNumber = await getPlatfromAssetPrice();
     const bandCoinPrice = await getPlatformAssetPrice();
