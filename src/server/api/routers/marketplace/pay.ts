@@ -138,7 +138,7 @@ export const payRouter = createTRPCRouter({
         },
         body: JSON.stringify({
           sourceId: input.token,
-          priceUSD: 2,
+          priceUSD: 0.01,
         }),
       });
 
