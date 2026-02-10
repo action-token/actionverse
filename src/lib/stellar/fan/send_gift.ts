@@ -36,13 +36,9 @@ export async function sendGift({
   const assetStorage = Keypair.fromSecret(creatorStorageSec);
 
   const transactionInializer = await server.loadAccount(motherAccount.publicKey());
-  console.log("Secrate", creatorStorageSec)
-  console.log("Storage", assetStorage)
   const tokens = (await StellarAccount.create(assetStorage.publicKey())).getTokenBalance(creatorPageAsset.code, creatorPageAsset.issuer);
   const accountDetails = await server.loadAccount(assetStorage.publicKey());
-  console.log("Balances:", accountDetails.balances);
 
-  console.log("Tokens", tokens, price)
   if (!tokens) {
     throw new Error("Asset not found");
   }
@@ -50,12 +46,12 @@ export async function sendGift({
     throw new Error("Not enough balance");
   }
 
-  const extraCost = await getplatformAssetNumberForXLM(1);
+  const extraCost = await getplatformAssetNumberForXLM(0.51);
 
-  const transactionFee = Number(TrxBaseFee) + Number(TrxBaseFeeInPlatformAsset) + extraCost;
+  const transactionFee =  2000;
 
   const Tx1 = new TransactionBuilder(transactionInializer, {
-    fee: "200",
+    fee: TrxBaseFee,
     networkPassphrase,
   })
   Tx1.addOperation(
@@ -74,10 +70,17 @@ export async function sendGift({
         ),
       ];
 
+      Tx1.addOperation(Operation.payment({
+        asset: PLATFORM_ASSET,
+        amount: extraCost.toFixed(7),
+        source: creatorPub,
+        destination: motherAccount.publicKey(),
+      }))
+
       Tx1.addOperation(
         Operation.payment({
           asset: Asset.native(),
-          amount: "1",
+          amount: "0.51",
           destination: assetStorage.publicKey(),
           source: motherAccount.publicKey(),
         })

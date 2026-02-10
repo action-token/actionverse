@@ -40,7 +40,6 @@ import { addrShort } from "~/utils/utils";
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 import {
   PLATFORM_ASSET,
-  TrxBaseFee,
   TrxBaseFeeInPlatformAsset,
 } from "~/lib/stellar/constant";
 import useNeedSign from "~/lib/hook";
@@ -195,7 +194,8 @@ export default function GiftPage() {
   };
 
   if (extraCost) {
-    cost = Number(TrxBaseFee) + Number(TrxBaseFeeInPlatformAsset) + extraCost;
+    // this magik number for temporary solution.
+    cost = 2000 + extraCost;
   }
 
   const pubkey = watch("pubkey");
