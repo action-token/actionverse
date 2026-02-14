@@ -74,6 +74,24 @@ export async function NativeBalance({ userPub }: { userPub: string }) {
   return nativeBalance;
 }
 
+export async function PageAssetBalance({ userPub, code, issuer }: { userPub: string, code: string, issuer: string }) {
+  const server = new Horizon.Server(STELLAR_URL);
+
+  const account = await server.loadAccount(userPub);
+
+  const pageAssetBalance = account.balances.find((balance) => {
+    if (
+      (balance.asset_type === "credit_alphanum4" ||
+        balance.asset_type === "credit_alphanum12") &&
+      balance.asset_code === code &&
+      balance.asset_issuer === issuer
+    ) {
+      return balance;
+    }
+  });
+  return pageAssetBalance?.balance ?? "0";
+}
+
 export async function BalanceWithHomeDomain({ userPub }: { userPub: string }) {
   const server = new Horizon.Server(STELLAR_URL);
 
@@ -224,7 +242,99 @@ export async function SendAssets({
     });
     return { xdr: signedXDr, pubKey: userPubKey };
   }
-  return { xdr: buildTrx.toXDR(), pubKey: userPubKey };
+  return { xdr: buildTrx.toXDR(), pubKey: userPubKey, submitWithoutSign: false };
+}
+export async function SendAssetFromStroage({
+  userPubKey,
+  recipientId,
+  amount,
+  asset_code,
+  asset_type,
+  asset_issuer,
+  secretKey,
+}: {
+  userPubKey: string;
+
+  recipientId: string;
+  amount: number;
+  asset_code: string;
+  asset_type: string;
+  asset_issuer: string;
+
+  secretKey: string;
+}) {
+  const server = new Horizon.Server(STELLAR_URL);
+  const account = await server.loadAccount(userPubKey);
+
+  if (userPubKey === recipientId) {
+    throw new Error("You can't send asset to yourself");
+  }
+  const accBalance = account.balances.find((balance) => {
+    if (
+      balance.asset_type === "credit_alphanum4" ||
+      balance.asset_type === "credit_alphanum12"
+    ) {
+      return balance.asset_code === asset_code && balance.asset_issuer === asset_issuer;
+    } else if (balance.asset_type === "native") {
+      return balance.asset_type === asset_type;
+    }
+    return false;
+  });
+
+  if (!accBalance || parseFloat(accBalance.balance) < amount) {
+    throw new Error("Balance is not enough to send the asset.");
+  }
+
+  const receiverAccount = await server.loadAccount(recipientId);
+  const hasTrust = receiverAccount.balances.some((balance) => {
+
+    return (
+      (balance.asset_type === "credit_alphanum4" || balance.asset_type === "credit_alphanum12") &&
+      balance.asset_code === asset_code &&
+      balance.asset_issuer === asset_issuer
+    );
+  });
+
+  const asset =
+    asset_type === "native"
+      ? Asset.native()
+      : new Asset(asset_code, asset_issuer);
+
+  const transaction = new TransactionBuilder(account, {
+    fee: TrxBaseFee,
+    networkPassphrase,
+  });
+
+  if (!hasTrust && asset_type !== "native") {
+    const claimants: Claimant[] = [
+      new Claimant(recipientId, Claimant.predicateUnconditional()),
+    ];
+
+    transaction.addOperation(
+      Operation.createClaimableBalance({
+        amount: amount.toString(),
+        asset: asset,
+        claimants: claimants,
+      }),
+    );
+  } else {
+    transaction.addOperation(
+      Operation.payment({
+        destination: recipientId,
+        asset: asset,
+        amount: amount.toString(),
+        source: userPubKey,
+      }),
+    );
+  }
+
+  transaction.setTimeout(0);
+
+  const buildTrx = transaction.build();
+
+  buildTrx.sign(Keypair.fromSecret(secretKey));
+
+  return { xdr: buildTrx.toXDR(), pubKey: userPubKey, submitWithoutSign: true };
 }
 
 export async function AddAssetTrustLine({

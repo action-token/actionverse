@@ -26,11 +26,15 @@ import Loading from "~/components/common/loading";
 import ReceiveAssetsModal from "~/components/modal/receive-asset-modal";
 import SendAssetsModal from "~/components/modal/send-asset-modal";
 import { toast as sonner } from "sonner"
+import { useWalletBalanceStore } from "~/components/store/wallet-balance-store";
+import { Switch } from "~/components/shadcn/ui/switch";
 
 const Wallets = () => {
     const session = useSession();
     const { onOpen } = useModal();
     const { needSign } = useNeedSign();
+    const { setBalanceType, isCreatorMode, setCreatorStorageId } = useWalletBalanceStore();
+
     const [isAccountActivate, setAccountActivate] = useState(false);
     const [isAccountActivateLoading, setAccountActivateLoading] = useState(false);
     const router = useRouter();
@@ -44,6 +48,14 @@ const Wallets = () => {
         setAccountActivate(isActive);
         setAccountActivateLoading(false);
     }
+    const creator = api.fan.creator.meCreator.useQuery(undefined, {
+        enabled: !!isCreatorMode
+    })
+
+    const { data: pageAssetBalance } = api.walletBalance.wallBalance.getPageAssetBalance.useQuery(
+        { creatorStorageId: creator.data?.storagePub ?? "", isCreatorMode },
+        { enabled: !!creator.data?.storagePub && isCreatorMode }
+    );
 
     const {
         data: hasTrustLineOnPlatformAsset,
@@ -66,7 +78,11 @@ const Wallets = () => {
             onOpen("send assets"); // Update state when id is available
         }
     }, [router.query.id]);
-
+    useEffect(() => {
+        if (creator.data) {
+            setCreatorStorageId(creator.data.storagePub);
+        }
+    }, [creator.data])
     const checkStatus = useCallback(async () => {
         const user = session.data?.user;
         if (user) {
@@ -78,6 +94,7 @@ const Wallets = () => {
     useEffect(() => {
         void checkStatus();
     }, []);
+    const creatorPageAssetCode = creator.data?.pageAsset?.code ?? creator.data?.customPageAssetCodeIssuer?.split("-")[0] ?? "";
 
     const AddTrustMutation =
         api.walletBalance.wallBalance.addTrustLine.useMutation({
@@ -194,37 +211,49 @@ const Wallets = () => {
     }
 
     return (
-        <div className=" p-6 space-y-6  w-full"  >
+        <div className=" p-2 space-y-6  w-full"  >
             <Card className="bg-gradient-to-r  from-yellow-400 to-blue-400 text-white shadow-md">
                 <CardContent className="p-6">
                     <div className="flex flex-col md:flex-row justify-between items-center">
                         <div className="mb-4 md:mb-0">
-                            {hasTrustLineOnPlatformAsset ? (
-                                <>
-                                    <h2 className="text-2xl font-semibold mb-2">Current Balance</h2>
-                                    <p className="text-xl md:text-4xl font-bold">
-                                        {platformBalance?.toString() === "0.0000000" ? "0" : platformBalance?.toString()}
-                                        <span className="text-md md:text-2xl ml-2">{PLATFORM_ASSET.code}</span>
-                                    </p>
+                            {
+                                isCreatorMode ? <>
+                                    <>
+                                        <h2 className="text-2xl font-semibold mb-2">Page Asset Balance</h2>
+                                        <p className="text-xl md:text-4xl font-bold">
+                                            {pageAssetBalance?.toString() === "0.0000000" ? "0" : pageAssetBalance?.toString()}
+                                            <span className="text-md md:text-2xl ml-2">{creatorPageAssetCode}</span>
+                                        </p>
+                                    </>
+                                </> : <>
+                                    {hasTrustLineOnPlatformAsset ? (
+                                        <>
+                                            <h2 className="text-2xl font-semibold mb-2">Current Balance</h2>
+                                            <p className="text-xl md:text-4xl font-bold">
+                                                {platformBalance?.toString() === "0.0000000" ? "0" : platformBalance?.toString()}
+                                                <span className="text-md md:text-2xl ml-2">{PLATFORM_ASSET.code}</span>
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <div className="text-center md:text-left">
+                                            <p className="text-xl mb-2">You haven{"'t"} added trust for {PLATFORM_ASSET.code} yet!</p>
+                                            <Button
+                                                onClick={() => AddTrustMutation.mutate({
+                                                    asset_code: PLATFORM_ASSET.code,
+                                                    asset_issuer: PLATFORM_ASSET.issuer,
+                                                    signWith: needSign(),
+                                                })}
+                                                disabled={AddTrustMutation.isLoading}
+                                                variant="secondary"
+                                            >
+                                                {AddTrustMutation.isLoading ? "Adding Trustline..." : getPlatformLoading ? "Checking Trustline..." : "Add Trustline"}
+                                            </Button>
+                                        </div>
+                                    )}
                                 </>
-                            ) : (
-                                <div className="text-center md:text-left">
-                                    <p className="text-xl mb-2">You haven{"'t"} added trust for {PLATFORM_ASSET.code} yet!</p>
-                                    <Button
-                                        onClick={() => AddTrustMutation.mutate({
-                                            asset_code: PLATFORM_ASSET.code,
-                                            asset_issuer: PLATFORM_ASSET.issuer,
-                                            signWith: needSign(),
-                                        })}
-                                        disabled={AddTrustMutation.isLoading}
-                                        variant="secondary"
-                                    >
-                                        {AddTrustMutation.isLoading ? "Adding Trustline..." : getPlatformLoading ? "Checking Trustline..." : "Add Trustline"}
-                                    </Button>
-                                </div>
-                            )}
+                            }
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
                             <Button variant="default" className="shadow-lg" onClick={() => setIsReceiveModalOpen(true)}>
                                 <QrCode size={18} className="mr-2" />
                                 Receive
@@ -233,6 +262,13 @@ const Wallets = () => {
                                 <Send size={18} className="mr-2" />
                                 Send
                             </Button>
+                            <Switch
+                                checked={isCreatorMode}
+                                onCheckedChange={(checked) =>
+                                    setBalanceType(checked ? "creator" : "user")
+                                }
+
+                            />
                         </div>
                     </div>
                 </CardContent>
@@ -241,7 +277,7 @@ const Wallets = () => {
             <div className="hidden md:grid  md:grid-cols-2 gap-6 ">
                 <Card className="md:col-span-1 h-[calc(100vh-32vh)] shadow-lg">
                     <CardHeader>
-                        <CardTitle >Transaction History</CardTitle>
+                        <CardTitle >{isCreatorMode ? "Creator" : "User"} Transaction History</CardTitle>
                     </CardHeader>
                     <CardContent className="">
                         <TransactionHistory />
@@ -249,7 +285,7 @@ const Wallets = () => {
                 </Card>
                 <Card className="h-[calc(100vh-32vh)] shadow-lg">
                     <CardHeader>
-                        <CardTitle className="hidden md:block">My Assets</CardTitle>
+                        <CardTitle className="hidden md:block">{isCreatorMode ? "Creator" : "User"} Assets</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <WBRightSideBar />
@@ -259,8 +295,8 @@ const Wallets = () => {
             <div className="md:hidden">
                 <Tabs defaultValue="history" className="w-full ">
                     <TabsList className="grid w-full grid-cols-2 " >
-                        <TabsTrigger value="history">Transaction History</TabsTrigger>
-                        <TabsTrigger value="assets">My Assets</TabsTrigger>
+                        <TabsTrigger value="history"> {isCreatorMode ? "Creator" : "User"} Transaction History</TabsTrigger>
+                        <TabsTrigger value="assets">{isCreatorMode ? "Creator" : "User"} Assets</TabsTrigger>
                     </TabsList>
                     <TabsContent value="history">
                         <Card className="h-[calc(100vh-42vh)] p-0 m-0 shadow-lg">

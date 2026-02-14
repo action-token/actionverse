@@ -15,7 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/shadcn/ui/card";
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Skeleton } from "../shadcn/ui/skeleton";
 import { useModal } from "~/lib/state/augmented-reality/use-modal-store";
 import { useInfiniteQuery } from "@tanstack/react-query";
@@ -32,6 +32,7 @@ import {
 import { InfiniteScroll } from "../common/infinite-scroll";
 import { TransactionHistoryTypes } from "~/types/transaction/transaction-history-types";
 import TransactionHistoryModal from "../modal/transaction-history-modal";
+import { useWalletBalanceStore } from "../store/wallet-balance-store";
 
 const BatchLimit = 10;
 
@@ -54,6 +55,7 @@ const TransactionHistory = () => {
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionHistoryTypes>();
   const parentRef = useRef<HTMLDivElement>(null);
+  const { creatorStorageId, isCreatorMode } = useWalletBalanceStore()
 
   const {
     data,
@@ -62,7 +64,7 @@ const TransactionHistory = () => {
     isFetchingNextPage,
     status,
   } = api.walletBalance.wallBalance.getTransactionHistory.useInfiniteQuery(
-    { limit: BatchLimit },
+    { limit: BatchLimit, creatorStorageId, isCreatorMode },
     {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
     }

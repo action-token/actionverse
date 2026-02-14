@@ -12,6 +12,7 @@ import { useSession } from "next-auth/react";
 import { addrShort } from "~/utils/utils";
 import { useRouter } from "next/router";
 import CopyToClip from "../common/copy_to_Clip";
+import { useWalletBalanceStore } from "../store/wallet-balance-store";
 
 interface ReceiveAssetsModalProps {
     isOpen: boolean;
@@ -21,7 +22,7 @@ interface ReceiveAssetsModalProps {
 
 const ReceiveAssetsModal = ({ isOpen, setIsOpen }: ReceiveAssetsModalProps) => {
     const session = useSession();
-
+    const { creatorStorageId, isCreatorMode } = useWalletBalanceStore()
     const router = useRouter();
 
     if (!session?.data?.user?.id) {
@@ -31,7 +32,9 @@ const ReceiveAssetsModal = ({ isOpen, setIsOpen }: ReceiveAssetsModalProps) => {
         setIsOpen(false);
     };
     // console.log(router.pathname);
-    const url = `https://app.wadzzo.com${router.pathname}?id=${session?.data?.user?.id}`;
+    const showCreatorStorageId = isCreatorMode && creatorStorageId ? creatorStorageId : session?.data?.user?.id;
+
+    const url = `https://app.wadzzo.com${router.pathname}?id=${showCreatorStorageId}`;
     return (
         <>
             <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -55,10 +58,10 @@ const ReceiveAssetsModal = ({ isOpen, setIsOpen }: ReceiveAssetsModalProps) => {
                             viewBox={`0 0 256 256`}
                         />
                         <h6 className="p-1 text-[10px] md:text-xs ">
-                            {addrShort(session?.data?.user?.id, 10)}
+                            {addrShort(showCreatorStorageId, 10)}
                         </h6>
 
-                        <CopyToClip text={session?.data?.user?.id} collapse={5} />
+                        <CopyToClip text={showCreatorStorageId} collapse={5} />
                     </div>
                     <DialogFooter className="px-6 py-4"></DialogFooter>
                 </DialogContent>

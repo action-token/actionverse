@@ -13,6 +13,8 @@ import {
   DeclineClaimableBalance,
   CheckHasTrustLineOnPlatformAsset,
   PlatformAssetBalance,
+  SendAssetFromStroage,
+  PageAssetBalance,
 } from "~/lib/stellar/walletBalance/acc";
 import { User } from "firebase/auth";
 import {
@@ -24,9 +26,43 @@ import { getAccSecretFromRubyApi } from "package/connect_wallet/src/lib/stellar/
 import { Input } from "~/components/shadcn/ui/input";
 
 export const WBalanceRouter = createTRPCRouter({
-  getWalletsBalance: protectedProcedure.query(async ({ ctx, input }) => {
-    const userId = ctx.session.user.id;
+  getWalletsBalance: protectedProcedure.input(z.object({
+    creatorStorageId: z.string().nullish(),
+    isCreatorMode: z.boolean().nullish(),
+  })).query(async ({ ctx, input }) => {
+    const userId = (input.creatorStorageId && input.isCreatorMode) ? input.creatorStorageId : ctx.session.user.id;
     return await BalanceWithHomeDomain({ userPub: userId });
+  }),
+  getPageAssetBalance: protectedProcedure.input(z.object({
+    creatorStorageId: z.string(),
+    isCreatorMode: z.boolean().nullish(),
+  })).query(async ({ ctx, input }) => {
+    const creator = await ctx.db.creator.findUnique({
+      where: {
+        id: ctx.session.user.id,
+      },
+      include: {
+        pageAsset: true,
+      }
+    });
+    if (!creator) {
+      throw new Error("Creator not found");
+    }
+    if (creator.storagePub !== input.creatorStorageId) {
+      throw new Error("Invalid creator storage ID");
+    }
+    let assetCode, assetIssuer;
+    if (creator.pageAsset) {
+      assetCode = creator.pageAsset.code;
+      assetIssuer = creator.pageAsset.issuer;
+    }
+    else if (creator.customPageAssetCodeIssuer) {
+      const [code, issuer] = creator.customPageAssetCodeIssuer.split("-");
+      assetCode = code;
+      assetIssuer = issuer;
+    }
+    return await PageAssetBalance({ userPub: input.creatorStorageId, code: assetCode ?? "", issuer: assetIssuer ?? "" });
+
   }),
   getNativeBalance: protectedProcedure.query(async ({ ctx, input }) => {
     const userId = ctx.session.user.id;
@@ -35,6 +71,8 @@ export const WBalanceRouter = createTRPCRouter({
   sendWalletAssets: protectedProcedure
     .input(
       z.object({
+        creatorStorageId: z.string().nullish(),
+        isCreatorMode: z.boolean().nullish(),
         recipientId: z.string().min(1, {
           message: "Recipient Id is required.",
         }),
@@ -54,22 +92,50 @@ export const WBalanceRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const userPubKey = ctx.session.user.id;
+      const userPubKey = (input.creatorStorageId && input.isCreatorMode) ? input.creatorStorageId : ctx.session.user.id;
 
       let secretKey;
       if (ctx.session.user.email && ctx.session.user.email.length > 0) {
         secretKey = await getAccSecretFromRubyApi(ctx.session.user.email);
       }
-      return await SendAssets({
-        userPubKey: userPubKey,
-        recipientId: input.recipientId,
-        amount: input.amount,
-        asset_code: input.asset_code,
-        asset_type: input.asset_type,
-        asset_issuer: input.asset_issuer,
-        signWith: input.signWith,
-        secretKey: secretKey,
-      });
+      if (input.isCreatorMode && input.creatorStorageId) {
+        const creator = await ctx.db.creator.findUnique({
+          where: {
+            id: ctx.session.user.id,
+          },
+        });
+        if (!creator) {
+          throw new Error("Creator not found");
+        }
+        if (creator.storagePub !== input.creatorStorageId) {
+          throw new Error("Invalid creator storage ID");
+        }
+        console.log("creator.storageSecret", creator.storageSecret);
+        secretKey = creator.storageSecret
+      }
+      if (input.creatorStorageId && input.isCreatorMode && secretKey) {
+        return await SendAssetFromStroage({
+          userPubKey: userPubKey,
+          recipientId: input.recipientId,
+          amount: input.amount,
+          asset_code: input.asset_code,
+          asset_type: input.asset_type,
+          asset_issuer: input.asset_issuer,
+          secretKey: secretKey,
+        });
+      }
+      else {
+        return await SendAssets({
+          userPubKey: userPubKey,
+          recipientId: input.recipientId,
+          amount: input.amount,
+          asset_code: input.asset_code,
+          asset_type: input.asset_type,
+          asset_issuer: input.asset_issuer,
+          signWith: input.signWith,
+          secretKey: secretKey,
+        });
+      }
     }),
 
   addTrustLine: protectedProcedure
@@ -108,10 +174,13 @@ export const WBalanceRouter = createTRPCRouter({
       z.object({
         limit: z.number().min(1).max(100).nullish().default(10),
         cursor: z.string().nullish(),
+        creatorStorageId: z.string().nullish(),
+        isCreatorMode: z.boolean().nullish(),
       })
     )
     .query(async ({ input, ctx }) => {
-      const userId = ctx.session.user.id;
+      const userId = (input.creatorStorageId && input.isCreatorMode) ? input.creatorStorageId : ctx.session.user.id;
+
       const result = await RecentTransactionHistory({ userPubKey: userId, input });
       return {
         items: result.items,

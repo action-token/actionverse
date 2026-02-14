@@ -28,6 +28,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import PendingAssetList from "./pending-asset";
 import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { useWalletBalanceStore } from "../store/wallet-balance-store";
 
 export default function WBRightSideBar() {
   const { data: session } = useSession();
@@ -42,8 +43,12 @@ export default function WBRightSideBar() {
 }
 
 const MyAssetList = () => {
+  const { creatorStorageId, isCreatorMode } = useWalletBalanceStore()
+
   const { data, isLoading } =
-    api.walletBalance.wallBalance.getWalletsBalance.useQuery();
+    api.walletBalance.wallBalance.getWalletsBalance.useQuery(
+      { creatorStorageId: creatorStorageId, isCreatorMode }
+    );
   if (isLoading) return <div>Fetching...</div>;
   // console.log("data", data);
   return (
