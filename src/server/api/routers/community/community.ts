@@ -185,13 +185,13 @@ export const communityRouter = createTRPCRouter({
 
       const isMember = ctx.session?.user
         ? await ctx.db.communityMember.findUnique({
-            where: {
-              communityId_userId: {
-                communityId: input.communityId,
-                userId: ctx.session.user.id,
-              },
+          where: {
+            communityId_userId: {
+              communityId: input.communityId,
+              userId: ctx.session.user.id,
             },
-          })
+          },
+        })
         : null;
 
       // Hide member list if MEMBERS_ONLY and user is not a member
@@ -275,7 +275,7 @@ export const communityRouter = createTRPCRouter({
       }
 
       // Check membership for logged-in user
-      let memberCommunityIds: Set<number> = new Set();
+      let memberCommunityIds = new Set<number>();
       if (ctx.session?.user) {
         const memberships = await ctx.db.communityMember.findMany({
           where: {
