@@ -25,6 +25,10 @@ import { Input } from "~/components/shadcn/ui/input"
 import toast from "react-hot-toast"
 import { useSession } from "next-auth/react"
 import { MediaGrid } from "./media-grid"
+import { useEditCommunityPostModalStore } from "../store/edit-community-post-modal-store"
+
+const CONTENT_COLLAPSE_LENGTH = 280
+const CONTENT_COLLAPSE_LINES = 6
 
 interface CommunityPostCardProps {
   post: {
@@ -51,6 +55,48 @@ interface CommunityPostCardProps {
   communityOwnerId: string
 }
 
+function PostContent({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const lineCount = content.split("\n").length
+  const isLong = content.length > CONTENT_COLLAPSE_LENGTH || lineCount > CONTENT_COLLAPSE_LINES
+
+  if (!isLong || expanded) {
+    return (
+      <div>
+        <p className="whitespace-pre-wrap text-sm">{content}</p>
+        {isLong && (
+          <button
+            onClick={() => setExpanded(false)}
+            className="mt-1 text-xs font-medium text-primary hover:underline"
+          >
+            Show less
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const truncated = content.length > CONTENT_COLLAPSE_LENGTH
+    ? content.slice(0, CONTENT_COLLAPSE_LENGTH)
+    : content.split("\n").slice(0, CONTENT_COLLAPSE_LINES).join("\n")
+
+  return (
+    <div>
+      <p className="whitespace-pre-wrap text-sm">
+        {truncated}
+        <span className="text-muted-foreground">...</span>
+      </p>
+      <button
+        onClick={() => setExpanded(true)}
+        className="mt-1 text-xs font-medium text-primary hover:underline"
+      >
+        Continue to read
+      </button>
+    </div>
+  )
+}
+
 export function CommunityPostCard({
   post,
   communityOwnerId,
@@ -61,6 +107,7 @@ export function CommunityPostCard({
   const [likeCount, setLikeCount] = useState(post._count.likes)
   const [isLiked, setIsLiked] = useState(post.isLiked)
   const utils = api.useUtils()
+  const { openWithPost } = useEditCommunityPostModalStore()
 
   const isAuthor = session?.user?.id === post.author.id
   const isOwner = session?.user?.id === communityOwnerId
@@ -110,6 +157,15 @@ export function CommunityPostCard({
     onError: (err) => toast.error(err.message),
   })
 
+  const handleEdit = () => {
+    openWithPost({
+      postId: post.id,
+      content: post.content,
+      commentsEnabled: post.commentsEnabled,
+      medias: post.medias,
+    })
+  }
+
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between space-y-0 pb-2">
@@ -141,7 +197,7 @@ export function CommunityPostCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {isAuthor && (
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleEdit}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit
                 </DropdownMenuItem>
@@ -159,7 +215,7 @@ export function CommunityPostCard({
       </CardHeader>
 
       <CardContent className="space-y-3 pb-2">
-        <p className="whitespace-pre-wrap text-sm">{post.content}</p>
+        <PostContent content={post.content} />
         {post.medias.length > 0 && <MediaGrid medias={post.medias} />}
       </CardContent>
 

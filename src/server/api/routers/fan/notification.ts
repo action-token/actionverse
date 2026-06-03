@@ -1,23 +1,32 @@
 import { z } from "zod";
-import { Input } from "~/components/shadcn/ui/input";
 
 import {
   createTRPCRouter,
   protectedProcedure,
-  publicProcedure,
 } from "~/server/api/trpc";
 
-export const notificationRouter = createTRPCRouter({
-  getSecretMessage: protectedProcedure.query(() => {
-    return "you can now see this secret message!";
-  }),
+const notificationInclude = {
+  notificationObject: {
+    select: {
+      entityType: true,
+      entityId: true,
+      createdAt: true,
+      actor: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+        },
+      },
+    },
+  },
+} as const;
 
+export const notificationRouter = createTRPCRouter({
   getCreatorNotifications: protectedProcedure
     .input(
       z.object({
         limit: z.number(),
-        // cursor is a reference to the last item in the previous batch
-        // it's used to fetch the next batch
         cursor: z.number().nullish(),
         skip: z.number().optional(),
       }),
@@ -30,43 +39,26 @@ export const notificationRouter = createTRPCRouter({
         skip: skip,
         cursor: cursor ? { id: cursor } : undefined,
         where: {
-          AND: [
-            {
-              notifierId: ctx.session.user.id,
-            },
-            { isCreator: true },
-          ],
+          notifierId: ctx.session.user.id,
+          isCreator: true,
         },
-        include: {
-          notificationObject: {
-            select: {
-              entityType: true,
-              entityId: true,
-              createdAt: true,
-
-              actor: {
-                select: {
-                  id: true,
-                  name: true,
-                  image: true,
-                },
-              },
-            },
-          },
+        select: {
+          id: true,
+          seen: true,
+          createdAt: true,
+          isCreator: true,
+          ...notificationInclude,
         },
         orderBy: { createdAt: "desc" },
       });
 
       let nextCursor: typeof cursor | undefined = undefined;
       if (items.length > limit) {
-        const nextItem = items.pop(); // return the last item from the array
+        const nextItem = items.pop();
         nextCursor = nextItem?.id;
       }
 
-      return {
-        items,
-        nextCursor,
-      };
+      return { items, nextCursor };
     }),
 
   getUserNotification: protectedProcedure
@@ -75,7 +67,7 @@ export const notificationRouter = createTRPCRouter({
         limit: z.number(),
         cursor: z.number().nullish(),
         skip: z.number().optional(),
-      })
+      }),
     )
     .query(async ({ input, ctx }) => {
       const { limit, skip, cursor } = input;
@@ -85,80 +77,66 @@ export const notificationRouter = createTRPCRouter({
         skip: skip,
         cursor: cursor ? { id: cursor } : undefined,
         where: {
-          AND: [
-            {
-              notifierId: ctx.session.user.id,
-            },
-            { isCreator: false },
-          ],
+          notifierId: ctx.session.user.id,
+          isCreator: false,
         },
-        include: {
-          notificationObject: {
-            select: {
-              entityType: true,
-              entityId: true,
-              createdAt: true,
-
-              actor: {
-                select: {
-                  id: true,
-                  name: true,
-                  image: true,
-                },
-              },
-            },
-          },
+        select: {
+          id: true,
+          seen: true,
+          createdAt: true,
+          isCreator: true,
+          ...notificationInclude,
         },
         orderBy: { createdAt: "desc" },
       });
 
-      // Handle cursor pagination logic
       let nextCursor: typeof cursor | undefined = undefined;
       if (notifications.length > limit) {
-        const nextItem = notifications.pop(); // Return the last item from the array
+        const nextItem = notifications.pop();
         nextCursor = nextItem?.id;
       }
 
-      return {
-        notifications,
-        nextCursor,
-      };
+      return { notifications, nextCursor };
     }),
 
-  getUnseenNotificationCount: protectedProcedure.query(async ({ input, ctx }) => {
+  getUnseenNotificationCount: protectedProcedure.query(async ({ ctx }) => {
     const count = await ctx.db.notification.count({
       where: {
-        AND: [
-          {
-            notifierId: ctx.session.user.id,
-          },
-          { seen: null },
-
-        ],
+        notifierId: ctx.session.user.id,
+        seen: null,
       },
     });
 
     return count ?? 0;
   }),
 
-  updateNotification: protectedProcedure
+  markAllAsSeen: protectedProcedure
+    .input(
+      z.object({
+        isCreator: z.boolean().default(false),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
-      const updatedNotifications = await ctx.db.notification.updateMany({
+      return ctx.db.notification.updateMany({
         where: {
-          AND: [
-            {
-              notifierId: ctx.session.user.id,
-            },
-
-          ],
+          notifierId: ctx.session.user.id,
+          isCreator: input.isCreator,
+          seen: null,
         },
-        data: {
-          seen: new Date(),
-        },
+        data: { seen: new Date() },
       });
-
-      return updatedNotifications;
     }),
 
-
+  markAsSeen: protectedProcedure
+    .input(z.object({ notificationId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      return ctx.db.notification.updateMany({
+        where: {
+          id: input.notificationId,
+          notifierId: ctx.session.user.id,
+          seen: null,
+        },
+        data: { seen: new Date() },
+      });
+    }),
 });

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { api } from "~/utils/api"
 import { MediaType } from "@prisma/client"
 import {
@@ -25,7 +25,7 @@ import {
 } from "~/components/shadcn/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avatar"
 import toast from "react-hot-toast"
-import { useCommunityPostModalStore } from "../store/community-post-modal-store"
+import { useEditCommunityPostModalStore } from "../store/edit-community-post-modal-store"
 import { useSession } from "next-auth/react"
 
 interface MediaItem {
@@ -72,8 +72,8 @@ const mediaConfig: MediaConfig[] = [
   },
 ]
 
-export function CreateCommunityPostModal() {
-  const { isOpen, setIsOpen, communityId } = useCommunityPostModalStore()
+export function EditCommunityPostModal() {
+  const { isOpen, setIsOpen, post: editPost } = useEditCommunityPostModalStore()
   const { data: session } = useSession()
   const [content, setContent] = useState("")
   const [medias, setMedias] = useState<MediaItem[]>([])
@@ -83,13 +83,20 @@ export function CreateCommunityPostModal() {
   const [pendingMediaType, setPendingMediaType] = useState<MediaConfig | null>(null)
   const utils = api.useUtils()
 
+  useEffect(() => {
+    if (editPost) {
+      setContent(editPost.content)
+      setMedias(editPost.medias.map((m) => ({ url: m.url, type: m.type })))
+      setCommentsEnabled(editPost.commentsEnabled)
+    }
+  }, [editPost])
+
   const getSignedURL = api.s3.getSignedURL.useMutation()
 
-  const createPost = api.community.post.create.useMutation({
+  const updatePost = api.community.post.update.useMutation({
     onSuccess: () => {
-      toast.success("Post created!")
+      toast.success("Post updated!")
       void utils.community.post.getAll.invalidate()
-      void utils.community.activity.getCommunityActivity.invalidate()
       handleClose()
     },
     onError: (err) => {
@@ -152,11 +159,10 @@ export function CreateCommunityPostModal() {
   }
 
   const handleSubmit = () => {
-    if (!communityId || !content.trim()) return
-    createPost.mutate({
-      communityId,
-      content,
-      medias: medias.length > 0 ? medias : undefined,
+    if (!editPost || !content.trim()) return
+    updatePost.mutate({
+      postId: editPost.postId,
+      content: content.trim(),
       commentsEnabled,
     })
   }
@@ -169,7 +175,7 @@ export function CreateCommunityPostModal() {
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Create Post</DialogTitle>
+          <DialogTitle>Edit Post</DialogTitle>
         </DialogHeader>
 
         {/* Hidden file input */}
@@ -246,7 +252,7 @@ export function CreateCommunityPostModal() {
             </div>
           )}
 
-          {/* Media buttons + settings */}
+          {/* Media buttons */}
           <div className="flex items-center justify-between rounded-lg border p-2">
             <div className="flex items-center gap-1">
               {mediaConfig.map(({ type, icon: Icon, label, ...rest }) => (
@@ -279,13 +285,13 @@ export function CreateCommunityPostModal() {
 
           <Button
             onClick={handleSubmit}
-            disabled={!content.trim() || createPost.isLoading || uploading}
+            disabled={!content.trim() || updatePost.isLoading || uploading}
             className="w-full gap-2 rounded-full"
           >
-            {createPost.isLoading && (
+            {updatePost.isLoading && (
               <Loader2 className="h-4 w-4 animate-spin" />
             )}
-            Post
+            Save Changes
           </Button>
         </div>
       </DialogContent>

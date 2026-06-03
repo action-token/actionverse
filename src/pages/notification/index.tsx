@@ -2,22 +2,24 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bell, Users } from "lucide-react"
+import { Bell, Users, Building2 } from "lucide-react"
 import UserNotification from "~/components/notification/user-notification"
 import CreatorNotifications from "~/components/notification/creator-notification"
 
+const views = [
+    { key: "user", label: "User", sub: "Your activity", Icon: Bell },
+    { key: "creator", label: "Creator", sub: "Fan interactions", Icon: Users },
+] as const
+
+type ViewKey = (typeof views)[number]["key"]
+
 const Notification = () => {
-    const [activeView, setActiveView] = useState<"user" | "creator">("user")
+    const [activeView, setActiveView] = useState<ViewKey>("user")
 
     return (
         <div className="h-[calc(100vh-11vh)] overflow-hidden">
             <div className="mx-auto max-w-6xl px-4 py-10">
-
-
-
-                {/* Layout: Sidebar + Content */}
                 <div className="flex gap-6 items-start">
-
                     {/* Sidebar */}
                     <motion.aside
                         initial={{ opacity: 0, x: -16 }}
@@ -25,16 +27,12 @@ const Notification = () => {
                         transition={{ duration: 0.4, delay: 0.1 }}
                         className="sticky top-6 w-52 shrink-0 flex flex-col gap-2"
                     >
-                        {(["user", "creator"] as const).map((view) => {
-                            const isActive = activeView === view
-                            const Icon = view === "user" ? Bell : Users
-                            const label = view === "user" ? "User" : "Creator"
-                            const sub = view === "user" ? "Your activity" : "Fan interactions"
-
+                        {views.map(({ key, label, sub, Icon }) => {
+                            const isActive = activeView === key
                             return (
                                 <button
-                                    key={view}
-                                    onClick={() => setActiveView(view)}
+                                    key={key}
+                                    onClick={() => setActiveView(key)}
                                     className={`group relative flex items-center gap-3 rounded-xl px-4 py-3 text-left transition-all duration-200
                                         ${isActive
                                             ? "bg-primary text-primary-foreground shadow-sm"
@@ -86,7 +84,6 @@ const Notification = () => {
                             </motion.div>
                         </AnimatePresence>
                     </div>
-
                 </div>
             </div>
         </div>

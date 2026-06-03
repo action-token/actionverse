@@ -85,20 +85,18 @@ export const communityPostRouter = createTRPCRouter({
         select: { userId: true },
       });
 
-      for (const pref of prefs) {
+      if (prefs.length > 0) {
         await ctx.db.notificationObject.create({
           data: {
             actorId: ctx.session.user.id,
             entityType: NotificationType.COMMUNITY_POST,
-            entityId: post.id,
+            entityId: input.communityId,
             isUser: true,
             Notification: {
-              create: [
-                {
-                  notifierId: pref.userId,
-                  isCreator: false,
-                },
-              ],
+              create: prefs.map((pref) => ({
+                notifierId: pref.userId,
+                isCreator: false,
+              })),
             },
           },
         });
@@ -291,7 +289,7 @@ export const communityPostRouter = createTRPCRouter({
           data: {
             actorId: ctx.session.user.id,
             entityType: NotificationType.COMMUNITY_REACTION,
-            entityId: input.postId,
+            entityId: post.communityId,
             isUser: true,
             Notification: {
               create: [

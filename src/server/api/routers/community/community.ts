@@ -32,7 +32,15 @@ const CreateCommunitySchema = z.object({
   requiredBalance: z.number().min(0).optional(),
   requiredBalanceCode: z.string().optional(),
   requiredBalanceIssuer: z.string().optional(),
-});
+}).refine(
+  (data) => {
+    if (data.isTokenGated) {
+      return data.requiredBalanceCode && data.requiredBalanceIssuer && data.requiredBalance && data.requiredBalance > 0
+    }
+    return true
+  },
+  { message: "Token gating requires asset code, issuer, and a balance greater than 0", path: ["requiredBalance"] },
+);
 
 const UpdateCommunitySchema = z.object({
   communityId: z.number(),
@@ -88,6 +96,11 @@ export const communityRouter = createTRPCRouter({
             create: {
               actorId: ctx.session.user.id,
               type: "JOIN",
+            },
+          },
+          communityNotificationPreferences: {
+            create: {
+              userId: ctx.session.user.id,
             },
           },
         },

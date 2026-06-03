@@ -73,28 +73,16 @@ export const communityCommentRouter = createTRPCRouter({
         },
       });
 
+      const entityType = input.parentCommentId
+        ? NotificationType.COMMUNITY_REPLY
+        : NotificationType.COMMUNITY_COMMENT;
+
+      // Collect user IDs to notify (avoid duplicates)
+      const notifyUserIds = new Set<string>();
+
       // Notify post author
       if (post.authorId !== ctx.session.user.id) {
-        const entityType = input.parentCommentId
-          ? NotificationType.COMMUNITY_REPLY
-          : NotificationType.COMMUNITY_COMMENT;
-
-        await ctx.db.notificationObject.create({
-          data: {
-            actorId: ctx.session.user.id,
-            entityType,
-            entityId: input.postId,
-            isUser: true,
-            Notification: {
-              create: [
-                {
-                  notifierId: post.authorId,
-                  isCreator: false,
-                },
-              ],
-            },
-          },
-        });
+        notifyUserIds.add(post.authorId);
       }
 
       // Notify parent comment author on reply
@@ -103,29 +91,39 @@ export const communityCommentRouter = createTRPCRouter({
           where: { id: input.parentCommentId },
           select: { userId: true },
         });
-
-        if (
-          parentComment &&
-          parentComment.userId !== ctx.session.user.id &&
-          parentComment.userId !== post.authorId
-        ) {
-          await ctx.db.notificationObject.create({
-            data: {
-              actorId: ctx.session.user.id,
-              entityType: NotificationType.COMMUNITY_REPLY,
-              entityId: input.postId,
-              isUser: true,
-              Notification: {
-                create: [
-                  {
-                    notifierId: parentComment.userId,
-                    isCreator: false,
-                  },
-                ],
-              },
-            },
-          });
+        if (parentComment && parentComment.userId !== ctx.session.user.id) {
+          notifyUserIds.add(parentComment.userId);
         }
+      }
+
+      // Notify community members with newComments preference
+      const prefs = await ctx.db.communityNotificationPreference.findMany({
+        where: {
+          communityId: post.communityId,
+          newComments: true,
+          NOT: { userId: ctx.session.user.id },
+        },
+        select: { userId: true },
+      });
+      for (const pref of prefs) {
+        notifyUserIds.add(pref.userId);
+      }
+
+      if (notifyUserIds.size > 0) {
+        await ctx.db.notificationObject.create({
+          data: {
+            actorId: ctx.session.user.id,
+            entityType,
+            entityId: post.communityId,
+            isUser: true,
+            Notification: {
+              create: Array.from(notifyUserIds).map((userId) => ({
+                notifierId: userId,
+                isCreator: false,
+              })),
+            },
+          },
+        });
       }
 
       return comment;

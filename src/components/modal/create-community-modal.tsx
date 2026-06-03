@@ -58,7 +58,7 @@ const CreateCommunitySchema = z
     memberListVisibility: z.enum(["EVERYONE", "MEMBERS_ONLY"]),
     postPermission: z.enum(["ALL_MEMBERS", "OWNER_ONLY"]),
     isTokenGated: z.boolean(),
-    requiredBalance: z.number().min(0).optional(),
+    requiredBalance: z.number().min(0, "Balance must be positive").optional(),
     requiredBalanceCode: z.string().optional(),
     requiredBalanceIssuer: z.string().optional(),
   })
@@ -320,34 +320,25 @@ export function CreateCommunityModal() {
                       </div>
                     </div>
                   ) : (
-                    <div className="relative">
-                      <UploadS3Button
-                        endpoint="coverUploader"
-                        variant="hidden"
-                        onClientUploadComplete={(file) =>
-                          setValue("coverUrl", file.url)
-                        }
-                        onUploadError={(e) => toast.error(e.message)}
-                        ref={undefined}
-                      />
-                      <label className="flex relative h-36 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/25 bg-muted/30 transition-colors hover:border-primary/50 hover:bg-muted/50">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                          <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          Upload cover photo
-                        </span>
+                    <div className="flex h-36 w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/25 bg-muted/30 transition-colors hover:border-primary/50 hover:bg-muted/50">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                        <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        Upload cover photo
+                      </span>
+                      <div className="mt-1 w-auto">
                         <UploadS3Button
                           endpoint="coverUploader"
                           variant="button"
                           label="Choose File"
-                          className="mt-1 h-8 absolute bottom-2 left-1/2 transform -translate-x-1/2 rounded-full bg-primary px-4 text-xs text-primary-foreground shadow-none hover:bg-primary/90"
+                          className="h-8 rounded-full bg-primary px-4 text-xs text-primary-foreground shadow-none hover:bg-primary/90"
                           onClientUploadComplete={(file) =>
                             setValue("coverUrl", file.url)
                           }
                           onUploadError={(e) => toast.error(e.message)}
                         />
-                      </label>
+                      </div>
                     </div>
                   )}
                   {errors.coverUrl && (
@@ -574,9 +565,10 @@ export function CreateCommunityModal() {
                         <Input
                           type="number"
                           step="any"
-                          placeholder="0"
+                          min="0.01"
+                          placeholder="e.g. 100"
                           className="rounded-lg"
-                          {...register("requiredBalance", { valueAsNumber: true })}
+                          {...register("requiredBalance", { valueAsNumber: true, min: { value: 0.01, message: "Minimum balance must be greater than 0" } })}
                         />
                       </div>
                     )}
@@ -668,8 +660,9 @@ export function CreateCommunityModal() {
 
             {currentStep === "preview" ? (
               <Button
-                type="submit"
+                type="button"
                 disabled={isSubmitting}
+                onClick={handleSubmit(onSubmit)}
                 className="gap-2 rounded-full px-6"
               >
                 {isSubmitting && (

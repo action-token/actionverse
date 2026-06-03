@@ -26,6 +26,7 @@ import { CommunityPostCard } from "~/components/community/community-post-card"
 import { CommunityDetailSidebar } from "~/components/community/community-detail-sidebar"
 import { LockedContent } from "~/components/community/locked-content"
 import { CreateCommunityPostModal } from "~/components/modal/create-community-post-modal"
+import { EditCommunityPostModal } from "~/components/modal/edit-community-post-modal"
 import { CommunityMemberDialog } from "~/components/modal/community-member-dialog"
 import { CommunityInviteModal } from "~/components/modal/community-invite-modal"
 import { useCommunityPostModalStore } from "~/components/store/community-post-modal-store"
@@ -311,6 +312,7 @@ const CommunityDetailPage = () => {
       {/* Modals */}
       <CreateCommunityModal />
       <CreateCommunityPostModal />
+      <EditCommunityPostModal />
       <CommunityMemberDialog isOwner={community.isOwner} />
       <CommunityInviteModal />
     </div>
