@@ -42,7 +42,7 @@ export async function createStorageTrx({
   const transactionInializer = await server.loadAccount(motherAcc.publicKey());
 
   // total platform token required to refund 1.5 XLM
-  const requiredAsset2refundXlm = await getPlatformAssetNumberForXLM(1.5);
+  const requiredAsset2refundXlm = await getPlatformAssetNumberForXLM(3.5);
   const total = requiredAsset2refundXlm + SIMPLIFIED_FEE;
 
   const Tx1 = new TransactionBuilder(transactionInializer, {
@@ -63,7 +63,7 @@ export async function createStorageTrx({
     .addOperation(
       Operation.payment({
         destination: pubkey,
-        amount: "1.5", // 0.5 for pubkey and .5 for storage trust, and 4 for storage bal
+        amount: "2", // 0.5 for pubkey and .5 for storage trust, and 4 for storage bal
         asset: Asset.native(),
         source: motherAcc.publicKey(),
       }),
