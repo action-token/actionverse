@@ -100,11 +100,11 @@ export function CreateStorage({ className }: { className?: string }) {
     });
   };
 
-  const XLM_EQUIVALENT = 3;
+  const XLM_EQUIVALENT = 3.5;
   const requiredTokenNumber = requiredToken.data ?? 0;
 
   const hasSufficientBalance =
-    platformAssetBalance >= requiredTokenNumber || Number(xlmBalance) >= 1;
+    platformAssetBalance >= requiredTokenNumber || Number(xlmBalance) >= XLM_EQUIVALENT;
 
   // Derive modal content based on balance state
   const renderModalContent = () => {
