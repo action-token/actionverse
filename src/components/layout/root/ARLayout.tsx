@@ -7,6 +7,9 @@ import { useRouter } from "next/router"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "~/lib/utils"
 import Image from "next/image"
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
+
+import { useSession } from "next-auth/react"
 
 interface NavItem {
     id: number
@@ -28,6 +31,8 @@ export default function ARLayout({
     const tabBarHeight = 100
     const curveHeight = 50
     const width = 375 // Assuming a fixed width for the SVG, can be dynamic based on screen size
+    const isARRoute = router.pathname.includes("/action/ar") || router.pathname.includes("/action/qr");
+
 
     // Fix for mobile viewport height issues
     useEffect(() => {
@@ -55,12 +60,11 @@ export default function ARLayout({
         // Check if we're navigating away from an AR route
         const isLeavingARRoute =
             previousRoute &&
-            (previousRoute.includes("/augmented-reality/ar") || previousRoute.includes("/augmented-reality/qr/"))
+            (previousRoute.includes("/action/ar") || previousRoute.includes("/action/qr/"))
 
         const isEnteringARRoute =
             currentRoute &&
-            (currentRoute.includes("/augmented-reality/ar") || currentRoute.includes("/augmented-reality/qr/"))
-
+            (currentRoute.includes("/action/ar") || currentRoute.includes("/action/qr/"))
         if (isLeavingARRoute && !isEnteringARRoute) {
             console.log(`Navigating away from AR route: ${previousRoute} -> ${currentRoute}`)
             cleanupARResources()
@@ -123,15 +127,6 @@ export default function ARLayout({
                 }
             })
 
-            // Clear any remaining AR-related intervals or timeouts
-            // This is a bit aggressive but ensures cleanup
-            const highestTimeoutId = setTimeout(() => {
-                // Empty function for getting the highest timeout ID
-            }, 0)
-            for (let i = 0; i < Number(highestTimeoutId); i++) {
-                clearTimeout(i)
-            }
-
             // Force garbage collection if available (development only)
             if (typeof window !== "undefined" && "gc" in window) {
                 const windowWithGC = window as Window & { gc?: () => void }
@@ -160,25 +155,25 @@ export default function ARLayout({
         {
             id: 1,
             icon: Home,
-            href: "/augmented-reality/home",
+            href: "/action/home",
             label: "MAP",
         },
         {
             id: 2,
             icon: FolderOpen,
-            href: "/augmented-reality/collections",
+            href: "/action/collections",
             label: "COLLECTION",
         },
         {
             id: 3,
             icon: Globe,
-            href: "/augmented-reality/organizations",
+            href: "/action/organizations",
             label: "HUBS",
         },
         {
             id: 4,
             icon: User,
-            href: "/augmented-reality/profile",
+            href: "/action/profile",
             label: "PROFILE",
         },
     ]
@@ -192,7 +187,7 @@ export default function ARLayout({
         // Check if we're navigating away from an AR route
         const isLeavingARRoute =
             currentRoute &&
-            (currentRoute.includes("/augmented-reality/ar") || currentRoute.includes("/augmented-reality/qr/"))
+            (currentRoute.includes("/action/ar") || currentRoute.includes("/action/qr/"))
 
         if (isLeavingARRoute) {
             console.log(`Navigation triggered cleanup from: ${currentRoute} to: ${targetRoute}`)
@@ -225,9 +220,9 @@ export default function ARLayout({
             const currentRoute = router.pathname
             const isLeavingARRoute =
                 currentRoute &&
-                (currentRoute.includes("/augmented-reality/ar") || currentRoute.includes("/augmented-reality/qr/"))
+                (currentRoute.includes("/action/ar") || currentRoute.includes("/action/qr/"))
 
-            if (isLeavingARRoute && !url.includes("/augmented-reality/ar") && !url.includes("/augmented-reality/qr/")) {
+            if (isLeavingARRoute && !url.includes("/action/ar") && !url.includes("/action/qr/")) {
                 console.log(`Browser navigation cleanup from: ${currentRoute} to: ${url}`)
                 cleanupARResources()
             }
@@ -251,7 +246,7 @@ export default function ARLayout({
             {/* Content area */}
             <AnimatePresence mode="wait">
                 <motion.div
-                    key={router.pathname}
+                    // key={router.pathname}
                     className="flex-1 relative z-10 pb-20 overflow-y-auto"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -278,10 +273,12 @@ export default function ARLayout({
 
             {/* Curved Bottom Navigation */}
             <motion.div
-                className="fixed bottom-0 left-0 right-0 z-50"
+                className={`${isARRoute ? 'hidden' : ''} fixed bottom-0 left-0 right-0 z-50`}
                 initial={{ y: 100 }}
                 animate={{ y: 0 }}
                 transition={{ duration: 0.5, ease: "easeOut" }}
+
+
             >
                 <div className="max-w-md mx-auto relative">
                     {/* Main Navigation Background with Curve */}
@@ -361,7 +358,7 @@ export default function ARLayout({
                                     id: 5,
                                     icon: Target,
                                     label: "AR",
-                                    href: "/augmented-reality/actions",
+                                    href: "/action/actions",
                                 })
                             }
                             className="absolute right-[42%] transform -translate-x-1/2 -top-10"

@@ -16,6 +16,14 @@ datasource db {
 }
 
 // ------------------------Generic SCHEMA-------------------------
+// ------------------------NOTIFICATION SCHEMA-------------------------
+enum PinType {
+    EVENT
+    BOUNTY
+    EXPERIENCE
+    LAUNCH
+    OTHER
+}
 
 model Tag {
     name          String          @id
@@ -38,6 +46,7 @@ enum NotificationType {
     POST
     SHOP_ASSET
     FOLLOW
+    MEMBER
     REPLY
     BOUNTY
     BOUNTY_PARTICIPANT
@@ -48,6 +57,12 @@ enum NotificationType {
     BOUNTY_DOUBT
     BOUNTY_DOUBT_CREATE
     BOUNTY_DOUBT_REPLY
+    COMMUNITY_POST
+    COMMUNITY_COMMENT
+    COMMUNITY_REPLY
+    COMMUNITY_MEMBER_JOIN
+    COMMUNITY_INVITE
+    COMMUNITY_REACTION
 }
 
 // it is kinda notification actor and the entity that is being acted upon
@@ -137,7 +152,23 @@ model User_Asset {
     buyAt DateTime @default(now())
 }
 
+// Be  a member 
 model Follow {
+    id     Int    @id @default(autoincrement())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    creatorId String
+    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+    followAt DateTime @default(now())
+
+    // Unique constraint on userId and subscriptionId
+    @@unique([userId, creatorId])
+}
+
+// General Follow
+model TemporalFollow {
     id     Int    @id @default(autoincrement())
     userId String
     user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -222,8 +253,9 @@ model Creator {
     createdAt          DateTime            @default(now())
     Appearance         Appearance[]
 
-    ActionLocation ActionLocation[]
-    SellPageAsset  SellPageAsset[]
+    ActionLocation  ActionLocation[]
+    SellPageAsset   SellPageAsset[]
+    temporalFollows TemporalFollow[]
 
     @@index([bio, name])
 }
@@ -322,12 +354,13 @@ model Session {
 }
 
 model User {
-    id            String    @id @default(cuid())
-    name          String?
-    email         String?   @unique
-    bio           String?
-    image         String?
-    emailVerified DateTime?
+    id                String    @id @default(cuid())
+    name              String?
+    email             String?   @unique
+    bio               String?
+    image             String?
+    emailVerified     DateTime?
+    firstSignUpMethod String? // e.g. email, google, github, etc.
 
     joinedAt         DateTime?          @default(now())
     fromAppSignup    Boolean?           @default(false)
@@ -352,9 +385,20 @@ model User {
 
     BountyWinner BountyWinner[]
 
-    RedeemConsumer RedeemConsumer[]
+    RedeemConsumer  RedeemConsumer[]
+    bountyRedeems   BountyRedeem[]
+    beams           Beam[]
+    beamReactions   BeamReaction[]
+    beamComments    BeamComment[]
+    temporalFollows TemporalFollow[]
 
-    QRItem QRItem[]
+    ownedCommunities                 Community[]                       @relation("CommunityOwner")
+    communityMemberships             CommunityMember[]
+    communityPosts                   CommunityPost[]
+    communityComments                CommunityComment[]
+    communityPostLikes               CommunityPostLike[]
+    communityActivities              CommunityActivity[]
+    communityNotificationPreferences CommunityNotificationPreference[]
 }
 
 model VerificationToken {
@@ -415,7 +459,8 @@ enum ItemPrivacy {
     FOR_SALE
     NOT_FOR_SALE
     PUBLIC
-    PRIVATE // only for followers
+    FOLLOWER // only for followers
+    PRIVATE // only for members
     TIER // tier based
 }
 
@@ -444,6 +489,8 @@ model Asset {
     tierId Int?
     tier   Subscription? @relation(fields: [tierId], references: [id], onDelete: SetNull)
 
+    isQRItem Boolean @default(false)
+
     song          Song?
     buyers        User_Asset[]
     marketItems   MarketAsset[]
@@ -466,7 +513,8 @@ enum MarketType {
 model MarketAsset {
     id Int @id @default(autoincrement())
 
-    privacy ItemPrivacy @default(PUBLIC)
+    isQRItem Boolean     @default(false)
+    privacy  ItemPrivacy @default(PUBLIC)
 
     price    Float
     priceUSD Float @default(1)
@@ -573,6 +621,7 @@ model LocationGroup {
     link   String?
 
     multiPin Boolean @default(false)
+    type     PinType @default(OTHER) // Added new type field
 
     locations Location[]
 
@@ -625,20 +674,22 @@ model ActionLocation {
 }
 
 model Bounty {
-    id                    Int                 @id @default(autoincrement())
-    title                 String
-    description           String
-    latitude              Float?
-    longitude             Float?
-    radius                Float?
+    id          Int     @id @default(autoincrement())
+    title       String
+    description String
+    latitude    Float?
+    longitude   Float?
+    radius      Float?
+    payNow      Boolean @default(false)
+
     priceInUSD            Float
     priceInBand           Float
     totalWinner           Int
     currentWinnerCount    Int                 @default(0)
     priceInXLM            Float?
     requiredBalance       Float
-    requiredBalanceCode   String
-    requiredBalanceIssuer String
+    requiredBalanceCode   String?
+    requiredBalanceIssuer String?
     imageUrls             String[]
     createdAt             DateTime            @default(now())
     endDate               DateTime?
@@ -654,6 +705,7 @@ model Bounty {
     userId                String?
     bountyType            BountyType          @default(GENERAL)
     ActionLocation        ActionLocation[]
+    bountyRedeems         BountyRedeem[]
 
     @@index([title, description])
 }
@@ -771,6 +823,24 @@ enum SubmissionViewType {
 }
 
 // I want to add asset redeeming feature
+model BountyRedeem {
+    id           Int     @id @default(autoincrement())
+    bountyId     Int
+    bounty       Bounty  @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+    code         String
+    isMarkedUsed Boolean @default(false)
+    isRedeemed   Boolean @default(false)
+    redeemedBy   String?
+    redeemUserId String?
+
+    redeemedUser     User?           @relation(fields: [redeemedBy], references: [id], onDelete: SetNull)
+    redeemedAt       DateTime?
+    createdAt        DateTime        @default(now())
+    redeemConsumer   RedeemConsumer? @relation(fields: [redeemConsumerId], references: [id])
+    redeemConsumerId Int?
+
+    @@unique([bountyId, code])
+}
 
 model Redeem {
     code            String           @id
@@ -781,12 +851,13 @@ model Redeem {
 }
 
 model RedeemConsumer {
-    id         Int      @id @default(autoincrement())
-    userId     String
-    user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    code       String
-    redeemCode Redeem   @relation(fields: [code], references: [code], onDelete: Cascade)
-    redeemedAt DateTime @default(now())
+    id            Int            @id @default(autoincrement())
+    userId        String
+    user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    code          String
+    redeemCode    Redeem         @relation(fields: [code], references: [code], onDelete: Cascade)
+    redeemedAt    DateTime       @default(now())
+    bountyRedeems BountyRedeem[]
 }
 
 model OriginReward {
@@ -837,40 +908,6 @@ model QuarterReward {
     @@unique([year, quarter])
 }
 
-model QRItem {
-    id           String   @id @default(cuid())
-    title        String
-    modelUrl     String
-    externalLink String?
-    startDate    DateTime
-    endDate      DateTime
-    qrCode       String   @db.Text
-    isActive     Boolean  @default(true)
-    creatorId    String
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
-
-    // Relations
-    creator      User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    descriptions QRDescription[]
-
-    @@unique([id, creatorId])
-}
-
-model QRDescription {
-    id       String @id @default(cuid())
-    title    String @db.VarChar(50)
-    content  String @db.Text
-    order    Int
-    qrItemId String
-
-    // Relations
-    qrItem QRItem @relation(fields: [qrItemId], references: [id], onDelete: Cascade)
-
-    @@unique([qrItemId, order]) // Ensure unique order per QR item
-    @@index([qrItemId, order])
-}
-
 model AppConfig {
     id              Int   @id @default(autoincrement())
     nearbyPinRadius Float
@@ -892,4 +929,230 @@ model SellPageAsset {
     soldAt   DateTime? @default(now())
 
     @@unique([id, placerId])
+}
+
+// ------------------------- Beam Feature ------------------------------------
+enum BeamType {
+    IMAGE
+    VIDEO
+    CARD
+    AI
+}
+
+enum StyleCategory {
+    CHRISTMAS
+    EVERYDAY
+    BIRTHDAY
+}
+
+model Beam {
+    id            String         @id @default(cuid())
+    type          BeamType
+    senderName    String
+    recipientName String
+    message       String?
+    contentUrl    String?
+    styleCategory StyleCategory?
+    style         String?
+    customPrompt  String?
+    overlayText   String?
+    arEnabled     Boolean        @default(false)
+    isPublic      Boolean        @default(false)
+    viewCount     Int            @default(0)
+    createdAt     DateTime       @default(now())
+    updatedAt     DateTime       @updatedAt
+
+    userId    String
+    user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    reactions BeamReaction[]
+    comments  BeamComment[]
+
+    @@index([userId])
+    @@index([isPublic])
+    @@index([type])
+}
+
+model BeamReaction {
+    id        String   @id @default(cuid())
+    emoji     String
+    createdAt DateTime @default(now())
+
+    beamId String
+    beam   Beam   @relation(fields: [beamId], references: [id], onDelete: Cascade)
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([beamId, userId])
+    @@index([beamId])
+}
+
+model BeamComment {
+    id        String   @id @default(cuid())
+    content   String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    beamId String
+    beam   Beam   @relation(fields: [beamId], references: [id], onDelete: Cascade)
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([beamId])
+}
+
+// ------------------------- Community Feature ------------------------------------
+
+enum CommunityMemberListVisibility {
+    EVERYONE
+    MEMBERS_ONLY
+}
+
+enum CommunityPostPermission {
+    ALL_MEMBERS
+    OWNER_ONLY
+}
+
+enum CommunityRole {
+    OWNER
+    MEMBER
+}
+
+enum CommunityActivityType {
+    JOIN
+    LEAVE
+    POST_CREATED
+    POST_LIKED
+    COMMENT_CREATED
+    MEMBER_INVITED
+}
+
+model Community {
+    id          Int      @id @default(autoincrement())
+    title       String
+    description String
+    coverUrl    String
+    profileUrl  String
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    memberListVisibility CommunityMemberListVisibility @default(EVERYONE)
+    postPermission       CommunityPostPermission       @default(ALL_MEMBERS)
+
+    isTokenGated          Boolean @default(false)
+    requiredBalance       Float?
+    requiredBalanceCode   String?
+    requiredBalanceIssuer String?
+
+    ownerId String
+    owner   User   @relation("CommunityOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+    members                         CommunityMember[]
+    posts                           CommunityPost[]
+    activities                      CommunityActivity[]
+    communityNotificationPreferences CommunityNotificationPreference[]
+
+    @@index([title, description])
+    @@index([ownerId])
+    @@index([createdAt])
+}
+
+model CommunityMember {
+    id          Int           @id @default(autoincrement())
+    communityId Int
+    community   Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    userId      String
+    user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+    role        CommunityRole @default(MEMBER)
+    joinedAt    DateTime      @default(now())
+
+    @@unique([communityId, userId])
+    @@index([userId])
+    @@index([communityId])
+}
+
+model CommunityPost {
+    id          Int       @id @default(autoincrement())
+    content     String
+    communityId Int
+    community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    authorId    String
+    author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+    commentsEnabled Boolean @default(true)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    medias   CommunityPostMedia[]
+    comments CommunityComment[]
+    likes    CommunityPostLike[]
+
+    @@index([communityId, createdAt])
+    @@index([authorId])
+}
+
+model CommunityPostMedia {
+    id     Int       @id @default(autoincrement())
+    url    String
+    type   MediaType
+    postId Int
+    post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    @@index([postId])
+}
+
+model CommunityPostLike {
+    id        Int           @id @default(autoincrement())
+    postId    Int
+    post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+    userId    String
+    user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt DateTime      @default(now())
+
+    @@unique([postId, userId])
+}
+
+model CommunityComment {
+    id              Int            @id @default(autoincrement())
+    content         String
+    postId          Int
+    post            CommunityPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+    userId          String
+    user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    parentCommentId Int?
+    parentComment   CommunityComment?  @relation("CommunityChildComments", fields: [parentCommentId], references: [id], onDelete: Cascade)
+    childComments   CommunityComment[] @relation("CommunityChildComments")
+    createdAt       DateTime           @default(now())
+
+    @@index([postId])
+    @@index([userId])
+}
+
+model CommunityActivity {
+    id          Int                   @id @default(autoincrement())
+    communityId Int
+    community   Community             @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    actorId     String
+    actor       User                  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+    type        CommunityActivityType
+    entityId    Int?
+    createdAt   DateTime              @default(now())
+
+    @@index([communityId, createdAt])
+    @@index([actorId])
+}
+
+model CommunityNotificationPreference {
+    id          Int       @id @default(autoincrement())
+    communityId Int
+    community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    userId      String
+    user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    newPosts    Boolean @default(true)
+    newComments Boolean @default(true)
+    newMembers  Boolean @default(true)
+    reactions   Boolean @default(true)
+
+    @@unique([communityId, userId])
 }

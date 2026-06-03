@@ -28,6 +28,9 @@ export const env = createEnv({
       // VERCEL_URL doesn't include `https` so it cant be validated as a URL
       process.env.VERCEL ? z.string() : z.string().url(),
     ),
+    OPENAI_API_KEY: z.string(),
+    GEMINI_API_KEY: z.string(),
+
     STORAGE_SECRET: z.string(),
     MOTHER_SECRET: z.string(),
     PINATA_JWT: z.string(),
@@ -39,6 +42,13 @@ export const env = createEnv({
     AWS_BUCKET_REGION: z.string(),
     AWS_ACCESS_KEY: z.string(),
     AWS_SECRET_ACCESS_KEY: z.string(),
+
+    //QStash
+    QSTASH_TOKEN: z.string(),
+    QSTASH_CURRENT_SIGNING_KEY: z.string(),
+    QSTASH_NEXT_SIGNING_KEY: z.string(),
+    KV_REST_API_URL: z.string(),
+    KV_REST_API_TOKEN: z.string(),
   },
 
   /**
@@ -51,6 +61,7 @@ export const env = createEnv({
     NEXT_PUBLIC_DESC: z.string(),
     NEXT_PUBLIC_URL: z.string(),
     NEXT_PUBLIC_STAGE: z.string(),
+
     NEXT_PUBLIC_PLATFORM_CREATOR_TERM: z.string(),
     // NEXT_PUBLIC_CLIENTVAR: z.string(),
     NEXT_PUBLIC_STELLAR_PUBNET: z
@@ -93,6 +104,9 @@ export const env = createEnv({
     MOTHER_SECRET: process.env.MOTHER_SECRET,
     STORAGE_SECRET: process.env.STORAGE_SECRET,
     PINATA_JWT: process.env.PINATA_JWT,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+
     // squire
     SQUARE_ACCESS_TOKEN: process.env.SQUARE_ACCESS_TOKEN,
     SQUARE_ENVIRONMENT: process.env.SQUARE_ENVIRONMENT,
@@ -103,6 +117,12 @@ export const env = createEnv({
     AWS_BUCKET_REGION: process.env.NEXT_AWS_BUCKET_REGION,
     AWS_ACCESS_KEY: process.env.NEXT_AWS_ACCESS_KEY,
     AWS_SECRET_ACCESS_KEY: process.env.NEXT_AWS_SECRET_ACCESS_KEY,
+    //QStash
+    QSTASH_TOKEN: process.env.QSTASH_TOKEN,
+    QSTASH_CURRENT_SIGNING_KEY: process.env.QSTASH_CURRENT_SIGNING_KEY,
+    QSTASH_NEXT_SIGNING_KEY: process.env.QSTASH_NEXT_SIGNING_KEY,
+    KV_REST_API_URL: process.env.KV_REST_API_URL,
+    KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

@@ -96,7 +96,7 @@ function ReportDownload({ day, children }: { day: number; children?: React.React
     return (
         <Button
             className="shadow-sm shadow-foreground"
-            variant='vibrant'
+
             onClick={() => download.mutate({ day })} disabled={download.isLoading}>
             {download.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
             {children}

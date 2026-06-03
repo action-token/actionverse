@@ -10,9 +10,9 @@ import { useForm, FormProvider } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import PrizeDetailsForm from "~/components/scavenger-hunt/prize-details-form"
+import { toast as sonner } from "sonner"
 
 import { ChevronLeft, ChevronRight, Coins, Loader2 } from "lucide-react"
-import { useScavengerHuntModalStore } from "../store/scavenger-hunt-modal-store"
 import { api } from "~/utils/api"
 import { clientsign } from "package/connect_wallet"
 import { useSession } from "next-auth/react"
@@ -24,7 +24,6 @@ import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
 import ConfigForm from "../scavenger-hunt/config-form"
 import DefaultInfoForm from "../scavenger-hunt/default-info-form"
 import toast from "react-hot-toast"
-import { PLATFORM_FEE, TrxBaseFeeInPlatformAsset } from "~/lib/stellar/constant"
 
 // Define the location type
 
@@ -36,85 +35,34 @@ type MediaInfoType = z.TypeOf<typeof MediaInfo>
 
 export const scavengerHuntSchema = z
     .object({
-        title: z.string().min(3, { message: "Title must be at least 3 characters" }),
+        title: z.string().min(1, { message: "Title must be at least 3 characters" }),
         description: z.string().min(10, { message: "Description must be at least 10 characters" }),
         coverImageUrl: z.array(MediaInfo).optional(),
         numberOfSteps: z.coerce.number().int().min(1, { message: "At least one step is required" }),
         useSameInfoForAllSteps: z.boolean(),
         defaultLocationInfo: z
             .object({
-                title: z.string().min(1, { message: "Title is required" }),
-                description: z.string().optional(), // Description is optional
-                pinImage: z.string().min(1, { message: "Pin image is required" }),
-                pinUrl: z.string().url({ message: "Must be a valid URL" }),
-                startDate: z.date({ required_error: "Start date is required" }),
-                endDate: z.date({ required_error: "End date is required" }),
-                collectionLimit: z.coerce.number().int().positive({ message: "Collection limit must be positive" }),
-                radius: z.coerce.number().positive({ message: "Radius must be positive" }),
-                autoCollect: z.boolean(),
+                title: z.string().optional(),
+                description: z.string().optional(),
+                pinImage: z.string().optional(),
+                pinUrl: z.string().optional(),
+                startDate: z.date().optional(),
+                endDate: z.date().optional(),
+                collectionLimit: z.coerce.number().optional(),
+                radius: z.coerce.number().optional(),
+                autoCollect: z.boolean().optional(),
             })
-            .optional()
-            .superRefine((data, ctx) => {
-                // Only validate if useSameInfoForAllSteps is true
-                if (ctx.path[0] === "defaultLocationInfo" && data) {
-                    if (!data.title) {
-                        ctx.addIssue({
-                            code: z.ZodIssueCode.custom,
-                            message: "Title is required",
-                            path: ["title"],
-                        })
-                    }
-                    if (!data.pinImage) {
-                        ctx.addIssue({
-                            code: z.ZodIssueCode.custom,
-                            message: "Pin image is required",
-                            path: ["pinImage"],
-                        })
-                    }
-                    if (!data.startDate) {
-                        ctx.addIssue({
-                            code: z.ZodIssueCode.custom,
-                            message: "Start date is required",
-                            path: ["startDate"],
-                        })
-                    }
-                    if (!data.endDate) {
-                        ctx.addIssue({
-                            code: z.ZodIssueCode.custom,
-                            message: "End date is required",
-                            path: ["endDate"],
-                        })
-                    }
-                    if (!data.pinUrl) {
-                        ctx.addIssue({
-                            code: z.ZodIssueCode.custom,
-                            message: "Pin URL is required",
-                            path: ["pinUrl"],
-                        })
-                    }
-                    if (!data.collectionLimit || data.collectionLimit < 1) {
-                        ctx.addIssue({
-                            code: z.ZodIssueCode.custom,
-                            message: "Collection limit must be at least 1",
-                            path: ["collectionLimit"],
-                        })
-                    }
-                    if (!data.radius || data.radius < 10) {
-                        ctx.addIssue({
-                            code: z.ZodIssueCode.custom,
-                            message: "Radius must be at least 10 meters",
-                            path: ["radius"],
-                        })
-                    }
-                }
-            }),
+            .optional(),
         priceInXLM: z.coerce.number().nonnegative({ message: "Price must be a positive number" }).optional(),
         winners: z.coerce.number().int().positive({ message: "Must have at least 1 winner" }),
+        rewardType: z.enum(["usdc", "platform_asset"]),
+        usdcAmount: z.coerce.number().optional(),
+        platformAssetAmount: z.coerce.number().optional(),
         priceUSD: z.coerce.number().nonnegative({ message: "Price must be a positive number" }),
         priceBandcoin: z.coerce.number().nonnegative({ message: "Price must be a positive number" }),
         requiredBalance: z.coerce.number().nonnegative({ message: "Required balance must be a positive number" }),
-        requiredBalanceCode: z.string().min(2, { message: "Asset Code can't be empty" }),
-        requiredBalanceIssuer: z.string().min(2, { message: "Asset Isseuer can't be empty" }),
+        requiredBalanceCode: z.string().optional(),
+        requiredBalanceIssuer: z.string().optional(),
         locations: z
             .array(
                 z.object({
@@ -134,7 +82,6 @@ export const scavengerHuntSchema = z
             )
             .min(1, { message: "At least one location is required" })
             .superRefine((locations, ctx) => {
-                // Basic validation for all locations - coordinates are always required
                 locations.forEach((location, index) => {
                     if (!location.latitude || !location.longitude) {
                         ctx.addIssue({
@@ -147,28 +94,186 @@ export const scavengerHuntSchema = z
             }),
     })
     .superRefine((data, ctx) => {
-        // If not using same info for all steps, we need to validate each location has coordinates
-        if (!data.useSameInfoForAllSteps && data.locations.length > 0) {
-            // We only need to validate that coordinates exist, other fields can have fallbacks
-            const invalidLocations = data.locations.filter(
-                (loc) => typeof loc.latitude !== "number" || typeof loc.longitude !== "number",
-            )
-
-            if (invalidLocations.length > 0) {
+        if (data.useSameInfoForAllSteps) {
+            if (!data.defaultLocationInfo) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
-                    message: "All locations must have valid coordinates",
-                    path: ["locations"],
+                    message: "Default location information is required when using same info for all steps",
+                    path: ["defaultLocationInfo"],
+                })
+                return
+            }
+
+            const { title, pinImage, pinUrl, startDate, endDate, collectionLimit, radius } = data.defaultLocationInfo
+
+            if (!title || title.length < 1) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Title is required",
+                    path: ["defaultLocationInfo", "title"],
                 })
             }
+
+            if (!pinImage || pinImage.length < 1) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Pin image is required",
+                    path: ["defaultLocationInfo", "pinImage"],
+                })
+            }
+
+            if (!pinUrl || pinUrl.length < 1) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Pin URL is required",
+                    path: ["defaultLocationInfo", "pinUrl"],
+                })
+            } else {
+                try {
+                    new URL(pinUrl)
+                } catch {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Must be a valid URL",
+                        path: ["defaultLocationInfo", "pinUrl"],
+                    })
+                }
+            }
+
+            if (!startDate) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Start date is required",
+                    path: ["defaultLocationInfo", "startDate"],
+                })
+            }
+
+            if (!endDate) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "End date is required",
+                    path: ["defaultLocationInfo", "endDate"],
+                })
+            }
+
+            if (!collectionLimit || collectionLimit <= 0) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Collection limit must be positive",
+                    path: ["defaultLocationInfo", "collectionLimit"],
+                })
+            }
+
+            if (!radius || radius <= 0) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Radius must be positive",
+                    path: ["defaultLocationInfo", "radius"],
+                })
+            }
+        }
+
+        if (data.requiredBalance > 0) {
+            if (!data.requiredBalanceCode || data.requiredBalanceCode.length < 2) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Asset Code is required when setting a required balance",
+                    path: ["requiredBalanceCode"],
+                })
+            }
+
+            if (!data.requiredBalanceIssuer || data.requiredBalanceIssuer.length < 2) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: "Asset Issuer is required when setting a required balance",
+                    path: ["requiredBalanceIssuer"],
+                })
+            }
+        }
+
+        if (!data.useSameInfoForAllSteps && data.locations.length > 0) {
+            data.locations.forEach((location, index) => {
+                if (!location.latitude || !location.longitude) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Location coordinates are required",
+                        path: ["locations", index, "latitude"],
+                    })
+                }
+
+                if (!location.title || location.title.length < 1) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Title is required for each location",
+                        path: ["locations", index, "title"],
+                    })
+                }
+
+                if (!location.pinImage || location.pinImage.length < 1) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Pin image is required for each location",
+                        path: ["locations", index, "pinImage"],
+                    })
+                }
+
+                if (!location.pinUrl || location.pinUrl.length < 1) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Pin URL is required for each location",
+                        path: ["locations", index, "pinUrl"],
+                    })
+                } else {
+                    try {
+                        new URL(location.pinUrl)
+                    } catch {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            message: "Must be a valid URL",
+                            path: ["locations", index, "pinUrl"],
+                        })
+                    }
+                }
+
+                if (!location.startDate) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Start date is required for each location",
+                        path: ["locations", index, "startDate"],
+                    })
+                }
+
+                if (!location.endDate) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "End date is required for each location",
+                        path: ["locations", index, "endDate"],
+                    })
+                }
+
+                if (!location.collectionLimit || location.collectionLimit <= 0) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Collection limit must be positive for each location",
+                        path: ["locations", index, "collectionLimit"],
+                    })
+                }
+
+                if (!location.radius || location.radius <= 0) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: "Radius must be positive for each location",
+                        path: ["locations", index, "radius"],
+                    })
+                }
+            })
         }
     })
 
 export type ScavengerHuntFormValues = z.infer<typeof scavengerHuntSchema>
 
-export default function ScavengerHuntDialog() {
-    const { isOpen: isScavengerModalOpen, setIsOpen: SetIsScavengerModalOpen } = useScavengerHuntModalStore()
-    const { isOpen, setIsOpen, paymentMethod } = usePaymentMethodStore()
+const ScavengerHuntDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
+    const { isOpen, setIsOpen, paymentMethod, setPaymentMethod } = usePaymentMethodStore()
 
     const [currentStep, setCurrentStep] = useState(0)
     const [useSameInfo, setUseSameInfo] = useState(true)
@@ -178,7 +283,7 @@ export default function ScavengerHuntDialog() {
     const [isSubmitDisabled, setIsSubmitDisabled] = useState(false)
     const session = useSession()
     const utils = api.useUtils()
-    // Initialize the form with React Hook Form and Zod validation
+
     const methods = useForm<ScavengerHuntFormValues>({
         resolver: zodResolver(scavengerHuntSchema),
         defaultValues: {
@@ -193,14 +298,17 @@ export default function ScavengerHuntDialog() {
                 pinImage: "",
                 pinUrl: "",
                 startDate: new Date(),
-                endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 1 week from now
+                endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
                 collectionLimit: 1,
                 radius: 100,
                 autoCollect: false,
             },
             winners: 1,
-            priceUSD: 1,
-            priceBandcoin: 1,
+            rewardType: "usdc",
+            usdcAmount: 0,
+            platformAssetAmount: 0,
+            priceUSD: 0,
+            priceBandcoin: 0,
             requiredBalance: 0,
             locations: [],
         },
@@ -208,9 +316,8 @@ export default function ScavengerHuntDialog() {
     })
 
     const { trigger, formState, getValues, watch, setValue } = methods
-    //api calling
-    const totalFees = 2 * Number(TrxBaseFeeInPlatformAsset) + Number(PLATFORM_FEE)
 
+    const totalFees = 0
     const CreateBountyMutation = api.bounty.ScavengerHunt.createScavengerHunt.useMutation({
         onSuccess: async (data) => {
             toast.success("Bounty Created Successfully! 🎉")
@@ -221,13 +328,13 @@ export default function ScavengerHuntDialog() {
             setTimeout(() => {
                 handleClose()
             }, 2000)
-            SetIsScavengerModalOpen(false)
+            onOpenChange(false)
         },
         onError: (error) => {
             console.error("Error creating bounty", error)
             toast.error(error.message)
             setLoading(false)
-            SetIsScavengerModalOpen(false)
+            onOpenChange(false)
         },
     })
     const XLMRate = api.bounty.Bounty.getXLMPrice.useQuery().data
@@ -245,11 +352,13 @@ export default function ScavengerHuntDialog() {
                     })
 
                     if (clientResponse) {
+                        const rewardType = getValues("rewardType")
                         CreateBountyMutation.mutate({
                             title: getValues("title"),
-                            priceBandcoin: getValues("priceBandcoin"),
+                            priceBandcoin:
+                                rewardType === "platform_asset" ? (getValues("platformAssetAmount") ?? 0) : 0,
                             winners: getValues("winners"),
-                            priceUSD: getValues("priceUSD"),
+                            priceUSD: rewardType === "usdc" ? (getValues("usdcAmount") ?? 0) : 0,
                             requiredBalance: getValues("requiredBalance") ?? 0,
                             priceInXLM: method == "xlm" ? getValues("priceUSD") * 0.7 : undefined,
                             description: getValues("description"),
@@ -260,83 +369,85 @@ export default function ScavengerHuntDialog() {
                             coverImageUrl: getValues("coverImageUrl"),
                             requiredBalanceCode: getValues("requiredBalanceCode"),
                             requiredBalanceIssuer: getValues("requiredBalanceIssuer"),
+                            rewardType: rewardType,
                         })
                         setLoading(false)
                     } else {
                         setLoading(false)
-
                         toast.error("Error in signing transaction")
                     }
-                } catch (error) {
+                } catch (error: unknown) {
+                    console.error("Error in test transaction", error)
                     setLoading(false)
-                    console.error("Error sending balance to bounty mother", error)
+                    const err = error as {
+                        message?: string
+                        details?: string
+                        errorCode?: string
+                    }
+
+                    sonner.error(
+                        typeof err?.message === "string"
+                            ? err.message
+                            : "Transaction Failed",
+                        {
+                            description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+                            duration: 8000,
+                        }
+                    )
                 }
             }
         },
         onError: (error) => {
             console.error("Error creating bounty", error)
             toast.error(error.message)
-
             setLoading(false)
-            SetIsScavengerModalOpen(false)
+            onOpenChange(false)
         },
     })
-    // Watch for changes to useSameInfoForAllSteps and numberOfSteps
+
     const useSameInfoForAllSteps = watch("useSameInfoForAllSteps")
     const numberOfSteps = watch("numberOfSteps")
     const locations = watch("locations")
+    const watchedRewardType = watch("rewardType")
 
-    // Check if form is valid for submission
+    useEffect(() => {
+        setPaymentMethod(watchedRewardType === "usdc" ? "usdc" : "asset")
+    }, [watchedRewardType, setPaymentMethod])
+
     useEffect(() => {
         const checkFormValidity = () => {
-            // Basic checks that apply to all forms
-            if ((Number(locations.length)) !== Number(numberOfSteps)) {
-                console.log("number of numberOfSteps", numberOfSteps)
-                console.log("number of locations", locations.length)
-                console.log("line 285")
+            if (Number(locations.length) !== Number(numberOfSteps)) {
                 setIsSubmitDisabled(true)
                 return
             }
 
-            // If using same info for all steps
             if (useSameInfoForAllSteps) {
                 const defaultInfo = getValues("defaultLocationInfo")
                 if (!defaultInfo) {
-                    console.log("line 293")
                     setIsSubmitDisabled(true)
                     return
                 }
 
-                // Check if all required fields in defaultInfo are filled
                 const { title, pinImage, pinUrl, startDate, endDate, collectionLimit, radius } = defaultInfo
                 if (!title || !pinImage || !pinUrl || !startDate || !endDate || !collectionLimit || !radius) {
-                    console.log("line 300")
                     setIsSubmitDisabled(true)
                     return
                 }
 
-                // If we have all locations and all required default info, enable the submit button
                 setIsSubmitDisabled(false)
                 return
             } else {
-                // When not using same info, only check for required fields
-                // This code is more accommodating and only checks that each location has coordinates
                 const hasInvalidCoordinates = locations.some((loc) => !loc.latitude || !loc.longitude)
 
                 if (hasInvalidCoordinates) {
-                    console.log("line 313")
                     setIsSubmitDisabled(true)
                     return
                 }
 
-                // If we have filled all the locations and they all have coordinates,
-                // allow the user to proceed to the next step
                 if (Number(locations.length) === Number(numberOfSteps)) {
-                    console.log("line 320")
                     setIsSubmitDisabled(false)
                     return
                 } else {
-                    console.log("line 323")
                     setIsSubmitDisabled(true)
                 }
             }
@@ -349,7 +460,6 @@ export default function ScavengerHuntDialog() {
         setUseSameInfo(useSameInfoForAllSteps)
     }, [useSameInfoForAllSteps])
 
-    // Define the steps dynamically based on useSameInfo
     const getSteps = () => {
         const baseSteps = [
             {
@@ -366,7 +476,6 @@ export default function ScavengerHuntDialog() {
             },
         ]
 
-        // Add default info step if using same info for all steps
         if (useSameInfo) {
             baseSteps.push({
                 id: "default-info",
@@ -376,13 +485,12 @@ export default function ScavengerHuntDialog() {
             })
         }
 
-        // Add remaining steps
         return [
             ...baseSteps,
             {
                 id: "prize-details",
                 title: "Prize Details",
-                fields: ["winners", "priceUSD", "priceBandcoin", "requiredBalance"],
+                fields: ["winners", "rewardType", "usdcAmount", "platformAssetAmount", "requiredBalance"],
                 component: PrizeDetailsForm,
             },
             {
@@ -402,41 +510,36 @@ export default function ScavengerHuntDialog() {
 
     const steps = getSteps()
     const CurrentStepComponent = steps[currentStep]?.component
+
     const handleClose = () => {
-        SetIsScavengerModalOpen(false)
+        onOpenChange(false)
         setCurrentStep(0)
         methods.reset()
     }
-    // Update the handleNext function to be more lenient with the locations step
+
     const handleNext = async () => {
         const fields = steps[currentStep]?.fields as Array<keyof ScavengerHuntFormValues>
 
-        // Skip validation for defaultLocationInfo if not using same info for all steps
         let fieldsToValidate = fields
         if (!useSameInfoForAllSteps && fields.includes("defaultLocationInfo")) {
             fieldsToValidate = fields.filter((field) => field !== "defaultLocationInfo")
         }
 
-        // For locations step, be more lenient with validation
         if (steps[currentStep]?.id === "locations") {
-            // Check if we have enough locations
             if (Number(locations.length) < Number(numberOfSteps)) {
                 toast.error(`You need to add ${numberOfSteps} locations.`)
                 return
             }
 
-            // If using same info for all steps, validate that defaultLocationInfo exists
             if (useSameInfoForAllSteps && !getValues("defaultLocationInfo")) {
                 toast.error("Please fill in the default location information.")
                 return
             }
 
-            // Allow proceeding to next step without validating all location fields
             setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1))
             return
         }
 
-        // For other steps, validate normally
         const isValid = await trigger(fieldsToValidate)
         if (isValid) {
             setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1))
@@ -447,45 +550,44 @@ export default function ScavengerHuntDialog() {
         setCurrentStep((prev) => Math.max(prev - 1, 0))
     }
 
-    // Update the onSubmit function to handle final validation appropriately
+    const getPrizeAmount = () => {
+        const rewardType = getValues("rewardType")
+        if (rewardType === "platform_asset") {
+            return getValues("platformAssetAmount") ?? 0
+        }
+        return getValues("usdcAmount") ?? 0
+    }
+
     const onSubmit = (data: ScavengerHuntFormValues) => {
         console.log("Form submitted:", data)
 
         try {
-            // Final validation to ensure we have the correct number of locations
             if (Number(data.locations.length) !== Number(data.numberOfSteps)) {
                 toast.error(`Number of locations must match the number of steps (${data.numberOfSteps}).`)
                 return
             }
 
-            // If using same info for all steps, ensure defaultLocationInfo exists
             if (Number(data.useSameInfoForAllSteps)) {
                 if (!data.defaultLocationInfo) {
                     toast.error("Please fill in the default location information.")
                     return
                 }
             } else {
-                // When not using same info, ensure each location has coordinates
                 const incompleteLocations = data.locations.filter((loc) => !loc.latitude || !loc.longitude)
 
                 if (incompleteLocations.length > 0) {
                     toast.error("All locations must have coordinates.")
                     return
                 }
-
-                // We don't need additional validation here - if the user has coordinates for all locations
-                // they should be able to submit the form
             }
 
             console.log("Form submitted:", data)
 
             SendBalanceToBountyMother.mutate({
                 signWith: needSign(),
-                prize: data.priceBandcoin,
+                prize: getPrizeAmount(),
                 method: paymentMethod,
-                fees: paymentMethod === "asset" ? totalFees :
-                    paymentMethod === "xlm" ? 1 :
-                        (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
+                fees: 0,
             })
         } catch (error) {
             console.error("Form submission error:", error)
@@ -494,7 +596,7 @@ export default function ScavengerHuntDialog() {
     }
 
     return (
-        <Dialog open={isScavengerModalOpen} onOpenChange={handleClose}>
+        <Dialog open={open} onOpenChange={handleClose}>
             <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Create a New Scavenger Hunt</DialogTitle>
@@ -543,44 +645,35 @@ export default function ScavengerHuntDialog() {
                                     costBreakdown={[
                                         {
                                             label: "Bounty Prize",
-                                            amount: paymentMethod === "asset"
-                                                ? Number(getValues("priceBandcoin"))
-                                                : paymentMethod === "xlm"
-                                                    ? Number(getValues("priceUSD") / (XLMRate ?? 1))
-                                                    : Number(getValues("priceUSD") / (XLMRate ?? 1)),
+                                            amount: getPrizeAmount(),
                                             highlighted: true,
                                             type: "cost",
                                         },
                                         {
                                             label: "Platform Fee",
-                                            amount: paymentMethod === "asset"
-                                                ? totalFees
-                                                : paymentMethod === "xlm"
-                                                    ? 1
-                                                    : (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
+                                            amount: 0,
                                             highlighted: false,
                                             type: "fee",
                                         },
                                         {
                                             label: "Total Cost",
-                                            amount: paymentMethod === "asset"
-                                                ? Number(getValues("priceBandcoin")) + totalFees
-                                                : paymentMethod === "xlm"
-                                                    ? Number(getValues("priceUSD") / (XLMRate ?? 1)) + 1
-                                                    : Number(getValues("priceUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1))),
+                                            amount: getPrizeAmount() + totalFees,
                                             highlighted: false,
                                             type: "total",
                                         },
                                     ]}
-                                    XLM_EQUIVALENT={Number(getValues("priceUSD") / (XLMRate ?? 1)) + 1}
-                                    USDC_EQUIVALENT={Number(getValues("priceUSD") / (XLMRate ?? 1)) + (3 * (Number(getValues("priceUSD") ?? 1) * (XLMRate ?? 1)))}
+                                    {...(watchedRewardType === "usdc"
+                                        ? { USDC_EQUIVALENT: getPrizeAmount() + totalFees }
+                                        : { requiredToken: getPrizeAmount() + totalFees })}
                                     handleConfirm={() => onSubmit(getValues())}
                                     loading={loading}
-                                    requiredToken={Number(getValues("priceBandcoin")) + totalFees}
                                     trigger={
-                                        <Button disabled={isSubmitDisabled
-                                            || CreateBountyMutation.isLoading
-                                            || SendBalanceToBountyMother.isLoading} className="shadow-sm shadow-foreground">
+                                        <Button
+                                            disabled={
+                                                isSubmitDisabled || CreateBountyMutation.isLoading || SendBalanceToBountyMother.isLoading
+                                            }
+                                            className="shadow-sm shadow-foreground"
+                                        >
                                             {loading ? (
                                                 <>
                                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -595,12 +688,12 @@ export default function ScavengerHuntDialog() {
                                         </Button>
                                     }
                                 />
-
                             )}
                         </div>
                     </form>
                 </FormProvider>
             </DialogContent>
-        </Dialog >
+        </Dialog>
     )
 }
+export default ScavengerHuntDialog

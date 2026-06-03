@@ -16,6 +16,7 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 import { MarketAssetType } from "~/types/market/market-asset-type";
+import { checkStellarAccountActivity } from "~/lib/helper/helper_client";
 export const BackMarketFormSchema = z.object({
   placingCopies: z
     .number({
@@ -59,6 +60,7 @@ export const AssetSelectAllProperty = {
   tierId: true,
   tier: true,
   createdAt: true,
+  isQRItem: true,
 };
 
 export const marketRouter = createTRPCRouter({
@@ -210,7 +212,9 @@ export const marketRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { limit, cursor, skip } = input
-      if (ctx.session?.user.id) {
+      const isActive = await checkStellarAccountActivity(ctx.session?.user.id ?? "");
+
+      if (ctx.session?.user.id && isActive) {
         const currentUserId = ctx.session.user.id
 
         const fetchAndFilterItems = async (
@@ -245,10 +249,11 @@ export const marketRouter = createTRPCRouter({
                       customPageAssetCodeIssuer: true,
                     },
                   },
+                  isQRItem: true,
                 },
               },
             },
-            where: { placerId: { not: null }, type: { equals: "FAN" } },
+            where: { placerId: { not: null }, type: { equals: "FAN" }, isQRItem: false },
           })
 
           const stellarAcc = await StellarAccount.create(currentUserId)
@@ -363,7 +368,9 @@ export const marketRouter = createTRPCRouter({
   getLatestMarketNFT: publicProcedure
 
     .query(async ({ ctx, input }) => {
-      if (ctx.session?.user.id) {
+      const isActive = await checkStellarAccountActivity(ctx.session?.user.id ?? "");
+
+      if (ctx.session?.user.id && isActive) {
         const currentUserId = ctx.session.user.id;
 
         const items = await ctx.db.marketAsset.findMany({
@@ -533,7 +540,9 @@ export const marketRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { limit, cursor, skip } = input;
-      if (ctx.session?.user.id) {
+      const isActive = await checkStellarAccountActivity(ctx.session?.user.id ?? "");
+
+      if (ctx.session?.user.id && isActive) {
         const currentUserId = ctx.session.user.id;
 
         const items = await ctx.db.marketAsset.findMany({
@@ -683,7 +692,7 @@ export const marketRouter = createTRPCRouter({
             select: AssetSelectAllProperty,
           },
         },
-        where: { asset: { creatorId: creatorId } },
+        where: { asset: { creatorId: creatorId, isQRItem: false } },
       });
 
       let nextCursor: typeof cursor | undefined = undefined;
@@ -720,7 +729,7 @@ export const marketRouter = createTRPCRouter({
             select: AssetSelectAllProperty,
           },
         },
-        where: { asset: { creatorId: creatorId } },
+        where: { asset: { creatorId: creatorId, isQRItem: false, } },
       });
 
       let nextCursor: typeof cursor | undefined = undefined;
@@ -893,9 +902,7 @@ export const marketRouter = createTRPCRouter({
           },
         },
       });
-      console.log("marketAsset", marketAsset);
       if (!marketAsset) return false;
-
       if (marketAsset.privacy === ItemPrivacy.PUBLIC) {
         return true;
       }

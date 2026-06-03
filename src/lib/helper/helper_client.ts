@@ -3,6 +3,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import axios from "axios";
 import cryptoRandomString from "crypto-random-string";
+import { env } from "~/env";
+
+const url = env.NEXT_PUBLIC_STAGE === "dev" ? "https://horizon-testnet.stellar.org" : "https://horizon.stellar.org";
 
 export function getFileIdClient(length?: number): string {
   return cryptoRandomString({ length: length ?? 8, type: "ascii-printable" });
@@ -12,7 +15,7 @@ export async function checkStellarAccountActivity(
 ): Promise<boolean> {
   try {
     const response = await axios.get(
-      `https://horizon.stellar.org/accounts/${publicKey}`,
+      `${url}/accounts/${publicKey}`,
     );
     const accountData = response.data;
 

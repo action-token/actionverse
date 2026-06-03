@@ -287,7 +287,7 @@ function BasicsStep() {
         formState: { errors },
         control,
     } = useFormContext<SongFormType>()
-    const tiers = api.fan.member.getAllMembership.useQuery()
+    const tiers = api.fan.member.getAllMembership.useQuery({})
 
     return (
         <motion.div
@@ -922,8 +922,7 @@ function TiersOptions({
                 <SelectGroup>
                     <SelectLabel>Choose Tier</SelectLabel>
                     <SelectItem value="public">Public</SelectItem>
-                    <SelectItem value="private">Only Followers</SelectItem>
-                    {tiers.map((model) => (
+                    <SelectItem value="private">Only Members</SelectItem>                    {tiers.map((model) => (
                         <SelectItem key={model.id} value={model.id.toString()}>
                             <div className="flex items-center justify-between w-full">
                                 <span>{model.name}</span>

@@ -3,12 +3,32 @@
 import Link from "next/link"
 import Image from "next/image"
 import { motion } from "framer-motion"
-import { ArrowRight, Palette, Globe, Award, Zap } from "lucide-react"
+import { ArrowRight, Palette, Globe, Award, Zap, Loader2 } from "lucide-react"
 
 import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
+import { ActivationModal } from "../modal/activation-modal"
+import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
+import { checkStellarAccountActivity } from "~/lib/helper/helper_client"
 
 export default function JoinArtistPage() {
+    const session = useSession()
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [isActive, setIsActive] = useState<boolean>(false);
+    const [isActiveStatusLoading, setIsActiveStatusLoading] = useState<boolean>(false);
+    useEffect(() => {
+        const checkAccountActivity = async () => {
+            if (session.data?.user.id) {
+                setIsActiveStatusLoading(true);
+                const active = await checkStellarAccountActivity(session.data.user.id);
+                setIsActive(active);
+                setIsActiveStatusLoading(false);
+            }
+        }
+        checkAccountActivity();
+    }, [session.data?.user.id]);
+
     return (
         <div className="">
             {/* Background Elements */}
@@ -83,14 +103,32 @@ export default function JoinArtistPage() {
                         <p className="text-muted-foreground max-w-2xl mx-auto mb-8">
                             Join our growing community of artists and start sharing your creative work today.
                         </p>
-                        <Button size="lg" asChild className="rounded-full px-8">
-                            <Link href="/organization/create" className="gap-2">
-                                Join as Organization <ArrowRight className="h-4 w-4" />
-                            </Link>
-                        </Button>
+                        {
+                            isActive ? (
+                                <Button size="lg" asChild className="rounded-full px-8">
+                                    <Link href="/organization/create" className="gap-2">
+                                        Join as Organization <ArrowRight className="h-4 w-4" />
+                                    </Link>
+                                </Button>)
+                                : (isActiveStatusLoading ? (
+                                    <Button size="lg" disabled className="rounded-full px-8">
+                                        Checking Account...
+                                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="lg" variant="destructive" onClick={() => setDialogOpen(true)} className="rounded-full px-8 gap-2">
+                                        Join as Organization <ArrowRight className="h-4 w-4" />
+                                    </Button>
+                                ))
+                        }
                     </motion.div>
                 </div>
             </div>
+            <ActivationModal
+                dialogOpen={dialogOpen}
+                setDialogOpen={setDialogOpen}
+            />
         </div>
     )
 }

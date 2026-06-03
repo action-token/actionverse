@@ -16,6 +16,7 @@ import { Checkbox } from "~/components/shadcn/ui/checkbox"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { api } from "~/utils/api"
 import { CREATOR_TERM } from "~/utils/term"
+import AdminLayout from "~/components/layout/root/AdminLayout"
 
 interface pinData {
     image: string
@@ -104,39 +105,41 @@ export default function Pins() {
     }
 
     return (
-        <div className="w-full p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Pin Management</h1>
-                <Badge variant="outline" className="text-sm">
-                    {locationGroups.data?.length || 0} groups
-                </Badge>
+        <AdminLayout>
+            <div className="w-full p-6 space-y-6">
+                <div className="flex items-center justify-between">
+                    <h1 className="text-2xl font-bold text-gray-900">Pin Management</h1>
+                    <Badge variant="outline" className="text-sm">
+                        {locationGroups.data?.length || 0} groups
+                    </Badge>
+                </div>
+
+                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "pending" | "approved")} className="w-full">
+                    <TabsList className="grid w-full max-w-md grid-cols-2">
+                        <TabsTrigger value="pending" className="flex items-center gap-2">
+                            <div className="h-2 w-2 bg-yellow-500 rounded-full"></div>
+                            Pending Pins
+                        </TabsTrigger>
+                        <TabsTrigger value="approved" className="flex items-center gap-2">
+                            <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+                            Approved Pins
+                        </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="pending" className="mt-6">
+                        {locationGroups.data && (
+                            <GroupPins groups={locationGroups.data} mode="pending" refetch={locationGroups.refetch} />
+                        )}
+                    </TabsContent>
+
+                    <TabsContent value="approved" className="mt-6">
+                        {locationGroups.data && (
+                            <GroupPins groups={locationGroups.data} mode="approved" refetch={locationGroups.refetch} />
+                        )}
+                    </TabsContent>
+                </Tabs>
             </div>
-
-            <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "pending" | "approved")} className="w-full">
-                <TabsList className="grid w-full max-w-md grid-cols-2">
-                    <TabsTrigger value="pending" className="flex items-center gap-2">
-                        <div className="h-2 w-2 bg-yellow-500 rounded-full"></div>
-                        Pending Pins
-                    </TabsTrigger>
-                    <TabsTrigger value="approved" className="flex items-center gap-2">
-                        <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                        Approved Pins
-                    </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="pending" className="mt-6">
-                    {locationGroups.data && (
-                        <GroupPins groups={locationGroups.data} mode="pending" refetch={locationGroups.refetch} />
-                    )}
-                </TabsContent>
-
-                <TabsContent value="approved" className="mt-6">
-                    {locationGroups.data && (
-                        <GroupPins groups={locationGroups.data} mode="approved" refetch={locationGroups.refetch} />
-                    )}
-                </TabsContent>
-            </Tabs>
-        </div>
+        </AdminLayout>
     )
 }
 

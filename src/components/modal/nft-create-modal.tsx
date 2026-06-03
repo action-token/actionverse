@@ -209,7 +209,7 @@ export default function NftCreateModal() {
         },
     });
 
-    const tiers = api.fan.member.getAllMembership.useQuery();
+    const tiers = api.fan.member.getAllMembership.useQuery({});
 
     const addAsset = api.fan.asset.createAsset.useMutation({
         onSuccess: () => {
@@ -908,8 +908,7 @@ function TiersOptions({
                 <SelectGroup>
                     <SelectLabel>Choose Tier</SelectLabel>
                     <SelectItem value="public">Public</SelectItem>
-                    <SelectItem value="private">Only Followers</SelectItem>
-                    {tiers.map((model) => (
+                    <SelectItem value="private">Only Members</SelectItem>                    {tiers.map((model) => (
                         <SelectItem key={model.id} value={model.id.toString()}>
                             <div className="flex w-full items-center justify-between">
                                 <span>{model.name}</span>

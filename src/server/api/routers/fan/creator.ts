@@ -1,13 +1,15 @@
+import { Asset } from "@stellar/stellar-sdk";
 import axios from "axios";
 import { getAccSecret } from "package/connect_wallet";
 import { env } from "process";
 import { z } from "zod";
+import { creatorAprovalTrustlineTrx, creatorAprovalTrx } from "~/lib/stellar/fan/creator-aproval";
 import { getCreatorShopAssetBalance } from "~/lib/stellar/fan/creator_pageasset_buy";
 import {
   createRedeemXDRAsset,
   createRedeemXDRNative,
 } from "~/lib/stellar/fan/redeem";
-import { AccountSchema } from "~/lib/stellar/fan/utils";
+import { AccountSchema, AccountType } from "~/lib/stellar/fan/utils";
 import {
   createOrRenewVanitySubscription,
   getVanitySubscriptionXDR,
@@ -25,7 +27,9 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 import { BADWORDS } from "~/utils/banned-word";
+import { urlToIpfsHash } from "~/utils/ipfs";
 import { truncateString } from "~/utils/string";
+export const MAX_ASSET_LIMIT = Number("922337203685");
 export const CreatorAboutShema = z.object({
   bio: z
     .string()
@@ -45,14 +49,14 @@ export const creatorRouter = createTRPCRouter({
   requestForBrandCreation: protectedProcedure
     .input(RequestBrandCreateFormSchema)
     .mutation(async ({ ctx, input }) => {
-      const customAsset = `${input.assetCode}-${input.issuer}`;
+      const customAsset = `${input.assetCode}-${input.issuer}`
       const creator = await ctx.db.creator.findUnique({
         where: { id: ctx.session.user.id },
-      });
+      })
 
       if (creator) {
-        const justStorageCreated = creator.justStorageCreated;
-        const aprovalSend = creator.aprovalSend;
+        const justStorageCreated = creator.justStorageCreated
+        const aprovalSend = creator.aprovalSend
 
         if (justStorageCreated && !aprovalSend) {
           // only storage is created
@@ -67,7 +71,7 @@ export const creatorRouter = createTRPCRouter({
             where: {
               id: creator.id,
             },
-          });
+          })
 
           if (input.assetType === "custom")
             await ctx.db.creator.update({
@@ -77,7 +81,7 @@ export const creatorRouter = createTRPCRouter({
               where: {
                 id: creator.id,
               },
-            });
+            })
 
           if (input.assetType === "new")
             await ctx.db.creator.update({
@@ -92,56 +96,118 @@ export const creatorRouter = createTRPCRouter({
                 },
               },
               where: { id: creator.id },
-            });
+            })
+
+          // No additional action needed for skip case
         }
       }
 
-      if (input.assetType === "custom") {
-        await ctx.db.creator.create({
-          data: {
-            id: ctx.session.user.id,
-            profileUrl: input.profileUrl,
-            coverUrl: input.coverUrl,
-            bio: input.bio,
-            storagePub: BLANK_KEYWORD,
-            storageSecret: BLANK_KEYWORD,
-            name: input.displayName,
-            aprovalSend: true,
-            customPageAssetCodeIssuer: customAsset,
-          },
-        });
-      }
-      if (input.assetType === "new") {
-        await ctx.db.creator.create({
-          data: {
-            id: ctx.session.user.id,
-            profileUrl: input.profileUrl,
-            coverUrl: input.coverUrl,
-            bio: input.bio,
-            storagePub: BLANK_KEYWORD,
-            storageSecret: BLANK_KEYWORD,
-            name: input.displayName,
-            aprovalSend: true,
-            pageAsset: {
-              create: {
-                code: input.assetName,
-                issuer: BLANK_KEYWORD,
-                thumbnail: input.assetImage,
-                limit: 0,
+      if (!creator) {
+        if (input.assetType === "custom") {
+          await ctx.db.creator.create({
+            data: {
+              id: ctx.session.user.id,
+              profileUrl: input.profileUrl,
+              coverUrl: input.coverUrl,
+              bio: input.bio,
+              storagePub: BLANK_KEYWORD,
+              storageSecret: BLANK_KEYWORD,
+              name: input.displayName,
+              aprovalSend: true,
+              customPageAssetCodeIssuer: customAsset,
+            },
+          })
+        } else if (input.assetType === "new") {
+          await ctx.db.creator.create({
+            data: {
+              id: ctx.session.user.id,
+              profileUrl: input.profileUrl,
+              coverUrl: input.coverUrl,
+              bio: input.bio,
+              storagePub: BLANK_KEYWORD,
+              storageSecret: BLANK_KEYWORD,
+              name: input.displayName,
+              aprovalSend: true,
+              pageAsset: {
+                create: {
+                  code: input.assetName,
+                  issuer: BLANK_KEYWORD,
+                  thumbnail: input.assetImage,
+                  limit: 0,
+                },
               },
             },
+          })
+        } else if (input.assetType === "skip") {
+          await ctx.db.creator.create({
+            data: {
+              id: ctx.session.user.id,
+              profileUrl: input.profileUrl,
+              coverUrl: input.coverUrl,
+              bio: input.bio,
+              storagePub: BLANK_KEYWORD,
+              storageSecret: BLANK_KEYWORD,
+              name: input.displayName,
+              aprovalSend: true,
+              // No pageAsset or customPageAssetCodeIssuer when skipped
+            },
+          })
+        }
+      }
+    }),
+  creatorRequestXdr: protectedProcedure
+    .input(z.object({
+      creatorId: z.string(),
+      assetType: z.enum(["new", "custom"]),
+      assetName: z.string().default(""),
+      assetImage: z.string().url().optional(),
+      assetImagePreview: z.string().optional(),
+      assetCode: z.string().default(""),
+      issuer: z.string().default(""),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // here two type of request will be made
+      // 1. create storage account
+      // 2. create escrow account
+      const { assetName, assetImage, assetCode, assetType } = input
+      const customAsset = `${input.assetCode}-${input.issuer}`
+
+      const creator = await ctx.db.creator.findUniqueOrThrow({
+        where: { id: input.creatorId },
+        select: {
+          storagePub: true,
+          storageSecret: true,
+        }
+      });
+
+      // storageAlready created
+      const validStorage = creator.storagePub.length === 56;
+      const storage: AccountType = {
+        publicKey: creator.storagePub,
+        secretKey: creator.storageSecret,
+      };
+
+      const customPageAssetCodeIssuer = customAsset;
+      if (assetType === 'new' && assetImage) {
+        const thumbnail = assetImage;
+        const ipfs = urlToIpfsHash(assetImage) ?? "ipfs";
+        return await creatorAprovalTrx({
+          storage: validStorage ? storage : undefined,
+          pageAsset: {
+            code: assetName,
+            ipfs: ipfs,
+            limit: MAX_ASSET_LIMIT.toString(),
           },
         });
       }
+      else {
+        return await creatorAprovalTrustlineTrx({
+          storage: validStorage ? storage : undefined,
+          customPageAssetCodeIssuer: customPageAssetCodeIssuer,
+        })
+      }
 
-      // await createOrRenewVanitySubscription({
-      //   creatorId: ctx.session.user.id,
-      //   isChanging: false,
-      //   amount: 0,
-      //   vanityURL: input.vanityUrl.toLocaleLowerCase(),
-      // });
     }),
-
   getCreator: protectedProcedure
     .input(z.object({ id: z.string() }).optional())
     .query(async ({ input, ctx }) => {
@@ -195,7 +261,7 @@ export const creatorRouter = createTRPCRouter({
   }),
 
   meCreator: protectedProcedure.query(async ({ ctx }) => {
-    return ctx.db.creator.findFirst({
+    const creator = await ctx.db.creator.findFirst({
       where: { user: { id: ctx.session.user.id } },
       include: {
         _count: {
@@ -205,10 +271,22 @@ export const creatorRouter = createTRPCRouter({
             posts: true,
           }
         },
-        pageAsset: true,
-
+        pageAsset: {
+          select: {
+            code: true,
+            issuer: true,
+            thumbnail: true,
+            limit: true,
+          }
+        },
       }
     });
+
+    if (creator) {
+      const { storageSecret, ...creatorData } = creator;
+      return creatorData;
+    }
+    return creator;
   }),
   vanitySubscription: protectedProcedure.query(async ({ ctx }) => {
     const creator = ctx.db.creator.findFirst({
@@ -691,7 +769,6 @@ export const creatorRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { limit, cursor } = input;
-
       // Parse the cursor (which is the last creator's ID)
       const cursorObj = cursor ? { id: cursor } : undefined;
 
@@ -699,14 +776,14 @@ export const creatorRouter = createTRPCRouter({
       const creators = await ctx.db.creator.findMany({
         where: {
           approved: true,
-          followers: {
+          temporalFollows: {
             none: {
               userId: ctx.session.user.id
             }
           }
         },
         orderBy: {
-          followers: {
+          temporalFollows: {
             _count: 'desc',
           },
         },
@@ -723,7 +800,7 @@ export const creatorRouter = createTRPCRouter({
           profileUrl: true,
           _count: {
             select: {
-              followers: true,
+              temporalFollows: true,
             },
           },
         },
@@ -737,7 +814,7 @@ export const creatorRouter = createTRPCRouter({
       }
 
       // Check if current user follows the creators
-      const followedCreators = await ctx.db.follow.findMany({
+      const followedCreators = await ctx.db.temporalFollow.findMany({
         where: {
           creatorId: {
             in: creators.map((creator) => creator.id),
@@ -759,8 +836,177 @@ export const creatorRouter = createTRPCRouter({
         creators: creatorsWithFollow,
         nextCursor,
       };
-    }
-    ),
+    }),
+
+  getAllCreators: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().default(5),
+        cursor: z.string().nullish(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { limit, cursor } = input;
+      const cursorObj = cursor ? { id: cursor } : undefined;
+
+      const creators = await ctx.db.creator.findMany({
+        where: {
+          approved: true,
+        },
+        orderBy: {
+          temporalFollows: {
+            _count: 'desc',
+          },
+        },
+        take: limit + 1,
+        ...(cursorObj && {
+          cursor: {
+            id: cursorObj.id,
+          },
+          skip: 1,
+        }),
+        select: {
+          id: true,
+          name: true,
+          profileUrl: true,
+          pageAsset: {
+            select: {
+              code: true,
+              issuer: true,
+            }
+          },
+          customPageAssetCodeIssuer: true,
+          _count: {
+            select: {
+              temporalFollows: true,
+            },
+          },
+        },
+      });
+
+      let nextCursor: typeof cursor = undefined;
+      if (creators.length > limit) {
+        const nextItem = creators.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      const followedCreators = await ctx.db.temporalFollow.findMany({
+        where: {
+          creatorId: {
+            in: creators.map((creator) => creator.id),
+          },
+          userId: ctx.session.user.id,
+        },
+      });
+      const memberofCreator = await ctx.db.follow.findMany({
+        where: {
+          creatorId: {
+            in: creators.map((creator) => creator.id),
+          },
+          userId: ctx.session.user.id,
+        }
+      })
+
+
+      const userAcc = await StellarAccount.create(ctx.session.user.id);
+
+      const creatorsWithFollow = creators.map((creator) => {
+        const isFollowed = followedCreators.some((follow) => follow.creatorId === creator.id);
+        const isMember = memberofCreator.some((follow) => follow.creatorId === creator.id);
+        let wasMember = false;
+
+        if (creator.pageAsset) {
+          const { code, issuer } = creator.pageAsset;
+          if (userAcc.hasTrustline(code, issuer)) {
+            wasMember = true;
+          }
+        } else if (creator.customPageAssetCodeIssuer) {
+          const [code, issuer] = creator.customPageAssetCodeIssuer.split("-");
+          const issuerVal = z.string().length(56).safeParse(issuer);
+          if (issuerVal.success && code) {
+            if (userAcc.hasTrustline(code, issuerVal.data)) {
+              wasMember = true;
+            }
+          }
+        }
+
+        return {
+          ...creator,
+          isMember,
+          wasMember,
+          isFollowed,
+          isCurrentUser: creator.id === ctx.session.user.id,
+        };
+      });
+      // console.log("creatorsWithFollow", creatorsWithFollow);
+      return {
+        creators: creatorsWithFollow,
+        nextCursor,
+      };
+    }),
+
+  checkCurrentUserFollowsCreator: protectedProcedure
+    .input(z.object({ creatorId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const isFollowing = await ctx.db.temporalFollow.findUnique({
+        where: {
+          userId_creatorId: {
+            userId: ctx.session.user.id,
+            creatorId: input.creatorId,
+          },
+        },
+      });
+
+      return { isFollowing: !!isFollowing };
+    }),
+  checkCurrentUserMemberCreator: protectedProcedure
+    .input(z.object({ creatorId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      const creator = await ctx.db.creator.findUniqueOrThrow({
+        where: { id: input.creatorId },
+        include: { pageAsset: true },
+      });
+      if (!creator) {
+        throw new Error("Creator not found");
+      }
+      const isMemeber = await ctx.db.follow.findUnique({
+        where: {
+          userId_creatorId: {
+            userId: ctx.session.user.id,
+            creatorId: input.creatorId,
+          },
+        },
+      });
+      const userAcc = await StellarAccount.create(userId);
+      let wasMember = false;
+      if (creator.pageAsset) {
+        const { code, issuer } = creator.pageAsset;
+
+        const hasTrust = userAcc.hasTrustline(code, issuer);
+        if (hasTrust) {
+          wasMember = true;
+        }
+      }
+      else {
+        if (creator.customPageAssetCodeIssuer) {
+          const [code, issuer] = creator.customPageAssetCodeIssuer.split("-");
+          const issuerVal = z.string().length(56).safeParse(issuer);
+          if (issuerVal.success && code) {
+            const hasTrust = userAcc.hasTrustline(code, issuerVal.data);
+            if (hasTrust) {
+              wasMember = true;
+            }
+          }
+        }
+      }
+
+
+
+
+      return { isMemeber: !!isMemeber, wasMember };
+    }),
 
   getFollowedCreators: protectedProcedure
     .input(
@@ -779,14 +1025,14 @@ export const creatorRouter = createTRPCRouter({
       const creators = await ctx.db.creator.findMany({
         where: {
           approved: true,
-          followers: {
+          temporalFollows: {
             some: {
               userId: ctx.session.user.id
             }
           }
         },
         orderBy: {
-          followers: {
+          temporalFollows: {
             _count: 'desc',
           },
         },
@@ -803,7 +1049,7 @@ export const creatorRouter = createTRPCRouter({
           profileUrl: true,
           _count: {
             select: {
-              followers: true,
+              temporalFollows: true,
             },
           },
           subscriptions: {
@@ -850,6 +1096,49 @@ export const creatorRouter = createTRPCRouter({
       console.log("response", response.data);
       return response.status === 200;
     }),
+  createCreatorPageAsset: protectedProcedure.input(z.object({
+    assetType: z.enum(["new", "custom"]),
+    assetName: z.string().default(""),
+    assetImage: z.string().url().optional(),
+    assetImagePreview: z.string().optional(),
+    assetCode: z.string().default(""),
+    issuer: z.string().default(""),
+    escrow: AccountSchema.optional(),
+
+
+  })).mutation(async ({ ctx, input }) => {
+    const customAsset = `${input.assetCode}-${input.issuer}`
+    console.log("Type........", input.assetType)
+    const userId = ctx.session.user.id
+    if (input.assetType === "custom") {
+      await ctx.db.creator.update({
+        data: {
+
+          customPageAssetCodeIssuer: customAsset,
+        },
+        where: {
+          id: userId
+        }
+      })
+    } else if (input.assetType === "new" && input.escrow) {
+      console.log("Asset..............................")
+      await ctx.db.creator.update({
+        data: {
+          pageAsset: {
+            create: {
+              code: input.assetName,
+              issuer: input.escrow.publicKey,
+              issuerPrivate: input.escrow.secretKey,
+              limit: 0,
+            },
+          },
+        },
+        where: {
+          id: userId,
+        }
+      })
+    }
+  }),
 
   addCreatorSubscription: protectedProcedure.input(z.object({
     name: z.string(),

@@ -51,13 +51,13 @@ export default function AdminLayout({
         refetchOnWindowFocus: true,
     });
     const path = usePathname();
-    const [isExpanded, setIsExpanded] = useState(false)
+    const [isExpanded, setIsExpanded] = useState(true)
     const LeftNavigation: DockerItem[] = [
-        { href: "/admin/wallet", icon: "wallet", label: "WALLET", color: "bg-blue-500" },
+        // { href: "/admin/wallet", icon: "wallet", label: "WALLET", color: "bg-blue-500" },
         { href: "/admin/admins", icon: "admin", label: "ADMIN", color: "bg-purple-500" },
         { href: "/admin/pins", icon: "pins", label: "PINS", color: "bg-pink-500" },
         { href: "/admin/reward-checker", icon: "reward", label: "REWARD CHECKER", color: "bg-primary" },
-        { href: "/admin/creator-report", icon: "report", label: "COLLECTION REPORTS", color: "bg-amber-500" },
+        // { href: "/admin/creator-report", icon: "report", label: "COLLECTION REPORTS", color: "bg-amber-500" },
         { href: "/admin/creators", icon: "creator", label: "CREATORS", color: "bg-emerald-500" },
         { href: "/admin/users", icon: "users", label: "USERS", color: "bg-blue-500" },
         { href: "/admin/bounty", icon: "bounty", label: "BOUNTY", color: "bg-purple-500" },
@@ -107,7 +107,7 @@ export default function AdminLayout({
                                     return (
                                         <Link
                                             key={index}
-                                            href={item.disabled ? "/admin/wallet" : item.href}
+                                            href={item.disabled ? "/admin/admins" : item.href}
                                         >
                                             <motion.div
 

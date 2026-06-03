@@ -42,6 +42,7 @@ export const NftFormSchema = z.object({
       message: "Input contains banned words.",
     },
   ),
+  isQRItem: z.boolean().optional(),
   description: z.string(),
   mediaUrl: z.string(),
   coverImgUrl: z.string().min(1, { message: "Thumbnail is required" }),
@@ -122,6 +123,7 @@ export const shopRouter = createTRPCRouter({
             code,
             issuer: issuer.publicKey,
             issuerPrivate: issuer.secretKey,
+            isQRItem: input.isQRItem,
             name,
             mediaType,
             mediaUrl,
@@ -132,6 +134,7 @@ export const shopRouter = createTRPCRouter({
                 placerId: creatorId,
                 type: nftType,
                 privacy: privacy,
+                isQRItem: input.isQRItem,
               },
             },
             description,
@@ -338,8 +341,7 @@ export const shopRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { marketId } = input;
 
-
-      return await ctx.db.marketAsset.findUnique({
+      const item = await ctx.db.marketAsset.findUnique({
         where: { id: marketId },
         include: {
           asset: {
@@ -364,6 +366,8 @@ export const shopRouter = createTRPCRouter({
           },
         },
       });
+      console.log("marketAsset in getMarketAssetById:", item);
+      return item;
 
     }),
 

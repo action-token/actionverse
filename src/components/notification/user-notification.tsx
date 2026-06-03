@@ -3,205 +3,282 @@
 import { NotificationType } from "@prisma/client"
 import Image from "next/image"
 import Link from "next/link"
-import { useState, useEffect } from "react"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { api } from "~/utils/api"
 import { formatPostCreatedAt } from "~/utils/format-date"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bell, ChevronDown, Loader2 } from "lucide-react"
+import {
+    Bell, ChevronDown, Loader2, CheckCheck,
+    Heart, MessageSquare, UserPlus, FileText, Trophy, MessagesSquare,
+    Users, Send, SmilePlus
+} from "lucide-react"
 import { Button } from "~/components/shadcn/ui/button"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
-type notificationObject = {
-    id: number;
-    createdAt: Date;
-    entityType: NotificationType;
-    entityId: number;
-    actorId: string;
-    isUser: boolean;
-    actor: { name: string | null; image: string | null; id: string };
-};
-export default function UserNotification() {
-    return (
-        <div className="container mx-auto px-4 py-6">
-            <div className="flex flex-row items-start justify-center ">
-                <Notifications />
-            </div>
-        </div>
-    )
+
+type NotificationItem = {
+    id: number
+    seen: Date | null
+    createdAt: Date
+    isCreator: boolean
+    notificationObject: {
+        entityType: NotificationType
+        entityId: number
+        createdAt: Date
+        actor: { id: string; name: string | null; image: string | null }
+    }
 }
 
 const getNotificationIcon = (type: NotificationType) => {
     switch (type) {
         case NotificationType.LIKE:
-            return "❤️"
+            return <Heart className="h-3.5 w-3.5 text-pink-500" />
         case NotificationType.COMMENT:
         case NotificationType.REPLY:
-            return "💬"
+            return <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
         case NotificationType.FOLLOW:
-            return "👤"
+            return <UserPlus className="h-3.5 w-3.5 text-purple-500" />
         case NotificationType.POST:
-            return "📝"
+            return <FileText className="h-3.5 w-3.5 text-emerald-500" />
         case NotificationType.BOUNTY:
         case NotificationType.BOUNTY_WINNER:
-            return "🏆"
+            return <Trophy className="h-3.5 w-3.5 text-amber-500" />
         case NotificationType.BOUNTY_COMMENT:
         case NotificationType.BOUNTY_REPLY:
         case NotificationType.BOUNTY_DOUBT_REPLY:
-            return "💭"
+            return <MessagesSquare className="h-3.5 w-3.5 text-green-500" />
+        case NotificationType.COMMUNITY_POST:
+            return <FileText className="h-3.5 w-3.5 text-violet-500" />
+        case NotificationType.COMMUNITY_COMMENT:
+        case NotificationType.COMMUNITY_REPLY:
+            return <MessageSquare className="h-3.5 w-3.5 text-violet-500" />
+        case NotificationType.COMMUNITY_MEMBER_JOIN:
+            return <Users className="h-3.5 w-3.5 text-teal-500" />
+        case NotificationType.COMMUNITY_INVITE:
+            return <Send className="h-3.5 w-3.5 text-indigo-500" />
+        case NotificationType.COMMUNITY_REACTION:
+            return <SmilePlus className="h-3.5 w-3.5 text-pink-500" />
         default:
-            return "🔔"
+            return <Bell className="h-3.5 w-3.5 text-gray-400" />
     }
 }
 
-const Notifications = () => {
-    const [viewedNotifications, setViewedNotifications] = useState<Set<number>>(new Set())
-    const [filter, setFilter] = useState<string>("all")
+const getNotificationIconBg = (type: NotificationType) => {
+    switch (type) {
+        case NotificationType.LIKE:
+            return "bg-pink-100"
+        case NotificationType.COMMENT:
+        case NotificationType.REPLY:
+            return "bg-blue-100"
+        case NotificationType.FOLLOW:
+            return "bg-purple-100"
+        case NotificationType.POST:
+            return "bg-emerald-100"
+        case NotificationType.BOUNTY:
+        case NotificationType.BOUNTY_WINNER:
+            return "bg-amber-100"
+        case NotificationType.BOUNTY_COMMENT:
+        case NotificationType.BOUNTY_REPLY:
+        case NotificationType.BOUNTY_DOUBT_REPLY:
+            return "bg-green-100"
+        case NotificationType.COMMUNITY_POST:
+        case NotificationType.COMMUNITY_COMMENT:
+        case NotificationType.COMMUNITY_REPLY:
+            return "bg-violet-100"
+        case NotificationType.COMMUNITY_MEMBER_JOIN:
+            return "bg-teal-100"
+        case NotificationType.COMMUNITY_INVITE:
+            return "bg-indigo-100"
+        case NotificationType.COMMUNITY_REACTION:
+            return "bg-pink-100"
+        default:
+            return "bg-gray-100"
+    }
+}
+
+const getNotificationMessage = (n: NotificationItem) => {
+    const actorName = n.notificationObject.actor.name ?? "Someone"
+    switch (n.notificationObject.entityType) {
+        case NotificationType.LIKE:
+            return `${actorName} liked a post`
+        case NotificationType.COMMENT:
+            return `${actorName} commented on a post`
+        case NotificationType.FOLLOW:
+            return `${actorName} followed you`
+        case NotificationType.MEMBER:
+            return `${actorName} became a member`
+        case NotificationType.REPLY:
+            return `${actorName} replied to a comment`
+        case NotificationType.POST:
+            return `${actorName} created a new post`
+        case NotificationType.BOUNTY:
+            return `${actorName} added a bounty`
+        case NotificationType.BOUNTY_WINNER:
+            return "You won a bounty"
+        case NotificationType.BOUNTY_COMMENT:
+            return `${actorName} commented on a bounty`
+        case NotificationType.BOUNTY_REPLY:
+            return `${actorName} replied to a comment on bounty`
+        case NotificationType.BOUNTY_DOUBT_REPLY:
+            return `${actorName} replied to your chat on bounty`
+        case NotificationType.COMMUNITY_POST:
+            return `${actorName} posted in a community`
+        case NotificationType.COMMUNITY_COMMENT:
+            return `${actorName} commented on a community post`
+        case NotificationType.COMMUNITY_REPLY:
+            return `${actorName} replied to your comment`
+        case NotificationType.COMMUNITY_MEMBER_JOIN:
+            return `${actorName} joined your community`
+        case NotificationType.COMMUNITY_INVITE:
+            return `${actorName} invited you to a community`
+        case NotificationType.COMMUNITY_REACTION:
+            return `${actorName} liked your community post`
+        default:
+            return "You have a new notification"
+    }
+}
+
+const getNotificationUrl = (n: NotificationItem) => {
+    switch (n.notificationObject.entityType) {
+        case NotificationType.LIKE:
+        case NotificationType.COMMENT:
+        case NotificationType.REPLY:
+        case NotificationType.POST:
+            return `/fans/posts/${n.notificationObject.entityId}`
+        case NotificationType.FOLLOW:
+            return `/fans/creator/${n.notificationObject.actor.id}`
+        case NotificationType.BOUNTY:
+        case NotificationType.BOUNTY_WINNER:
+        case NotificationType.BOUNTY_COMMENT:
+        case NotificationType.BOUNTY_REPLY:
+        case NotificationType.BOUNTY_DOUBT_REPLY:
+            return `/bounty/${n.notificationObject.entityId}`
+        case NotificationType.COMMUNITY_POST:
+        case NotificationType.COMMUNITY_COMMENT:
+        case NotificationType.COMMUNITY_REPLY:
+        case NotificationType.COMMUNITY_MEMBER_JOIN:
+        case NotificationType.COMMUNITY_INVITE:
+        case NotificationType.COMMUNITY_REACTION:
+            return `/community/${n.notificationObject.entityId}`
+        default:
+            return ""
+    }
+}
+
+function groupByDate(notifications: NotificationItem[]) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    const groups: { label: string; items: NotificationItem[] }[] = []
+    const map = new Map<string, NotificationItem[]>()
+
+    for (const n of notifications) {
+        const d = new Date(n.createdAt)
+        d.setHours(0, 0, 0, 0)
+
+        let label: string
+        if (d.getTime() === today.getTime()) label = "Today"
+        else if (d.getTime() === yesterday.getTime()) label = "Yesterday"
+        else label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+
+        if (!map.has(label)) {
+            const items: NotificationItem[] = []
+            map.set(label, items)
+            groups.push({ label, items })
+        }
+        map.get(label)!.push(n)
+    }
+
+    return groups
+}
+
+export default function UserNotification() {
+    const utils = api.useUtils()
 
     const notifications = api.fan.notification.getUserNotification.useInfiniteQuery(
-        {
-            limit: 10,
-        },
+        { limit: 15 },
         {
             getNextPageParam: (lastPage) => lastPage.nextCursor,
-            refetchInterval: 30000, // Refetch every 30 seconds
+            refetchInterval: 30000,
         },
     )
 
-    // Mark notifications as viewed when they appear on screen
-    useEffect(() => {
-        if (notifications.data) {
-            const newViewedSet = new Set(viewedNotifications)
-            notifications.data.pages.forEach((page) => {
-                page.notifications.forEach((notification) => {
-                    newViewedSet.add(notification.id)
-                })
-            })
-            setViewedNotifications(newViewedSet)
-        }
-    }, [notifications.data])
+    const markAllSeen = api.fan.notification.markAllAsSeen.useMutation({
+        onSuccess: () => {
+            void utils.fan.notification.getUserNotification.invalidate()
+            void utils.fan.notification.getUnseenNotificationCount.invalidate()
+        },
+    })
 
-    // Get notification count for badge
-    const newNotificationCount = () => {
-        if (!notifications.data) return 0
+    const markSeen = api.fan.notification.markAsSeen.useMutation({
+        onSuccess: () => {
+            void utils.fan.notification.getUserNotification.invalidate()
+            void utils.fan.notification.getUnseenNotificationCount.invalidate()
+        },
+    })
 
-        let count = 0
-        notifications.data.pages.forEach((page) => {
-            page.notifications.forEach((notification) => {
-                if (!viewedNotifications.has(notification.id)) {
-                    count++
-                }
-            })
-        })
-        return count
-    }
-
-    const getNotificationMessage = (notificationObject: notificationObject) => {
-
-        const actorName = notificationObject.actor.name ?? "Someone"
-
-        switch (notificationObject.entityType) {
-            case NotificationType.LIKE:
-                return `${actorName} liked a post`
-            case NotificationType.COMMENT:
-                return `${actorName} commented on a post`
-            case NotificationType.FOLLOW:
-                return `${actorName} followed you`
-            case NotificationType.REPLY:
-                return `${actorName} replied to a comment`
-            case NotificationType.POST:
-                return `${actorName} created a new post`
-            case NotificationType.BOUNTY:
-                return `${actorName} added a bounty`
-            case NotificationType.BOUNTY_WINNER:
-                return "You won a bounty"
-            case NotificationType.BOUNTY_COMMENT:
-                return `${actorName} commented on a bounty`
-            case NotificationType.BOUNTY_REPLY:
-                return `${actorName} replied to a comment on bounty`
-            case NotificationType.BOUNTY_DOUBT_REPLY:
-                return `${actorName} replied to your chat on bounty`
-            default:
-                return "You have a new notification"
-        }
-    }
-
-    const getNotificationUrl = (notificationObject: notificationObject) => {
-
-
-        switch (notificationObject.entityType) {
-            case NotificationType.LIKE:
-            case NotificationType.COMMENT:
-            case NotificationType.REPLY:
-            case NotificationType.POST:
-                return `/fans/posts/${notificationObject.entityId}`
-            case NotificationType.FOLLOW:
-                return `/fans/creator/${notificationObject.actor.id}`
-            case NotificationType.BOUNTY:
-            case NotificationType.BOUNTY_WINNER:
-            case NotificationType.BOUNTY_COMMENT:
-            case NotificationType.BOUNTY_REPLY:
-            case NotificationType.BOUNTY_DOUBT_REPLY:
-                return `/bounty/${notificationObject.entityId}`
-            default:
-                return ""
-        }
-    }
-
-    const allNotifications = notifications.data?.pages.flatMap((page) => page.notifications) ?? []
+    const allNotifications = (notifications.data?.pages.flatMap((page) => page.notifications) ?? []) as NotificationItem[]
+    const unseenCount = allNotifications.filter((n) => !n.seen).length
+    const groups = groupByDate(allNotifications)
 
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="w-full rounded-xl  shadow-md lg:w-[715px]  overflow-y-auto bg-primary "
+            className="w-full rounded-xl shadow-md lg:w-[715px] overflow-hidden"
         >
             <div className="p-6">
+                {/* Header */}
                 <motion.div
-                    className="mb-6 flex flex-row items-center justify-between"
+                    className="mb-6 flex items-center justify-between"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.2 }}
                 >
                     <div className="flex items-center gap-3">
-                        <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ delay: 0.3, type: "spring" }}>
-                            <Bell className="h-6 w-6 text-indigo-500" />
+                        <motion.div
+                            initial={{ scale: 0.8 }}
+                            animate={{ scale: 1 }}
+                            transition={{ delay: 0.3, type: "spring" }}
+                            className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100"
+                        >
+                            <Bell className="h-5 w-5 text-indigo-600" />
                         </motion.div>
-                        <h1 className="text-2xl font-bold">Notifications</h1>
-                        {newNotificationCount() > 0 && (
+                        <div>
+                            <h1 className="text-2xl font-bold">Notifications</h1>
+                            <p className="text-sm text-muted-foreground">Your activity updates</p>
+                        </div>
+                        {unseenCount > 0 && (
                             <motion.div
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
                                 transition={{ type: "spring", stiffness: 500, damping: 15 }}
                             >
                                 <Badge variant="destructive" className="ml-2">
-                                    {newNotificationCount()} new
+                                    {unseenCount} new
                                 </Badge>
                             </motion.div>
                         )}
                     </div>
 
-                    <div className="flex gap-2">
+                    {unseenCount > 0 && (
                         <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            className={filter === "all" ? "bg-indigo-50 text-indigo-700" : ""}
-                            onClick={() => setFilter("all")}
+                            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => markAllSeen.mutate({ isCreator: false })}
+                            disabled={markAllSeen.isLoading}
                         >
-                            All
+                            <CheckCheck className="h-3.5 w-3.5" />
+                            Mark all as read
                         </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className={filter === "unread" ? "bg-indigo-50 text-indigo-700" : ""}
-                            onClick={() => setFilter("unread")}
-                        >
-                            Unread
-                        </Button>
-                    </div>
+                    )}
                 </motion.div>
 
+                {/* Content */}
                 {notifications.isLoading ? (
                     <div className="space-y-4">
                         {[1, 2, 3, 4, 5].map((i) => (
@@ -219,92 +296,89 @@ const Notifications = () => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.3 }}
-                        className="flex flex-col items-center justify-center py-16 text-center "
+                        className="flex flex-col items-center justify-center py-16 text-center"
                     >
-                        <Bell className="h-16 w-16 text-gray-300 mb-4" />
-                        <h3 className="text-xl font-medium text-gray-700">No notifications yet</h3>
-                        <p className="text-gray-500 mt-2">When you get notifications, they{"'ll"} show up here</p>
+                        <Bell className="h-16 w-16 text-muted-foreground/30 mb-4" />
+                        <h3 className="text-xl font-medium">No notifications yet</h3>
+                        <p className="text-muted-foreground mt-2">When you get notifications, they{"'ll"} show up here</p>
                     </motion.div>
                 ) : (
-                    <div className="max-h-[70vh] min-h-[70vh] overflow-y-auto rounded-lg border border-gray-100 scrollbar-hide overflow-x-hidden">
+                    <div className="max-h-[70vh] min-h-[70vh] overflow-y-auto rounded-lg border border-border scrollbar-hide overflow-x-hidden">
                         <AnimatePresence>
-                            {allNotifications
-                                .filter((notification) => {
-                                    if (filter === "unread") {
-                                        return !viewedNotifications.has(notification.id)
-                                    }
-                                    return true
-                                })
-                                .map((notification, index) => {
-                                    const isNew = !viewedNotifications.has(notification.id)
-                                    const message = getNotificationMessage({
-                                        id: notification.id,
-                                        createdAt: notification.notificationObject.createdAt,
-                                        entityType: notification.notificationObject.entityType,
-                                        entityId: notification.notificationObject.entityId,
-                                        actorId: notification.notificationObject.actor.id,
-                                        isUser: notification.isCreator ? true : false,
-                                        actor: notification.notificationObject.actor,
-                                    })
-                                    const url = getNotificationUrl({
-                                        id: notification.id,
-                                        createdAt: notification.notificationObject.createdAt,
-                                        entityType: notification.notificationObject.entityType,
-                                        entityId: notification.notificationObject.entityId,
-                                        actorId: notification.notificationObject.actor.id,
-                                        isUser: notification.isCreator ? true : false,
-                                        actor: notification.notificationObject.actor,
-                                    })
-                                    const icon = getNotificationIcon(notification.notificationObject.entityType)
+                            {groups.map((group) => (
+                                <motion.div
+                                    key={group.label}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ duration: 0.3 }}
+                                >
+                                    <div className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                        {group.label}
+                                    </div>
 
-                                    return (
-                                        <motion.div
-                                            key={notification.id}
-                                            initial={{ opacity: 0, x: -20 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            exit={{ opacity: 0, x: 20 }}
-                                            transition={{ delay: index * 0.05, duration: 0.3 }}
-                                        >
-                                            <Link href={url}>
-                                                <motion.div
-                                                    className={`relative flex items-start gap-3 p-4 hover:bg-gray-50 transition-colors ${isNew ? "bg-indigo-50/50" : ""}`}
-                                                    whileHover={{ x: 5 }}
-                                                    transition={{ duration: 0.2 }}
+                                    {group.items.map((notification, index) => {
+                                        const unseen = !notification.seen
+                                        const message = getNotificationMessage(notification)
+                                        const url = getNotificationUrl(notification)
+                                        const icon = getNotificationIcon(notification.notificationObject.entityType)
+                                        const iconBg = getNotificationIconBg(notification.notificationObject.entityType)
+
+                                        return (
+                                            <motion.div
+                                                key={notification.id}
+                                                initial={{ opacity: 0, x: -20 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                exit={{ opacity: 0, x: 20 }}
+                                                transition={{ delay: index * 0.03, duration: 0.3 }}
+                                            >
+                                                <Link
+                                                    href={url}
+                                                    onClick={() => {
+                                                        if (unseen) markSeen.mutate({ notificationId: notification.id })
+                                                    }}
                                                 >
-                                                    {isNew && (
-                                                        <motion.div
-                                                            className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"
-                                                            layoutId="newIndicator"
-                                                        />
-                                                    )}
+                                                    <motion.div
+                                                        className={`relative flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted/50 ${unseen ? "bg-primary/5" : ""}`}
+                                                        whileHover={{ x: 4 }}
+                                                        transition={{ duration: 0.15 }}
+                                                    >
+                                                        {unseen && (
+                                                            <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary" />
+                                                        )}
 
-                                                    <div className="relative">
-                                                        <Image
-                                                            width={40}
-                                                            height={40}
-                                                            className="h-10 w-10 rounded-full object-cover border border-gray-200"
-                                                            src={
-                                                                notification.notificationObject.actor.image ??
-                                                                "/images/icons/avatar-icon.png" ??
-                                                                "/images/action/logo.png"
-                                                            }
-                                                            alt={notification.notificationObject.actor.name ?? "User"}
-                                                        />
-                                                        <div className="absolute -right-1 -bottom-1 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-xs">
-                                                            {icon}
+                                                        <div className="relative shrink-0">
+                                                            <Image
+                                                                width={40}
+                                                                height={40}
+                                                                className="h-10 w-10 rounded-full object-cover border border-border"
+                                                                src={notification.notificationObject.actor.image ?? "https://app.action-tokens.com/images/logo.png"}
+                                                                alt={notification.notificationObject.actor.name ?? "User"}
+                                                            />
+                                                            <div className={`absolute -right-1 -bottom-1 flex h-5 w-5 items-center justify-center rounded-full ${iconBg}`}>
+                                                                {icon}
+                                                            </div>
                                                         </div>
-                                                    </div>
 
-                                                    <div className="flex w-full flex-col items-start">
-                                                        <span className="font-medium text-gray-900">{message}</span>
-                                                        <p className="text-sm text-gray-500">{formatPostCreatedAt(notification.createdAt)}</p>
-                                                    </div>
-                                                </motion.div>
-                                            </Link>
-                                            {index < allNotifications.length - 1 && <Separator />}
-                                        </motion.div>
-                                    )
-                                })}
+                                                        <div className="flex w-full flex-col gap-0.5">
+                                                            <span className={`text-sm leading-snug ${unseen ? "font-semibold" : "font-medium text-foreground/80"}`}>
+                                                                {message}
+                                                            </span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {formatPostCreatedAt(notification.createdAt)}
+                                                            </span>
+                                                        </div>
+
+                                                        {unseen && (
+                                                            <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                                                        )}
+                                                    </motion.div>
+                                                </Link>
+                                                {index < group.items.length - 1 && <Separator />}
+                                            </motion.div>
+                                        )
+                                    })}
+                                </motion.div>
+                            ))}
                         </AnimatePresence>
 
                         {notifications.hasNextPage && (
@@ -340,4 +414,3 @@ const Notifications = () => {
         </motion.div>
     )
 }
-

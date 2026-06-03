@@ -40,7 +40,6 @@ import { addrShort } from "~/utils/utils";
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 import {
   PLATFORM_ASSET,
-  TrxBaseFee,
   TrxBaseFeeInPlatformAsset,
 } from "~/lib/stellar/constant";
 import useNeedSign from "~/lib/hook";
@@ -64,6 +63,7 @@ import {
 } from "~/components/shadcn/ui/tabs";
 import { Skeleton } from "~/components/shadcn/ui/skeleton";
 import CustomAvatar from "~/components/common/custom-avatar";
+import { toast as sonner } from "sonner"
 
 enum assetType {
   PAGEASSET = "PAGEASSET",
@@ -98,7 +98,7 @@ export default function GiftPage() {
   );
   const [remainingToken, setRemainingToken] = useState<number>(0);
   const [tokenBalance, setTokenBalance] = useState<number>(0);
-  const [activeTab, setActiveTab] = useState<string>("gift");
+  const [activeTab, setActiveTab] = useState<string>("fans");
   const { needSign } = useNeedSign();
   const {
     register,
@@ -149,12 +149,24 @@ export default function GiftPage() {
             toast.error("Transaction failed");
             setIsDialogOpen(false);
           }
-        } catch (signError) {
-          if (signError instanceof Error) {
-            toast.error(`Error: ${signError.message}`);
-          } else {
-            toast.error("Something went wrong.");
+        } catch (error: unknown) {
+          console.error("Error in test transaction", error)
+
+          const err = error as {
+            message?: string
+            details?: string
+            errorCode?: string
           }
+
+          sonner.error(
+            typeof err?.message === "string"
+              ? err.message
+              : "Transaction Failed",
+            {
+              description: `Error Code : ${err?.errorCode ?? "unknown"}`,
+              duration: 8000,
+            }
+          )
         } finally {
           setIsDialogOpen(false);
         }
@@ -182,7 +194,8 @@ export default function GiftPage() {
   };
 
   if (extraCost) {
-    cost = Number(TrxBaseFee) + Number(TrxBaseFeeInPlatformAsset) + extraCost;
+    // this magik number for temporary solution.
+    cost = 2000 + extraCost;
   }
 
   const pubkey = watch("pubkey");
@@ -244,20 +257,21 @@ export default function GiftPage() {
           </motion.div>
 
           <Tabs
-            defaultValue="gift"
+            defaultValue="fans"
             value={activeTab}
             onValueChange={setActiveTab}
             className="w-full"
           >
             <TabsList className="mb-6 grid grid-cols-2">
-              <TabsTrigger value="gift" className="flex items-center gap-2">
-                <Gift className="h-4 w-4" />
-                <span>Send Gift</span>
-              </TabsTrigger>
               <TabsTrigger value="fans" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 <span>Your Fans</span>
               </TabsTrigger>
+              <TabsTrigger value="gift" className="flex items-center gap-2">
+                <Gift className="h-4 w-4" />
+                <span>Send Gift</span>
+              </TabsTrigger>
+
             </TabsList>
 
             <TabsContent value="gift">

@@ -9,15 +9,13 @@ import { ConnectWalletButton } from "package/connect_wallet";
 import { ThemeProvider } from "../../providers/theme-provider";
 
 import { useRouter } from "next/router";
+import FallingSnowflakes from "~/components/christmas/FallingSnowflakes";
 import LoginRequiredModal from "~/components/modal/login-required-modal";
+import { StemPlayer } from "~/components/player/bottom-player";
+import { BottomPlayerProvider } from "~/components/player/context/bottom-player-context";
 import { MiniPlayerProvider } from "~/components/player/mini-player-provider";
+import ARModalProvider from "~/components/providers/augmented-reality/augmented-modal-provider";
 import ModalProvider from "~/components/providers/modal-provider";
-import { Toaster } from "~/components/shadcn/ui/toaster";
-import { useSidebar } from "~/hooks/use-sidebar";
-import { cn } from "~/lib/utils";
-import Header from "../Header";
-import Sidebar from "../Left-sidebar/sidebar";
-import CreatorLayout from "./CreatorLayout";
 import {
   Card,
   CardContent,
@@ -25,10 +23,15 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/shadcn/ui/card";
+import { Toaster } from "~/components/shadcn/ui/toaster";
+import { useSidebar } from "~/hooks/use-sidebar";
+import { cn } from "~/lib/utils";
+import Header from "../Header";
+import Sidebar from "../Left-sidebar/sidebar";
 import ARLayout from "./ARLayout";
-import ARModalProvider from "~/components/providers/augmented-reality/augmented-modal-provider";
-import { BottomPlayerProvider } from "~/components/player/context/bottom-player-context";
-import { StemPlayer } from "~/components/player/bottom-player";
+import CreatorLayout from "./CreatorLayout";
+import { Toaster as Sonner } from "~/components/shadcn/ui/sonner"
+
 export default function Layout({
   children,
   className,
@@ -49,26 +52,50 @@ export default function Layout({
     "/support",
     "/",
     "/reward-checker",
+    "/beam",
+    "/beam/[id]"
   ];
   const isPublicRoute = publicRoutes.includes(router.pathname);
+  const isAugmentedRealityRoute = router.pathname.startsWith("/action/ar");
+
   const isHomeRoute = router.pathname === "/";
   const handleToggle = () => {
     toggle();
   };
+
   if (router.pathname.includes("/albedo")) {
     return <div>{children}</div>;
   }
-  if (router.pathname.includes("/augmented-reality")) {
-    if (router.pathname.includes("/augmented-reality/enter")) {
+  if (router.pathname.includes("/action/")) {
+    if (router.pathname.includes("/action/enter")) {
       return <>{children}</>;
+
     }
+    // if (router.pathname.includes("/action/enter")) {
+    //   return <>{children}</>;
+    // }
     return (
       <>
-        {session?.status === "authenticated" ? (
-          <div className="h-screen w-full overflow-hidden fixed inset-0">
-            <ARLayout>
-              <ARModalProvider />
-              {children}</ARLayout>
+        {session?.status === "authenticated" || router.pathname.includes("/action/qr") ? (
+          <div className="h-screen w-full  overflow-hidden fixed inset-0 ">
+            {
+              isAugmentedRealityRoute ? (
+
+                <>
+                  <ARModalProvider />
+                  {children}
+                </>
+              ) : (
+                <>
+
+                  <ARLayout>
+                    <ARModalProvider />
+                    {children}
+                  </ARLayout>
+                </>
+              )
+            }
+
           </div>
         ) : (
           <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
@@ -97,7 +124,7 @@ export default function Layout({
         <BottomPlayerProvider>
 
           <div className={clsx("flex  w-full flex-col", className)}>
-            {router.pathname !== "/" && <Header />}
+            {!(router.pathname === "/" || router.pathname.includes("/beam/ar")) && <Header />}
             <div className="flex w-full scrollbar-hide ">
               <div className="relative  bg-secondary shadow-sm shadow-primary">
                 <Sidebar />
@@ -136,6 +163,8 @@ export default function Layout({
             </div>
           </div>
           <StemPlayer />
+          <Sonner richColors closeButton />
+          {/* <FallingSnowflakes /> */}
         </BottomPlayerProvider>
       </MiniPlayerProvider>
     </ThemeProvider>

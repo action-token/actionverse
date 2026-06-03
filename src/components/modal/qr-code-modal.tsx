@@ -9,7 +9,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
-import { Download, ExternalLink, Calendar, Box, FileText, Copy, Share2, Eye, AlertCircle } from "lucide-react"
+import {
+    Download,
+    ExternalLink,
+    Calendar,
+    Box,
+    FileText,
+    Copy,
+    Share2,
+    Eye,
+    AlertCircle,
+    Music,
+    ImageIcon,
+    Film,
+} from "lucide-react"
 import { format } from "date-fns"
 import toast from "react-hot-toast"
 import QRCode from "react-qr-code"
@@ -19,22 +32,35 @@ import { OrbitControls, Environment, Html, useProgress } from "@react-three/drei
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { Loader2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
-import { QRItem } from "~/types/organization/qr"
+import { BASE_URL } from "~/lib/common"
+import { AssetType, MarketAssetType } from "~/types/market/market-asset-type"
+import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 
 interface QRCodeModalProps {
     isOpen: boolean
     onClose: () => void
-    qrItem: QRItem
+    qrItem: MarketAssetType
 }
 
 export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProps) {
     const [showDetails, setShowDetails] = useState(false)
     const [activeTab, setActiveTab] = useState("qr")
 
+    const mediaType = qrItem.asset.mediaType
+    const mediaUrl = qrItem.asset.mediaUrl
+
     // Generate QR code data URL
-    const qrData = JSON.stringify({
-        id: qrItem.id,
-    })
+    const qrData = `${BASE_URL}/action/qr/${qrItem?.id}`
+
+    const getMediaTabLabel = () => {
+        const labelMap: Record<string, { label: string; icon: React.ReactNode }> = {
+            THREE_D: { label: "3D Model", icon: <Box className="ml-1 h-3 w-3" /> },
+            IMAGE: { label: "Image", icon: <ImageIcon className="ml-1 h-3 w-3" /> },
+            VIDEO: { label: "Video", icon: <Film className="ml-1 h-3 w-3" /> },
+            MUSIC: { label: "Audio", icon: <Music className="ml-1 h-3 w-3" /> },
+        }
+        return labelMap[mediaType]
+    }
 
     const handleDownloadQR = () => {
         const svg = document.getElementById("qr-code-svg")
@@ -52,7 +78,7 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                     ctx.fillRect(0, 0, 300, 300)
                     ctx.drawImage(img, 0, 0, 300, 300)
                     const link = document.createElement("a")
-                    link.download = `qr-${qrItem.title.replace(/\s+/g, "-").toLowerCase()}.png`
+                    link.download = `qr-${qrItem.asset.name.replace(/\s+/g, "-").toLowerCase()}.png`
                     link.href = canvas.toDataURL()
                     link.click()
                     toast.success("QR code downloaded!")
@@ -71,8 +97,8 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
         if (navigator.share) {
             try {
                 await navigator.share({
-                    title: qrItem.title,
-                    text: qrItem.descriptions?.[0]?.content ?? "QR Item",
+                    title: qrItem.asset.name,
+                    text: qrItem.asset.description ?? "QR Item",
                     url: window.location.origin,
                 })
             } catch (error) {
@@ -84,26 +110,23 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
         }
     }
 
-    const isActive = () => {
-        const now = new Date()
-        return now >= new Date(qrItem.startDate) && now <= new Date(qrItem.endDate)
-    }
+    const mediaLabel = getMediaTabLabel()
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        QR Code Details - {qrItem.title}
-                        <Badge variant={isActive() ? "default" : "secondary"}>{isActive() ? "Active" : "Inactive"}</Badge>
+                        QR Code Details - {qrItem.asset.name}
+                        <Badge variant="default">Active</Badge>
                     </DialogTitle>
                 </DialogHeader>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="qr">QR Code</TabsTrigger>
-                        <TabsTrigger value="model" disabled={!qrItem.modelUrl}>
-                            3D Model {qrItem.modelUrl && <Box className="ml-1 h-3 w-3" />}
+                        <TabsTrigger value="media" disabled={!mediaUrl}>
+                            {mediaLabel?.label} {mediaLabel?.icon}
                         </TabsTrigger>
                         <TabsTrigger value="preview">Preview</TabsTrigger>
                     </TabsList>
@@ -121,7 +144,7 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                         <div className="bg-white p-4 rounded-lg shadow-sm border">
                                             <QRCode
                                                 id="qr-code-svg"
-                                                value={qrData}
+                                                value={`${BASE_URL}/action/qr/${qrItem?.id}`}
                                                 size={256}
                                                 style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                                                 viewBox="0 0 256 256"
@@ -148,122 +171,62 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                             <FileText className="h-5 w-5" />
                                             Item Details
                                         </CardTitle>
-                                        <CardDescription>
-                                            {qrItem.descriptions?.length
-                                                ? `${qrItem.descriptions.length} description${qrItem.descriptions.length > 1 ? "s" : ""}`
-                                                : "No descriptions"}
-                                        </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
-                                        {/* Descriptions */}
-                                        {qrItem.descriptions && qrItem.descriptions.length > 0 && (
-                                            <div className="space-y-3">
-                                                <div className="flex items-center gap-2">
-                                                    <FileText className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="font-medium">Descriptions</span>
-                                                </div>
-                                                <div className="space-y-3 max-h-60 overflow-y-auto">
-                                                    {qrItem.descriptions
-                                                        .sort((a, b) => a.order - b.order)
-                                                        .map((desc) => (
-                                                            <div key={desc.id} className="border rounded-lg p-3 bg-muted/30">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <Badge variant="outline" className="text-xs">
-                                                                        {desc.order}
-                                                                    </Badge>
-                                                                    <span className="font-medium text-sm">{desc.title}</span>
-                                                                </div>
-                                                                <p className="text-sm text-muted-foreground">
-                                                                    {desc.content.length > 150 ? `${desc.content.slice(0, 150)}...` : desc.content}
-                                                                </p>
-                                                            </div>
-                                                        ))}
-                                                </div>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <span className="font-medium text-sm">Asset Name</span>
+                                                <p className="text-sm text-muted-foreground">{qrItem.asset.name}</p>
                                             </div>
-                                        )}
-                                        <Separator />
 
-                                        {/* 3D Model */}
-                                        {qrItem.modelUrl && (
-                                            <div className="space-y-2">
-                                                <div className="flex items-center gap-2">
-                                                    <Box className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="font-medium">3D Model</span>
+                                            <Separator />
+
+                                            {qrItem.asset.description && (
+                                                <div>
+                                                    <span className="font-medium text-sm">Description</span>
+                                                    <p className="text-sm text-muted-foreground">{qrItem.asset.description}</p>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Button size="sm" variant="outline" onClick={() => setActiveTab("model")} className="gap-1">
-                                                        <Eye className="h-3 w-3" />
-                                                        View Model
-                                                    </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => window.open(qrItem.modelUrl, "_blank")}
-                                                        className="gap-1"
-                                                    >
-                                                        <ExternalLink className="h-3 w-3" />
-                                                        Open File
-                                                    </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(qrItem.modelUrl)
-                                                            toast.success("Model URL copied!")
-                                                        }}
-                                                        className="gap-1"
-                                                    >
-                                                        <Copy className="h-3 w-3" />
-                                                        Copy URL
-                                                    </Button>
+                                            )}
+
+                                            {qrItem.asset.code && (
+                                                <div>
+                                                    <span className="font-medium text-sm">Asset Code</span>
+                                                    <p className="text-sm text-muted-foreground font-mono">{qrItem.asset.code}</p>
                                                 </div>
+                                            )}
+
+                                            {qrItem.asset.issuer && (
+                                                <div>
+                                                    <span className="font-medium text-sm">Issuer</span>
+                                                    <p className="text-sm text-muted-foreground font-mono">{qrItem.asset.issuer}</p>
+                                                </div>
+                                            )}
+
+                                            <Separator />
+                                            {qrItem.priceUSD && (
+                                                <div>
+                                                    <span className="font-medium text-sm">Price in USD</span>
+                                                    <p className="text-sm text-muted-foreground">{qrItem.priceUSD}</p>
+                                                </div>
+                                            )}
+                                            {
+                                                qrItem.price && (
+                                                    <div>
+                                                        <span className="font-medium text-sm">Price in {PLATFORM_ASSET.code}</span>
+                                                        <p className="text-sm text-muted-foreground">{qrItem.price} {PLATFORM_ASSET.code}</p>
+                                                    </div>
+                                                )
+                                            }
+
+                                            <Separator />
+
+
+                                            <div>
+                                                <span className="font-medium text-sm">Created</span>
+                                                <p className="text-sm text-muted-foreground">
+                                                    {format(new Date(qrItem.createdAt), "MMM dd, yyyy HH:mm")}
+                                                </p>
                                             </div>
-                                        )}
-
-                                        {/* External Link */}
-                                        {qrItem.externalLink && (
-                                            <div className="space-y-2">
-                                                <div className="flex items-center gap-2">
-                                                    <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="font-medium">External Link</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => window.open(qrItem.externalLink!, "_blank")}
-                                                        className="gap-1"
-                                                    >
-                                                        <ExternalLink className="h-3 w-3" />
-                                                        Open Link
-                                                    </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(qrItem.externalLink!)
-                                                            toast.success("Link copied!")
-                                                        }}
-                                                        className="gap-1"
-                                                    >
-                                                        <Copy className="h-3 w-3" />
-                                                        Copy URL
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <Separator />
-
-                                        {/* QR Data */}
-                                        <div className="space-y-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-medium">QR Data</span>
-                                            </div>
-                                            <Button size="sm" variant="ghost" onClick={handleCopyData} className="gap-1">
-                                                <Copy className="h-3 w-3" />
-                                                Copy QR Data
-                                            </Button>
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -271,23 +234,54 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="model" className="space-y-4">
-                        {qrItem.modelUrl ? (
+                    <TabsContent value="media" className="space-y-4">
+                        {mediaUrl ? (
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
-                                        <Box className="h-5 w-5" />
-                                        3D Model Viewer
+                                        {mediaType === "IMAGE" && <ImageIcon className="h-5 w-5" />}
+                                        {mediaType === "VIDEO" && <Film className="h-5 w-5" />}
+                                        {mediaType === "MUSIC" && <Music className="h-5 w-5" />}
+                                        {mediaType === "THREE_D" && <Box className="h-5 w-5" />}
+                                        {mediaLabel?.label} Viewer
                                     </CardTitle>
-                                    <CardDescription>Interactive 3D model - drag to rotate, scroll to zoom</CardDescription>
+                                    <CardDescription>
+                                        {mediaType === "IMAGE" && "View the image in full size"}
+                                        {mediaType === "VIDEO" && "Interactive video player"}
+                                        {mediaType === "MUSIC" && "Audio player"}
+                                        {mediaType === "THREE_D" && "Interactive 3D model - drag to rotate, scroll to zoom"}
+                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <ModelViewer modelUrl={qrItem.modelUrl} height="500px" showControls={true} />
+                                    {mediaType === "THREE_D" && <ModelViewer modelUrl={mediaUrl} height="500px" showControls={true} />}
+                                    {mediaType === "IMAGE" && (
+                                        <div className="flex justify-center bg-gray-100 rounded-lg p-4">
+                                            <img src={mediaUrl || "/placeholder.svg"} alt={qrItem.asset.name} className="max-h-96 rounded-lg" />
+                                        </div>
+                                    )}
+                                    {mediaType === "VIDEO" && (
+                                        <video controls className="w-full rounded-lg bg-black" height={400}>
+                                            <source src={mediaUrl} type="video/mp4" />
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    )}
+                                    {mediaType === "MUSIC" && (
+                                        <div className="space-y-4">
+                                            <audio controls className="w-full rounded-lg">
+                                                <source src={mediaUrl} type="audio/mpeg" />
+                                                Your browser does not support the audio element.
+                                            </audio>
+                                            <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg p-6 text-white text-center">
+                                                <Music className="h-12 w-12 mx-auto mb-2" />
+                                                <h3 className="text-lg font-semibold">{qrItem.asset.name}</h3>
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="mt-4 flex gap-2">
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => window.open(qrItem.modelUrl, "_blank")}
+                                            onClick={() => window.open(mediaUrl, "_blank")}
                                             className="gap-1"
                                         >
                                             <ExternalLink className="h-3 w-3" />
@@ -297,8 +291,8 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                             size="sm"
                                             variant="outline"
                                             onClick={() => {
-                                                navigator.clipboard.writeText(qrItem.modelUrl)
-                                                toast.success("Model URL copied!")
+                                                navigator.clipboard.writeText(mediaUrl)
+                                                toast.success("Media URL copied!")
                                             }}
                                             className="gap-1"
                                         >
@@ -313,8 +307,8 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                 <CardContent className="flex items-center justify-center h-64">
                                     <div className="text-center">
                                         <Box className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                        <h3 className="text-lg font-medium mb-2">No 3D Model</h3>
-                                        <p className="text-muted-foreground">This QR item doesn{"'"}t have a 3D model attached</p>
+                                        <h3 className="text-lg font-medium mb-2">No Media</h3>
+                                        <p className="text-muted-foreground">This QR item doesn{"'"}t have media attached</p>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -331,71 +325,61 @@ export default function QRCodeModal({ isOpen, onClose, qrItem }: QRCodeModalProp
                                 <div className="bg-gradient-to-br from-blue-50 to-indigo-100 p-6 rounded-lg">
                                     <div className="space-y-6">
                                         <div>
-                                            <h3 className="text-2xl font-bold">{qrItem.title}</h3>
+                                            <h3 className="text-2xl font-bold">{qrItem.asset.name}</h3>
                                         </div>
 
-                                        {/* Descriptions */}
-                                        {qrItem.descriptions && qrItem.descriptions.length > 0 && (
-                                            <div className="space-y-4">
-                                                {qrItem.descriptions
-                                                    .sort((a, b) => a.order - b.order)
-                                                    .map((desc) => (
-                                                        <div key={desc.id} className="bg-white p-4 rounded-lg border">
-                                                            <div className="flex items-center gap-2 mb-2">
-                                                                <Badge variant="outline" className="text-xs">
-                                                                    {desc.order}
-                                                                </Badge>
-                                                                <h4 className="font-semibold">{desc.title}</h4>
-                                                            </div>
-                                                            <p className="text-muted-foreground whitespace-pre-wrap">{desc.content}</p>
-                                                        </div>
-                                                    ))}
+                                        {qrItem.asset.description && (
+                                            <div className="bg-white p-4 rounded-lg border">
+                                                <p className="text-muted-foreground">{qrItem.asset.description}</p>
                                             </div>
                                         )}
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Calendar className="h-4 w-4" />
-                                            <span>
-                                                Active from {format(new Date(qrItem.startDate), "MMM dd, yyyy")} to{" "}
-                                                {format(new Date(qrItem.endDate), "MMM dd, yyyy")}
-                                            </span>
-                                        </div>
 
-                                        {/* 3D Model Preview */}
-                                        {qrItem.modelUrl && (
+                                        {mediaUrl && (
                                             <div className="bg-white rounded-lg border overflow-hidden">
                                                 <div className="p-4 border-b">
                                                     <div className="flex items-center gap-2">
-                                                        <Box className="h-5 w-5 text-blue-600" />
-                                                        <span className="font-medium">Interactive 3D Model</span>
+                                                        {mediaType === "IMAGE" && <ImageIcon className="h-5 w-5 text-blue-600" />}
+                                                        {mediaType === "VIDEO" && <Film className="h-5 w-5 text-blue-600" />}
+                                                        {mediaType === "MUSIC" && <Music className="h-5 w-5 text-blue-600" />}
+                                                        {mediaType === "THREE_D" && <Box className="h-5 w-5 text-blue-600" />}
+                                                        <span className="font-medium">{mediaLabel?.label}</span>
                                                     </div>
                                                 </div>
-                                                <ModelViewer modelUrl={qrItem.modelUrl} height="300px" showControls={false} />
+                                                {mediaType === "THREE_D" && (
+                                                    <ModelViewer modelUrl={mediaUrl} height="300px" showControls={false} />
+                                                )}
+                                                {mediaType === "IMAGE" && (
+                                                    <img
+                                                        src={mediaUrl || "/placeholder.svg"}
+                                                        alt={qrItem.asset.name}
+                                                        className="w-full h-64 object-cover"
+                                                    />
+                                                )}
+                                                {mediaType === "VIDEO" && (
+                                                    <video controls className="w-full bg-black" height={300}>
+                                                        <source src={mediaUrl} type="video/mp4" />
+                                                    </video>
+                                                )}
+                                                {mediaType === "MUSIC" && (
+                                                    <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-500">
+                                                        <div className="flex items-center justify-center gap-2 text-white">
+                                                            <Music className="h-6 w-6" />
+                                                            <span className="font-medium">{qrItem.asset.name}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
-                                        {/* External Link Preview */}
-                                        {qrItem.externalLink && (
-                                            <div className="bg-white p-4 rounded-lg border">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <ExternalLink className="h-4 w-4 text-green-600" />
-                                                    <span className="font-medium">External Resource</span>
+                                        <div className="bg-white p-4 rounded-lg border">
+                                            <div className="space-y-2 text-sm">
+                                                <div>
+                                                    <span className="font-medium">Asset Code:</span>
+                                                    <span className="text-muted-foreground ml-2 font-mono">{qrItem.asset.code}</span>
                                                 </div>
-                                                <p className="text-sm text-muted-foreground mb-3">Additional content and resources available</p>
-                                                <Button size="sm" variant="outline" onClick={() => window.open(qrItem.externalLink!, "_blank")}>
-                                                    <ExternalLink className="h-3 w-3 mr-1" />
-                                                    Visit Link
-                                                </Button>
-                                            </div>
-                                        )}
 
-                                        {!isActive() && (
-                                            <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-4">
-                                                <p className="text-sm text-yellow-800">
-                                                    ⚠️ This content is currently{" "}
-                                                    {new Date() < new Date(qrItem.startDate) ? "not yet active" : "expired"}
-                                                </p>
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
                                 </div>
                             </CardContent>
@@ -581,9 +565,7 @@ export function ModelViewer({ modelUrl, className = "", height = "400px", showCo
 
     const handleError = (event: React.SyntheticEvent<HTMLDivElement, Event>) => {
         console.error("3D Model loading error:", event)
-        setError(
-            "Failed to load 3D model. Please check if the file is accessible and in a supported format (GLB, GLTF).",
-        )
+        setError("Failed to load 3D model. Please check if the file is accessible and in a supported format (GLB, GLTF).")
         setIsLoading(false)
     }
 

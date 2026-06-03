@@ -7,7 +7,7 @@ import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
 import { Play, Eye, ShoppingCart, User, Calendar, Hash, Copy, TrendingUp, Clock } from "lucide-react"
 import Image from "next/image"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
 import { api } from "~/utils/api"
 import { useBuyModalStore } from "~/components/store/buy-modal-store"
@@ -24,6 +24,8 @@ import { MediaType } from "@prisma/client"
 import ShowThreeDModel from "~/components/3d-model/model-show"
 import { useRouter } from "next/router"
 import { NFTVideoPlayer } from "~/components/player/nft-video-player"
+import { checkStellarAccountActivity } from "~/lib/helper/helper_client"
+import { ActivationModal } from "~/components/modal/activation-modal"
 const SingleAssetView = () => {
     const router = useRouter()
 
@@ -33,6 +35,9 @@ const SingleAssetView = () => {
     const [showFullDescription, setShowFullDescription] = useState(false)
     const [isVideoPlayerOpen, setIsVideoPlayerOpen] = useState(false)
     const [isVideoMinimized, setIsVideoMinimized] = useState(false)
+    const [isActiveStatusLoading, setIsActiveStatusLoading] = useState(true)
+    const [isActive, setIsActive] = useState<boolean>(false);
+    const [openDialog, setOpenDialog] = useState(false);
     const { setIsOpen, setData } = useBuyModalStore()
     const marketId = Number.parseInt(id)
     const { showPlayer } = useBottomPlayer()
@@ -42,6 +47,7 @@ const SingleAssetView = () => {
         type: "IMAGE" | "VIDEO" | "MUSIC" | "THREE_D";
     } | null>(null)
     const [isOpenPreview, setIsOpenPreview] = useState(false)
+
 
     const { data, isLoading, error } = api.fan.asset.getMarketAssetById.useQuery({
         marketId: marketId,
@@ -83,6 +89,18 @@ const SingleAssetView = () => {
     const handleToggleMinimize = () => {
         setIsVideoMinimized(!isVideoMinimized)
     }
+
+    useEffect(() => {
+        const checkAccountActivity = async () => {
+            if (session.data?.user.id) {
+                setIsActiveStatusLoading(true);
+                const active = await checkStellarAccountActivity(session.data.user.id);
+                setIsActive(active);
+                setIsActiveStatusLoading(false);
+            }
+        }
+        checkAccountActivity();
+    }, [session.data?.user.id]);
 
     if (isLoading) {
         return (
@@ -416,6 +434,13 @@ const SingleAssetView = () => {
                                 Buy Asset ({data?.price} {PLATFORM_ASSET.code})<span className="ml-2 ">≈ ${data?.priceUSD}</span>
                             </Button>
                         )}
+                        {
+                            !isActive && !canBuy && !isActiveStatusLoading && (
+                                <Button onClick={
+                                    () => setOpenDialog(true)
+                                }>Active Account</Button>
+                            )
+                        }
 
                         {!canPlayOrView && !canBuy && !buyLoading && (
                             <Card className="p-6 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
@@ -492,7 +517,10 @@ const SingleAssetView = () => {
                     </div>
                 </DialogContent>
             </Dialog>
-
+            <ActivationModal
+                dialogOpen={openDialog}
+                setDialogOpen={setOpenDialog}
+            />
         </div >
     )
 }

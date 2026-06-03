@@ -122,7 +122,39 @@ export const payRouter = createTRPCRouter({
         throw new Error("Something went wrong with the payment");
       }
     }),
+  activateAccount: protectedProcedure
+    .input(
+      z.object({
+        token: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (!input.token) {
+        throw new Error("Token is required for payment");
+      }
+      try {
+        const { result } = await paymentsApi.createPayment({
+          idempotencyKey: randomUUID(),
+          sourceId: input.token,
+          amountMoney: {
+            currency: "USD",
+            amount: BigInt(200), // $2.00 for account activation
+          },
+        });
 
+        if (result.errors) {
+          console.error("Payment errors:", result.errors);
+          throw new Error("Payment failed due to errors");
+        }
+
+        if (result.payment?.status === "COMPLETED") {
+          return true;
+        }
+      } catch (error) {
+        console.error("Error creating payment:", error);
+      }
+      return false
+    }),
   getOffers: protectedProcedure.query(async ({ ctx }) => {
     // const tokenNumber = await getPlatfromAssetPrice();
     const bandCoinPrice = await getPlatformAssetPrice();

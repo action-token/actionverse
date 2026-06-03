@@ -36,9 +36,10 @@ export const usePaymentMethodStore = create<PaymentMethodStore>((set) => ({
 export interface CostBreakdownItem {
     label: string;
     amount: number;
-    type: 'fee' | 'cost' | 'total' | 'subtotal';
+    type: "fee" | "cost" | "total" | "subtotal";
     highlighted?: boolean;
 }
+
 
 export function PaymentChoose({
     XLM_EQUIVALENT,
@@ -50,8 +51,8 @@ export function PaymentChoose({
     costBreakdown,
     USDC_EQUIVALENT
 }: {
-    requiredToken: number;
-    XLM_EQUIVALENT: number;
+    requiredToken?: number;
+    XLM_EQUIVALENT?: number;
     handleConfirm: () => void;
     loading: boolean;
     trigger: React.ReactNode;
@@ -94,58 +95,66 @@ export function PaymentChoose({
                         onValueChange={setPaymentMethod}
                         className="space-y-4"
                     >
-                        <div className="flex items-center space-x-2 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
-                            <RadioGroupItem
-                                value={PaymentMethodEnum.enum.asset}
-                                id={PaymentMethodEnum.enum.asset}
-                                className=""
-                            />
-                            <Label
-                                htmlFor={PaymentMethodEnum.enum.asset}
-                                className="flex flex-1 cursor-pointer items-center"
-                            >
-                                {
-                                    PLATFORM_ASSET.code.toLocaleLowerCase() === "action" ? <Image
-                                        alt="action"
-                                        height={24}
-                                        width={24}
-                                        src={"/images/action/logo.png"} className="mr-3 h-6 w-6" /> : <Coins className="mr-3 h-6 w-6" />
-                                }
-                                <div className="flex-grow">
-                                    <div className="font-medium">
-                                        Pay with {PLATFORM_ASSET.code}
-                                    </div>
-                                    <div className="text-sm text-gray-500">
-                                        Use platform tokens
-                                    </div>
+                        {
+                            requiredToken && (
+                                <div className="flex items-center space-x-2 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
+                                    <RadioGroupItem
+                                        value={PaymentMethodEnum.enum.asset}
+                                        id={PaymentMethodEnum.enum.asset}
+                                        className=""
+                                    />
+                                    <Label
+                                        htmlFor={PaymentMethodEnum.enum.asset}
+                                        className="flex flex-1 cursor-pointer items-center"
+                                    >
+                                        {
+                                            PLATFORM_ASSET.code.toLocaleLowerCase() === "action" ? <Image
+                                                alt="action"
+                                                height={24}
+                                                width={24}
+                                                src={"/images/action/logo.png"} className="mr-3 h-6 w-6" /> : <Coins className="mr-3 h-6 w-6" />
+                                        }
+                                        <div className="flex-grow">
+                                            <div className="font-medium">
+                                                Pay with {PLATFORM_ASSET.code}
+                                            </div>
+                                            <div className="text-sm text-gray-500">
+                                                Use platform tokens
+                                            </div>
+                                        </div>
+                                        <div className="text-right font-medium">
+                                            {requiredToken.toFixed(0)} {PLATFORM_ASSET.code}
+                                        </div>
+                                    </Label>
                                 </div>
-                                <div className="text-right font-medium">
-                                    {requiredToken.toFixed(0)} {PLATFORM_ASSET.code}
+                            )
+                        }
+                        {
+                            XLM_EQUIVALENT && (
+                                <div className="flex items-center space-x-2 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
+                                    <RadioGroupItem
+                                        value={PaymentMethodEnum.enum.xlm}
+                                        id={PaymentMethodEnum.enum.xlm}
+                                        className=""
+                                    />
+                                    <Label
+                                        htmlFor={PaymentMethodEnum.enum.xlm}
+                                        className="flex flex-1 cursor-pointer items-center"
+                                    >
+                                        <DollarSign className="mr-3 h-6 w-6" />
+                                        <div className="flex-grow">
+                                            <div className="font-medium">Pay with XLM</div>
+                                            <div className="text-sm text-gray-500">
+                                                Use Stellar Lumens
+                                            </div>
+                                        </div>
+                                        <div className="text-right font-medium">
+                                            {XLM_EQUIVALENT?.toFixed(0)} XLM
+                                        </div>
+                                    </Label>
                                 </div>
-                            </Label>
-                        </div>
-                        <div className="flex items-center space-x-2 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
-                            <RadioGroupItem
-                                value={PaymentMethodEnum.enum.xlm}
-                                id={PaymentMethodEnum.enum.xlm}
-                                className=""
-                            />
-                            <Label
-                                htmlFor={PaymentMethodEnum.enum.xlm}
-                                className="flex flex-1 cursor-pointer items-center"
-                            >
-                                <DollarSign className="mr-3 h-6 w-6" />
-                                <div className="flex-grow">
-                                    <div className="font-medium">Pay with XLM</div>
-                                    <div className="text-sm text-gray-500">
-                                        Use Stellar Lumens
-                                    </div>
-                                </div>
-                                <div className="text-right font-medium">
-                                    {XLM_EQUIVALENT.toFixed(0)} XLM
-                                </div>
-                            </Label>
-                        </div>
+                            )
+                        }
                         {
                             USDC_EQUIVALENT && (
                                 <div className="flex items-center space-x-2 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">

@@ -1,6 +1,6 @@
 import { useSession } from "next-auth/react";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "~/utils/api";
 
 import { ArrowLeft, Eye, X, DollarSign, User, Hash, Package, Copy } from 'lucide-react'
@@ -36,6 +36,8 @@ import { useBuyModalStore } from "../store/buy-modal-store";
 import { useBottomPlayer } from "../player/context/bottom-player-context";
 import Link from "next/link";
 import { Separator } from "../shadcn/ui/separator";
+import { checkStellarAccountActivity } from "~/lib/helper/helper_client";
+import { ActivationModal } from "./activation-modal";
 
 export const PaymentMethodEnum = z.enum(["asset", "xlm", "card"]);
 export type PaymentMethod = z.infer<typeof PaymentMethodEnum>;
@@ -45,7 +47,9 @@ export default function BuyModal() {
     const [step, setStep] = useState(1);
     const { data, isOpen, setIsOpen } = useBuyModalStore()
     const { showPlayer } = useBottomPlayer()
-
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [isActive, setIsActive] = useState<boolean>(false);
+    const [isActiveStatusLoading, setIsActiveStatusLoading] = useState<boolean>(false);
     // const { setCurrentTrack, currentTrack, setIsPlaying, setCurrentAudioPlayingId } = usePlayer();
     const handleClose = () => {
         console.log(isOpen)
@@ -55,7 +59,9 @@ export default function BuyModal() {
 
     const { hasTrust } = useUserStellarAcc()
 
-    const handleNext = () => {
+    const handleNext = async () => {
+
+
         setStep((prev) => prev + 1);
     };
 
@@ -91,6 +97,19 @@ export default function BuyModal() {
                 enabled: !!data
             }
         );
+
+    useEffect(() => {
+        const checkAccountActivity = async () => {
+            if (session.data?.user.id) {
+                setIsActiveStatusLoading(true);
+                const active = await checkStellarAccountActivity(session.data.user.id);
+                setIsActive(active);
+                setIsActiveStatusLoading(false);
+            }
+        }
+        checkAccountActivity();
+    }, [session.data?.user.id]);
+
 
     if (!data || !data.asset)
 
@@ -274,6 +293,17 @@ export default function BuyModal() {
 
                                 {/* Footer Actions */}
                                 <div className="p-2 space-y-2 flex flex-col gap-2">
+                                    {
+                                        session.status === "authenticated" && !canBuyUser && !isActiveStatusLoading && !isActive && (
+                                            <Button
+                                                variant="destructive"
+                                                onClick={() => setDialogOpen(true)}
+                                            >
+                                                Buy Item
+                                            </Button>
+                                        )
+                                    }
+
                                     <Link href={`/market-asset/${data.id}`}>
                                         <Button
                                             onClick={handleClose}
@@ -304,7 +334,6 @@ export default function BuyModal() {
                                             </Button>
                                         )
                                     )}
-
 
 
 
@@ -342,6 +371,10 @@ export default function BuyModal() {
                     )}
                 </DialogContent>
             </Dialog >
+            <ActivationModal
+                dialogOpen={dialogOpen}
+                setDialogOpen={setDialogOpen}
+            />
         </>
     );
 }

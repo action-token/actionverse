@@ -4,7 +4,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import NextCors from "nextjs-cors";
 import { PLATFORM_ASSET } from "~/lib/stellar/constant";
 import { db } from "~/server/db";
-import { ipfsHashToUrl } from "~/utils/ipfs";
+import { ipfsHashToPinataGatewayUrl, ipfsHashToUrl } from "~/utils/ipfs";
 
 export default async function handler(
   req: NextApiRequest,
@@ -76,18 +76,16 @@ export function dictionaryToTomlString(dict: {
   tomlString += `display_decimals=7\n`;
   tomlString += `name="${dict.name}"\n`;
   tomlString += `desc="${dict.description}"\n`;
-  if (ipfsHash) tomlString += `image="${ipfsHashToUrl(ipfsHash)}"\n`;
+  if (ipfsHash) tomlString += `image="${ipfsHashToPinataGatewayUrl(ipfsHash)}"\n`;
 
   return tomlString + "\n";
 }
 
 const defaultTomlString = `[DOCUMENTATION]
-ORG_NAME="Bandcoin"
-ORG_URL="https://bandcoin.io/"
-ORG_LOGO="https://raw.githubusercontent.com/Bandcoin2023/assets/refs/heads/main/public/bandcoin.png"
-ORG_DESCRIPTION="Bandcoin : Collect, Connect, Listen"
-ORG_TWITTER="bandcoinio"
-ORG_OFFICIAL_EMAIL="support@bandcoin.io"
-
+ORG_NAME="Action Tokens"
+ORG_URL="https://action-tokens.com/"
+ORG_LOGO="https://raw.githubusercontent.com/action-token/actionverse/refs/heads/main/public/images/action/logo.png"
+ORG_DESCRIPTION="Empowering Real-World Impact Through Digital Engagement"
+ORG_OFFICIAL_EMAIL="support@action-tokens.com"
 
 `;

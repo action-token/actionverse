@@ -4,6 +4,7 @@ import { twMerge } from "tailwind-merge";
 
 import { Bell, Menu, Plus, ShoppingBag, ShoppingCart } from "lucide-react";
 import { useSession } from "next-auth/react";
+import Lottie from "lottie-react"
 
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -16,12 +17,23 @@ import { PLATFORM_ASSET } from "~/lib/stellar/constant";
 import { api } from "~/utils/api";
 import { useSidebar } from "~/hooks/use-sidebar";
 import { DashboardNav } from "./Left-sidebar/dashboard-nav";
-import { LeftBottom, LeftNavigation } from "./Left-sidebar/sidebar";
+import { BeamNavigation, LeftBottom, LeftNavigation } from "./Left-sidebar/sidebar";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
-import { SheetFooter } from "package/connect_wallet/src/components/ui/sheet";
+import dynamic from "next/dynamic";
+
+const ChristmasSleighAnimation = dynamic(() => import('../christmas/ChristmasSleigh'), {
+    ssr: false,
+});
+const ChristmasWindChimeAnimation = dynamic(() => import('../christmas/ChristmasWindChimes'), {
+    ssr: false,
+});
 
 function Header() {
+    const router = useRouter()
     const { isSheetOpen, setIsSheetOpen } = useSidebar();
+    const isBeamRoute = router.pathname.startsWith("/beam")
+
+    const navigationItems = isBeamRoute ? BeamNavigation : LeftNavigation
 
     return (
         <header className="sticky w-full top-0 z-50 h-22  bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -33,6 +45,7 @@ function Header() {
                     className="object-cover object-top"
                     priority
                 />
+                {/* <ChristmasWindChimeAnimation /> */}
                 <div className="relative z-10 flex items-center justify-between">
                     <div className="flex items-center gap-0">
                         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
@@ -66,7 +79,7 @@ function Header() {
                                 </SheetHeader>
                                 <div className="flex h-full w-full flex-col items-center justify-between p-2 no-scrollbar overflow-y-auto">
                                     <div className="flex h-full   w-full overflow-x-hidden flex-col py-2">
-                                        <DashboardNav items={LeftNavigation} />
+                                        <DashboardNav items={navigationItems} />
                                     </div>
                                     <div className="flex h-full w-full flex-col items-center">
                                         <LeftBottom />
@@ -91,12 +104,30 @@ function Header() {
                         </div>
                         <h1 className="hidden md:block relative text-xl font-bold capitalize text-white  md:text-4xl">
                             ACTIONVERSE
+                            {/* <ChristmasSleighAnimation /> */}
                             <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
                         </h1>
                     </div>
                     <HeaderButtons />
                 </div>
             </div>
+            {/* <div className="absolute top-[4rem] left-0 right-0 w-full z-50 flex overflow-hidden  pointer-events-none">
+                <div className="flex  h-12 pointer-events-none">
+                    {Array.from({ length: 20 }, (_, index) => (
+                        <Image
+                            key={index}
+                            src="/tn-christmas-lights.webp"
+                            alt=""
+                            width={1000}
+                            height={1000}
+                            className="object-cover w-full h-full"
+                            priority={index === 0}
+                        />
+                    ))}
+                </div>
+
+            </div> */}
+
         </header>
     );
 }
