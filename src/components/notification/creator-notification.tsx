@@ -16,7 +16,7 @@ import { i } from "vitest/dist/reporters-w_64AS5f"
 
 const CreatorNotifications = () => {
     return (
-        <div className="container mx-auto px-4 py-6">
+        <div className="container mx-auto px-4">
             <div className="flex flex-row items-start justify-center">
                 <Notifications />
             </div>
@@ -222,7 +222,7 @@ const Notifications = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="w-full rounded-xl bg-primary shadow-md lg:w-[715px] overflow-hidden"
+            className="w-full rounded-xl shadow-md lg:w-[715px] overflow-hidden"
         >
             <div className="p-6">
                 <motion.div

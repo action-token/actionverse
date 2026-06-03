@@ -57,6 +57,12 @@ enum NotificationType {
     BOUNTY_DOUBT
     BOUNTY_DOUBT_CREATE
     BOUNTY_DOUBT_REPLY
+    COMMUNITY_POST
+    COMMUNITY_COMMENT
+    COMMUNITY_REPLY
+    COMMUNITY_MEMBER_JOIN
+    COMMUNITY_INVITE
+    COMMUNITY_REACTION
 }
 
 // it is kinda notification actor and the entity that is being acted upon
@@ -385,6 +391,14 @@ model User {
     beamReactions   BeamReaction[]
     beamComments    BeamComment[]
     temporalFollows TemporalFollow[]
+
+    ownedCommunities                 Community[]                       @relation("CommunityOwner")
+    communityMemberships             CommunityMember[]
+    communityPosts                   CommunityPost[]
+    communityComments                CommunityComment[]
+    communityPostLikes               CommunityPostLike[]
+    communityActivities              CommunityActivity[]
+    communityNotificationPreferences CommunityNotificationPreference[]
 }
 
 model VerificationToken {
@@ -984,4 +998,161 @@ model BeamComment {
     user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@index([beamId])
+}
+
+// ------------------------- Community Feature ------------------------------------
+
+enum CommunityMemberListVisibility {
+    EVERYONE
+    MEMBERS_ONLY
+}
+
+enum CommunityPostPermission {
+    ALL_MEMBERS
+    OWNER_ONLY
+}
+
+enum CommunityRole {
+    OWNER
+    MEMBER
+}
+
+enum CommunityActivityType {
+    JOIN
+    LEAVE
+    POST_CREATED
+    POST_LIKED
+    COMMENT_CREATED
+    MEMBER_INVITED
+}
+
+model Community {
+    id          Int      @id @default(autoincrement())
+    title       String
+    description String
+    coverUrl    String
+    profileUrl  String
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    memberListVisibility CommunityMemberListVisibility @default(EVERYONE)
+    postPermission       CommunityPostPermission       @default(ALL_MEMBERS)
+
+    isTokenGated          Boolean @default(false)
+    requiredBalance       Float?
+    requiredBalanceCode   String?
+    requiredBalanceIssuer String?
+
+    ownerId String
+    owner   User   @relation("CommunityOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+    members                         CommunityMember[]
+    posts                           CommunityPost[]
+    activities                      CommunityActivity[]
+    communityNotificationPreferences CommunityNotificationPreference[]
+
+    @@index([title, description])
+    @@index([ownerId])
+    @@index([createdAt])
+}
+
+model CommunityMember {
+    id          Int           @id @default(autoincrement())
+    communityId Int
+    community   Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    userId      String
+    user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+    role        CommunityRole @default(MEMBER)
+    joinedAt    DateTime      @default(now())
+
+    @@unique([communityId, userId])
+    @@index([userId])
+    @@index([communityId])
+}
+
+model CommunityPost {
+    id          Int       @id @default(autoincrement())
+    content     String
+    communityId Int
+    community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    authorId    String
+    author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+    commentsEnabled Boolean @default(true)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    medias   CommunityPostMedia[]
+    comments CommunityComment[]
+    likes    CommunityPostLike[]
+
+    @@index([communityId, createdAt])
+    @@index([authorId])
+}
+
+model CommunityPostMedia {
+    id     Int       @id @default(autoincrement())
+    url    String
+    type   MediaType
+    postId Int
+    post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    @@index([postId])
+}
+
+model CommunityPostLike {
+    id        Int           @id @default(autoincrement())
+    postId    Int
+    post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+    userId    String
+    user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt DateTime      @default(now())
+
+    @@unique([postId, userId])
+}
+
+model CommunityComment {
+    id              Int            @id @default(autoincrement())
+    content         String
+    postId          Int
+    post            CommunityPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+    userId          String
+    user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    parentCommentId Int?
+    parentComment   CommunityComment?  @relation("CommunityChildComments", fields: [parentCommentId], references: [id], onDelete: Cascade)
+    childComments   CommunityComment[] @relation("CommunityChildComments")
+    createdAt       DateTime           @default(now())
+
+    @@index([postId])
+    @@index([userId])
+}
+
+model CommunityActivity {
+    id          Int                   @id @default(autoincrement())
+    communityId Int
+    community   Community             @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    actorId     String
+    actor       User                  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+    type        CommunityActivityType
+    entityId    Int?
+    createdAt   DateTime              @default(now())
+
+    @@index([communityId, createdAt])
+    @@index([actorId])
+}
+
+model CommunityNotificationPreference {
+    id          Int       @id @default(autoincrement())
+    communityId Int
+    community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    userId      String
+    user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    newPosts    Boolean @default(true)
+    newComments Boolean @default(true)
+    newMembers  Boolean @default(true)
+    reactions   Boolean @default(true)
+
+    @@unique([communityId, userId])
 }

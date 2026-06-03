@@ -24,6 +24,36 @@ export function getNotificationMessage(
         message: `${actoId} follow to you`,
         url: `/fans/creator/${notificationObject.entityId}`,
       };
+    case NotificationType.COMMUNITY_POST:
+      return {
+        message: `${actoId} posted in your community`,
+        url: `/community/${notificationObject.entityId}`,
+      };
+    case NotificationType.COMMUNITY_COMMENT:
+      return {
+        message: `${actoId} commented on a post in your community`,
+        url: `/community/${notificationObject.entityId}`,
+      };
+    case NotificationType.COMMUNITY_REPLY:
+      return {
+        message: `${actoId} replied to your comment`,
+        url: `/community/${notificationObject.entityId}`,
+      };
+    case NotificationType.COMMUNITY_MEMBER_JOIN:
+      return {
+        message: `${actoId} joined your community`,
+        url: `/community/${notificationObject.entityId}`,
+      };
+    case NotificationType.COMMUNITY_INVITE:
+      return {
+        message: `${actoId} invited you to a community`,
+        url: `/community/${notificationObject.entityId}`,
+      };
+    case NotificationType.COMMUNITY_REACTION:
+      return {
+        message: `${actoId} liked your post in a community`,
+        url: `/community/${notificationObject.entityId}`,
+      };
     default:
       return {
         message: "",

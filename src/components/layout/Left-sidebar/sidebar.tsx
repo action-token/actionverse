@@ -31,6 +31,7 @@ export const LeftNavigation: NavItem[] = [
   { href: "/bounty", icon: "bounty", title: "ACTION" },
   { href: "/reward-checker", icon: "setting", title: "REWARD CHEKCER" },
   { href: "/organization/home", icon: "creator", title: "ORGANIZATIONS" },
+  { href: "/community", icon: "community", title: "COMMUNITIES" },
   // { href: "/beam", icon: "scan", title: "Beam" },
   { href: "/settings", icon: "setting", title: "SETTINGS" },
 
