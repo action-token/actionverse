@@ -44,20 +44,91 @@ export class ARCoin {
 
         const geometry = new THREE.CylinderGeometry(radius, radius, thickness, segments)
         geometry.rotateX(Math.PI / 2) // Rotate to face forward
-
-        // Create texture loader
+        console.log("Created coin geometry with radius:", radius, "and thickness:", thickness)
+        // Create texture loader with CORS support
         const textureLoader = new THREE.TextureLoader()
+        // many external image sources require crossOrigin to be set, otherwise
+        // the browser will block the request with a CORS error when used in a
+        // canvas/three texture.  Setting anonymous lets us load from CDNs or
+        // other domains that allow cross‑origin reads.
+        // NOTE: TextureLoader.setCrossOrigin is deprecated but still available
+        // in some versions.  We explicitly set the property for compatibility.
+        textureLoader.crossOrigin = "anonymous" // or "" depending on env
 
-        // Load brand image texture for both sides
-        const brandTexture = textureLoader.load(
-            this.location.image_url ?? this.location.brand_image_url ?? "https://app.action-tokens.com/images/action/logo.png",
+        // Create a fallback canvas texture in case image fails to load
+        const createFallbackTexture = (): THREE.CanvasTexture => {
+            const canvas = document.createElement("canvas")
+            canvas.width = 256
+            canvas.height = 256
+            const ctx = canvas.getContext("2d")
+            if (ctx) {
+                // Create a gradient background
+                const gradient = ctx.createLinearGradient(0, 0, 256, 256)
+                gradient.addColorStop(0, "#4F46E5")
+                gradient.addColorStop(1, "#2563EB")
+                ctx.fillStyle = gradient
+                ctx.fillRect(0, 0, 256, 256)
+
+                // Draw brand name as fallback
+                ctx.fillStyle = "#FFFFFF"
+                ctx.font = "bold 24px Arial"
+                ctx.textAlign = "center"
+                ctx.fillText(this.location.brand_name, 128, 128)
+            }
+            return new THREE.CanvasTexture(canvas)
+        }
+
+        // Load brand image texture with proper error handling
+        const brandTexture = createFallbackTexture()
+
+        // Apply 45 degree rotation to fallback texture
+        brandTexture.rotation = Math.PI / 2 // 45 degrees in radians
+        brandTexture.center.set(0.5, 0.5) // Set rotation center to middle of texture
+
+        // helper to route remote images through our proxy endpoint.  This
+        // avoids CORS issues when the origin server doesn't send the right header.
+        const proxyImage = (url: string) => {
+            try {
+                const encoded = encodeURIComponent(url)
+                return `/api/proxy-image?url=${encoded}`
+            } catch {
+                return url
+            }
+        }
+
+        const rawUrl = this.location.image_url ?? this.location.brand_image_url ?? "https://app.action-tokens.com/images/action/logo.png",
+        const imageUrl = rawUrl.startsWith("/") || rawUrl.startsWith(window.location.origin)
+            ? rawUrl // same-origin, no need to proxy
+            : proxyImage(rawUrl)
+
+        textureLoader.load(
+            imageUrl,
             (texture) => {
-                // Ensure texture repeats properly
+                // Configure loaded texture
                 texture.wrapS = THREE.ClampToEdgeWrapping
                 texture.wrapT = THREE.ClampToEdgeWrapping
                 texture.minFilter = THREE.LinearFilter
                 texture.magFilter = THREE.LinearFilter
+
+                // Rotate texture by 45 degrees
+                texture.rotation = Math.PI / 2 // 45 degrees in radians
+                texture.center.set(0.5, 0.5) // Set rotation center to middle of texture
+
+                // Update both materials with the loaded texture
+                if (Array.isArray(mesh.material)) {
+                    const frontMat = mesh.material[1] as THREE.MeshStandardMaterial
+                    const backMat = mesh.material[2] as THREE.MeshStandardMaterial
+                    frontMat.map = texture
+                    backMat.map = texture
+                    frontMat.needsUpdate = true
+                    backMat.needsUpdate = true
+                }
             },
+            undefined,
+            (error) => {
+                // Handle loading error - fallback texture is already applied
+                console.warn(`Failed to load texture for coin: ${imageUrl}`, error)
+            }
         )
 
         // Clone the texture for the back side
