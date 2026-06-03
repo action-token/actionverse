@@ -96,7 +96,7 @@ export class ARCoin {
             }
         }
 
-        const rawUrl = this.location.image_url ?? this.location.brand_image_url ?? "https://app.action-tokens.com/images/action/logo.png",
+        const rawUrl = this.location.image_url ?? this.location.brand_image_url ?? "https://app.action-tokens.com/images/action/logo.png"
         const imageUrl = rawUrl.startsWith("/") || rawUrl.startsWith(window.location.origin)
             ? rawUrl // same-origin, no need to proxy
             : proxyImage(rawUrl)
@@ -116,12 +116,16 @@ export class ARCoin {
 
                 // Update both materials with the loaded texture
                 if (Array.isArray(mesh.material)) {
-                    const frontMat = mesh.material[1] as THREE.MeshStandardMaterial
-                    const backMat = mesh.material[2] as THREE.MeshStandardMaterial
-                    frontMat.map = texture
-                    backMat.map = texture
-                    frontMat.needsUpdate = true
-                    backMat.needsUpdate = true
+                    const frontMat = mesh.material[1] as THREE.MeshStandardMaterial | undefined
+                    const backMat = mesh.material[2] as THREE.MeshStandardMaterial | undefined
+                    if (frontMat) {
+                        frontMat.map = texture
+                        frontMat.needsUpdate = true
+                    }
+                    if (backMat) {
+                        backMat.map = texture
+                        backMat.needsUpdate = true
+                    }
                 }
             },
             undefined,
