@@ -415,6 +415,14 @@ export async function claimUSDCReward({
 
   const buildTrx = transaction.build();
   buildTrx.sign(motherAcc);
+  if (signWith && "email" in signWith) {
+    const signedXDr = await WithSing({
+      xdr: buildTrx.toXDR(),
+      signWith: signWith,
+    });
+    return { xdr: signedXDr, needSign: false };
+
+  }
   return {
     xdr: buildTrx.toXDR(),
     needSign: !userHasTrustOnUSDC,
