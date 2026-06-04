@@ -27,6 +27,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avat
 import toast from "react-hot-toast"
 import { useCommunityPostModalStore } from "../store/community-post-modal-store"
 import { useSession } from "next-auth/react"
+import { BountyLinksFromContent } from "../bounty/bounty-embed-card"
 
 interface MediaItem {
   url: string
@@ -201,6 +202,9 @@ export function CreateCommunityPostModal() {
             rows={4}
             className="resize-none rounded-lg border-0 bg-muted/50 text-sm focus-visible:ring-1"
           />
+
+          {/* Bounty link preview — real-time */}
+          <BountyLinksFromContent content={content} />
 
           {/* Media preview */}
           {medias.length > 0 && (

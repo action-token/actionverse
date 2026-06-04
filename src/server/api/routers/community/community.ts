@@ -404,6 +404,25 @@ export const communityRouter = createTRPCRouter({
     return { owned, joined };
   }),
 
+  getMyPostableCommunities: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session.user.id;
+    return await ctx.db.community.findMany({
+      where: {
+        members: { some: { userId } },
+        OR: [
+          { postPermission: "ALL_MEMBERS" },
+          { ownerId: userId },
+        ],
+      },
+      select: {
+        id: true,
+        title: true,
+        profileUrl: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }),
+
   searchStellarAssets: protectedProcedure
     .input(z.object({ search: z.string().min(1) }))
     .query(async ({ input }) => {

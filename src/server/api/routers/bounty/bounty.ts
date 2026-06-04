@@ -2230,4 +2230,30 @@ export const BountyRoute = createTRPCRouter({
         data: { isMarkedUsed: true },
       });
     }),
+
+  getBountyPreview: publicProcedure
+    .input(z.object({ bountyId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const bounty = await ctx.db.bounty.findUnique({
+        where: { id: input.bountyId },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          imageUrls: true,
+          priceInUSD: true,
+          priceInBand: true,
+          requiredBalance: true,
+          requiredBalanceCode: true,
+          requiredBalanceIssuer: true,
+          currentWinnerCount: true,
+          totalWinner: true,
+          bountyType: true,
+          status: true,
+          creatorId: true,
+          _count: { select: { participants: true } },
+        },
+      });
+      return bounty;
+    }),
 });

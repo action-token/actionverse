@@ -26,6 +26,7 @@ import toast from "react-hot-toast"
 import { useSession } from "next-auth/react"
 import { MediaGrid } from "./media-grid"
 import { useEditCommunityPostModalStore } from "../store/edit-community-post-modal-store"
+import { BountyLinksFromContent } from "../bounty/bounty-embed-card"
 
 const CONTENT_COLLAPSE_LENGTH = 280
 const CONTENT_COLLAPSE_LINES = 6
@@ -217,6 +218,7 @@ export function CommunityPostCard({
       <CardContent className="space-y-3 pb-2">
         <PostContent content={post.content} />
         {post.medias.length > 0 && <MediaGrid medias={post.medias} />}
+        <BountyLinksFromContent content={post.content} />
       </CardContent>
 
       <CardFooter className="flex-col items-start gap-2 border-t p-2">
