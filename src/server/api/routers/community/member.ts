@@ -12,11 +12,17 @@ import {
 
 export const communityMemberRouter = createTRPCRouter({
   join: protectedProcedure
-    .input(z.object({ communityId: z.number() }))
+    .input(z.object({
+      communityId: z.number(),
+      walletBalances: z.array(z.object({
+        assetCode: z.string(),
+        assetIssuer: z.string(),
+        balance: z.number(),
+      })).optional(),
+    }))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user.id;
 
-      // Verify user exists in database
       const userExists = await ctx.db.user.findUnique({
         where: { id: userId },
         select: { id: true },
@@ -25,9 +31,38 @@ export const communityMemberRouter = createTRPCRouter({
 
       const community = await ctx.db.community.findUnique({
         where: { id: input.communityId },
+        include: {
+          tokenRequirements: true,
+        },
       });
 
       if (!community) throw new TRPCError({ code: "NOT_FOUND", message: "Community not found" });
+
+      if (community.isTokenGated && community.tokenRequirements.length > 0 && input.walletBalances) {
+        const logic = community.tokenGateLogic;
+        const results = community.tokenRequirements.map((req) => {
+          const walletEntry = input.walletBalances?.find(
+            (b) => b.assetCode === req.assetCode && b.assetIssuer === req.assetIssuer
+          );
+          if (req.requiredBalance === 0) {
+            return walletEntry !== undefined;
+          }
+          return (walletEntry?.balance ?? 0) >= req.requiredBalance;
+        });
+
+        const passes = logic === "AND"
+          ? results.every(Boolean)
+          : results.some(Boolean);
+
+        if (!passes) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: logic === "AND"
+              ? "You need all required tokens to join this community"
+              : "You need at least one of the required tokens to join this community",
+          });
+        }
+      }
 
       const existing = await ctx.db.communityMember.findUnique({
         where: {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -14,9 +14,13 @@ import {
   Eye,
   PenLine,
   Loader2,
-  Upload,
   Camera,
   ImageIcon,
+  Search,
+  Plus,
+  Trash2,
+  Coins,
+  Keyboard,
 } from "lucide-react"
 import Image from "next/image"
 
@@ -44,6 +48,15 @@ import { motion, AnimatePresence } from "framer-motion"
 import { UploadS3Button } from "../common/upload-button"
 import { useCommunityModalStore } from "../store/community-modal-store"
 
+const TokenRequirementSchema = z.object({
+  assetCode: z.string().min(1),
+  assetIssuer: z.string().min(1),
+  assetImage: z.string().nullable().optional(),
+  requiredBalance: z.number().min(0).default(0),
+})
+
+type TokenRequirement = z.infer<typeof TokenRequirementSchema>
+
 const CreateCommunitySchema = z
   .object({
     title: z.string().min(1, "Title is required").max(100, "Title too long"),
@@ -58,25 +71,11 @@ const CreateCommunitySchema = z
     memberListVisibility: z.enum(["EVERYONE", "MEMBERS_ONLY"]),
     postPermission: z.enum(["ALL_MEMBERS", "OWNER_ONLY"]),
     isTokenGated: z.boolean(),
-    requiredBalance: z.number().min(0, "Balance must be positive").optional(),
-    requiredBalanceCode: z.string().optional(),
-    requiredBalanceIssuer: z.string().optional(),
+    tokenGateLogic: z.enum(["AND", "OR"]),
   })
   .refine(
     (data) => {
-      if (data.isTokenGated) {
-        return (
-          data.requiredBalanceCode &&
-          data.requiredBalanceIssuer &&
-          data.requiredBalance &&
-          data.requiredBalance > 0
-        )
-      }
       return true
-    },
-    {
-      message: "Token gating requires asset code, issuer, and minimum balance",
-      path: ["requiredBalance"],
     },
   )
 
@@ -92,10 +91,29 @@ const STEP_LABELS: Record<FormStep, string> = {
   preview: "Preview",
 }
 
+interface StellarAssetResult {
+  assetCode: string
+  assetIssuer: string
+  assetImage: string | null
+  name: string | null
+  org: string | null
+  rating: number
+  trustlines: number
+}
+
 export function CreateCommunityModal() {
   const { isOpen, setIsOpen, editData } = useCommunityModalStore()
   const [currentStep, setCurrentStep] = useState<FormStep>("details")
-  const [isTokenValid, setIsTokenValid] = useState(false)
+  const [tokenRequirements, setTokenRequirements] = useState<TokenRequirement[]>([])
+  const [assetSearch, setAssetSearch] = useState("")
+  const [searchDebounced, setSearchDebounced] = useState("")
+  const [showSearchResults, setShowSearchResults] = useState(false)
+  const [editingBalanceIndex, setEditingBalanceIndex] = useState<number | null>(null)
+  const [addMode, setAddMode] = useState<"search" | "manual">("search")
+  const [manualCode, setManualCode] = useState("")
+  const [manualIssuer, setManualIssuer] = useState("")
+  const [manualBalance, setManualBalance] = useState(0)
+  const [manualVerified, setManualVerified] = useState(false)
   const utils = api.useUtils()
 
   const {
@@ -115,13 +133,51 @@ export function CreateCommunityModal() {
       memberListVisibility: "EVERYONE",
       postPermission: "ALL_MEMBERS",
       isTokenGated: false,
-      requiredBalance: 0,
-      requiredBalanceCode: "",
-      requiredBalanceIssuer: "",
+      tokenGateLogic: "AND",
     },
   })
 
   const formValues = watch()
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchDebounced(assetSearch)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [assetSearch])
+
+  const { data: searchResults, isLoading: isSearching } =
+    api.community.community.searchStellarAssets.useQuery(
+      { search: searchDebounced },
+      { enabled: searchDebounced.length >= 1 && showSearchResults },
+    )
+
+  const verifyManualAsset = api.fan.creator.checkCustomAssetValidity.useMutation({
+    onSuccess: (valid) => {
+      if (valid) {
+        setManualVerified(true)
+        toast.success("Asset verified on Stellar network!")
+      } else {
+        setManualVerified(false)
+        toast.error("Asset not found on Stellar network")
+      }
+    },
+    onError: () => {
+      setManualVerified(false)
+      toast.error("Asset not found on Stellar network")
+    },
+  })
+
+  const handleVerifyManual = () => {
+    if (!manualCode.trim() || !manualIssuer.trim()) {
+      toast.error("Please enter both asset code and issuer")
+      return
+    }
+    verifyManualAsset.mutate({
+      assetCode: manualCode.trim(),
+      issuer: manualIssuer.trim().toUpperCase(),
+    })
+  }
 
   const createCommunity = api.community.community.create.useMutation({
     onSuccess: () => {
@@ -147,7 +203,6 @@ export function CreateCommunityModal() {
     },
   })
 
-  // Load existing data for edit
   const { data: existingCommunity } = api.community.community.getById.useQuery(
     { communityId: editData ?? 0 },
     { enabled: !!editData },
@@ -162,47 +217,100 @@ export function CreateCommunityModal() {
       setValue("memberListVisibility", existingCommunity.memberListVisibility)
       setValue("postPermission", existingCommunity.postPermission)
       setValue("isTokenGated", existingCommunity.isTokenGated)
-      setValue("requiredBalance", existingCommunity.requiredBalance ?? 0)
-      setValue("requiredBalanceCode", existingCommunity.requiredBalanceCode ?? "")
-      setValue("requiredBalanceIssuer", existingCommunity.requiredBalanceIssuer ?? "")
-      if (existingCommunity.isTokenGated) setIsTokenValid(true)
+      setValue("tokenGateLogic", (existingCommunity.tokenGateLogic as "AND" | "OR") ?? "AND")
+      if (existingCommunity.tokenRequirements) {
+        setTokenRequirements(
+          existingCommunity.tokenRequirements.map((t) => ({
+            assetCode: t.assetCode,
+            assetIssuer: t.assetIssuer,
+            assetImage: t.assetImage,
+            requiredBalance: t.requiredBalance,
+          })),
+        )
+      }
     }
   }, [editData, existingCommunity, setValue])
-
-  const checkAssetValidity = api.fan.creator.checkCustomAssetValidity.useMutation({
-    onSuccess: (valid) => {
-      if (valid) {
-        setIsTokenValid(true)
-        toast.success("Token verified on Stellar network!")
-      } else {
-        setIsTokenValid(false)
-        toast.error("Token not found on Stellar network")
-      }
-    },
-    onError: () => {
-      setIsTokenValid(false)
-      toast.error("Token not found on Stellar network")
-    },
-  })
 
   const handleClose = () => {
     setIsOpen(false)
     setCurrentStep("details")
-    setIsTokenValid(false)
+    setTokenRequirements([])
+    setAssetSearch("")
+    setShowSearchResults(false)
+    setAddMode("search")
+    setManualCode("")
+    setManualIssuer("")
+    setManualBalance(0)
+    setManualVerified(false)
     reset()
   }
 
-  const validateToken = () => {
-    const code = formValues.requiredBalanceCode
-    const issuer = formValues.requiredBalanceIssuer
-    if (!code || !issuer) {
-      toast.error("Please enter both asset code and issuer")
+  const addTokenFromSearch = (asset: StellarAssetResult) => {
+    const exists = tokenRequirements.some(
+      (t) => t.assetCode === asset.assetCode && t.assetIssuer === asset.assetIssuer,
+    )
+    if (exists) {
+      toast.error("This token is already added")
       return
     }
-    checkAssetValidity.mutate({ assetCode: code, issuer })
+    setTokenRequirements((prev) => [
+      ...prev,
+      {
+        assetCode: asset.assetCode,
+        assetIssuer: asset.assetIssuer,
+        assetImage: asset.assetImage,
+        requiredBalance: 0,
+      },
+    ])
+    setAssetSearch("")
+    setShowSearchResults(false)
+    setEditingBalanceIndex(tokenRequirements.length)
+  }
+
+  const addTokenManually = () => {
+    if (!manualVerified) {
+      toast.error("Please verify the asset on Stellar network first")
+      return
+    }
+    const exists = tokenRequirements.some(
+      (t) => t.assetCode === manualCode.trim() && t.assetIssuer === manualIssuer.trim() && t.assetIssuer.toUpperCase() === manualIssuer.trim().toUpperCase()
+    )
+    if (exists) {
+      toast.error("This token is already added")
+      return
+    }
+    setTokenRequirements((prev) => [
+      ...prev,
+      {
+        assetCode: manualCode.trim(),
+        assetIssuer: manualIssuer.trim(),
+        assetImage: null,
+        requiredBalance: manualBalance,
+      },
+    ])
+    setManualCode("")
+    setManualIssuer("")
+    setManualBalance(0)
+    setManualVerified(false)
+  }
+
+  const removeToken = (index: number) => {
+    setTokenRequirements((prev) => prev.filter((_, i) => i !== index))
+    if (editingBalanceIndex === index) setEditingBalanceIndex(null)
+  }
+
+  const updateTokenBalance = (index: number, balance: number) => {
+    setTokenRequirements((prev) =>
+      prev.map((t, i) => (i === index ? { ...t, requiredBalance: balance } : t)),
+    )
   }
 
   const onSubmit = (data: CreateCommunityForm) => {
+    if (data.isTokenGated && tokenRequirements.length === 0) {
+      toast.error("Add at least one token requirement")
+      return
+    }
+
     const payload = {
       title: data.title,
       description: data.description,
@@ -211,13 +319,8 @@ export function CreateCommunityModal() {
       memberListVisibility: data.memberListVisibility,
       postPermission: data.postPermission,
       isTokenGated: data.isTokenGated,
-      requiredBalance: data.isTokenGated ? data.requiredBalance : undefined,
-      requiredBalanceCode: data.isTokenGated
-        ? data.requiredBalanceCode
-        : undefined,
-      requiredBalanceIssuer: data.isTokenGated
-        ? data.requiredBalanceIssuer
-        : undefined,
+      tokenGateLogic: data.isTokenGated ? data.tokenGateLogic : ("AND" as const),
+      tokenRequirements: data.isTokenGated ? tokenRequirements : [],
     }
 
     if (editData) {
@@ -244,7 +347,7 @@ export function CreateCommunityModal() {
       case "settings":
         return true
       case "token":
-        return !formValues.isTokenGated || isTokenValid
+        return !formValues.isTokenGated || tokenRequirements.length > 0
       case "preview":
         return true
       default:
@@ -512,70 +615,357 @@ export function CreateCommunityModal() {
                     onCheckedChange={(checked) => {
                       setValue("isTokenGated", checked)
                       if (!checked) {
-                        setIsTokenValid(false)
-                        setValue("requiredBalanceCode", "")
-                        setValue("requiredBalanceIssuer", "")
-                        setValue("requiredBalance", 0)
+                        setTokenRequirements([])
+                        setValue("tokenGateLogic", "AND")
                       }
                     }}
                   />
                 </div>
 
                 {formValues.isTokenGated && (
-                  <div className="space-y-4 rounded-lg border p-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs">Asset Code</Label>
-                      <Input
-                        placeholder="e.g. ACTION"
-                        className="rounded-lg"
-                        {...register("requiredBalanceCode")}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs">Asset Issuer</Label>
-                      <Input
-                        placeholder="Stellar public key (56 characters)"
-                        className="rounded-lg font-mono text-xs"
-                        {...register("requiredBalanceIssuer")}
-                      />
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-2 rounded-full"
-                      onClick={validateToken}
-                      disabled={checkAssetValidity.isLoading}
-                    >
-                      {checkAssetValidity.isLoading ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : isTokenValid ? (
-                        <Check className="h-3.5 w-3.5 text-green-500" />
-                      ) : (
-                        <Shield className="h-3.5 w-3.5" />
-                      )}
-                      {isTokenValid ? "Token Verified" : "Verify on Stellar Network"}
-                    </Button>
-
-                    {isTokenValid && (
-                      <div className="space-y-2">
-                        <Label className="text-xs">Minimum Balance Required</Label>
-                        <Input
-                          type="number"
-                          step="any"
-                          min="0.01"
-                          placeholder="e.g. 100"
-                          className="rounded-lg"
-                          {...register("requiredBalance", { valueAsNumber: true, min: { value: 0.01, message: "Minimum balance must be greater than 0" } })}
-                        />
+                  <div className="space-y-4">
+                    {/* AND/OR Logic Selector */}
+                    {tokenRequirements.length > 1 && (
+                      <div className="rounded-lg border bg-muted/30 p-3">
+                        <Label className="text-xs font-medium text-muted-foreground">
+                          Join Requirement Logic
+                        </Label>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setValue("tokenGateLogic", "AND")}
+                            className={`flex-1 rounded-lg border px-3 py-2 text-center text-xs font-medium transition-colors ${formValues.tokenGateLogic === "AND"
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background hover:bg-muted"
+                              }`}
+                          >
+                            <span className="block text-sm font-bold">AND</span>
+                            <span className="mt-0.5 block text-[10px] opacity-80">
+                              Must hold ALL tokens
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setValue("tokenGateLogic", "OR")}
+                            className={`flex-1 rounded-lg border px-3 py-2 text-center text-xs font-medium transition-colors ${formValues.tokenGateLogic === "OR"
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background hover:bg-muted"
+                              }`}
+                          >
+                            <span className="block text-sm font-bold">OR</span>
+                            <span className="mt-0.5 block text-[10px] opacity-80">
+                              Must hold ANY token
+                            </span>
+                          </button>
+                        </div>
+                        <p className="mt-2 text-[10px] text-muted-foreground">
+                          {formValues.tokenGateLogic === "AND"
+                            ? "Users must hold all listed tokens to join."
+                            : "Users can join if they hold any one of the listed tokens."}
+                        </p>
                       </div>
                     )}
-                    {errors.requiredBalance && (
-                      <p className="text-xs text-destructive">
-                        {errors.requiredBalance.message}
-                      </p>
+
+                    {/* Token list */}
+                    {tokenRequirements.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-muted-foreground">
+                          Required Tokens ({tokenRequirements.length})
+                        </Label>
+                        <div className="space-y-2">
+                          {tokenRequirements.map((token, index) => (
+                            <div
+                              key={`${token.assetCode}-${token.assetIssuer}`}
+                              className="rounded-lg border bg-card p-3"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+                                  {token.assetImage ? (
+                                    <Image
+                                      src={token.assetImage}
+                                      alt={token.assetCode}
+                                      width={36}
+                                      height={36}
+                                      className="rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <Coins className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-sm font-semibold">{token.assetCode}</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeToken(index)}
+                                      className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                  <p className="truncate text-[10px] text-muted-foreground font-mono">
+                                    {token.assetIssuer}
+                                  </p>
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <Label className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                      Min Balance:
+                                    </Label>
+                                    <Input
+                                      type="number"
+                                      step="any"
+                                      min="0"
+                                      value={token.requiredBalance}
+                                      onChange={(e) =>
+                                        updateTokenBalance(index, parseFloat(e.target.value) || 0)
+                                      }
+                                      className="h-7 w-28 rounded text-xs"
+                                      placeholder="0"
+                                    />
+                                    {token.requiredBalance === 0 && (
+                                      <span className="text-[10px] text-emerald-600">
+                                        Trust only
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              {index < tokenRequirements.length - 1 && tokenRequirements.length > 1 && (
+                                <div className="mt-2 flex items-center justify-center">
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[9px] font-bold"
+                                  >
+                                    {formValues.tokenGateLogic}
+                                  </Badge>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Add Token — Search or Manual */}
+                    <div className="space-y-3 rounded-lg border p-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setAddMode("search")}
+                          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${addMode === "search"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted"
+                            }`}
+                        >
+                          <Search className="h-3 w-3" />
+                          Search
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddMode("manual")}
+                          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${addMode === "manual"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted"
+                            }`}
+                        >
+                          <Keyboard className="h-3 w-3" />
+                          Manual
+                        </button>
+                      </div>
+
+                      {addMode === "search" ? (
+                        <div className="space-y-2">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              placeholder="Search by asset name (e.g. ACTION, USDC)"
+                              className="rounded-lg pl-9"
+                              value={assetSearch}
+                              onChange={(e) => {
+                                setAssetSearch(e.target.value)
+                                setShowSearchResults(true)
+                              }}
+                              onFocus={() => {
+                                if (assetSearch.length >= 1) setShowSearchResults(true)
+                              }}
+                            />
+                          </div>
+
+                          {showSearchResults && searchDebounced.length >= 1 && (
+                            <div className="max-h-48 overflow-y-auto rounded-lg border bg-card shadow-lg">
+                              {isSearching ? (
+                                <div className="flex items-center justify-center gap-2 p-4">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <span className="text-xs text-muted-foreground">
+                                    Searching Stellar network...
+                                  </span>
+                                </div>
+                              ) : searchResults && searchResults.length > 0 ? (
+                                searchResults.map((asset: StellarAssetResult) => {
+                                  const isAdded = tokenRequirements.some(
+                                    (t) =>
+                                      t.assetCode === asset.assetCode &&
+                                      t.assetIssuer === asset.assetIssuer,
+                                  )
+                                  return (
+                                    <button
+                                      key={`${asset.assetCode}-${asset.assetIssuer}`}
+                                      type="button"
+                                      disabled={isAdded}
+                                      onClick={() => addTokenFromSearch(asset)}
+                                      className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition-colors last:border-0 hover:bg-muted/50 disabled:opacity-50"
+                                    >
+                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+                                        {asset.assetImage ? (
+                                          <Image
+                                            src={asset.assetImage}
+                                            alt={asset.assetCode}
+                                            width={32}
+                                            height={32}
+                                            className="rounded-full object-cover"
+                                          />
+                                        ) : (
+                                          <Coins className="h-4 w-4 text-muted-foreground" />
+                                        )}
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm font-semibold">
+                                            {asset.assetCode}
+                                          </span>
+                                          {asset.name && (
+                                            <span className="truncate text-[10px] text-muted-foreground">
+                                              {asset.name}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="truncate text-[10px] text-muted-foreground font-mono">
+                                          {asset.assetIssuer}
+                                        </p>
+                                        {asset.trustlines > 0 && (
+                                          <p className="text-[9px] text-muted-foreground">
+                                            {asset.trustlines.toLocaleString()} trustlines
+                                          </p>
+                                        )}
+                                      </div>
+                                      {isAdded ? (
+                                        <Check className="h-4 w-4 shrink-0 text-emerald-500" />
+                                      ) : (
+                                        <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                      )}
+                                    </button>
+                                  )
+                                })
+                              ) : (
+                                <div className="p-4 text-center text-xs text-muted-foreground">
+                                  No assets found for &quot;{searchDebounced}&quot;
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Asset Code</Label>
+                            <Input
+                              placeholder="e.g. ACTION"
+                              className="rounded-lg"
+                              value={manualCode}
+                              onChange={(e) => {
+                                setManualCode(e.target.value)
+                                setManualVerified(false)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Asset Issuer</Label>
+                            <Input
+                              placeholder="Stellar public key (56 characters)"
+                              className="rounded-lg font-mono text-xs"
+                              value={manualIssuer}
+                              onChange={(e) => {
+                                setManualIssuer(e.target.value)
+                                setManualVerified(false)
+                              }}
+                            />
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2 rounded-full"
+                            onClick={handleVerifyManual}
+                            disabled={!manualCode.trim() || !manualIssuer.trim() || verifyManualAsset.isLoading}
+                          >
+                            {verifyManualAsset.isLoading ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : manualVerified ? (
+                              <Check className="h-3.5 w-3.5 text-green-500" />
+                            ) : (
+                              <Shield className="h-3.5 w-3.5" />
+                            )}
+                            {manualVerified ? "Asset Verified" : "Verify on Stellar Network"}
+                          </Button>
+
+                          {manualVerified && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Minimum Balance</Label>
+                                <Input
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  placeholder="0 = trust only"
+                                  className="rounded-lg"
+                                  value={manualBalance || ""}
+                                  onChange={(e) => setManualBalance(parseFloat(e.target.value) || 0)}
+                                />
+                                <p className="text-[10px] text-muted-foreground">
+                                  Set to 0 if joining only requires trusting the asset.
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="w-full gap-2 rounded-full"
+                                onClick={addTokenManually}
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Add Token
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Summary explanation */}
+                    {tokenRequirements.length > 0 && (
+                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          {tokenRequirements.length === 1 ? (
+                            <>
+                              Users must{" "}
+                              {tokenRequirements[0]!.requiredBalance > 0
+                                ? `hold at least ${tokenRequirements[0]!.requiredBalance} ${tokenRequirements[0]!.assetCode}`
+                                : `have a trustline for ${tokenRequirements[0]!.assetCode}`}{" "}
+                              to join.
+                            </>
+                          ) : (
+                            <>
+                              Users must hold{" "}
+                              <span className="font-bold">
+                                {formValues.tokenGateLogic === "AND" ? "ALL" : "ANY"}
+                              </span>{" "}
+                              of the {tokenRequirements.length} tokens listed above to join.
+                              {tokenRequirements.some((t) => t.requiredBalance === 0) && (
+                                <> Tokens with 0 balance only require a trustline.</>
+                              )}
+                            </>
+                          )}
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}
@@ -631,14 +1021,45 @@ export function CreateCommunityModal() {
                           ? "All can post"
                           : "Owner-only"}
                       </Badge>
-                      {formValues.isTokenGated && (
+                      {formValues.isTokenGated && tokenRequirements.length > 0 && (
                         <Badge className="gap-1 border-0 bg-amber-500/90 text-[10px] text-white">
                           <Shield className="h-3 w-3" />
-                          {formValues.requiredBalance}{" "}
-                          {formValues.requiredBalanceCode}
+                          {formValues.tokenGateLogic === "AND"
+                            ? "All tokens required"
+                            : "Any token required"}
                         </Badge>
                       )}
                     </div>
+                    {/* Token requirements preview */}
+                    {formValues.isTokenGated && tokenRequirements.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        {tokenRequirements.map((token) => (
+                          <div
+                            key={`${token.assetCode}-${token.assetIssuer}`}
+                            className="flex items-center gap-2"
+                          >
+                            <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-muted">
+                              {token.assetImage ? (
+                                <Image
+                                  src={token.assetImage}
+                                  alt={token.assetCode}
+                                  width={20}
+                                  height={20}
+                                  className="rounded-full object-cover"
+                                />
+                              ) : (
+                                <Coins className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </div>
+                            <span className="text-[10px]">
+                              {token.requiredBalance > 0
+                                ? `${token.requiredBalance} ${token.assetCode}`
+                                : `${token.assetCode} (trust only)`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </motion.div>

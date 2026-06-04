@@ -1038,22 +1038,34 @@ model Community {
     memberListVisibility CommunityMemberListVisibility @default(EVERYONE)
     postPermission       CommunityPostPermission       @default(ALL_MEMBERS)
 
-    isTokenGated          Boolean @default(false)
-    requiredBalance       Float?
-    requiredBalanceCode   String?
-    requiredBalanceIssuer String?
+    isTokenGated   Boolean @default(false)
+    tokenGateLogic String  @default("AND")
 
     ownerId String
     owner   User   @relation("CommunityOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
-    members                         CommunityMember[]
-    posts                           CommunityPost[]
-    activities                      CommunityActivity[]
+    members                          CommunityMember[]
+    posts                            CommunityPost[]
+    activities                       CommunityActivity[]
     communityNotificationPreferences CommunityNotificationPreference[]
+    tokenRequirements                CommunityTokenRequirement[]
 
     @@index([title, description])
     @@index([ownerId])
     @@index([createdAt])
+}
+
+model CommunityTokenRequirement {
+    id              Int       @id @default(autoincrement())
+    communityId     Int
+    community       Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+    assetCode       String
+    assetIssuer     String
+    assetImage      String?
+    requiredBalance Float     @default(0)
+    createdAt       DateTime  @default(now())
+
+    @@index([communityId])
 }
 
 model CommunityMember {

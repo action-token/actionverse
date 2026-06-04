@@ -10,6 +10,14 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
+import axios from "axios";
+
+const TokenRequirementSchema = z.object({
+  assetCode: z.string().min(1),
+  assetIssuer: z.string().min(1),
+  assetImage: z.string().nullable().optional(),
+  requiredBalance: z.number().min(0).default(0),
+});
 
 const CreateCommunitySchema = z.object({
   title: z.string().min(1, { message: "Title can't be empty" }).max(100),
@@ -29,17 +37,16 @@ const CreateCommunitySchema = z.object({
     .nativeEnum(CommunityPostPermission)
     .default(CommunityPostPermission.ALL_MEMBERS),
   isTokenGated: z.boolean().default(false),
-  requiredBalance: z.number().min(0).optional(),
-  requiredBalanceCode: z.string().optional(),
-  requiredBalanceIssuer: z.string().optional(),
+  tokenGateLogic: z.enum(["AND", "OR"]).default("AND"),
+  tokenRequirements: z.array(TokenRequirementSchema).default([]),
 }).refine(
   (data) => {
     if (data.isTokenGated) {
-      return data.requiredBalanceCode && data.requiredBalanceIssuer && data.requiredBalance && data.requiredBalance > 0
+      return data.tokenRequirements.length > 0
     }
     return true
   },
-  { message: "Token gating requires asset code, issuer, and a balance greater than 0", path: ["requiredBalance"] },
+  { message: "Token gating requires at least one token requirement", path: ["tokenRequirements"] },
 );
 
 const UpdateCommunitySchema = z.object({
@@ -58,10 +65,21 @@ const UpdateCommunitySchema = z.object({
   memberListVisibility: z.nativeEnum(CommunityMemberListVisibility).optional(),
   postPermission: z.nativeEnum(CommunityPostPermission).optional(),
   isTokenGated: z.boolean().optional(),
-  requiredBalance: z.number().min(0).optional(),
-  requiredBalanceCode: z.string().optional(),
-  requiredBalanceIssuer: z.string().optional(),
+  tokenGateLogic: z.enum(["AND", "OR"]).optional(),
+  tokenRequirements: z.array(TokenRequirementSchema).optional(),
 });
+
+const tokenRequirementsInclude = {
+  tokenRequirements: {
+    select: {
+      id: true,
+      assetCode: true,
+      assetIssuer: true,
+      assetImage: true,
+      requiredBalance: true,
+    },
+  },
+} as const;
 
 export const communityRouter = createTRPCRouter({
   create: protectedProcedure
@@ -73,18 +91,18 @@ export const communityRouter = createTRPCRouter({
       });
       if (!userExists) throw new Error("User account not found. Please reconnect your wallet.");
 
+      const { tokenRequirements, ...communityData } = input;
+
       const community = await ctx.db.community.create({
         data: {
-          title: input.title,
-          description: input.description,
-          coverUrl: input.coverUrl,
-          profileUrl: input.profileUrl,
-          memberListVisibility: input.memberListVisibility,
-          postPermission: input.postPermission,
-          isTokenGated: input.isTokenGated,
-          requiredBalance: input.requiredBalance,
-          requiredBalanceCode: input.requiredBalanceCode,
-          requiredBalanceIssuer: input.requiredBalanceIssuer,
+          title: communityData.title,
+          description: communityData.description,
+          coverUrl: communityData.coverUrl,
+          profileUrl: communityData.profileUrl,
+          memberListVisibility: communityData.memberListVisibility,
+          postPermission: communityData.postPermission,
+          isTokenGated: communityData.isTokenGated,
+          tokenGateLogic: communityData.tokenGateLogic,
           ownerId: ctx.session.user.id,
           members: {
             create: {
@@ -103,6 +121,16 @@ export const communityRouter = createTRPCRouter({
               userId: ctx.session.user.id,
             },
           },
+          ...(communityData.isTokenGated && tokenRequirements.length > 0 && {
+            tokenRequirements: {
+              create: tokenRequirements.map((t) => ({
+                assetCode: t.assetCode,
+                assetIssuer: t.assetIssuer,
+                assetImage: t.assetImage ?? null,
+                requiredBalance: t.requiredBalance,
+              })),
+            },
+          }),
         },
       });
 
@@ -120,12 +148,32 @@ export const communityRouter = createTRPCRouter({
       if (community.ownerId !== ctx.session.user.id)
         throw new Error("Unauthorized: Only the community owner can update");
 
-      const { communityId, ...updateData } = input;
+      const { communityId, tokenRequirements, ...updateData } = input;
 
-      return await ctx.db.community.update({
+      const updated = await ctx.db.community.update({
         where: { id: communityId },
         data: updateData,
       });
+
+      if (tokenRequirements !== undefined) {
+        await ctx.db.communityTokenRequirement.deleteMany({
+          where: { communityId },
+        });
+
+        if (tokenRequirements.length > 0) {
+          await ctx.db.communityTokenRequirement.createMany({
+            data: tokenRequirements.map((t) => ({
+              communityId,
+              assetCode: t.assetCode,
+              assetIssuer: t.assetIssuer,
+              assetImage: t.assetImage ?? null,
+              requiredBalance: t.requiredBalance,
+            })),
+          });
+        }
+      }
+
+      return updated;
     }),
 
   delete: protectedProcedure
@@ -178,6 +226,7 @@ export const communityRouter = createTRPCRouter({
               },
             },
           },
+          ...tokenRequirementsInclude,
         },
       });
 
@@ -194,7 +243,6 @@ export const communityRouter = createTRPCRouter({
         })
         : null;
 
-      // Hide member list if MEMBERS_ONLY and user is not a member
       const memberListLocked =
         community.memberListVisibility === "MEMBERS_ONLY" && !isMember;
 
@@ -265,6 +313,7 @@ export const communityRouter = createTRPCRouter({
               },
             },
           },
+          ...tokenRequirementsInclude,
         },
       });
 
@@ -274,7 +323,6 @@ export const communityRouter = createTRPCRouter({
         nextCursor = nextItem?.id;
       }
 
-      // Check membership for logged-in user
       let memberCommunityIds = new Set<number>();
       if (ctx.session?.user) {
         const memberships = await ctx.db.communityMember.findMany({
@@ -321,6 +369,7 @@ export const communityRouter = createTRPCRouter({
               posts: true,
             },
           },
+          ...tokenRequirementsInclude,
         },
       });
     }),
@@ -331,6 +380,7 @@ export const communityRouter = createTRPCRouter({
         where: { ownerId: ctx.session.user.id },
         include: {
           _count: { select: { members: true, posts: true } },
+          ...tokenRequirementsInclude,
         },
         orderBy: { createdAt: "desc" },
       }),
@@ -345,6 +395,7 @@ export const communityRouter = createTRPCRouter({
         },
         include: {
           _count: { select: { members: true, posts: true } },
+          ...tokenRequirementsInclude,
         },
         orderBy: { createdAt: "desc" },
       }),
@@ -352,4 +403,47 @@ export const communityRouter = createTRPCRouter({
 
     return { owned, joined };
   }),
+
+  searchStellarAssets: protectedProcedure
+    .input(z.object({ search: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const isPubnet = process.env.NEXT_PUBLIC_STELLAR_PUBNET === "true";
+      const network = isPubnet ? "public" : "testnet";
+      const url = `https://api.stellar.expert/explorer/${network}/asset?search=${encodeURIComponent(input.search)}&limit=20`;
+
+      try {
+        type StellarAssetRecord = {
+          asset: string;
+          tomlInfo?: { image?: string; name?: string; orgName?: string };
+          rating?: { average?: number };
+          traded_amount?: number;
+          payments?: number;
+          trustlines?: { total?: number; funded?: number };
+        };
+
+        type StellarSearchResponse = {
+          _embedded?: {
+            records?: StellarAssetRecord[];
+          };
+        };
+
+        const response = await axios.get<StellarSearchResponse>(url);
+        const records = response.data?._embedded?.records ?? [];
+
+        return records.map((record) => {
+          const [code, issuer] = record.asset.split("-");
+          return {
+            assetCode: code ?? "",
+            assetIssuer: issuer ?? "",
+            assetImage: record.tomlInfo?.image ?? null,
+            name: record.tomlInfo?.name ?? null,
+            org: record.tomlInfo?.orgName ?? null,
+            rating: record.rating?.average ?? 0,
+            trustlines: record.trustlines?.funded ?? 0,
+          };
+        });
+      } catch {
+        return [];
+      }
+    }),
 });

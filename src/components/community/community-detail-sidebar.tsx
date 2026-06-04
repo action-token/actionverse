@@ -11,12 +11,15 @@ import {
   Shield,
   ExternalLink,
   Lock,
+  Coins,
+  Check,
 } from "lucide-react"
+import Image from "next/image"
 
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
 import { Button } from "~/components/shadcn/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avatar"
-import { Badge } from "~/components/shadcn/ui/badge"
+
 import { Switch } from "~/components/shadcn/ui/switch"
 import { Label } from "~/components/shadcn/ui/label"
 import toast from "react-hot-toast"
@@ -25,14 +28,21 @@ import { useCommunityMemberDialogStore } from "../store/community-member-dialog-
 import { useCommunityInviteModalStore } from "../store/community-invite-modal-store"
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
 
+interface TokenRequirement {
+  id: number
+  assetCode: string
+  assetIssuer: string
+  assetImage: string | null
+  requiredBalance: number
+}
+
 interface CommunityDetailSidebarProps {
   communityId: number
   community: {
     ownerId: string
     isTokenGated: boolean
-    requiredBalance: number | null
-    requiredBalanceCode: string | null
-    requiredBalanceIssuer: string | null
+    tokenGateLogic: string
+    tokenRequirements: TokenRequirement[]
     owner: {
       id: string
       name: string | null
@@ -60,7 +70,7 @@ export function CommunityDetailSidebar({
   const utils = api.useUtils()
   const memberDialog = useCommunityMemberDialogStore()
   const inviteModal = useCommunityInviteModalStore()
-  const { getAssetBalance } = useUserStellarAcc()
+  const { getAssetBalance, hasTrust } = useUserStellarAcc()
 
   const join = api.community.member.join.useMutation({
     onSuccess: () => {
@@ -93,14 +103,42 @@ export function CommunityDetailSidebar({
       },
     })
 
+  const checkTokenRequirement = (req: TokenRequirement) => {
+    if (req.requiredBalance === 0) {
+      return hasTrust(req.assetCode, req.assetIssuer) ?? false
+    }
+    const balance = getAssetBalance({
+      code: req.assetCode,
+      issuer: req.assetIssuer,
+    })
+    return Number(balance) >= req.requiredBalance
+  }
+
   const canJoinTokenGated = () => {
     if (!community.isTokenGated) return true
-    if (!community.requiredBalanceCode || !community.requiredBalanceIssuer) return true
-    const balance = getAssetBalance({
-      code: community.requiredBalanceCode,
-      issuer: community.requiredBalanceIssuer,
+    if (community.tokenRequirements.length === 0) return true
+
+    const results = community.tokenRequirements.map(checkTokenRequirement)
+
+    if (community.tokenGateLogic === "AND") {
+      return results.every(Boolean)
+    }
+    return results.some(Boolean)
+  }
+
+  const getWalletBalances = () => {
+    return community.tokenRequirements.map((req) => ({
+      assetCode: req.assetCode,
+      assetIssuer: req.assetIssuer,
+      balance: Number(getAssetBalance({ code: req.assetCode, issuer: req.assetIssuer }) ?? 0),
+    }))
+  }
+
+  const handleJoin = () => {
+    join.mutate({
+      communityId,
+      walletBalances: community.isTokenGated ? getWalletBalances() : undefined,
     })
-    return Number(balance) >= (community.requiredBalance ?? 0)
   }
 
   const isPubnet = process.env.NEXT_PUBLIC_STELLAR_PUBNET === "true"
@@ -186,31 +224,87 @@ export function CommunityDetailSidebar({
           {session?.user && !community.isMember && (
             <div className="space-y-3">
               {/* Token requirements */}
-              {community.isTokenGated &&
-                community.requiredBalanceCode &&
-                community.requiredBalanceIssuer && (
-                  <a
-                    href={`${stellarExpertBase}/asset/${community.requiredBalanceCode}-${community.requiredBalanceIssuer}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 transition-colors hover:bg-amber-500/10"
-                  >
-                    <Shield className="h-4 w-4 shrink-0 text-amber-500" />
-                    <div className="flex-1">
-                      <p className="text-xs font-medium">
-                        {community.requiredBalance} {community.requiredBalanceCode} required
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        Click to view token on Stellar
-                      </p>
+              {community.isTokenGated && community.tokenRequirements.length > 0 && (() => {
+                const metCount = community.tokenRequirements.filter(checkTokenRequirement).length
+                const total = community.tokenRequirements.length
+                const isAny = community.tokenGateLogic === "OR"
+                const allMet = canJoinTokenGated()
+
+                return (
+                  <div className="space-y-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Shield className="h-3.5 w-3.5 text-amber-500" />
+                        <p className="text-[11px] font-medium">
+                          Token Requirements
+                        </p>
+                      </div>
+                      <span className={`text-[10px] font-semibold ${allMet ? "text-emerald-600" : "text-amber-600"}`}>
+                        {metCount}/{total} met
+                      </span>
                     </div>
-                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-                  </a>
-                )}
+
+                    {/* Progress bar */}
+                    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${allMet ? "bg-emerald-500" : metCount > 0 ? "bg-amber-500" : "bg-muted-foreground/30"}`}
+                        style={{ width: `${total > 0 ? (metCount / total) * 100 : 0}%` }}
+                      />
+                    </div>
+
+                    <p className="text-[10px] text-muted-foreground">
+                      {isAny
+                        ? "You need at least one of these tokens to join"
+                        : "You need all of these tokens to join"}
+                    </p>
+
+                    {/* Token list */}
+                    <div className="space-y-1">
+                      {community.tokenRequirements.map((req) => {
+                        const passes = checkTokenRequirement(req)
+                        return (
+                          <a
+                            key={req.id}
+                            href={`${stellarExpertBase}/asset/${req.assetCode}-${req.assetIssuer}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 rounded-md p-1.5 transition-colors hover:bg-amber-500/10"
+                          >
+                            <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${passes ? "bg-emerald-500" : "border border-muted-foreground/40"}`}>
+                              {passes && <Check className="h-2.5 w-2.5 text-white" />}
+                            </div>
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+                              {req.assetImage ? (
+                                <Image
+                                  src={req.assetImage}
+                                  alt={req.assetCode}
+                                  width={24}
+                                  height={24}
+                                  className="rounded-full object-cover"
+                                />
+                              ) : (
+                                <Coins className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-[11px] font-medium ${passes ? "text-foreground" : "text-muted-foreground"}`}>
+                                {req.requiredBalance > 0
+                                  ? `${req.requiredBalance} ${req.assetCode}`
+                                  : `${req.assetCode} (trust only)`}
+                              </p>
+                            </div>
+                            <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          </a>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
 
               <Button
                 className="w-full gap-2 rounded-full"
-                onClick={() => join.mutate({ communityId })}
+                onClick={handleJoin}
                 disabled={join.isLoading || !canJoinTokenGated()}
               >
                 {join.isLoading && (
@@ -220,7 +314,9 @@ export function CommunityDetailSidebar({
               </Button>
               {community.isTokenGated && !canJoinTokenGated() && (
                 <p className="text-center text-[10px] text-muted-foreground">
-                  Insufficient token balance to join
+                  {community.tokenGateLogic === "OR"
+                    ? "You need at least one of the required tokens to join"
+                    : "You need all required tokens to join"}
                 </p>
               )}
             </div>
