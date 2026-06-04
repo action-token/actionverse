@@ -247,7 +247,7 @@ export default function AgentChat() {
                             onChange={(e) => setInputMessage(e.target.value)}
                             onKeyPress={handleKeyPress}
                             placeholder="Ask me anything..."
-                            disabled={chatMutation.isLoading}
+                            disabled
                             className="flex-1 bg-white rounded-full px-5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50 transition-all duration-200"
                         />
 
@@ -326,8 +326,11 @@ export default function AgentChat() {
                                 </button>
                             </div>
                         </div>
+                        <div className="flex-1 space-y-4 overflow-y-auto p-6 bg-gradient-to-b from-background via-background to-background/80">
+                            <span>This feature is currently under development.</span>
+                        </div>
 
-                        {/* Messages Container */}
+                        {/*
                         <div className="flex-1 space-y-4 overflow-y-auto p-6 bg-gradient-to-b from-background via-background to-background/80">
                             {messages.map((message, index) => (
                                 <div key={index} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -367,7 +370,7 @@ export default function AgentChat() {
                                 </div>
                             )}
                             <div ref={messagesEndRef} />
-                        </div>
+                        </div> */}
                     </div>
                 </>
             )}
