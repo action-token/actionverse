@@ -25,6 +25,7 @@ import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Badge } from "../shadcn/ui/badge";
 import { Label } from "../shadcn/ui/label";
 import { Input } from "../shadcn/ui/input";
+import { CreateStorage } from "../creator/create-creator";
 
 export const PlaceMarketFormSchema = z.object({
     placingCopies: z
@@ -56,31 +57,12 @@ export default function StorageCreateDialog({
             return <PlaceNFT2StorageModal item={item} />;
         } else {
             // create storage
-            return <StorageCreate />;
+            return <CreateStorage className="w-full" />;
         }
     }
 }
 
-function StorageCreate() {
-    const [isOpen, setIsOpen] = useState(false);
 
-    return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-                <Button variant="outline">Place in storage (*)</Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Need to Create Storage Account</DialogTitle>
-                    <DialogDescription>
-                        First you need to create your storage account , then try placing the
-                        item to the storage
-                    </DialogDescription>
-                </DialogHeader>
-            </DialogContent>
-        </Dialog>
-    );
-}
 
 function PlaceNFT2StorageModal({
     item,
@@ -149,7 +131,7 @@ function PlaceNFT2StorageModal({
     return (
         <Dialog open={isOpen} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="vibrant" className="shadow-sm shadow-foreground"
+                <Button className="shadow-sm shadow-foreground"
                     onClick={() => setOpen(true)}>
                     Place item for sale
                 </Button>
