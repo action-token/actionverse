@@ -2243,6 +2243,7 @@ export const BountyRoute = createTRPCRouter({
           imageUrls: true,
           priceInUSD: true,
           priceInBand: true,
+          priceInXLM: true,
           requiredBalance: true,
           requiredBalanceCode: true,
           requiredBalanceIssuer: true,
@@ -2251,6 +2252,17 @@ export const BountyRoute = createTRPCRouter({
           bountyType: true,
           status: true,
           creatorId: true,
+          createdAt: true,
+          endDate: true,
+          latitude: true,
+          longitude: true,
+          payNow: true,
+          creator: {
+            select: {
+              name: true,
+              profileUrl: true,
+            },
+          },
           _count: { select: { participants: true } },
         },
       });

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { Plus } from "lucide-react"
 
+import { BetaBadge } from "~/components/common/beta-badge"
 import { Button } from "~/components/shadcn/ui/button"
 import { api } from "~/utils/api"
 import { CommunityCard } from "~/components/community/community-card"
@@ -45,7 +46,10 @@ const CommunityPage = () => {
       {/* Header */}
       <div className="border-b bg-secondary px-4 py-4 backdrop-blur-sm md:px-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Communities</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">Communities</h1>
+            <BetaBadge />
+          </div>
           {session?.user && (
             <Button
               onClick={() => setIsOpen(true)}

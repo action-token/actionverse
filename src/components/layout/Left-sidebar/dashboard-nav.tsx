@@ -11,6 +11,7 @@ import { useSidebar } from "~/hooks/use-sidebar"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
 import { Icons } from "./icons"
 import { Button } from "~/components/shadcn/ui/button"
+import { BetaBadge } from "~/components/common/beta-badge"
 import { NavItem } from "~/types/icon-types"
 
 interface DashboardNavProps {
@@ -113,9 +114,12 @@ export function DashboardNav({ items, setOpen }: DashboardNavProps) {
                       {isMinimized ? (
                         <Icon />
                       ) : (
-                        <div className="flex items-center justify-center gap-4">
+                        <div className="flex flex-1 items-center gap-3">
                           <Icon />
-                          <span className="mr-2 truncate">{item.title}</span>
+                          <span className="truncate">{item.title}</span>
+                          {item.badge && (
+                            <BetaBadge className="ml-auto shrink-0" />
+                          )}
                         </div>
                       )}
                     </Button>

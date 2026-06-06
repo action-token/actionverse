@@ -9,6 +9,7 @@ export interface NavItem {
     label?: string;
     description?: string;
     path?: string;
+    badge?: string;
 }
 
 export interface NavItemWithChildren extends NavItem {

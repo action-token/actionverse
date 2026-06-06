@@ -3,7 +3,7 @@
 import { useRouter } from "next/router"
 import { useSession } from "next-auth/react"
 import Image from "next/image"
-import { useRef, useState, useEffect, useCallback } from "react"
+
 import { formatDistanceToNow } from "date-fns"
 import {
   Shield,
@@ -44,24 +44,6 @@ const CommunityDetailPage = () => {
   const postModal = useCommunityPostModalStore()
   const communityModal = useCommunityModalStore()
   const utils = api.useUtils()
-
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const descriptionRef = useRef<HTMLDivElement>(null)
-  const [showStickyHeader, setShowStickyHeader] = useState(false)
-
-  const handleScroll = useCallback(() => {
-    if (!descriptionRef.current || !scrollRef.current) return
-    const descBottom = descriptionRef.current.getBoundingClientRect().bottom
-    const scrollTop = scrollRef.current.getBoundingClientRect().top
-    setShowStickyHeader(descBottom < scrollTop)
-  }, [])
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    el.addEventListener("scroll", handleScroll, { passive: true })
-    return () => el.removeEventListener("scroll", handleScroll)
-  }, [handleScroll])
 
   const { data: community, isLoading } =
     api.community.community.getById.useQuery(
@@ -118,44 +100,12 @@ const CommunityDetailPage = () => {
   }
 
   return (
-    <div className="flex h-[calc(100vh-11vh)] w-full flex-col overflow-hidden">
+    <div className="flex h-[calc(100dvh-88px)] w-full flex-col overflow-hidden">
       {/* Content area: main scrollable + fixed sidebar */}
       <div className="flex flex-1 overflow-hidden">
         {/* Main scrollable area */}
         <div className="relative flex-1 overflow-hidden">
-          {/* Sticky header — absolutely positioned overlay */}
-          <div
-            className={`absolute left-0 right-0 top-0 z-20 border-b bg-background/95 backdrop-blur-sm transition-all duration-200 ${showStickyHeader
-              ? "translate-y-0 opacity-100"
-              : "-translate-y-full opacity-0 pointer-events-none"
-              }`}
-          >
-            <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-2 md:px-6">
-              <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg">
-                <Image
-                  src={community.profileUrl}
-                  alt={community.title}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-              <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
-                {community.title}
-              </h2>
-              {canPost && (
-                <Button
-                  size="sm"
-                  className="gap-1.5 rounded-md px-4"
-                  onClick={openPostModal}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Create Post
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <div ref={scrollRef} className="h-full overflow-y-auto">
+          <div className="h-full overflow-y-auto overscroll-contain">
             {/* Cover + Profile header */}
             <div className="relative">
               <div className="relative h-52 w-full md:h-64">
@@ -238,7 +188,7 @@ const CommunityDetailPage = () => {
             {/* Body */}
             <div className="mx-auto max-w-3xl px-4 py-5 md:px-6">
               {/* Description + badges */}
-              <div ref={descriptionRef} className="space-y-3">
+              <div className="space-y-3">
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   {community.description}
                 </p>
@@ -368,7 +318,7 @@ const CommunityDetailPage = () => {
         </div>
 
         {/* Right sidebar - independent scroll */}
-        <div className="hidden w-80 shrink-0 overflow-y-auto border-l p-4 lg:block">
+        <div className="hidden w-80 shrink-0 overflow-y-auto overscroll-contain border-l p-4 lg:block">
           <CommunityDetailSidebar
             communityId={communityId}
             community={community}
