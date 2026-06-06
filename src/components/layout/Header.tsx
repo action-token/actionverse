@@ -150,11 +150,7 @@ const HeaderButtons = () => {
         },
         enabled: session.data?.user?.id !== undefined,
     });
-    const updateMutation = api.fan.notification.updateNotification.useMutation();
 
-    const updateNotification = () => {
-        updateMutation.mutate();
-    };
 
     const { data: notificationCount } =
         api.fan.notification.getUnseenNotificationCount.useQuery(
@@ -199,10 +195,6 @@ const HeaderButtons = () => {
             <Button
                 className=" relative "
                 variant="destructive"
-                onClick={async () => {
-                    await router.push("/notification");
-                    updateNotification();
-                }}
             >
                 {notificationCount > 0 && (
                     <div className="absolute -top-2 left-0 h-4 w-4  rounded-full bg-primary"></div>

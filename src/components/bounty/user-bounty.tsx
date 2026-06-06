@@ -212,12 +212,15 @@ const UserBountyPage = () => {
         requiredBalanceIssuer: string;
     }
     ) => {
-        const balance = getAssetBalance({
-            code: requiredBalanceCode,
-            issuer: requiredBalanceIssuer
-        })
-
-        return currentWinnerCount < totalWinner && (requiredBalance <= Number(balance));
+        if (currentWinnerCount >= totalWinner) return false;
+        if (requiredBalanceCode && requiredBalanceIssuer) {
+            const balance = Number(getAssetBalance({
+                code: requiredBalanceCode,
+                issuer: requiredBalanceIssuer
+            }) ?? 0);
+            return requiredBalance <= balance;
+        }
+        return requiredBalance <= platformAssetBalance;
     }
     const UpdateWinnerInformation = api.bounty.Bounty.updateWinnerInformation.useMutation(
         {
@@ -1182,116 +1185,116 @@ const UserBountyPage = () => {
                             </CardFooter>
                         </Card>
                     </motion.div >
-                ) : data.requiredBalance > platformAssetBalance ? (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.4 }}
-                        className="max-w-lg mx-auto mt-10"
-                    >
-                        <Card className="border-red-200 dark:border-red-800 shadow-lg bg-white dark:bg-slate-900">
-                            <CardHeader>
-                                <div className="flex justify-center mb-2">
-                                    <div className="h-16 w-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                                        <AlertTriangle size={32} className="text-red-500 dark:text-red-400" />
-                                    </div>
-                                </div>
-                                <CardTitle className="text-center text-xl">Insufficient Balance</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-center text-slate-600 dark:text-slate-400 mb-4">
-                                    To join this bounty, you need a minimum balance of:
-                                </p>
-                                <div className="flex justify-center mb-6">
-                                    <Badge
-                                        variant="outline"
-                                        className="text-lg px-4 py-2 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-                                    >
-                                        {data.requiredBalance} {PLATFORM_ASSET.code}
-                                    </Badge>
-                                </div>
-                                <div className="flex justify-center">
-                                    <Button
-                                        variant="outline"
-                                        className="border-slate-200 dark:border-slate-700"
-                                        onClick={() => router.push("/wallet")}
-                                    >
-                                        Go to Wallet
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </motion.div>
                 ) : (
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className="max-w-lg mx-auto mt-10 px-4"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.6 }}
+                        className="max-w-6xl mx-auto"
                     >
-                        <Card className="overflow-hidden border-0 shadow-lg bg-white dark:bg-slate-900">
-                            <div className="relative h-40">
-                                <Image
-                                    src={data?.imageUrls[0] ?? "/images/logo.png"}
-                                    alt={data?.title}
-                                    width={500}
-                                    height={200}
-                                    className="w-full h-40 object-cover"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent"></div>
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <h1 className="text-xl font-bold text-white mb-1 drop-shadow-md">{data?.title}</h1>
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="default" className="bg-primary/90 shadow-sm">
-                                            <Trophy className="mr-1 h-3 w-3" />
-                                            {data?.priceInUSD > 0 ? `$${data.priceInUSD.toFixed(2)} USDC` : `${data?.priceInBand.toFixed(3)} ${PLATFORM_ASSET.code.toLocaleUpperCase()}`}                                        </Badge>
+                        <Card className="border-0 shadow-xl overflow-hidden">
+                            {/* Same header as joined view */}
+                            <div className="relative">
+                                <motion.div
+                                    initial={{ scale: 1.05, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    transition={{ duration: 0.7, ease: "easeOut" }}
+                                    className="h-80 w-full"
+                                >
+                                    <Image
+                                        src={data?.imageUrls[0] ?? "/images/logo.png"}
+                                        alt={data?.title}
+                                        width={1200}
+                                        height={600}
+                                        className="h-80 w-full object-cover"
+                                        priority
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                                </motion.div>
+
+                                <div className="absolute bottom-0 left-0 right-0 p-6 z-10">
+                                    <div className="bg-gradient-to-t from-black via-black/70 to-transparent absolute inset-0"></div>
+                                    <div className="relative z-10">
+                                        <h1 className="text-3xl md:text-4xl font-bold text-white mb-3 drop-shadow-lg">{data?.title}</h1>
+                                        <div className="flex items-center gap-3 flex-wrap">
+                                            <Badge variant="default" className="bg-primary/90 hover:bg-primary shadow-sm">
+                                                <Trophy className="mr-1 h-4 w-4" />
+                                                {data?.priceInUSD > 0 ? `$${data.priceInUSD.toFixed(2)} USDC` : `${data?.priceInBand.toFixed(3)} ${PLATFORM_ASSET.code.toLocaleUpperCase()}`}
+                                            </Badge>
+                                            <Badge variant="outline" className="bg-black/40 backdrop-blur-sm text-white border-white/30 shadow-sm">
+                                                <Users className="mr-1 h-4 w-4" />
+                                                {data?._count.participants} participants
+                                            </Badge>
+                                            <Badge variant="outline" className="bg-black/40 backdrop-blur-sm text-white border-white/30 shadow-sm">
+                                                <Trophy className="mr-1 h-4 w-4" />
+                                                {data.totalWinner - data.currentWinnerCount} spot{data.totalWinner - data.currentWinnerCount !== 1 ? "s" : ""} left
+                                            </Badge>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <CardContent className="p-6">
-                                <div className="mb-6">
-                                    <h2 className="text-xl font-semibold mb-2">Join this Bounty</h2>
-                                    <p className="text-slate-600 dark:text-slate-400">
-                                        Gain access to this bounty and submit your solutions to win the prize.
-                                    </p>
-                                </div>
-                                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full">
-                                    {
-                                        isEligible({
+
+                            {/* Join banner */}
+                            <div className="border-b bg-muted/50 px-6 py-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-medium">
+                                            {isEligible({
+                                                requiredBalance: data.requiredBalance,
+                                                currentWinnerCount: data.currentWinnerCount,
+                                                totalWinner: data.totalWinner,
+                                                requiredBalanceCode: data.requiredBalanceCode ?? "",
+                                                requiredBalanceIssuer: data.requiredBalanceIssuer ?? "",
+                                            })
+                                                ? "You are eligible to join this bounty"
+                                                : data.currentWinnerCount >= data.totalWinner
+                                                    ? "This bounty has no spots left"
+                                                    : "You need more tokens to join"}
+                                        </p>
+                                        {!isEligible({
                                             requiredBalance: data.requiredBalance,
                                             currentWinnerCount: data.currentWinnerCount,
                                             totalWinner: data.totalWinner,
-                                            requiredBalanceCode: data.requiredBalanceCode,
-                                            requiredBalanceIssuer: data.requiredBalanceIssuer
-                                        }) ?
-                                            <>
-                                                <Button
-                                                    className="h-12 w-full bg-primary text-base shadow-md hover:bg-primary/90"
-                                                    disabled={
-                                                        joinBountyMutation.isLoading || isAlreadyJoin.isLoading
-                                                    }
-                                                    onClick={() => handleJoinBounty(data.id)}
-                                                >
-                                                    {joinBountyMutation.isLoading ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <Loader2 className="h-5 w-5 animate-spin" />
-                                                            <span>Joining...</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center gap-2">
-                                                            <UserPlus className="h-5 w-5" />
-                                                            <span>Join Bounty</span>
-                                                        </div>
-                                                    )}
-                                                </Button>
-                                            </> :
-                                            <>
-                                                <p className="text-xs text-red-500 mt-2">
-                                                    {data.currentWinnerCount >= data.totalWinner ? "No spots left" : `${data.requiredBalance.toFixed(1)} ${data.requiredBalanceCode.toLocaleUpperCase()} required`}
-                                                </p>
-                                            </>
-                                    }
-                                </motion.div>
+                                            requiredBalanceCode: data.requiredBalanceCode ?? "",
+                                            requiredBalanceIssuer: data.requiredBalanceIssuer ?? "",
+                                        }) && data.currentWinnerCount < data.totalWinner && (
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                Requires {data.requiredBalance} {data.requiredBalanceCode?.toUpperCase() ?? PLATFORM_ASSET.code.toUpperCase()}
+                                            </p>
+                                        )}
+                                    </div>
+                                    {isEligible({
+                                        requiredBalance: data.requiredBalance,
+                                        currentWinnerCount: data.currentWinnerCount,
+                                        totalWinner: data.totalWinner,
+                                        requiredBalanceCode: data.requiredBalanceCode ?? "",
+                                        requiredBalanceIssuer: data.requiredBalanceIssuer ?? "",
+                                    }) ? (
+                                        <Button
+                                            className="gap-2"
+                                            disabled={joinBountyMutation.isLoading}
+                                            onClick={() => handleJoinBounty(data.id)}
+                                        >
+                                            {joinBountyMutation.isLoading ? (
+                                                <><Loader2 className="h-4 w-4 animate-spin" /> Joining...</>
+                                            ) : (
+                                                <><UserPlus className="h-4 w-4" /> Join Bounty</>
+                                            )}
+                                        </Button>
+                                    ) : data.currentWinnerCount < data.totalWinner ? (
+                                        <Button variant="outline" onClick={() => router.push("/wallet")}>
+                                            Go to Wallet
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            </div>
+
+                            {/* Read-only bounty details */}
+                            <CardContent className="px-6 pt-6 pb-8">
+                                <h2 className="text-lg font-semibold mb-3">About this Bounty</h2>
+                                <div className="prose prose-slate dark:prose-invert max-w-none">
+                                    <SafeHTML html={data.description} />
+                                </div>
                             </CardContent>
                         </Card>
                     </motion.div>

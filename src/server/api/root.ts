@@ -16,6 +16,7 @@ import { triggerRouter } from "./routers/trigger";
 import { qrRouter } from "./routers/qr";
 import { agentRouter } from "./routers/agent";
 import { beamRouter } from "./routers/beam";
+import { communityRouters } from "./routers/community/root";
 
 /**
  * This is the primary router for your server.
@@ -38,8 +39,8 @@ export const appRouter = createTRPCRouter({
   trigger: triggerRouter,
   qr: qrRouter,
   agent: agentRouter,
-  beam: beamRouter
-
+  beam: beamRouter,
+  community: communityRouters,
 });
 
 // export type definition of API

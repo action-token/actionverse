@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "~/components/shadcn/ui/button"
-import { Award, Calendar, Coins, Compass, DollarSign, DollarSignIcon, Filter, Loader2, MapPin, Trophy, Users } from 'lucide-react'
+import { Award, Calendar, Coins, Compass, DollarSign, DollarSignIcon, Filter, Loader2, MapPin, Share2, Trophy, Users } from 'lucide-react'
 import { HorizontalScroll } from "../common/horizontal-scroll"
 import { api } from "~/utils/api"
 import { BountyType } from "@prisma/client"
@@ -20,6 +20,7 @@ import { useSession } from "next-auth/react"
 import BountyList from "./bounty-list"
 import { useEffect, useState } from "react"
 import { checkStellarAccountActivity } from "~/lib/helper/helper_client"
+import { useShareBountyModalStore } from "../store/share-bounty-modal-store"
 
 export function BountySection() {
     const session = useSession()
@@ -123,6 +124,8 @@ interface BountyProps {
     priceInUSD: number;
     priceInBand: number;
     requiredBalance: number;
+    requiredBalanceCode?: string | null;
+    requiredBalanceIssuer?: string | null;
     currentWinnerCount: number;
     latitude?: number | null;
     longitude?: number | null;
@@ -152,6 +155,8 @@ export function BountyCard({
     priceInUSD,
     priceInBand,
     requiredBalance,
+    requiredBalanceCode,
+    requiredBalanceIssuer,
     currentWinnerCount,
     latitude,
     longitude,
@@ -166,9 +171,9 @@ export function BountyCard({
     isOwner,
 }: BountyProps) {
     const router = useRouter()
-    const { platformAssetBalance } = useUserStellarAcc();
-    console.log("Platform Asset Balance", platformAssetBalance)
+    const { platformAssetBalance, getAssetBalance } = useUserStellarAcc();
     const session = useSession()
+    const shareBountyModal = useShareBountyModalStore()
 
     const getBountyTypeIcon = (type: BountyType) => {
         switch (type) {
@@ -203,13 +208,21 @@ export function BountyCard({
         }
     }
 
-    const isEligible = (bounty: {
-        currentWinnerCount: number;
-        totalWinner: number;
-        requiredBalance: number;
-    }) => {
+    const isEligible = () => {
         if (session.status === 'unauthenticated') return false
-        return currentWinnerCount < totalWinner && requiredBalance <= platformAssetBalance
+        if (currentWinnerCount >= totalWinner) return false
+        if (requiredBalanceCode && requiredBalanceIssuer) {
+            const balance = Number(getAssetBalance({ code: requiredBalanceCode, issuer: requiredBalanceIssuer }) ?? 0)
+            return requiredBalance <= balance
+        }
+        return requiredBalance <= platformAssetBalance
+    }
+
+    const getIneligibleReason = () => {
+        if (session.status === 'unauthenticated') return "Connect wallet to join"
+        if (currentWinnerCount >= totalWinner) return "No spots left"
+        const tokenName = requiredBalanceCode?.toUpperCase() ?? PLATFORM_ASSET.code.toUpperCase()
+        return `${requiredBalance.toFixed(1)} ${tokenName} required`
     }
 
     const joinBountyMutation = api.bounty.Bounty.joinBounty.useMutation({
@@ -223,145 +236,135 @@ export function BountyCard({
         joinBountyMutation.mutate({ BountyId: id });
     };
 
+    const spotsLeft = totalWinner - currentWinnerCount
+
+    const getRewardText = () => {
+        if (priceInUSD > 0) return `$${priceInUSD.toFixed(2)}`
+        if (priceInBand > 0) return `${priceInBand.toFixed(2)} ${PLATFORM_ASSET.code.toUpperCase()}`
+        return "Free"
+    }
+
     return (
         <Card
             className={cn(
-                "w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-md snap-start",
+                "group w-[320px] flex-shrink-0 cursor-pointer overflow-hidden bg-card shadow-sm ring-1 ring-border/50 snap-start transition-all duration-300 hover:shadow-lg hover:ring-border",
             )}
+            onClick={() => router.push(`/bounty/${id}`)}
         >
-            <div className="relative h-40 w-full">
-                <ImageWithFallback src={imageUrls[0] ?? "/images/action/logo.png"} alt={title} fill className={
-                    `${imageUrls[0] ? "object-cover" : "object-contain"}`
-                } />
-            </div>
-            <CardHeader className="p-4 pb-0">
-                <div className="flex items-center justify-between">
-                    <Badge variant="outline" className={cn("flex items-center gap-1", getBountyTypeColor(bountyType))}>
+            <div className="relative h-44 w-full overflow-hidden">
+                <ImageWithFallback
+                    src={imageUrls[0] ?? "/images/action/logo.png"}
+                    alt={title}
+                    fill
+                    className={`${imageUrls[0] ? "object-cover" : "object-contain"} transition-transform duration-500 group-hover:scale-105`}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+
+                <div className="absolute left-3 top-3">
+                    <Badge variant="secondary" className={cn("gap-1 bg-background/80 backdrop-blur-sm text-[10px]", getBountyTypeColor(bountyType))}>
                         {getBountyTypeIcon(bountyType)}
                         {getBountyTypeLabel(bountyType)}
                     </Badge>
-                    <div className="flex flex-col items-end gap-1">
-                        <Badge variant="outline">
-                            <FaDollarSign />{priceInUSD.toFixed(2)}
-                        </Badge>
-                    </div>
                 </div>
-                <CardTitle className="mt-2 text-lg truncate">{title}</CardTitle>
-                {/* <CardDescription className="line-clamp-2 text-muted-foreground truncate">{description}</CardDescription> */}
-            </CardHeader>
-            <CardContent className="p-4 pt-2">
-                <div className="space-y-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span>
-                            {currentWinnerCount} / {totalWinner} winners
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span>
-                            {_count.participants} participants
-                        </span>
-                    </div>
-                </div>
-            </CardContent>
-            <CardFooter className="bg-secondary p-4 flex flex-col items-center">
-                <div className="flex items-center justify-between w-full mb-2">
-                    <div className="flex items-center text-sm">
-                        <Award className="mr-1 inline-block h-4 w-4" />
-                        <span className="font-semibold">
-                            {priceInBand.toFixed(2)} {PLATFORM_ASSET.code.toLocaleUpperCase()}
-                        </span>
-                    </div>
-                    <Badge
-                        className="shadow-sm shadow-foreground/10 rounded-sm"
-                        variant={currentWinnerCount === totalWinner ? "destructive" : "default"}
-                    >
-                        {currentWinnerCount === totalWinner ? "Completed" : "Active"}
+
+                <div className="absolute right-3 top-3">
+                    <Badge className="bg-primary/90 text-[10px] font-semibold text-primary-foreground">
+                        <Award className="mr-1 h-3 w-3" />
+                        {getRewardText()}
                     </Badge>
                 </div>
-                {(isJoined || isOwner) ? (
+
+                <div className="absolute bottom-3 left-3 right-3">
+                    <h3 className="truncate text-base font-bold text-white drop-shadow-sm">{title}</h3>
+                </div>
+            </div>
+
+            <div className="p-3">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5" />
+                        {_count.participants} joined
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <Trophy className="h-3.5 w-3.5" />
+                        {spotsLeft > 0 ? `${spotsLeft} spot${spotsLeft !== 1 ? "s" : ""} left` : "Full"}
+                    </span>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                    {(isJoined || isOwner) ? (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 flex-1 rounded-lg text-xs font-medium"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                router.push(`/bounty/${id}`)
+                            }}
+                        >
+                            View Bounty
+                        </Button>
+                    ) : isEligible() ? (
+                        <Button
+                            size="sm"
+                            className="h-8 flex-1 rounded-lg text-xs font-medium"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                handleJoinBounty(id)
+                            }}
+                            disabled={joinBountyMutation.isLoading}
+                        >
+                            {joinBountyMutation.isLoading && id === joinBountyMutation.variables?.BountyId
+                                ? <span className="flex items-center gap-1.5"><Spinner size='small' className="text-foreground" /> Joining...</span>
+                                : "Join Bounty"}
+                        </Button>
+                    ) : (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 flex-1 rounded-lg text-xs font-medium"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                router.push(`/bounty/${id}`)
+                            }}
+                        >
+                            View Bounty
+                        </Button>
+                    )}
                     <Button
-                        onClick={() => {
-                            router.push(`/bounty/${id}`)
-                        }}
-                        variant="default" className="w-full mt-2 shadow-sm shadow-foreground/10">
-                        View
-                    </Button>
-                ) : (
-                    <Button variant="default"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 shrink-0 p-0"
                         onClick={(e) => {
                             e.stopPropagation()
-                            handleJoinBounty(id)
+                            shareBountyModal.openWithBounty(id)
                         }}
-                        className="w-full mt-2 shadow-sm shadow-foreground/10" disabled={!isEligible({
-                            currentWinnerCount,
-                            totalWinner,
-                            requiredBalance,
-                        })}>
-                        {joinBountyMutation.isLoading
-                            && id === joinBountyMutation.variables?.BountyId
-                            ? <span className="flex items-center justify-center gap-2">
-                                <Spinner size='small' className="text-foreground" />
-                                Joining...
-                            </span> : "Join"}
+                    >
+                        <Share2 className="h-3.5 w-3.5" />
                     </Button>
+                </div>
+
+                {!isJoined && !isOwner && (
+                    <p className={cn("mt-2 text-center text-[10px] font-medium", isEligible() ? "text-emerald-600" : "text-muted-foreground")}>
+                        {isEligible() ? "You are eligible to join" : getIneligibleReason()}
+                    </p>
                 )}
-                {!isEligible({
-                    currentWinnerCount,
-                    totalWinner,
-                    requiredBalance,
-                }) ? (
-                    <p className="text-xs text-destructive mt-2">
-                        {currentWinnerCount >= totalWinner ? "No spots left" : session.status === 'unauthenticated' ? "Please connect your wallet" : `${requiredBalance.toFixed(1)} ${PLATFORM_ASSET.code.toLocaleUpperCase()} required`}
-                    </p>
-                ) :
-                    <p className="text-xs text-primary mt-2">
-                        {currentWinnerCount >= totalWinner ? "No spots left" :
-                            isOwner ? "You are the owner" : isJoined ? "You have already joined" : "You are eligible to join"
-                        }
-                    </p>
-                }
-            </CardFooter>
+            </div>
         </Card>
     )
 }
 
 export function BountyCardSkeleton() {
     return (
-        <Card className="w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-md snap-start">
-            {/* Image placeholder */}
-            <div className="relative h-40 w-full">
-                <Skeleton className="h-full w-full" />
+        <Card className="w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-sm ring-1 ring-border/50 snap-start">
+            <Skeleton className="h-44 w-full" />
+            <div className="p-3 space-y-3">
+                <div className="flex justify-between">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-20" />
+                </div>
+                <Skeleton className="h-8 w-full" />
             </div>
-            <CardHeader className="p-4 pb-0">
-                <div className="flex items-center justify-between">
-                    <Skeleton className="h-5 w-24" /> {/* Badge */}
-                    <Skeleton className="h-5 w-16" /> {/* Reward */}
-                </div>
-                <Skeleton className="mt-2 h-6 w-40" /> {/* Title */}
-                <Skeleton className="mt-1 h-4 w-full" /> {/* Description line 1 */}
-                <Skeleton className="mt-1 h-4 w-3/4" /> {/* Description line 2 */}
-            </CardHeader>
-            <CardContent className="p-4 pt-2">
-                <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                        <Skeleton className="h-4 w-4" /> {/* Icon */}
-                        <Skeleton className="h-4 w-32" /> {/* Location */}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Skeleton className="h-4 w-4" /> {/* Icon */}
-                        <Skeleton className="h-4 w-24" /> {/* Deadline */}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Skeleton className="h-4 w-4" /> {/* Icon */}
-                        <Skeleton className="h-4 w-36" /> {/* Participants */}
-                    </div>
-                </div>
-            </CardContent>
-            <CardFooter className="p-4 pt-0">
-                <Skeleton className="h-9 w-full" /> {/* Button */}
-            </CardFooter>
         </Card>
     )
 }
