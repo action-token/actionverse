@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  Share2,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
@@ -26,6 +27,7 @@ import toast from "react-hot-toast"
 import { useSession } from "next-auth/react"
 import { MediaGrid } from "./media-grid"
 import { useEditCommunityPostModalStore } from "../store/edit-community-post-modal-store"
+import { useShareModalStore } from "../store/share-modal-store"
 import { BountyLinksFromContent } from "../bounty/bounty-embed-card"
 
 const CONTENT_COLLAPSE_LENGTH = 280
@@ -54,6 +56,7 @@ interface CommunityPostCardProps {
     isLiked: boolean
   }
   communityOwnerId: string
+  communityId: number
 }
 
 function PostContent({ content }: { content: string }) {
@@ -101,6 +104,7 @@ function PostContent({ content }: { content: string }) {
 export function CommunityPostCard({
   post,
   communityOwnerId,
+  communityId,
 }: CommunityPostCardProps) {
   const { data: session } = useSession()
   const [showComments, setShowComments] = useState(false)
@@ -109,6 +113,7 @@ export function CommunityPostCard({
   const [isLiked, setIsLiked] = useState(post.isLiked)
   const utils = api.useUtils()
   const { openWithPost } = useEditCommunityPostModalStore()
+  const { setIsOpen: setShareModalOpen, setData: setShareData } = useShareModalStore()
 
   const isAuthor = session?.user?.id === post.author.id
   const isOwner = session?.user?.id === communityOwnerId
@@ -246,6 +251,17 @@ export function CommunityPostCard({
               {post._count.comments}
             </Button>
           )}
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setShareData(`/community/${communityId}/post/${post.id}`)
+              setShareModalOpen(true)
+            }}
+          >
+            <Share2 className="mr-1 h-4 w-4" />
+          </Button>
         </div>
 
         {/* Comments section */}

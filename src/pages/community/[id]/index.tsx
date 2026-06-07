@@ -283,6 +283,7 @@ const CommunityDetailPage = () => {
                           key={post.id}
                           post={post}
                           communityOwnerId={community.ownerId}
+                          communityId={communityId}
                         />
                       )),
                     )}
