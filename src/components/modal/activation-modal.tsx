@@ -158,7 +158,7 @@ export function ActivationModal({
                                         <div className='flex items-center justify-center'>
                                             <Image
                                                 src="/asset/action.ico"
-                                                alt="Actionverse Logo"
+                                                alt="Action Tokens Logo"
                                                 width={32}
                                                 height={32}
                                                 className="inline-block mr-3 rounded-sm"

@@ -412,7 +412,7 @@ export default function Home() {
                   </div>
                   <div>
                     <h3 className="font-bold mb-1">Collect, Explore, Redeem</h3>
-                    <p className="text-muted-foreground">Navigate the Actionverse map, complete geo-fenced and token-gated challenges in augmented reality, and redeem digital or physical rewards—all from your phone.</p>
+                    <p className="text-muted-foreground">Navigate the Action Tokens map, complete geo-fenced and token-gated challenges in augmented reality, and redeem digital or physical rewards—all from your phone.</p>
                   </div>
                 </motion.div>
 
@@ -778,7 +778,7 @@ export function Header({ className, sidebarExpanded = false }: HeaderProps) {
                   className="h-10 w-20"
                 />
                 <h1 className="relative text-xl font-bold capitalize text-black md:text-4xl">
-                  <p className="">ACTIONVERSE</p>
+                  <p className="">ACTION TOKENS</p>
                   <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
                 </h1>
               </div>

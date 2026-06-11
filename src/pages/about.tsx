@@ -45,13 +45,13 @@ export default function AboutPage() {
                     className="text-center mb-16"
                 >
                     <h1 className="text-5xl font-bold text-gray-800 mb-6">
-                        Discover the <span className="text-green-600">Actionverse</span> Experience
+                        Discover the <span className="text-green-600">Action Tokens</span> Experience
                     </h1>
                     <motion.p
                         variants={fadeInUp}
                         className="mx-auto max-w-3xl text-xl text-gray-600 mb-8"
                     >
-                        Actionverse is an innovative platform designed to transform the way people engage with organizations through gamified experiences. Our mission is to bridge the digital and physical worlds by enabling users to explore their surroundings, discover rewards, and connect with organizations in a fun, interactive way.
+                        Action Tokens is an innovative platform designed to transform the way people engage with organizations through gamified experiences. Our mission is to bridge the digital and physical worlds by enabling users to explore their surroundings, discover rewards, and connect with organizations in a fun, interactive way.
                     </motion.p>
                     <motion.div
                         variants={fadeInUp}
@@ -84,7 +84,7 @@ export default function AboutPage() {
                                     For Organization:
                                 </h2>
                                 <p className="mb-6 text-gray-600">
-                                    Actionverse offers a dynamic platform for organizations to create impactful, localized campaigns. With our intuitive dashboard, organizations can:
+                                    Action Tokens offers a dynamic platform for organizations to create impactful, localized campaigns. With our intuitive dashboard, organizations can:
                                 </p>
                                 <ul className="space-y-3 text-gray-600">
                                     <li className="flex items-start">
@@ -114,7 +114,7 @@ export default function AboutPage() {
                                     For Users:
                                 </h2>
                                 <p className="mb-6 text-gray-600">
-                                    Actionverse turns the world into your playground. Embark on exciting virtual scavenger hunts where you can:
+                                    Action Tokens turns the world into your playground. Embark on exciting virtual scavenger hunts where you can:
                                 </p>
                                 <ul className="space-y-3 text-gray-600">
                                     <li className="flex items-start">
@@ -143,7 +143,7 @@ export default function AboutPage() {
                     className="mb-24"
                 >
                     <h2 className="mb-12 text-center text-3xl font-bold text-gray-800">
-                        Why Choose <span className="text-green-600">Actionverse</span>?
+                        Why Choose <span className="text-green-600">Action Tokens</span>?
                     </h2>
                     <motion.div
                         variants={staggerContainer}
@@ -201,7 +201,7 @@ export default function AboutPage() {
                     <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg p-10">
                         <h2 className="text-3xl font-bold text-gray-800 mb-6">Ready to Transform Engagement?</h2>
                         <p className="mb-8 text-xl text-gray-600">
-                            Whether you{"'re"} hunting for rewards or driving organization visibility, Actionverse redefines engagement by merging technology, fun, and creativity.
+                            Whether you{"'re"} hunting for rewards or driving organization visibility, Action Tokens redefines engagement by merging technology, fun, and creativity.
                         </p>
                         <motion.div
                             whileHover={{ scale: 1.05 }}

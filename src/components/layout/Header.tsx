@@ -71,8 +71,7 @@ function Header() {
                                             className=" h-10 w-20"
                                         />
                                         <h1 className="relative text-xl font-bold capitalize text-black md:text-4xl ">
-                                            <p className="">ACTIONVERSE</p>
-                                            <p className="absolute  right-0 top-0 -mr-4 -mt-1  text-xs">TM</p>
+                                            <p className="">ACTION TOKENS</p>
                                         </h1>
 
                                     </div>
@@ -103,7 +102,7 @@ function Header() {
                             />
                         </div>
                         <h1 className="hidden md:block relative text-xl font-bold capitalize text-white  md:text-4xl">
-                            ACTIONVERSE
+                            ACTION TOKENS
                             {/* <ChristmasSleighAnimation /> */}
                             <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
                         </h1>
