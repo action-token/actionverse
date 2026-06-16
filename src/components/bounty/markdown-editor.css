@@ -137,29 +137,47 @@
 }
 
 /* ── Text editing area ─────────────────────────────────────────────── */
+/*
+ * Padding, font-size, and line-height MUST live on the container
+ * (.w-md-editor-text), not on the individual pre/textarea children.
+ *
+ * The textarea is position:absolute;top:0 — it ignores the container's
+ * padding and measures from the container's border-box edge. The pre is
+ * in normal flow and IS offset by the container's padding. Setting
+ * padding directly on the children creates a vertical gap between where
+ * the textarea cursor appears and where the visible pre text is.
+ *
+ * The textarea uses padding:inherit so it picks up the container value
+ * automatically — no direct override needed.
+ */
 .mdx-editor .w-md-editor-text {
   background-color: hsl(var(--secondary));
+  padding: 16px !important;
+  font-size: 14px !important;
+  line-height: 1.65 !important;
 }
 
 .mdx-editor .w-md-editor-text-pre,
 .mdx-editor .w-md-editor-text-input {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif !important;
-  font-size: 14px !important;
-  line-height: 1.65 !important;
   color: hsl(var(--foreground)) !important;
   caret-color: hsl(var(--primary));
   background-color: transparent !important;
-  padding: 16px !important;
+}
+
+/*
+ * The library hardcodes line-height:18px !important on pre>code with
+ * enough specificity to override the container's inherited value. Match
+ * it to the container's line-height so visible text and cursor stay in sync.
+ */
+.mdx-editor .w-md-editor-text-pre > code {
+  font-size: 14px !important;
+  line-height: 1.65 !important;
 }
 
 .mdx-editor .w-md-editor-text-input::placeholder {
   color: hsl(var(--muted-foreground));
-}
-
-/* Caret blink shouldn't disappear in dark mode */
-.mdx-editor .w-md-editor-text-pre {
-  caret-color: hsl(var(--primary));
 }
 
 /* ── Preview pane ──────────────────────────────────────────────────── */

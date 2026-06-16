@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic";
-import { useMemo, useRef, useEffect, useState } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import type { MDEditorProps } from "@uiw/react-md-editor";
 import { commands as defaultCommands } from "@uiw/react-md-editor";
 import { cn } from "~/lib/utils";
@@ -95,16 +95,8 @@ export function MarkdownEditor({
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  // Local mirror so the counter can show even while the parent debounces
-  const [localValue, setLocalValue] = useState(value);
-  useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
-
   const handleChange = (next?: string) => {
-    const v = next ?? "";
-    setLocalValue(v);
-    onChangeRef.current(v);
+    onChangeRef.current(next ?? "");
   };
 
   return (
@@ -123,7 +115,7 @@ export function MarkdownEditor({
         )}
       >
         <MDEditor
-          value={localValue}
+          value={value}
           onChange={handleChange}
           height={minHeight}
           minHeight={minHeight}
