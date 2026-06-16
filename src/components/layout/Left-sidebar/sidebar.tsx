@@ -345,7 +345,7 @@ export function LeftBottom() {
         </Link>
       </div>
       <div className="flex w-full flex-col text-center text-xs text-base-content">
-        <p>© 2025 Action Token</p>
+        <p>© 2026 Action Tokens</p>
         <div className="flex w-full justify-center gap-2 ">
           <Link className="link-hover link" href="/about">
             About

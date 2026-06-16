@@ -18,30 +18,13 @@ const config = {
   reactStrictMode: true,
   images: {
     remotePatterns: [
-      { hostname: "bandcoin-object-store.s3.amazonaws.com" },
-      { hostname: "gateway.pinata.cloud" },
       {
-        hostname: "utfs.io",
-      },
-      { hostname: "app.wadzzo.com" },
-      { hostname: "actionverse.s3.amazonaws.com" },
-      {
-        hostname:"wadzzo.s3.amazonaws.com"
+        protocol: "https",
+        hostname: "**",
       },
       {
-        hostname: "firebasestorage.googleapis.com",
-      },
-      { hostname: "raw.githubusercontent.com" },
-      { hostname: "avatars.githubusercontent.com" },
-      { hostname: "ipfs.io" },
-      {
-        hostname: "app.action-tokens.com",
-      },
-      { hostname: "daisyui.com" },
-      { hostname: "picsum.photos" },
-      { hostname: `${process.env.NEXT_AWS_BUCKET_NAME}.s3.amazonaws.com` },
-      {
-        hostname: `${process.env.NEXT_AWS_BUCKET_NAME}.s3.us-east-1.amazonaws.com`,
+        protocol: "http",
+        hostname: "**",
       },
     ],
   },
@@ -55,8 +38,6 @@ const config = {
       },
     ];
   },
-
- 
 
   /**
    * If you are using `appDir` then you must comment the below `i18n` config out.

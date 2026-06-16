@@ -242,7 +242,7 @@ export function LocationPermissionHandler({ onLocationGranted, onLocationDenied 
                         <div>
                             <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Location Access Required</h2>
                             <p className="text-slate-600 dark:text-slate-400 mb-6">
-                                Actionverse AR needs your location to show nearby pins and provide the full augmented reality
+                                Action Tokens AR needs your location to show nearby pins and provide the full augmented reality
                                 experience.
                             </p>
                         </div>

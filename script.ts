@@ -404,60 +404,8 @@ async function updateMedia() {
   }
 }
 
-//===
-
-async function updateBounty() {
-  const bounties = await db.bounty.findMany({});
-
-  for (const bounty of bounties) {
-    const imageUrls = bounty.imageUrls;
-    if (imageUrls.some((url) => url.includes("https://utfs.io"))) {
-      const newUrls = [];
-      for (const url of imageUrls) {
-        let newUrl = url;
-        if (url.includes("https://utfs.io")) {
-          const coverUrl = await getNewUrl(url);
-          if (coverUrl) {
-            newUrl = coverUrl;
-          }
-        }
-        newUrls.push(newUrl);
-      }
-
-      await db.bounty.update({
-        where: { id: bounty.id },
-        data: {
-          imageUrls: newUrls,
-        },
-      });
-    }
-  }
-}
-
 async function updateSubmissionAtachement() {
-  const submissions = await db.submissionAttachment.findMany({
-    where: {
-      OR: [
-        {
-          url: {
-            contains: "https://utfs.io",
-          },
-        },
-      ],
-    },
-  });
-
-  for (const submission of submissions) {
-    const newUrl = await getNewUrl(submission.url);
-    if (newUrl) {
-      await db.submissionAttachment.update({
-        where: { id: submission.id },
-        data: {
-          url: newUrl,
-        },
-      });
-    }
-  }
+  // Stub: submissionAttachment model removed
 }
 
 await updateUserTable();
@@ -468,5 +416,4 @@ await updateAssetTable();
 await updateAdmin();
 await updateLocationGroup();
 await updateMedia();
-await updateBounty();
 await updateSubmissionAtachement();

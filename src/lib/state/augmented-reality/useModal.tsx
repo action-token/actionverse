@@ -1,4 +1,3 @@
-import { Bounty } from "@prisma/client";
 import { create } from "zustand";
 import { ConsumedLocation } from "~/types/game/location";
 import { LocationCoords } from "~/utils/location";
@@ -6,7 +5,6 @@ import { LocationCoords } from "~/utils/location";
 export type ModalType =
   | "Delete"
   | "LocationInformation"
-  | "JoinBounty"
   | "NearbyPin"
   | "ArQrSelection";
 
@@ -16,12 +14,6 @@ export interface ModalData {
   Collection?: ConsumedLocation;
   userCurrentBalance?: number;
   balance?: number;
-  bounty?: Bounty & {
-    ActionLocation?: ConsumedLocation[];
-    isJoined: boolean;
-    isOwner: boolean;
-  };
-
   userLocation?: LocationCoords | null;
 }
 

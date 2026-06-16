@@ -71,8 +71,7 @@ function Header() {
                                             className=" h-10 w-20"
                                         />
                                         <h1 className="relative text-xl font-bold capitalize text-black md:text-4xl ">
-                                            <p className="">ACTIONVERSE</p>
-                                            <p className="absolute  right-0 top-0 -mr-4 -mt-1  text-xs">TM</p>
+                                            <p className="">ACTION TOKENS</p>
                                         </h1>
 
                                     </div>
@@ -103,7 +102,7 @@ function Header() {
                             />
                         </div>
                         <h1 className="hidden md:block relative text-xl font-bold capitalize text-white  md:text-4xl">
-                            ACTIONVERSE
+                            ACTION TOKENS
                             {/* <ChristmasSleighAnimation /> */}
                             <p className="absolute right-0 top-0 -mr-4 -mt-1 text-xs">TM</p>
                         </h1>
@@ -195,6 +194,7 @@ const HeaderButtons = () => {
             <Button
                 className=" relative "
                 variant="destructive"
+                onClick={() => router.push("/notification")}
             >
                 {notificationCount > 0 && (
                     <div className="absolute -top-2 left-0 h-4 w-4  rounded-full bg-primary"></div>

@@ -69,13 +69,13 @@ export default function HomeScreen() {
     const steps = [
         {
             target: buttonLayouts[0],
-            title: "Welcome to the Actionverse AR!",
-            content: "This tutorial will show you how to use Actionverse to find pins around you, follow your favorite brands, and collect rewards.",
+            title: "Welcome to the Action Tokens AR!",
+            content: "This tutorial will show you how to use Action Tokens to find pins around you, follow your favorite brands, and collect rewards.",
         },
         {
             target: buttonLayouts[1],
-            title: "Actionverse Balance",
-            content: "The Actionverse Balance displays your Actionverse count. Check the Bounty Board for the latest ways to earn more Actionverse!",
+            title: "Action Tokens Balance",
+            content: "The Action Tokens Balance displays your Action Tokens count. Check the Bounty Board for the latest ways to earn more Action Tokens!",
         },
         {
             target: buttonLayouts[2],
@@ -95,7 +95,7 @@ export default function HomeScreen() {
         {
             target: buttonLayouts[5],
             title: "Pin Auto Collection",
-            content: "This celebration occurs when a pin has been automatically collected in Actionverse.",
+            content: "This celebration occurs when a pin has been automatically collected in Action Tokens.",
         },
     ]
 

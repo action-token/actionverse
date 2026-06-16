@@ -230,6 +230,127 @@ export const communityPostRouter = createTRPCRouter({
       return { posts: postsWithLikeStatus, nextCursor, locked: false };
     }),
 
+  getById: publicProcedure
+    .input(z.object({ postId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const post = await ctx.db.communityPost.findUnique({
+        where: { id: input.postId },
+        include: {
+          author: {
+            select: { id: true, name: true, image: true },
+          },
+          medias: true,
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
+          },
+          likes: ctx.session?.user
+            ? {
+                where: { userId: ctx.session.user.id },
+                select: { id: true },
+              }
+            : false,
+          community: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              coverUrl: true,
+              profileUrl: true,
+              ownerId: true,
+              isTokenGated: true,
+              tokenGateLogic: true,
+              postPermission: true,
+              memberListVisibility: true,
+              createdAt: true,
+              tokenRequirements: {
+                select: {
+                  id: true,
+                  assetCode: true,
+                  assetIssuer: true,
+                  assetImage: true,
+                  requiredBalance: true,
+                },
+              },
+              owner: {
+                select: { id: true, name: true, image: true },
+              },
+              _count: {
+                select: { members: true, posts: true },
+              },
+              members: {
+                take: 5,
+                orderBy: { joinedAt: "desc" },
+                include: {
+                  user: {
+                    select: { id: true, name: true, image: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!post) throw new TRPCError({ code: "NOT_FOUND", message: "Post not found" });
+
+      const community = post.community;
+
+      const isMember = ctx.session?.user
+        ? !!(await ctx.db.communityMember.findUnique({
+            where: {
+              communityId_userId: {
+                communityId: community.id,
+                userId: ctx.session.user.id,
+              },
+            },
+          }))
+        : false;
+
+      const isOwner = community.ownerId === ctx.session?.user?.id;
+
+      if (community.isTokenGated && !isMember) {
+        return {
+          locked: true as const,
+          post: null,
+          community: {
+            ...community,
+            memberListLocked:
+              community.memberListVisibility === "MEMBERS_ONLY" && !isMember,
+            members:
+              community.memberListVisibility === "MEMBERS_ONLY" && !isMember
+                ? []
+                : community.members,
+            isOwner,
+            isMember,
+          },
+        };
+      }
+
+      return {
+        locked: false as const,
+        post: {
+          ...post,
+          isLiked: Array.isArray(post.likes) && post.likes.length > 0,
+          likes: undefined,
+          community: undefined,
+        },
+        community: {
+          ...community,
+          memberListLocked:
+            community.memberListVisibility === "MEMBERS_ONLY" && !isMember,
+          members:
+            community.memberListVisibility === "MEMBERS_ONLY" && !isMember
+              ? []
+              : community.members,
+          isOwner,
+          isMember,
+        },
+      };
+    }),
+
   like: protectedProcedure
     .input(z.object({ postId: z.number() }))
     .mutation(async ({ input, ctx }) => {

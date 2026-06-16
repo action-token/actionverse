@@ -26,8 +26,15 @@
       --input: 240 5.9% 90%;
       --ring: 142.1 76.2% 36.3%;
       --radius: 0.5rem;
+
+      /* Bounty-themed semantic tokens — gold for trophies / crowns /
+         prizes / winners, warning for paused state, success for live. */
+      --gold: 45 93% 47%;
+      --gold-foreground: 48 100% 96%;
+      --warning: 38 92% 50%;
+      --warning-foreground: 26 83% 14%;
     }
-  
+
 .dark {
   /* Lighter dark background for better visibility */
   --background: 220 17% 17%;
@@ -65,6 +72,12 @@
   --border: 220 17% 30%;
   --input: 220 17% 30%;
   --ring: 142 70% 50%;
+
+  /* Bounty-themed tokens, brighter for dark surfaces */
+  --gold: 45 93% 60%;
+  --gold-foreground: 26 83% 14%;
+  --warning: 38 92% 55%;
+  --warning-foreground: 26 83% 14%;
 }
   }
 

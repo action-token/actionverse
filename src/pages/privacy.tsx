@@ -114,8 +114,8 @@ export default function Privacy() {
                     <p className="mb-4 text-sm text-muted-foreground">Effective Date: March 12, 2024</p>
 
                     <p className="text-card-foreground">
-                        At Actionverse, your privacy is our priority. This policy explains what information we collect, how it is
-                        used, and the rights you have as a user. By using Actionverse&apos;s services, you agree to the collection
+                        At Action Tokens, your privacy is our priority. This policy explains what information we collect, how it is
+                        used, and the rights you have as a user. By using Action Tokens&apos;s services, you agree to the collection
                         and use of your data as outlined here.
                     </p>
                 </motion.div>
@@ -157,7 +157,7 @@ export default function Privacy() {
                         <section id="introduction" className="scroll-mt-24">
                             <h2 className="mb-4 border-b border-border pb-2 text-2xl font-semibold text-foreground">Introduction</h2>
                             <p className="text-muted-foreground">
-                                Actionverse is an innovative platform designed to transform the way people engage with organizations
+                                Action Tokens is an innovative platform designed to transform the way people engage with organizations
                                 through gamified experiences. Our mission is to bridge the digital and physical worlds by enabling users
                                 to explore their surroundings, discover rewards, and connect with organizations in a fun, interactive
                                 way. This <strong className="text-foreground">Privacy Policy</strong> governs how we collect, use, and
@@ -199,7 +199,7 @@ export default function Privacy() {
                                     <h3 className="mb-2 text-xl font-semibold text-foreground">2. Cookies</h3>
                                     <p className="text-muted-foreground">
                                         Cookies are small files stored on your device, often used to identify users anonymously. While
-                                        Actionverse does not use cookies directly, third-party tools integrated into our services may use
+                                        Action Tokens does not use cookies directly, third-party tools integrated into our services may use
                                         cookies to collect and improve data. You can manage cookie preferences through your browser
                                         settings. Note that refusing cookies may limit certain functionalities of our platform.
                                     </p>
@@ -235,7 +235,7 @@ export default function Privacy() {
                             <h2 className="mb-4 border-b border-border pb-2 text-2xl font-semibold text-foreground">
                                 Third-Party Services
                             </h2>
-                            <p className="text-muted-foreground">Actionverse may engage trusted third-party providers to:</p>
+                            <p className="text-muted-foreground">Action Tokens may engage trusted third-party providers to:</p>
                             <ul className="my-3 list-inside list-disc space-y-1 text-muted-foreground">
                                 <li>Facilitate our services</li>
                                 <li>Analyze usage data</li>
@@ -261,7 +261,7 @@ export default function Privacy() {
                                 Children&apos;s Privacy
                             </h2>
                             <p className="text-muted-foreground">
-                                Actionverse does not target or knowingly collect personal information from users under the age of 13. If
+                                Action Tokens does not target or knowingly collect personal information from users under the age of 13. If
                                 we learn that we have inadvertently collected such data, we will delete it promptly. Parents or
                                 guardians aware of any such cases should contact us immediately.
                             </p>
@@ -272,7 +272,7 @@ export default function Privacy() {
                                 Changes to This Privacy Policy
                             </h2>
                             <p className="text-muted-foreground">
-                                Actionverse may update this policy periodically. Changes will be communicated via updates to this
+                                Action Tokens may update this policy periodically. Changes will be communicated via updates to this
                                 document. Continued use of our services after such updates constitutes acceptance of the revised policy.
                             </p>
                         </section>
@@ -285,7 +285,7 @@ export default function Privacy() {
                             <div className="mt-4 rounded-lg border border-border bg-card p-5">
                                 <p className="text-card-foreground">
                                     <strong>Email:</strong>{" "}
-                                    <a href="mailto:support@Actionverse.com" className="text-primary hover:underline">
+                                    <a href="mailto:support@action-tokens.com" className="text-primary hover:underline">
                                         support@action-tokens.com
                                     </a>
                                     <br />
@@ -296,12 +296,12 @@ export default function Privacy() {
                                         target="_blank"
                                         rel="noopener noreferrer"
                                     >
-                                        app.Actionverse.com
+                                        app.action-tokens.com
                                     </a>
                                 </p>
                             </div>
                             <p className="mt-6 text-muted-foreground">
-                                Thank you for trusting Actionverse. Together, we&apos;re empowering organizations and redefining
+                                Thank you for trusting Action Tokens. Together, we&apos;re empowering organizations and redefining
                                 engagement experiences.
                             </p>
                         </section>
@@ -311,7 +311,7 @@ export default function Privacy() {
 
             <footer className="border-t border-border bg-card py-6">
                 <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-                    <p>© {new Date().getFullYear()} Actionverse. All rights reserved.</p>
+                    <p>© {new Date().getFullYear()} Action Tokens. All rights reserved.</p>
                 </div>
             </footer>
         </div>
