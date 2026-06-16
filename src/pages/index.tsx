@@ -9,7 +9,6 @@ import { Menu, Check, Download, ChevronDown, ArrowRight, Sparkles, Users, Coins,
 import { Button } from "~/components/shadcn/ui/button"
 import { cn } from "~/lib/utils"
 import { HomeVideoPlayer } from "~/components/common/home-video-player"
-import { BountySection } from "~/components/bounty/bounty-card"
 import { OrganizationSection } from "~/components/creator/organization-card"
 import { api } from "~/utils/api"
 import { useSession } from "next-auth/react"
@@ -561,9 +560,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* Bounties Section */}
-      <BountySection />
 
       {/* Organizations Section */}
       <OrganizationSection />

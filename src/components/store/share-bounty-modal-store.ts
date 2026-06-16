@@ -1,22 +1,23 @@
 import { create } from "zustand"
 
-interface ShareBountyModalState {
-  isOpen: boolean
-  bountyId: number | null
-  bountyUrl: string
-  setIsOpen: (isOpen: boolean) => void
-  openWithBounty: (bountyId: number) => void
+interface ShareBountyData {
+  id: number
+  title: string
+  prizeAmount: number
+  participantCount?: number
+  submissionCount?: number
 }
 
-export const useShareBountyModalStore = create<ShareBountyModalState>((set) => ({
+interface ShareBountyModalStore {
+  isOpen: boolean
+  bounty: ShareBountyData | null
+  open: (bounty: ShareBountyData) => void
+  close: () => void
+}
+
+export const useShareBountyModalStore = create<ShareBountyModalStore>((set) => ({
   isOpen: false,
-  bountyId: null,
-  bountyUrl: "",
-  setIsOpen: (isOpen) => set({ isOpen }),
-  openWithBounty: (bountyId) =>
-    set({
-      isOpen: true,
-      bountyId,
-      bountyUrl: `/bounty/${bountyId}`,
-    }),
+  bounty: null,
+  open: (bounty) => set({ isOpen: true, bounty }),
+  close: () => set({ isOpen: false, bounty: null }),
 }))

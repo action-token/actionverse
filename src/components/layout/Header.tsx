@@ -194,6 +194,7 @@ const HeaderButtons = () => {
             <Button
                 className=" relative "
                 variant="destructive"
+                onClick={() => router.push("/notification")}
             >
                 {notificationCount > 0 && (
                     <div className="absolute -top-2 left-0 h-4 w-4  rounded-full bg-primary"></div>

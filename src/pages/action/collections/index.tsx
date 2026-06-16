@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useLayoutEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Grid3X3, List, Filter, Star, Trophy, Package, Clock, MapPin, Zap, Eye, EyeOff, ChevronDown, ChevronUp, Navigation } from 'lucide-react'
 import { Button } from "~/components/shadcn/ui/button"
@@ -19,6 +19,15 @@ import { useCollection } from "~/lib/state/augmented-reality/useCollection"
 import { formatDistanceToNow } from "date-fns"
 import { BASE_URL } from "~/lib/common"
 import { addrShort } from "~/utils/utils"
+import { useWalkThrough } from "~/hooks/useWalkthrough"
+import { Walkthrough } from "~/components/common/walkthrough"
+
+type ButtonLayout = {
+    x: number
+    y: number
+    width: number
+    height: number
+}
 
 type ViewMode = 'grid' | 'list'
 type SortOption = 'recent' | 'name' | 'brand' | 'distance' | 'collected'
@@ -31,8 +40,102 @@ export default function CollectionsPage() {
     const [filterBy, setFilterBy] = useState<FilterOption>('all')
     const [showFilters, setShowFilters] = useState(false)
     const [showHeader, setShowHeader] = useState(true)
+    const [showWalkthrough, setShowWalkthrough] = useState(false)
+    const [buttonLayouts, setButtonLayouts] = useState<ButtonLayout[]>([])
     const router = useRouter()
     const { setData } = useCollection()
+    const { data: walkthroughData } = useWalkThrough()
+
+    const searchRef = useRef<HTMLDivElement>(null)
+    const viewToggleRef = useRef<HTMLDivElement>(null)
+    const filterButtonRef = useRef<HTMLButtonElement>(null)
+    const firstCardRef = useRef<HTMLDivElement>(null)
+
+    const steps = [
+        {
+            target: buttonLayouts[0],
+            title: "Welcome to AR Collections!",
+            content: "This is your Collections page where you can discover and manage all available AR experiences around you. Let's walk you through the key features.",
+        },
+        {
+            target: buttonLayouts[1],
+            title: "Search Collections",
+            content: "Use the search bar to quickly find collections by name, brand, or description. Start typing to filter results instantly.",
+        },
+        {
+            target: buttonLayouts[2],
+            title: "Grid & List View",
+            content: "Switch between Grid view for a visual overview or List view for more detailed information about each collection.",
+        },
+        {
+            target: buttonLayouts[3],
+            title: "Sort & Filter",
+            content: "Open the Filters panel to sort collections by name, brand, or distance, and filter by status — All, Collected, Available, Expired, or Nearby.",
+        },
+        {
+            target: buttonLayouts[4],
+            title: "Collection Cards",
+            content: "Tap any collection card to view its full details, including location, description, and collection status. Collected items are highlighted with a trophy badge!",
+        },
+    ]
+
+    useLayoutEffect(() => {
+        const updateLayouts = () => {
+            if (!showWalkthrough) return
+
+            const search = searchRef.current
+            const toggle = viewToggleRef.current
+            const filterBtn = filterButtonRef.current
+            const firstCard = firstCardRef.current
+
+            if (search && toggle && filterBtn) {
+                try {
+                    const headerRect = document.querySelector("h1")?.getBoundingClientRect()
+                    const searchRect = search.getBoundingClientRect()
+                    const toggleRect = toggle.getBoundingClientRect()
+                    const filterRect = filterBtn.getBoundingClientRect()
+                    const cardRect = firstCard?.getBoundingClientRect()
+
+                    const toLayout = (r: DOMRect) => ({ x: r.left, y: r.top, width: r.width, height: r.height })
+
+                    if (searchRect.width > 0 && toggleRect.width > 0 && filterRect.width > 0) {
+                        setButtonLayouts([
+                            headerRect ? toLayout(headerRect) : { x: 0, y: 60, width: 200, height: 40 },
+                            toLayout(searchRect),
+                            toLayout(toggleRect),
+                            toLayout(filterRect),
+                            ...(cardRect && cardRect.width > 0 ? [toLayout(cardRect)] : []),
+                        ])
+                    }
+                } catch (err) {
+                    console.error("Error capturing element layouts:", err)
+                }
+            }
+        }
+
+        let timerId: NodeJS.Timeout
+        const debounced = () => { clearTimeout(timerId); timerId = setTimeout(updateLayouts, 100) }
+        const observer = new MutationObserver(debounced)
+
+        if (showWalkthrough) {
+            observer.observe(document.body, { childList: true, subtree: true })
+            setTimeout(updateLayouts, 500)
+        }
+
+        return () => { observer.disconnect(); clearTimeout(timerId) }
+    }, [showWalkthrough])
+
+    useEffect(() => {
+        try {
+            if (walkthroughData?.showWalkThrough) {
+                setTimeout(() => setShowWalkthrough(true), 1000)
+            } else {
+                setShowWalkthrough(false)
+            }
+        } catch {
+            setShowWalkthrough(false)
+        }
+    }, [walkthroughData])
 
     const balanceRes = useQuery({
         queryKey: ["balance"],
@@ -233,7 +336,7 @@ export default function CollectionsPage() {
                             </div> */}
 
                             {/* Enhanced Search Bar */}
-                            <div className="relative mb-4">
+                            <div ref={searchRef} className="relative mb-4">
                                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
                                 <Input
                                     placeholder="Search collections, brands, or descriptions..."
@@ -245,7 +348,7 @@ export default function CollectionsPage() {
 
                             {/* Enhanced Controls */}
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
+                                <div ref={viewToggleRef} className="flex items-center gap-2">
                                     <Button
                                         variant={viewMode === 'grid' ? "default" : "outline"}
                                         size="sm"
@@ -267,6 +370,7 @@ export default function CollectionsPage() {
                                 </div>
 
                                 <Button
+                                    ref={filterButtonRef}
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setShowFilters(!showFilters)}
@@ -364,6 +468,7 @@ export default function CollectionsPage() {
                             {filteredAndSortedLocations.map((location: ConsumedLocation, index: number) => (
                                 <motion.div
                                     key={location.id}
+                                    ref={index === 0 ? firstCardRef : undefined}
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.4, delay: 0.05 * index }}
@@ -456,6 +561,7 @@ export default function CollectionsPage() {
                             {filteredAndSortedLocations.map((location: ConsumedLocation, index: number) => (
                                 <motion.div
                                     key={location.id}
+                                    ref={index === 0 ? firstCardRef : undefined}
                                     initial={{ opacity: 0, x: -20 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ duration: 0.4, delay: 0.05 * index }}
@@ -571,6 +677,10 @@ export default function CollectionsPage() {
                     </motion.div>
                 )}
             </div>
+
+            {showWalkthrough && (
+                <Walkthrough steps={steps} onFinish={() => setShowWalkthrough(false)} />
+            )}
         </div>
     )
 }

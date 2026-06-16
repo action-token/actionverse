@@ -19,7 +19,6 @@ datasource db {
 // ------------------------NOTIFICATION SCHEMA-------------------------
 enum PinType {
     EVENT
-    BOUNTY
     EXPERIENCE
     LAUNCH
     OTHER
@@ -35,6 +34,7 @@ enum MediaType {
     VIDEO
     IMAGE
     THREE_D
+    DOCUMENT
 }
 
 // ------------------------NOTIFICATION SCHEMA-------------------------
@@ -48,21 +48,16 @@ enum NotificationType {
     FOLLOW
     MEMBER
     REPLY
-    BOUNTY
-    BOUNTY_PARTICIPANT
-    BOUNTY_SUBMISSION
-    BOUNTY_COMMENT
-    BOUNTY_REPLY
-    BOUNTY_WINNER
-    BOUNTY_DOUBT
-    BOUNTY_DOUBT_CREATE
-    BOUNTY_DOUBT_REPLY
     COMMUNITY_POST
     COMMUNITY_COMMENT
     COMMUNITY_REPLY
     COMMUNITY_MEMBER_JOIN
     COMMUNITY_INVITE
     COMMUNITY_REACTION
+    BOUNTY
+    BOUNTY_PARTICIPANT
+    BOUNTY_SUBMISSION
+    BOUNTY_WINNER
 }
 
 // it is kinda notification actor and the entity that is being acted upon
@@ -246,16 +241,15 @@ model Creator {
     pageAsset          CreatorPageAsset?
     followers          Follow[]
     LocationGroup      LocationGroup[]
-    Bounty             Bounty[]
     vanitySubscription VanitySubscription?
     Album              Album[]
     Song               Song[]
     createdAt          DateTime            @default(now())
     Appearance         Appearance[]
 
-    ActionLocation  ActionLocation[]
     SellPageAsset   SellPageAsset[]
     temporalFollows TemporalFollow[]
+    Bounty          Bounty[]
 
     @@index([bio, name])
 }
@@ -376,17 +370,8 @@ model User {
     LocationConsumer LocationConsumer[]
 
     actorNotificationObjects NotificationObject[]
-    BountyParticipant        BountyParticipant[]
-    BountySubmission         BountySubmission[]
-    BountyComment            BountyComment[]
-    Bounty                   Bounty[]
-    BountyDoubt              BountyDoubt[]
-    BountyDoubtMessage       BountyDoubtMessage[]
-
-    BountyWinner BountyWinner[]
 
     RedeemConsumer  RedeemConsumer[]
-    bountyRedeems   BountyRedeem[]
     beams           Beam[]
     beamReactions   BeamReaction[]
     beamComments    BeamComment[]
@@ -399,6 +384,9 @@ model User {
     communityPostLikes               CommunityPostLike[]
     communityActivities              CommunityActivity[]
     communityNotificationPreferences CommunityNotificationPreference[]
+    BountyParticipant                BountyParticipant[]
+    BountySubmission                 BountySubmission[]
+    BountyWinner                     BountyWinner[]
 }
 
 model VerificationToken {
@@ -624,8 +612,6 @@ model LocationGroup {
     type     PinType @default(OTHER) // Added new type field
 
     locations Location[]
-
-    ActionLocation ActionLocation[]
 }
 
 model Location {
@@ -660,187 +646,6 @@ model LocationConsumer {
     createdAt DateTime @default(now())
 }
 
-model ActionLocation {
-    id              Int           @id @default(autoincrement())
-    bountyId        Int
-    bounty          Bounty        @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    locationGroupId String
-    locationGroup   LocationGroup @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
-    serial          Int
-    hidden          Boolean       @default(false)
-    creatorId       String
-    creator         Creator       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    createdAt       DateTime      @default(now())
-}
-
-model Bounty {
-    id          Int     @id @default(autoincrement())
-    title       String
-    description String
-    latitude    Float?
-    longitude   Float?
-    radius      Float?
-    payNow      Boolean @default(false)
-
-    priceInUSD            Float
-    priceInBand           Float
-    totalWinner           Int
-    currentWinnerCount    Int                 @default(0)
-    priceInXLM            Float?
-    requiredBalance       Float
-    requiredBalanceCode   String?
-    requiredBalanceIssuer String?
-    imageUrls             String[]
-    createdAt             DateTime            @default(now())
-    endDate               DateTime?
-    status                BountyStatus        @default(PENDING)
-    creatorId             String
-    creator               Creator             @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    participants          BountyParticipant[] // Users who join the bounty
-    comments              BountyComment[] // Comments on the bounty
-    submissions           BountySubmission[] // Submissions to the bounty
-    doubts                BountyDoubt[]
-    BountyWinner          BountyWinner[]
-    User                  User?               @relation(fields: [userId], references: [id])
-    userId                String?
-    bountyType            BountyType          @default(GENERAL)
-    ActionLocation        ActionLocation[]
-    bountyRedeems         BountyRedeem[]
-
-    @@index([title, description])
-}
-
-model BountyWinner {
-    id        Int      @id @default(autoincrement())
-    bountyId  Int
-    xdr       String?
-    isSwaped  Boolean? @default(false)
-    isClaimed Boolean? @default(false)
-    bounty    Bounty   @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    userId    String
-    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    awardedAt DateTime @default(now()) // Timestamp of when the user was awarded as a winner
-}
-
-model BountyDoubt {
-    id        Int                  @id @default(autoincrement())
-    bountyId  Int
-    bounty    Bounty               @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    userId    String // The user who asked the doubt
-    user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-    updatedAt DateTime?            @updatedAt
-    createdAt DateTime             @default(now())
-    messages  BountyDoubtMessage[] // Relationship for messages between user and creator
-}
-
-model BountyDoubtMessage {
-    id        Int         @id @default(autoincrement())
-    doubtId   Int
-    doubt     BountyDoubt @relation(fields: [doubtId], references: [id], onDelete: Cascade)
-    senderId  String
-    sender    User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
-    role      UserRole    @default(USER)
-    content   String
-    createdAt DateTime    @default(now())
-    updatedAt DateTime?   @updatedAt
-}
-
-enum UserRole {
-    USER
-    CREATOR
-}
-
-enum BountyType {
-    GENERAL
-    LOCATION_BASED
-    SCAVENGER_HUNT
-}
-
-model BountyParticipant {
-    id          Int    @id @default(autoincrement())
-    bountyId    Int
-    bounty      Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    currentStep Int    @default(0) // Current step in the bounty
-    userId      String
-    user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-    joinedAt DateTime @default(now())
-
-    @@unique([bountyId, userId])
-}
-
-model BountySubmission {
-    id        Int                    @id @default(autoincrement())
-    bountyId  Int
-    bounty    Bounty                 @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    userId    String
-    user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-    content   String
-    medias    SubmissionAttachment[]
-    createdAt DateTime               @default(now())
-    status    SubmissionViewType     @default(UNCHECKED)
-}
-
-model SubmissionAttachment {
-    id           Int              @id @default(autoincrement())
-    submissionId Int
-    submission   BountySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade) // Add this relation field
-    url          String
-    name         String
-    size         Int
-    type         String
-    createdAt    DateTime         @default(now())
-}
-
-model BountyComment {
-    id                    Int    @id @default(autoincrement())
-    bountyParentCommentID Int?
-    bountyId              Int
-    bounty                Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    userId                String
-    user                  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-    content               String
-
-    bountyParentBComment BountyComment? @relation("ChildBountyComments", fields: [bountyParentCommentID], references: [id], onDelete: Cascade)
-
-    createdAt DateTime @default(now())
-
-    bountyChildComments BountyComment[] @relation("ChildBountyComments")
-}
-
-enum BountyStatus {
-    PENDING
-    APPROVED
-    REJECTED
-}
-
-enum SubmissionViewType {
-    UNCHECKED
-    CHECKED
-    ONREVIEW
-    APPROVED
-    REJECTED
-}
-
-// I want to add asset redeeming feature
-model BountyRedeem {
-    id           Int     @id @default(autoincrement())
-    bountyId     Int
-    bounty       Bounty  @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    code         String
-    isMarkedUsed Boolean @default(false)
-    isRedeemed   Boolean @default(false)
-    redeemedBy   String?
-    redeemUserId String?
-
-    redeemedUser     User?           @relation(fields: [redeemedBy], references: [id], onDelete: SetNull)
-    redeemedAt       DateTime?
-    createdAt        DateTime        @default(now())
-    redeemConsumer   RedeemConsumer? @relation(fields: [redeemConsumerId], references: [id])
-    redeemConsumerId Int?
-
-    @@unique([bountyId, code])
-}
 
 model Redeem {
     code            String           @id
@@ -857,7 +662,6 @@ model RedeemConsumer {
     code          String
     redeemCode    Redeem         @relation(fields: [code], references: [code], onDelete: Cascade)
     redeemedAt    DateTime       @default(now())
-    bountyRedeems BountyRedeem[]
 }
 
 model OriginReward {
@@ -1167,4 +971,110 @@ model CommunityNotificationPreference {
     reactions   Boolean @default(true)
 
     @@unique([communityId, userId])
+}
+
+// ------------------------- Bounty Feature ------------------------------------
+
+enum BountyStatus {
+    RUNNING
+    PAUSED
+    COMPLETED
+}
+
+enum BountySubmissionStatus {
+    PENDING
+    APPROVED
+    REJECTED
+}
+
+model Bounty {
+    id          Int          @id @default(autoincrement())
+    title       String
+    summary     String
+    description String
+    prizeAmount Float
+    rewardNote  String?
+    maxWinners  Int          @default(1)
+    status      BountyStatus @default(RUNNING)
+    txHash      String?
+
+    creatorId String
+    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+    instructions String[] // what participants must submit
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    participants BountyParticipant[]
+    submissions  BountySubmission[]
+    winners      BountyWinner[]
+
+    @@index([creatorId])
+    @@index([status])
+    @@index([createdAt])
+}
+
+model BountyParticipant {
+    id       Int    @id @default(autoincrement())
+    bountyId Int
+    bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+    userId   String
+    user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    joinedAt DateTime @default(now())
+
+    @@unique([bountyId, userId])
+    @@index([bountyId])
+    @@index([userId])
+}
+
+model BountySubmission {
+    id       Int    @id @default(autoincrement())
+    bountyId Int
+    bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+    userId   String
+    user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    content String
+    status  BountySubmissionStatus @default(PENDING)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    media BountySubmissionMedia[]
+
+    @@index([bountyId])
+    @@index([userId])
+}
+
+model BountySubmissionMedia {
+    id           Int              @id @default(autoincrement())
+    submissionId Int
+    submission   BountySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+    url      String
+    type     MediaType
+    fileName String?
+
+    createdAt DateTime @default(now())
+
+    @@index([submissionId])
+}
+
+model BountyWinner {
+    id       Int    @id @default(autoincrement())
+    bountyId Int
+    bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+    userId   String
+    user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    prizeAmount   Float
+    txHash        String?
+    claimedAt     DateTime?
+    selectedAt    DateTime  @default(now())
+
+    @@unique([bountyId, userId])
+    @@index([bountyId])
+    @@index([userId])
 }

@@ -28,10 +28,19 @@ import { useSession } from "next-auth/react"
 import { MediaGrid } from "./media-grid"
 import { useEditCommunityPostModalStore } from "../store/edit-community-post-modal-store"
 import { useShareModalStore } from "../store/share-modal-store"
-import { BountyLinksFromContent } from "../bounty/bounty-embed-card"
+import { BountyLinkDetector, extractBountyIds } from "~/lib/bounty/bounty-link-detector"
 
 const CONTENT_COLLAPSE_LENGTH = 280
 const CONTENT_COLLAPSE_LINES = 6
+
+// Strip bare bounty URLs so they don't appear as raw text alongside the embed
+function stripBountyUrls(content: string): string {
+  return content
+    .replace(/https?:\/\/[^\s]*\/bounty\/\d+/g, "")
+    .replace(/\/bounty\/\d+/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
 
 interface CommunityPostCardProps {
   post: {
@@ -62,13 +71,19 @@ interface CommunityPostCardProps {
 function PostContent({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false)
 
-  const lineCount = content.split("\n").length
-  const isLong = content.length > CONTENT_COLLAPSE_LENGTH || lineCount > CONTENT_COLLAPSE_LINES
+  // Strip bounty URLs from visible text — the embed card replaces them
+  const hasBountyLinks = extractBountyIds(content).length > 0
+  const displayContent = hasBountyLinks ? stripBountyUrls(content) : content
+
+  const lineCount = displayContent.split("\n").length
+  const isLong = displayContent.length > CONTENT_COLLAPSE_LENGTH || lineCount > CONTENT_COLLAPSE_LINES
 
   if (!isLong || expanded) {
     return (
       <div>
-        <p className="whitespace-pre-wrap text-sm">{content}</p>
+        {displayContent.length > 0 && (
+          <p className="whitespace-pre-wrap text-sm">{displayContent}</p>
+        )}
         {isLong && (
           <button
             onClick={() => setExpanded(false)}
@@ -77,13 +92,14 @@ function PostContent({ content }: { content: string }) {
             Show less
           </button>
         )}
+        <BountyLinkDetector content={content} />
       </div>
     )
   }
 
-  const truncated = content.length > CONTENT_COLLAPSE_LENGTH
-    ? content.slice(0, CONTENT_COLLAPSE_LENGTH)
-    : content.split("\n").slice(0, CONTENT_COLLAPSE_LINES).join("\n")
+  const truncated = displayContent.length > CONTENT_COLLAPSE_LENGTH
+    ? displayContent.slice(0, CONTENT_COLLAPSE_LENGTH)
+    : displayContent.split("\n").slice(0, CONTENT_COLLAPSE_LINES).join("\n")
 
   return (
     <div>
@@ -97,6 +113,7 @@ function PostContent({ content }: { content: string }) {
       >
         Continue to read
       </button>
+      <BountyLinkDetector content={content} />
     </div>
   )
 }
@@ -223,7 +240,6 @@ export function CommunityPostCard({
       <CardContent className="space-y-3 pb-2">
         <PostContent content={post.content} />
         {post.medias.length > 0 && <MediaGrid medias={post.medias} />}
-        <BountyLinksFromContent content={post.content} />
       </CardContent>
 
       <CardFooter className="flex-col items-start gap-2 border-t p-2">

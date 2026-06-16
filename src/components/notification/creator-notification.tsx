@@ -38,14 +38,11 @@ const getNotificationIcon = (type: NotificationType) => {
             return <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
         case NotificationType.FOLLOW:
             return <UserPlus className="h-3.5 w-3.5 text-purple-500" />
+        case NotificationType.BOUNTY:
         case NotificationType.BOUNTY_PARTICIPANT:
         case NotificationType.BOUNTY_SUBMISSION:
+        case NotificationType.BOUNTY_WINNER:
             return <Trophy className="h-3.5 w-3.5 text-amber-500" />
-        case NotificationType.BOUNTY_COMMENT:
-        case NotificationType.BOUNTY_REPLY:
-        case NotificationType.BOUNTY_DOUBT_CREATE:
-        case NotificationType.BOUNTY_DOUBT_REPLY:
-            return <MessagesSquare className="h-3.5 w-3.5 text-green-500" />
         case NotificationType.COMMUNITY_POST:
             return <FileText className="h-3.5 w-3.5 text-violet-500" />
         case NotificationType.COMMUNITY_COMMENT:
@@ -73,14 +70,11 @@ const getNotificationIconBg = (type: NotificationType) => {
             return "bg-purple-100"
         case NotificationType.MEMBER:
             return "bg-teal-100"
+        case NotificationType.BOUNTY:
         case NotificationType.BOUNTY_PARTICIPANT:
         case NotificationType.BOUNTY_SUBMISSION:
+        case NotificationType.BOUNTY_WINNER:
             return "bg-amber-100"
-        case NotificationType.BOUNTY_COMMENT:
-        case NotificationType.BOUNTY_REPLY:
-        case NotificationType.BOUNTY_DOUBT_CREATE:
-        case NotificationType.BOUNTY_DOUBT_REPLY:
-            return "bg-green-100"
         case NotificationType.COMMUNITY_POST:
         case NotificationType.COMMUNITY_COMMENT:
         case NotificationType.COMMUNITY_REPLY:
@@ -111,14 +105,8 @@ const getNotificationMessage = (n: NotificationItem) => {
             return `${actorName} joined your bounty`
         case NotificationType.BOUNTY_SUBMISSION:
             return `${actorName} submitted to your bounty`
-        case NotificationType.BOUNTY_COMMENT:
-            return `${actorName} commented on your bounty`
-        case NotificationType.BOUNTY_REPLY:
-            return `${actorName} replied to your comment on bounty`
-        case NotificationType.BOUNTY_DOUBT_CREATE:
-            return `${actorName} created a chat on your bounty`
-        case NotificationType.BOUNTY_DOUBT_REPLY:
-            return `${actorName} replied to your chat on bounty`
+        case NotificationType.BOUNTY_WINNER:
+            return `${actorName} claimed their bounty reward`
         case NotificationType.COMMUNITY_POST:
             return `${actorName} posted in your community`
         case NotificationType.COMMUNITY_COMMENT:
@@ -144,12 +132,10 @@ const getNotificationUrl = (n: NotificationItem) => {
             return `/fans/posts/${n.notificationObject.entityId}`
         case NotificationType.FOLLOW:
             return `/fans/creator/${n.notificationObject.actor.id}`
+        case NotificationType.BOUNTY:
         case NotificationType.BOUNTY_PARTICIPANT:
         case NotificationType.BOUNTY_SUBMISSION:
-        case NotificationType.BOUNTY_COMMENT:
-        case NotificationType.BOUNTY_REPLY:
-        case NotificationType.BOUNTY_DOUBT_CREATE:
-        case NotificationType.BOUNTY_DOUBT_REPLY:
+        case NotificationType.BOUNTY_WINNER:
             return `/bounty/${n.notificationObject.entityId}`
         case NotificationType.COMMUNITY_POST:
         case NotificationType.COMMUNITY_COMMENT:
