@@ -155,12 +155,12 @@ export default function ActionBountyDetailPage() {
 
   const submittedUserIds = useMemo(() => {
     if (!bounty) return new Set<string>();
-    if (isCreator && submissionsQ.data)
+    if (isOwner && submissionsQ.data)
       return new Set(submissionsQ.data.map((s) => s.userId));
-    if (!isCreator && session?.user?.id && mySubmissions.data?.length)
+    if (!isOwner && session?.user?.id && mySubmissions.data?.length)
       return new Set([session.user.id]);
     return new Set<string>();
-  }, [bounty, isCreator, submissionsQ.data, mySubmissions.data, session]);
+  }, [bounty, isOwner, submissionsQ.data, mySubmissions.data, session]);
 
   /* loading / not found */
   if (bountyQ.isLoading) {
@@ -265,7 +265,7 @@ export default function ActionBountyDetailPage() {
           )}
 
           {/* Creator tools */}
-          {isCreator && (
+          {isOwner && (
             <div className="pt-1 border-t border-border flex flex-wrap items-center gap-2">
               <Select
                 value={bounty.status}
@@ -331,7 +331,7 @@ export default function ActionBountyDetailPage() {
       </div>
 
       {/* ── Main action row (non-creator) ──────────────────────────────── */}
-      {!isCreator && session && (
+      {!isOwner && session && (
         <div className="px-4 pt-3">
           {winner && !winner.claimedAt && (
             <Button
@@ -411,7 +411,7 @@ export default function ActionBountyDetailPage() {
               },
               {
                 value: "reports",
-                label: isCreator ? "Submissions" : "My Reports",
+                label: isOwner ? "Submissions" : "My Reports",
                 count: submissionCount,
               },
             ].map((t) => (
@@ -515,7 +515,7 @@ export default function ActionBountyDetailPage() {
 
           {/* Reports / Submissions */}
           <TabsContent value="reports" className="mt-4">
-            {isCreator ? (
+            {isOwner ? (
               <CreatorReportsTab
                 submissions={submissionsQ.data ?? []}
                 loading={submissionsQ.isLoading}
@@ -562,107 +562,107 @@ export default function ActionBountyDetailPage() {
                   <span className="absolute right-0 top-6 translate-x-1/2 h-2.5 w-2.5 rounded-full bg-primary/60 border-2 border-card z-20" />
                   <div className="max-h-[70vh] overflow-y-auto">
 
-                  {mobilePanel === "requirements" && (
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-center gap-2 pb-2 border-b border-border">
-                        <FileText className="h-3.5 w-3.5 text-primary" />
-                        <p className="text-xs font-bold uppercase tracking-wide text-foreground">Requirements</p>
-                      </div>
-                      {bounty.instructions.length > 0 ? (
-                        <div className="space-y-2">
-                          {bounty.instructions.map((inst, i) => (
-                            <div key={i} className="flex items-start gap-2 text-xs">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                              <span className="text-muted-foreground leading-snug">{inst}</span>
-                            </div>
-                          ))}
+                    {mobilePanel === "requirements" && (
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          <FileText className="h-3.5 w-3.5 text-primary" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-foreground">Requirements</p>
                         </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground italic">No specific requirements.</p>
-                      )}
-                    </div>
-                  )}
-
-                  {mobilePanel === "rewards" && (
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-center gap-2 pb-2 border-b border-border">
-                        <Trophy className="h-3.5 w-3.5 text-gold" />
-                        <p className="text-xs font-bold uppercase tracking-wide text-foreground">Rewards</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Prize pool</p>
-                        <p className="text-2xl font-black text-gold">
-                          {bounty.prizeAmount.toLocaleString()}
-                          <span className="text-sm font-semibold text-muted-foreground ml-1.5">{PLATFORM_ASSET.code}</span>
-                        </p>
-                      </div>
-                      {bounty.maxWinners > 1 && (
-                        <div className="border-t border-border pt-2 space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Per winner</span>
-                            <span className="font-semibold text-foreground">{perWinner.toLocaleString()} {PLATFORM_ASSET.code}</span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Max winners</span>
-                            <span className="font-semibold text-foreground">{bounty.maxWinners}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {mobilePanel === "stats" && (
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-center gap-2 pb-2 border-b border-border">
-                        <Zap className="h-3.5 w-3.5 text-primary" />
-                        <p className="text-xs font-bold uppercase tracking-wide text-foreground">Stats</p>
-                      </div>
-                      {[
-                        { icon: <Target className="h-3.5 w-3.5 text-primary" />, label: "Max Winners", value: String(bounty.maxWinners) },
-                        { icon: <Users className="h-3.5 w-3.5 text-primary" />, label: "Participants", value: String(bounty._count.participants) },
-                        { icon: <FileText className="h-3.5 w-3.5 text-muted-foreground" />, label: "Submissions", value: String(bounty._count.submissions) },
-                        { icon: <Crown className="h-3.5 w-3.5 text-gold" />, label: "Winners", value: `${bounty._count.winners} / ${bounty.maxWinners}` },
-                      ].map(({ icon, label, value }) => (
-                        <div key={label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">{icon}{label}</span>
-                          <span className="text-xs font-bold text-foreground">{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {mobilePanel === "winners" && (
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-center gap-2 pb-2 border-b border-border">
-                        <Crown className="h-3.5 w-3.5 text-gold" />
-                        <p className="text-xs font-bold uppercase tracking-wide text-gold">
-                          Winners ({bounty.winners.length}/{bounty.maxWinners})
-                        </p>
-                      </div>
-                      {bounty.winners.length === 0 ? (
-                        <p className="text-xs text-muted-foreground text-center py-4">No winners yet</p>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {bounty.winners.map((w, i) => (
-                            <div key={w.id} className="flex items-center gap-2.5">
-                              <span className="text-xs font-bold text-gold w-4 shrink-0">#{i + 1}</span>
-                              <Avatar className="h-7 w-7 ring-1 ring-gold/30 shrink-0">
-                                <AvatarImage src={w.user.image ?? ""} />
-                                <AvatarFallback className="text-[9px] bg-gold/10 text-gold">
-                                  {(w.user.name ?? "U").charAt(0)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-semibold text-foreground truncate">{w.user.name ?? "Anonymous"}</p>
-                                <p className="text-[10px] text-gold">{w.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}</p>
+                        {bounty.instructions.length > 0 ? (
+                          <div className="space-y-2">
+                            {bounty.instructions.map((inst, i) => (
+                              <div key={i} className="flex items-start gap-2 text-xs">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                                <span className="text-muted-foreground leading-snug">{inst}</span>
                               </div>
-                              {w.claimedAt && <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />}
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">No specific requirements.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {mobilePanel === "rewards" && (
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          <Trophy className="h-3.5 w-3.5 text-gold" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-foreground">Rewards</p>
                         </div>
-                      )}
-                    </div>
-                  )}
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Prize pool</p>
+                          <p className="text-2xl font-black text-gold">
+                            {bounty.prizeAmount.toLocaleString()}
+                            <span className="text-sm font-semibold text-muted-foreground ml-1.5">{PLATFORM_ASSET.code}</span>
+                          </p>
+                        </div>
+                        {bounty.maxWinners > 1 && (
+                          <div className="border-t border-border pt-2 space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Per winner</span>
+                              <span className="font-semibold text-foreground">{perWinner.toLocaleString()} {PLATFORM_ASSET.code}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Max winners</span>
+                              <span className="font-semibold text-foreground">{bounty.maxWinners}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {mobilePanel === "stats" && (
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          <Zap className="h-3.5 w-3.5 text-primary" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-foreground">Stats</p>
+                        </div>
+                        {[
+                          { icon: <Target className="h-3.5 w-3.5 text-primary" />, label: "Max Winners", value: String(bounty.maxWinners) },
+                          { icon: <Users className="h-3.5 w-3.5 text-primary" />, label: "Participants", value: String(bounty._count.participants) },
+                          { icon: <FileText className="h-3.5 w-3.5 text-muted-foreground" />, label: "Submissions", value: String(bounty._count.submissions) },
+                          { icon: <Crown className="h-3.5 w-3.5 text-gold" />, label: "Winners", value: `${bounty._count.winners} / ${bounty.maxWinners}` },
+                        ].map(({ icon, label, value }) => (
+                          <div key={label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">{icon}{label}</span>
+                            <span className="text-xs font-bold text-foreground">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {mobilePanel === "winners" && (
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          <Crown className="h-3.5 w-3.5 text-gold" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-gold">
+                            Winners ({bounty.winners.length}/{bounty.maxWinners})
+                          </p>
+                        </div>
+                        {bounty.winners.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-4">No winners yet</p>
+                        ) : (
+                          <div className="space-y-2.5">
+                            {bounty.winners.map((w, i) => (
+                              <div key={w.id} className="flex items-center gap-2.5">
+                                <span className="text-xs font-bold text-gold w-4 shrink-0">#{i + 1}</span>
+                                <Avatar className="h-7 w-7 ring-1 ring-gold/30 shrink-0">
+                                  <AvatarImage src={w.user.image ?? ""} />
+                                  <AvatarFallback className="text-[9px] bg-gold/10 text-gold">
+                                    {(w.user.name ?? "U").charAt(0)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-semibold text-foreground truncate">{w.user.name ?? "Anonymous"}</p>
+                                  <p className="text-[10px] text-gold">{w.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}</p>
+                                </div>
+                                {w.claimedAt && <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>{/* end scroll container */}
                 </div>
               )}

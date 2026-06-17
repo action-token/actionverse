@@ -646,7 +646,6 @@ model LocationConsumer {
     createdAt DateTime @default(now())
 }
 
-
 model Redeem {
     code            String           @id
     totalRedeemable Int
@@ -656,12 +655,12 @@ model Redeem {
 }
 
 model RedeemConsumer {
-    id            Int            @id @default(autoincrement())
-    userId        String
-    user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-    code          String
-    redeemCode    Redeem         @relation(fields: [code], references: [code], onDelete: Cascade)
-    redeemedAt    DateTime       @default(now())
+    id         Int      @id @default(autoincrement())
+    userId     String
+    user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    code       String
+    redeemCode Redeem   @relation(fields: [code], references: [code], onDelete: Cascade)
+    redeemedAt DateTime @default(now())
 }
 
 model OriginReward {
@@ -908,7 +907,7 @@ model CommunityPost {
 }
 
 model CommunityPostMedia {
-    id     Int       @id @default(autoincrement())
+    id     Int           @id @default(autoincrement())
     url    String
     type   MediaType
     postId Int
@@ -929,12 +928,12 @@ model CommunityPostLike {
 }
 
 model CommunityComment {
-    id              Int            @id @default(autoincrement())
+    id              Int                @id @default(autoincrement())
     content         String
     postId          Int
-    post            CommunityPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+    post            CommunityPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
     userId          String
-    user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
     parentCommentId Int?
     parentComment   CommunityComment?  @relation("CommunityChildComments", fields: [parentCommentId], references: [id], onDelete: Cascade)
     childComments   CommunityComment[] @relation("CommunityChildComments")
@@ -1003,6 +1002,9 @@ model Bounty {
 
     instructions String[] // what participants must submit
 
+    prizeAssetCode   String
+    prizeAssetIssuer String?
+
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
@@ -1069,10 +1071,10 @@ model BountyWinner {
     userId   String
     user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    prizeAmount   Float
-    txHash        String?
-    claimedAt     DateTime?
-    selectedAt    DateTime  @default(now())
+    prizeAmount Float
+    txHash      String?
+    claimedAt   DateTime?
+    selectedAt  DateTime  @default(now())
 
     @@unique([bountyId, userId])
     @@index([bountyId])

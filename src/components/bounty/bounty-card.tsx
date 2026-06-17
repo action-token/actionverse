@@ -1,12 +1,12 @@
 import { useRouter } from "next/router";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avatar";
 import { BountyStatus } from "@prisma/client";
-import { CheckCircle2, Eye, Loader2, Share2, Users } from "lucide-react";
+import { CheckCircle2, ExternalLink, Eye, Loader2, Share2, Users } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/utils/api";
 import toast from "react-hot-toast";
 import { useSession } from "next-auth/react";
-import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { PLATFORM_ASSET, stellarExpertUrl } from "~/lib/stellar/constant";
 import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-store";
 
 type BountyCardData = {
@@ -20,6 +20,8 @@ type BountyCardData = {
   user: { id: string; name: string | null; image: string | null };
   _count: { participants: number; submissions: number; winners: number };
   maxWinners?: number;
+  prizeAssetCode?: string | null;
+  prizeAssetIssuer?: string | null;
 };
 
 interface BountyCardProps {
@@ -68,6 +70,10 @@ export function BountyCard({
         ? truncate(bounty.description.trim())
         : "";
 
+  const prizeAssetCode = bounty.prizeAssetCode ?? PLATFORM_ASSET.code;
+  const prizeAssetIssuer = bounty.prizeAssetIssuer ?? PLATFORM_ASSET.issuer;
+  const prizeExpertUrl = stellarExpertUrl(prizeAssetCode, prizeAssetIssuer);
+
   const handleJoin = (e: React.MouseEvent) => {
     e.stopPropagation();
     onJoin?.();
@@ -97,8 +103,19 @@ export function BountyCard({
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <CheckCircle2 className="h-[18px] w-[18px] text-primary shrink-0" />
           <span className="text-primary font-bold text-[15px] tracking-[0.01em] leading-none">
-            {bounty.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+            {bounty.prizeAmount.toLocaleString()}
           </span>
+          <a
+            href={prizeExpertUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-0.5 text-primary/80 hover:text-primary transition-colors text-[13px] font-semibold leading-none"
+            title={`View ${prizeAssetCode} on Stellar Expert`}
+          >
+            {prizeAssetCode}
+            <ExternalLink className="h-2.5 w-2.5 ml-0.5" />
+          </a>
           <span className="text-muted-foreground text-[13px] font-normal leading-none">
             / {maxW > 1 ? `${maxW} winners` : "winner"}
           </span>
@@ -209,6 +226,7 @@ export function BountyCardSkeleton() {
 /* ── BountyCardWithJoin ───────────────────────────────────────────────────── */
 export function BountyCardWithJoin({ bounty }: { bounty: BountyCardData }) {
   const { data: session } = useSession();
+  const router = useRouter();
   const isOwner = session?.user?.id === bounty.user.id;
 
   const { data: participation, refetch } = api.bounty.Bounty.getMyParticipation.useQuery(
@@ -219,7 +237,7 @@ export function BountyCardWithJoin({ bounty }: { bounty: BountyCardData }) {
   const joinMutation = api.bounty.Bounty.joinBounty.useMutation({
     onSuccess: () => {
       toast.success("Joined bounty!");
-      void refetch();
+      void router.push(`/bounty/${bounty.id}`);
     },
     onError: (e) => toast.error(e.message),
   });

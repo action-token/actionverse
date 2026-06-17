@@ -14,6 +14,7 @@ import {
   Plus,
   X,
   Trophy,
+  ExternalLink,
   Loader2,
   ArrowLeft,
   Save,
@@ -24,7 +25,7 @@ import {
   Users,
 } from "lucide-react";
 import { api } from "~/utils/api";
-import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { PLATFORM_ASSET, stellarExpertUrl } from "~/lib/stellar/constant";
 import { cn } from "~/lib/utils";
 import { MarkdownEditor } from "~/components/bounty/markdown-editor";
 
@@ -147,6 +148,10 @@ export default function EditBountyPage() {
   const perWinner = parseInt(maxWinners) > 0
     ? Math.floor(bounty.prizeAmount / parseInt(maxWinners))
     : 0;
+
+  const prizeAssetCode = bounty.prizeAssetCode ?? PLATFORM_ASSET.code;
+  const prizeAssetIssuer = bounty.prizeAssetIssuer ?? PLATFORM_ASSET.issuer;
+  const prizeExpertUrl = stellarExpertUrl(prizeAssetCode, prizeAssetIssuer);
 
   const titleLen = title.length;
   const summaryLen = summary.length;
@@ -378,8 +383,19 @@ export default function EditBountyPage() {
                     <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/20">
                       <Trophy className="h-4 w-4 text-primary shrink-0" />
                       <span className="text-sm font-bold text-primary tabular-nums">
-                        {bounty.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+                        {bounty.prizeAmount.toLocaleString()}
                       </span>
+                      <a
+                        href={prizeExpertUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-0.5 text-sm font-semibold text-primary/80 hover:text-primary transition-colors"
+                        title={`View ${prizeAssetCode} on Stellar Expert`}
+                      >
+                        {prizeAssetCode}
+                        <ExternalLink className="h-3 w-3 ml-0.5" />
+                      </a>
                       <Badge
                         variant="secondary"
                         className="ml-auto gap-1 text-[10px] font-normal"
@@ -411,7 +427,7 @@ export default function EditBountyPage() {
                     </div>
                     {parseInt(maxWinners) > 1 && bounty.prizeAmount && (
                       <p className="text-xs text-muted-foreground">
-                        ≈ {perWinner.toLocaleString()} {PLATFORM_ASSET.code} per winner
+                        ≈ {perWinner.toLocaleString()} {prizeAssetCode} per winner
                       </p>
                     )}
                   </div>

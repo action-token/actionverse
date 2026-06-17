@@ -7,11 +7,11 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 import {
-  SendBountyBalanceToMotherAccountViaAsset,
-  claimBandCoinReward,
+  SendBountyBalanceGenericToMother,
+  claimRewardForUser,
 } from "~/lib/stellar/bounty/bounty";
 import { SignUser } from "~/lib/stellar/utils";
-import { PLATFORM_FEE } from "~/lib/stellar/constant";
+import { PLATFORM_ASSET, PLATFORM_FEE } from "~/lib/stellar/constant";
 import { env } from "~/env";
 import { getplatformAssetNumberForXLM } from "~/lib/stellar/fan/get_token_price";
 
@@ -26,16 +26,36 @@ export const BountyRoute = createTRPCRouter({
       z.object({
         prize: z.number().positive(),
         signWith: SignUser,
+        assetCode: z.string().default(""),
+        assetIssuer: z.string().nullable().default(null),
+        fromCreatorWallet: z.boolean().default(false),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await SendBountyBalanceToMotherAccountViaAsset({
+      if (input.fromCreatorWallet) {
+        const creator = await ctx.db.creator.findUniqueOrThrow({
+          where: { id: ctx.session.user.id },
+          select: { storageSecret: true },
+        });
+        return await SendBountyBalanceGenericToMother({
+          prize: input.prize,
+          signWith: input.signWith,
+          userPubKey: ctx.session.user.id,
+          assetCode: input.assetCode,
+          assetIssuer: input.assetIssuer,
+          fromCreatorStorage: true,
+          storageSecret: creator.storageSecret ?? undefined,
+        });
+      }
+
+      return await SendBountyBalanceGenericToMother({
         prize: input.prize,
-        fees: Number(PLATFORM_FEE),
         signWith: input.signWith,
         userPubKey: ctx.session.user.id,
+        assetCode: input.assetCode,
+        assetIssuer: input.assetIssuer,
       });
-      return result;
+
     }),
 
   // ── ANY AUTHORIZED USER: create bounty after payment confirmed ────────────
@@ -49,6 +69,8 @@ export const BountyRoute = createTRPCRouter({
         rewardNote: z.string().max(600).optional(),
         maxWinners: z.number().int().positive(),
         instructions: z.array(z.string()).min(1),
+        prizeAssetCode: z.string(),
+        prizeAssetIssuer: z.string().nullable().default(null),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -62,6 +84,8 @@ export const BountyRoute = createTRPCRouter({
           maxWinners: input.maxWinners,
           instructions: input.instructions,
           userId: ctx.session.user.id,
+          prizeAssetCode: input.prizeAssetCode,
+          prizeAssetIssuer: input.prizeAssetIssuer,
         },
       });
       return bounty;
@@ -640,6 +664,7 @@ export const BountyRoute = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      console.log("getClaimRewardXDR called with", input);
       const winner = await ctx.db.bountyWinner.findUnique({
         where: {
           bountyId_userId: {
@@ -647,16 +672,26 @@ export const BountyRoute = createTRPCRouter({
             userId: ctx.session.user.id,
           },
         },
+        include: {
+          bounty: {
+            select: { prizeAssetCode: true, prizeAssetIssuer: true },
+          },
+        },
       });
       if (!winner) throw new Error("You are not a winner");
       if (winner.claimedAt) throw new Error("Reward already claimed");
 
-      const xdr = await claimBandCoinReward({
+      const assetCode = winner.bounty.prizeAssetCode;
+      const assetIssuer = winner.bounty.prizeAssetIssuer;
+
+      const result = await claimRewardForUser({
         pubKey: ctx.session.user.id,
         rewardAmount: winner.prizeAmount,
+        assetCode,
+        assetIssuer,
         signWith: input.signWith,
       });
-      return { xdr };
+      return result;
     }),
 
   claimReward: protectedProcedure

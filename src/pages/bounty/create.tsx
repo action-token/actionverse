@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
@@ -10,6 +10,15 @@ import { Label } from "~/components/shadcn/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card";
 import { Separator } from "~/components/shadcn/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/shadcn/ui/select";
 import {
   Plus,
   X,
@@ -24,16 +33,19 @@ import {
   Wand2,
   Coins,
   ShieldCheck,
+  Wallet,
+  Building2,
+  Users,
 } from "lucide-react";
 import { api } from "~/utils/api";
-import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { PLATFORM_ASSET, PLATFORM_FEE, stellarExpertUrl } from "~/lib/stellar/constant";
 import { cn } from "~/lib/utils";
 import useNeedSign from "~/lib/hook";
 import { clientsign } from "package/connect_wallet";
 import { clientSelect } from "~/lib/stellar/fan/utils";
 import { MarkdownEditor } from "~/components/bounty/markdown-editor";
-
-const STELLAR_EXPERT_BASE = `https://stellar.expert/explorer/public/asset/${PLATFORM_ASSET.code}-${PLATFORM_ASSET.issuer}`;
+import { useUserStellarAcc, useCreatorStorageAcc, AccBalanceType } from "~/lib/state/wallete/stellar-balances";
+import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g";
 
 const MAX_TITLE = 120;
 const MAX_SUMMARY = 600;
@@ -41,10 +53,73 @@ const MAX_DESC = 6000;
 const MAX_REWARD_NOTE = 600;
 const MAX_INSTRUCTION = 200;
 
+type AssetOption = {
+  key: string; // unique key: "user:CODE:ISSUER" or "creator:CODE:ISSUER"
+  code: string;
+  issuer: string | null;
+  balance: string;
+  source: "user" | "creator";
+  sourceLabel: string;
+};
+
+function isCreditBalance(b: AccBalanceType): b is Extract<AccBalanceType, { asset_code: string }> {
+  return b.asset_type === "credit_alphanum4" || b.asset_type === "credit_alphanum12";
+}
+
+function balancesToOptions(
+  balances: AccBalanceType[] | undefined,
+  source: "user" | "creator",
+): AssetOption[] {
+  if (!balances) return [];
+  const sourceLabel = source === "user" ? "User Wallet" : "Creator Wallet";
+  const opts: AssetOption[] = [];
+
+  for (const b of balances) {
+    if (b.asset_type === "liquidity_pool_shares") continue;
+    if (b.asset_type === "native") {
+      opts.push({
+        key: `${source}:XLM:native`,
+        code: "XLM",
+        issuer: null,
+        balance: b.balance,
+        source,
+        sourceLabel,
+      });
+    } else if (isCreditBalance(b)) {
+      opts.push({
+        key: `${source}:${b.asset_code}:${b.asset_issuer}`,
+        code: b.asset_code,
+        issuer: b.asset_issuer,
+        balance: b.balance,
+        source,
+        sourceLabel,
+      });
+    }
+  }
+
+  // Sort: PLATFORM_ASSET first, then by balance desc
+  opts.sort((a, b) => {
+    const aIsPlatform = a.code === PLATFORM_ASSET.code && a.issuer === PLATFORM_ASSET.issuer;
+    const bIsPlatform = b.code === PLATFORM_ASSET.code && b.issuer === PLATFORM_ASSET.issuer;
+    if (aIsPlatform && !bIsPlatform) return -1;
+    if (!aIsPlatform && bIsPlatform) return 1;
+    return parseFloat(b.balance) - parseFloat(a.balance);
+  });
+
+  return opts;
+}
+
 export default function CreateBountyPage() {
   const { needSign } = useNeedSign();
   const router = useRouter();
   const { data: session, status } = useSession();
+
+  const userBalances = useUserStellarAcc((s) => s.balances);
+  const creatorBalances = useCreatorStorageAcc((s) => s.balances);
+
+  const userOptions = useMemo(() => balancesToOptions(userBalances, "user"), [userBalances]);
+  const creatorOptions = useMemo(() => balancesToOptions(creatorBalances, "creator"), [creatorBalances]);
+  const allOptions = useMemo(() => [...userOptions, ...creatorOptions], [userOptions, creatorOptions]);
 
   // form state
   const [title, setTitle] = useState("");
@@ -57,33 +132,55 @@ export default function CreateBountyPage() {
   const [instructionInput, setInstructionInput] = useState("");
   const [draftAi, setDraftAi] = useState("");
   const [step, setStep] = useState<"form" | "paying" | "creating" | "done">("form");
+  const [selectedAssetKey, setSelectedAssetKey] = useState<string>("");
+
+
+  const selectedAsset = useMemo(
+    () => allOptions.find((o) => o.key === selectedAssetKey) ?? null,
+    [allOptions, selectedAssetKey],
+  );
+
+  const prize = parseFloat(prizeAmount) || 0;
+  const winners = Math.max(parseInt(maxWinners) || 1, 1);
+  const perWinner = winners > 0 ? Math.floor(prize / winners) : 0;
+  const remaining = selectedAsset ? parseFloat(selectedAsset.balance) - prize : null;
+  const isInsufficient = remaining !== null && remaining < 0;
 
   useEffect(() => {
     if (status === "unauthenticated") void router.push("/");
   }, [status, router]);
 
   const getXDRMutation = api.bounty.Bounty.getCreateBountyXDR.useMutation({
-    onSuccess: async ({ xdr }, variables) => {
-      if (xdr) {
+    onSuccess: async ({ xdr, fullySignedByServer }, variables) => {
+      if (!xdr) return;
+
+      let submitted = false;
+      if (fullySignedByServer) {
+        await submitSignedXDRToServer4User(xdr);
+        submitted = true;
+      } else {
         const clientResponse = await clientsign({
           presignedxdr: xdr,
           walletType: session?.user.walletType,
           pubkey: session?.user.id,
-          test: clientSelect()
-        })
-        if (clientResponse) {
-          await createMutation.mutateAsync({
-            title: title.trim(),
-            summary: summary.trim(),
-            description: description.trim(),
-            prizeAmount: variables.prize,
-            rewardNote: rewardNote.trim() || undefined,
-            maxWinners: parseInt(maxWinners),
-            instructions
-          });
-        }
+          test: clientSelect(),
+        });
+        submitted = !!clientResponse;
       }
 
+      if (submitted && selectedAsset) {
+        await createMutation.mutateAsync({
+          title: title.trim(),
+          summary: summary.trim(),
+          description: description.trim(),
+          prizeAmount: variables.prize,
+          rewardNote: rewardNote.trim() || undefined,
+          maxWinners: parseInt(maxWinners),
+          instructions,
+          prizeAssetCode: selectedAsset.code,
+          prizeAssetIssuer: selectedAsset.issuer,
+        });
+      }
     },
     onError: (e) => {
       toast.error(e.message);
@@ -136,32 +233,32 @@ export default function CreateBountyPage() {
 
   const validate = () => {
     if (!title.trim()) return "Title is required";
-    const prize = parseFloat(prizeAmount);
-    if (!prizeAmount || isNaN(prize) || prize <= 0) return "Prize must be greater than 0";
-    const winners = parseInt(maxWinners);
-    if (!maxWinners || isNaN(winners) || winners < 1) return "At least 1 winner required";
+    const p = parseFloat(prizeAmount);
+    if (!prizeAmount || isNaN(p) || p <= 0) return "Prize must be greater than 0";
+    const w = parseInt(maxWinners);
+    if (!maxWinners || isNaN(w) || w < 1) return "At least 1 winner required";
     if (!instructions.length) return "Add at least one submission instruction";
+    if (!selectedAsset) return "Select a reward asset";
+    if (isInsufficient) return `Insufficient ${selectedAsset.code} balance`;
     return null;
   };
 
   const handleCreate = async () => {
     const err = validate();
-    if (err) {
-      toast.error(err);
-      return;
-    }
-    if (!session?.user) return;
+    if (err) { toast.error(err); return; }
+    if (!session?.user || !selectedAsset) return;
 
     setStep("paying");
     try {
-      const prize = parseFloat(prizeAmount);
       await getXDRMutation.mutateAsync({
-        prize,
+        prize: parseFloat(prizeAmount),
         signWith: needSign(),
+        assetCode: selectedAsset.code === "XLM" ? "" : selectedAsset.code,
+        assetIssuer: selectedAsset.issuer,
+        fromCreatorWallet: selectedAsset.source === "creator",
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Something went wrong";
-      toast.error(msg);
+      toast.error(e instanceof Error ? e.message : "Something went wrong");
       setStep("form");
     }
   };
@@ -180,20 +277,19 @@ export default function CreateBountyPage() {
   const isDisabled = isPaying || isCreating || step === "done";
   const isDrafting = draftMutation.isLoading;
 
-  const prize = parseFloat(prizeAmount) || 0;
-  const winners = Math.max(parseInt(maxWinners) || 1, 1);
-  const perWinner = winners > 0 ? Math.floor(prize / winners) : 0;
-
   const titleLen = title.length;
   const summaryLen = summary.length;
   const rewardLen = rewardNote.length;
+
+  const assetExpertUrl = selectedAsset
+    ? stellarExpertUrl(selectedAsset.code, selectedAsset.issuer)
+    : null;
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          {/* Breadcrumb */}
           <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4">
             <Link href="/bounty" className="hover:text-foreground transition-colors">
               Bounties
@@ -294,9 +390,7 @@ export default function CreateBountyPage() {
                     <span
                       className={cn(
                         "text-xs tabular-nums",
-                        titleLen > MAX_TITLE - 20
-                          ? "text-destructive"
-                          : "text-muted-foreground",
+                        titleLen > MAX_TITLE - 20 ? "text-destructive" : "text-muted-foreground",
                       )}
                     >
                       {titleLen}/{MAX_TITLE}
@@ -305,8 +399,7 @@ export default function CreateBountyPage() {
                   <Input
                     value={title}
                     onChange={(e) => {
-                      if (e.target.value.length <= MAX_TITLE)
-                        setTitle(e.target.value);
+                      if (e.target.value.length <= MAX_TITLE) setTitle(e.target.value);
                     }}
                     placeholder="e.g. Build a landing page for our token launch"
                     className="bg-secondary border-border"
@@ -321,9 +414,7 @@ export default function CreateBountyPage() {
                     <span
                       className={cn(
                         "text-xs tabular-nums",
-                        summaryLen > MAX_SUMMARY - 60
-                          ? "text-destructive"
-                          : "text-muted-foreground",
+                        summaryLen > MAX_SUMMARY - 60 ? "text-destructive" : "text-muted-foreground",
                       )}
                     >
                       {summaryLen}/{MAX_SUMMARY}
@@ -332,8 +423,7 @@ export default function CreateBountyPage() {
                   <Textarea
                     value={summary}
                     onChange={(e) => {
-                      if (e.target.value.length <= MAX_SUMMARY)
-                        setSummary(e.target.value);
+                      if (e.target.value.length <= MAX_SUMMARY) setSummary(e.target.value);
                     }}
                     placeholder="A brief one-liner that describes the bounty…"
                     className="min-h-[80px] resize-none bg-secondary border-border"
@@ -345,9 +435,7 @@ export default function CreateBountyPage() {
                 <div className="space-y-1.5">
                   <div className="flex justify-between">
                     <Label>Full Description</Label>
-                    <span className="text-xs text-muted-foreground">
-                      Markdown supported
-                    </span>
+                    <span className="text-xs text-muted-foreground">Markdown supported</span>
                   </div>
                   <MarkdownEditor
                     value={description}
@@ -360,7 +448,7 @@ export default function CreateBountyPage() {
               </CardContent>
             </Card>
 
-            {/* What Participants Submit */}
+            {/* Submission Requirements */}
             <Card className="border-border">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -379,8 +467,7 @@ export default function CreateBountyPage() {
                   <Textarea
                     value={instructionInput}
                     onChange={(e) => {
-                      if (e.target.value.length <= MAX_INSTRUCTION)
-                        setInstructionInput(e.target.value);
+                      if (e.target.value.length <= MAX_INSTRUCTION) setInstructionInput(e.target.value);
                     }}
                     placeholder="e.g. Submit a GitHub repo link with working demo"
                     className="min-h-[60px] flex-1 resize-none bg-secondary border-border"
@@ -413,9 +500,7 @@ export default function CreateBountyPage() {
                         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-semibold tabular-nums">
                           {i + 1}
                         </span>
-                        <p className="flex-1 text-sm leading-relaxed break-words min-w-0">
-                          {inst}
-                        </p>
+                        <p className="flex-1 text-sm leading-relaxed break-words min-w-0">{inst}</p>
                         <button
                           onClick={() => removeInstruction(i)}
                           className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 -m-1"
@@ -443,7 +528,7 @@ export default function CreateBountyPage() {
           {/* Right: Prizing + settings */}
           <div className="space-y-6">
             <div className="lg:sticky lg:top-6 space-y-6">
-              {/* Prizing */}
+              {/* Reward card */}
               <Card className="border-border overflow-hidden">
                 <div className="h-1 w-full bg-gradient-to-r from-primary to-primary/40" />
                 <CardHeader className="pb-3">
@@ -453,88 +538,217 @@ export default function CreateBountyPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  {/* Prize amount */}
+
+                  {/* Asset selector */}
                   <div className="space-y-1.5">
-                    <Label>
-                      Prize Amount <span className="text-destructive">*</span>
+                    <Label className="flex items-center gap-1.5">
+                      <Coins className="h-3.5 w-3.5 text-muted-foreground" />
+                      Reward Asset <span className="text-destructive">*</span>
                     </Label>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Input
-                          type="number"
-                          min="1"
-                          value={prizeAmount}
-                          onChange={(e) => setPrizeAmount(e.target.value)}
-                          placeholder="0"
-                          className="bg-secondary border-border pr-16 tabular-nums"
-                          disabled={isDisabled}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none">
-                          {PLATFORM_ASSET.code}
-                        </span>
+
+                    {allOptions.length === 0 ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-secondary/50 px-3 py-3 text-xs text-muted-foreground">
+                        <Wallet className="h-4 w-4 shrink-0" />
+                        Loading wallet balances…
                       </div>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="shrink-0 border-border"
-                              onClick={() =>
-                                window.open(STELLAR_EXPERT_BASE, "_blank")
-                              }
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            View {PLATFORM_ASSET.code} on Stellar Expert
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/20">
-                      <Trophy className="h-4 w-4 text-primary shrink-0" />
-                      <span className="text-sm font-semibold text-primary tabular-nums">
-                        {prizeAmount || "0"} {PLATFORM_ASSET.code}
-                      </span>
-                      <span className="text-xs text-muted-foreground ml-auto">
-                        prize pool
-                      </span>
-                    </div>
-                    {winners > 1 && prize > 0 && (
-                      <p className="text-xs text-muted-foreground px-1">
-                        ≈ {perWinner.toLocaleString()} {PLATFORM_ASSET.code} per winner
-                      </p>
+                    ) : (
+                      <Select
+                        value={selectedAssetKey}
+                        onValueChange={setSelectedAssetKey}
+                        disabled={isDisabled}
+                      >
+                        <SelectTrigger className="bg-secondary border-border h-11 text-sm">
+                          <SelectValue placeholder="Select asset">
+                            {selectedAsset && (
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-semibold text-foreground">{selectedAsset.code}</span>
+                                <span className="text-muted-foreground text-xs truncate">
+                                  {selectedAsset.source === "user" ? (
+                                    <span className="inline-flex items-center gap-0.5">
+                                      <Wallet className="h-2.5 w-2.5" /> User
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-0.5">
+                                      <Building2 className="h-2.5 w-2.5" /> Creator
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                                  {parseFloat(selectedAsset.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            )}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {userOptions.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <Wallet className="h-3 w-3" /> User Wallet
+                              </SelectLabel>
+                              {userOptions.map((opt) => (
+                                <SelectItem key={opt.key} value={opt.key}>
+                                  <div className="flex items-center gap-2 w-full">
+                                    <span className="font-medium">{opt.code}</span>
+                                    {opt.issuer && (
+                                      <span className="text-muted-foreground text-[10px] font-mono truncate max-w-[80px]">
+                                        {opt.issuer.slice(0, 6)}…
+                                      </span>
+                                    )}
+                                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                                      {parseFloat(opt.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
+                          {creatorOptions.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <Building2 className="h-3 w-3" /> Creator Wallet
+                              </SelectLabel>
+                              {creatorOptions.map((opt) => (
+                                <SelectItem key={opt.key} value={opt.key}>
+                                  <div className="flex items-center gap-2 w-full">
+                                    <span className="font-medium">{opt.code}</span>
+                                    {opt.issuer && (
+                                      <span className="text-muted-foreground text-[10px] font-mono truncate max-w-[80px]">
+                                        {opt.issuer.slice(0, 6)}…
+                                      </span>
+                                    )}
+                                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                                      {parseFloat(opt.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                    {/* Stellar Expert link for selected asset */}
+                    {selectedAsset && assetExpertUrl && (
+                      <a
+                        href={assetExpertUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <ExternalLink className="h-2.5 w-2.5" />
+                        View {selectedAsset.code} on Stellar Expert
+                      </a>
                     )}
                   </div>
 
-                  {/* Max winners */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <Label>
-                        Maximum Winners <span className="text-destructive">*</span>
-                      </Label>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            How many people can win this bounty
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={maxWinners}
-                      onChange={(e) => setMaxWinners(e.target.value)}
-                      className="bg-secondary border-border tabular-nums"
-                      disabled={isDisabled}
-                    />
-                  </div>
+                  {/* Prize amount + max winners — only shown after an asset is chosen */}
+                  {selectedAsset && (
+                    <>
+                      {/* Total Prize Pool */}
+                      <div className="space-y-1.5">
+                        <Label>
+                          Total Prize Pool <span className="text-destructive">*</span>
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            min="1"
+                            max={Math.floor(parseFloat(selectedAsset.balance))}
+                            value={prizeAmount}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === "") { setPrizeAmount(""); return; }
+                              const num = parseFloat(raw);
+                              const cap = parseFloat(selectedAsset.balance);
+                              if (!isNaN(num) && num <= cap) setPrizeAmount(raw);
+                            }}
+                            placeholder="0"
+                            className={cn(
+                              "bg-secondary border-border pr-20 tabular-nums",
+                              isInsufficient && "border-destructive/60",
+                            )}
+                            disabled={isDisabled}
+                            autoFocus
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none">
+                            {selectedAsset.code}
+                          </span>
+                        </div>
+                        {/* Remaining balance hint */}
+                        {prizeAmount && (
+                          <p className={cn(
+                            "flex items-center gap-1 text-[11px] px-0.5",
+                            isInsufficient ? "text-destructive" : "text-muted-foreground",
+                          )}>
+                            <Wallet className="h-2.5 w-2.5 shrink-0" />
+                            {isInsufficient
+                              ? <>Insufficient — balance is <strong className="tabular-nums">{parseFloat(selectedAsset.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong> {selectedAsset.code}</>
+                              : <>Remaining: <strong className="tabular-nums">{remaining!.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong> {selectedAsset.code}</>
+                            }
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Number of Winners */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Label>
+                            Number of Winners <span className="text-destructive">*</span>
+                          </Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent>How many people can win this bounty</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={maxWinners}
+                          onChange={(e) => setMaxWinners(e.target.value)}
+                          className="bg-secondary border-border tabular-nums"
+                          disabled={isDisabled}
+                        />
+                      </div>
+
+                      {/* Each winner receives — always visible once prize + winners set, uneditable */}
+                      <div className="rounded-lg border border-border bg-secondary/60 px-4 py-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <Trophy className="h-3.5 w-3.5 text-primary" />
+                            Total Prize Pool
+                          </span>
+                          <span className={cn("font-semibold tabular-nums", isInsufficient ? "text-destructive" : "text-foreground")}>
+                            {prize > 0 ? prize.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"} {selectedAsset.code}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                            Number of Winners
+                          </span>
+                          <span className="font-semibold tabular-nums text-foreground">{winners}</span>
+                        </div>
+                        <div className="border-t border-border/60 pt-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <Coins className="h-3.5 w-3.5 text-primary" />
+                            Each winner receives
+                          </span>
+                          <span className="text-sm font-bold text-primary tabular-nums">
+                            {prize > 0 && winners > 0
+                              ? (prize / winners).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                              : "—"}{" "}
+                            {selectedAsset.code}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <Separator className="bg-border" />
 
@@ -549,8 +763,7 @@ export default function CreateBountyPage() {
                     <Textarea
                       value={rewardNote}
                       onChange={(e) => {
-                        if (e.target.value.length <= MAX_REWARD_NOTE)
-                          setRewardNote(e.target.value);
+                        if (e.target.value.length <= MAX_REWARD_NOTE) setRewardNote(e.target.value);
                       }}
                       placeholder="e.g. Prize sent directly to your Stellar wallet via ACTION token within 48 hours of winner selection…"
                       className="min-h-[80px] resize-none bg-secondary border-border"
@@ -560,24 +773,27 @@ export default function CreateBountyPage() {
 
                   <Separator className="bg-border" />
 
-                  {/* Payment note */}
-                  <div className="rounded-lg bg-accent/30 border border-accent/40 p-3 text-xs space-y-1.5">
-                    <div className="flex items-center gap-1.5 font-medium text-accent-foreground">
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      <span>Payment flow</span>
+                  {/* Payment source note */}
+                  {selectedAsset && (
+                    <div className="rounded-lg bg-accent/30 border border-accent/40 p-3 text-xs space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-medium text-accent-foreground">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        <span>Payment flow</span>
+                      </div>
+                      <p className="text-muted-foreground leading-relaxed">
+                        The full prize amount will be sent from your{" "}
+                        <strong>{selectedAsset.source === "creator" ? "creator storage wallet" : "user wallet"}</strong>{" "}
+                        to our escrow wallet immediately. Winners claim their reward directly.
+                      </p>
                     </div>
-                    <p className="text-muted-foreground leading-relaxed">
-                      The full prize amount will be sent to our escrow wallet
-                      immediately. Winners claim their reward directly.
-                    </p>
-                  </div>
+                  )}
 
                   {/* Submit */}
                   <Button
                     className="w-full"
                     size="lg"
                     onClick={handleCreate}
-                    disabled={isDisabled}
+                    disabled={isDisabled || isInsufficient || !selectedAsset}
                   >
                     {isPaying ? (
                       <>

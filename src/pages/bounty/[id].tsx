@@ -45,13 +45,17 @@ import {
   Zap,
   Eye,
   ArrowRight,
+  ExternalLink,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { formatDistanceToNow } from "date-fns";
-import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { PLATFORM_ASSET, stellarExpertUrl } from "~/lib/stellar/constant";
 import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g";
+import { clientsign } from "package/connect_wallet";
+import { clientSelect } from "~/lib/stellar/fan/utils";
 import { cn } from "~/lib/utils";
 import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-store";
+import useNeedSign from "~/lib/hook";
 
 /* ── Types ───────────────────────────────────────────────────────────────────── */
 interface Submission {
@@ -77,6 +81,7 @@ function accentGradient(amount: number) {
 /* ── Page ────────────────────────────────────────────────────────────────────── */
 export default function BountyDetailPage() {
   const router = useRouter();
+  const { needSign } = useNeedSign();
   const id = parseInt(router.query.id as string);
   const { data: session } = useSession();
   const openShareModal = useShareBountyModalStore((s) => s.open);
@@ -141,8 +146,19 @@ export default function BountyDetailPage() {
   const handleClaim = async () => {
     if (!session?.user) return;
     try {
-      const result = await claimXdrM.mutateAsync({ bountyId: id, signWith: { email: session.user.email! } });
-      await submitSignedXDRToServer4User(result.xdr);
+      const result = await claimXdrM.mutateAsync({ bountyId: id, signWith: needSign() });
+      if (result.needsUserSign) {
+        // User must sign changeTrust op; clientsign signs + submits the tx
+        const submitted = await clientsign({
+          presignedxdr: result.xdr,
+          walletType: session.user.walletType,
+          pubkey: session.user.id,
+          test: clientSelect(),
+        });
+        if (!submitted) throw new Error("Transaction signing was cancelled.");
+      } else {
+        await submitSignedXDRToServer4User(result.xdr);
+      }
       await claimM.mutateAsync({ bountyId: id });
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to claim reward");
@@ -173,6 +189,9 @@ export default function BountyDetailPage() {
 
   /* bounty is guaranteed non-null past this point */
   const sc = statusCfg[bounty.status];
+  const prizeAssetCode = bounty.prizeAssetCode;
+  const prizeAssetIssuer = bounty.prizeAssetIssuer;
+  const prizeExpertUrl = stellarExpertUrl(prizeAssetCode, prizeAssetIssuer);
   const isJoined = myParticipation.data?.joined ?? false;
   const winner = myParticipation.data?.winner;
   const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isOwner;
@@ -442,13 +461,14 @@ export default function BountyDetailPage() {
                   {(claimXdrM.isLoading || claimM.isLoading)
                     ? <Loader2 className="h-4 w-4 animate-spin" />
                     : <Crown className="h-4 w-4" />}
-                  Claim {winner.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+                  Claim {winner.prizeAmount.toLocaleString()} {prizeAssetCode}
                 </Button>
               ) : winner?.claimedAt ? (
                 <div className="flex items-center justify-center gap-2 py-3 text-sm font-semibold text-primary">
                   <CheckCircle2 className="h-4 w-4" />
                   Reward claimed
                 </div>
+
               ) : (!isOwner && !winner && session) ? (
                 <div className="space-y-2">
                   {bounty.status === BountyStatus.PAUSED && isJoined && (
@@ -599,7 +619,7 @@ export default function BountyDetailPage() {
                               <td className="py-3 px-4">
                                 {isWin && winData ? (
                                   <span className="text-xs font-bold text-gold">
-                                    {winData.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+                                    {winData.prizeAmount.toLocaleString()} {prizeAssetCode}
                                   </span>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">—</span>
@@ -651,16 +671,24 @@ export default function BountyDetailPage() {
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Prize pool</p>
                 <p className="text-2xl font-black text-gold leading-none">
                   {bounty.prizeAmount.toLocaleString()}
-                  <span className="text-sm font-semibold text-muted-foreground ml-1.5">{PLATFORM_ASSET.code}</span>
+                  <a
+                    href={prizeExpertUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-0.5 text-sm font-semibold text-muted-foreground ml-1.5 hover:text-primary transition-colors"
+                    title={`View ${prizeAssetCode} on Stellar Expert`}
+                  >
+                    {prizeAssetCode}
+                    <ExternalLink className="h-3 w-3 ml-0.5" />
+                  </a>
                 </p>
               </div>
               {bounty.maxWinners > 1 && (
                 <div className="pt-1 border-t border-border space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Per winner </span>
-                    <span className="font-semibold">{perWinner.toLocaleString()} {PLATFORM_ASSET.code}</span>
+                    <span className="font-semibold">{perWinner.toLocaleString()} {prizeAssetCode}</span>
                   </div>
-
                 </div>
               )}
 
@@ -677,7 +705,7 @@ export default function BountyDetailPage() {
                   {(claimXdrM.isLoading || claimM.isLoading)
                     ? <Loader2 className="h-4 w-4 animate-spin" />
                     : <Crown className="h-4 w-4" />}
-                  Claim {winner.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+                  Claim {winner.prizeAmount.toLocaleString()} {prizeAssetCode}
                 </Button>
               )}
               {winner?.claimedAt && (
@@ -752,7 +780,7 @@ export default function BountyDetailPage() {
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold truncate">{w.user.name ?? "Anonymous"}</p>
-                      <p className="text-[11px] text-gold/80">{w.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}</p>
+                      <p className="text-[11px] text-gold/80">{w.prizeAmount.toLocaleString()} {prizeAssetCode}</p>
                     </div>
                     {w.claimedAt && <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />}
                   </div>
@@ -867,14 +895,23 @@ export default function BountyDetailPage() {
                       <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Prize pool</p>
                       <p className="text-2xl font-black text-gold leading-none">
                         {bounty.prizeAmount.toLocaleString()}
-                        <span className="text-sm font-semibold text-muted-foreground ml-1.5">{PLATFORM_ASSET.code}</span>
+                        <a
+                          href={prizeExpertUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-0.5 text-sm font-semibold text-muted-foreground ml-1.5 hover:text-primary transition-colors"
+                          title={`View ${prizeAssetCode} on Stellar Expert`}
+                        >
+                          {prizeAssetCode}
+                          <ExternalLink className="h-3 w-3 ml-0.5" />
+                        </a>
                       </p>
                     </div>
                     {bounty.maxWinners > 1 && (
                       <div className="pt-1 border-t border-border space-y-1">
                         <div className="flex justify-between text-xs">
                           <span className="text-muted-foreground">Per winner</span>
-                          <span className="font-semibold">{perWinner.toLocaleString()} {PLATFORM_ASSET.code}</span>
+                          <span className="font-semibold">{perWinner.toLocaleString()} {prizeAssetCode}</span>
                         </div>
                       </div>
                     )}
@@ -927,7 +964,7 @@ export default function BountyDetailPage() {
                             </Avatar>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-semibold truncate">{w.user.name ?? "Anonymous"}</p>
-                              <p className="text-[11px] text-gold/80">{w.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}</p>
+                              <p className="text-[11px] text-gold/80">{w.prizeAmount.toLocaleString()} {prizeAssetCode}</p>
                             </div>
                             {w.claimedAt && <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />}
                           </div>
@@ -1042,7 +1079,6 @@ function CreatorReportsTab({
                 <Markdown content={sub.content} compact />
               </div>
               {/* Fade indicator so the user knows there's more */}
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent" />
             </div>
           </div>
         );
@@ -1060,27 +1096,21 @@ function UserReportsTab({ submissions, loading, onView }: { submissions: Submiss
     <div className="space-y-4">
       {submissions.map((sub) => (
         <div key={sub.id} className="rounded-2xl border border-border bg-card p-5 space-y-3">
+
+          {/* Markdown preview snippet */}
+          <div className="relative">
+            <div className="max-h-38 overflow-hidden text-sm text-muted-foreground leading-relaxed">
+              <Markdown content={sub.content} compact />
+            </div>
+          </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className={cn("text-xs border capitalize",
-                sub.status === "APPROVED" ? "border-primary/30 text-primary bg-primary/10"
-                  : sub.status === "REJECTED" ? "border-destructive/30 text-destructive bg-destructive/10"
-                    : "border-border text-muted-foreground",
-              )}>
-                {sub.status.toLowerCase()}
-              </Badge>
+
               <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(sub.createdAt), { addSuffix: true })}</span>
             </div>
             <Button size="sm" variant="outline" className="h-8 text-xs border-border gap-1.5" onClick={() => onView(sub)}>
               <Eye className="h-3 w-3" />View
             </Button>
-          </div>
-          {/* Markdown preview snippet */}
-          <div className="relative">
-            <div className="max-h-24 overflow-hidden text-sm text-muted-foreground leading-relaxed">
-              <Markdown content={sub.content} compact />
-            </div>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent" />
           </div>
         </div>
       ))}
