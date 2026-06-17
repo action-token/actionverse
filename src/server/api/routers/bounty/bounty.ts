@@ -15,8 +15,12 @@ import { PLATFORM_FEE } from "~/lib/stellar/constant";
 import { env } from "~/env";
 import { getplatformAssetNumberForXLM } from "~/lib/stellar/fan/get_token_price";
 
+// Helper: include shape used by bounty queries that surface the owner.
+// Returns `name`, `image`, and `id` of the user (not the legacy creator profile).
+const ownerSelect = { id: true, name: true, image: true } as const;
+
 export const BountyRoute = createTRPCRouter({
-  // ── CREATOR: get XDR to pay into mother wallet ───────────────────────────
+  // ── ANY AUTHORIZED USER: get XDR to pay into mother wallet ───────────────
   getCreateBountyXDR: protectedProcedure
     .input(
       z.object({
@@ -25,11 +29,6 @@ export const BountyRoute = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const creator = await ctx.db.creator.findUnique({
-        where: { id: ctx.session.user.id },
-      });
-      if (!creator) throw new Error("You are not a creator");
-
       const result = await SendBountyBalanceToMotherAccountViaAsset({
         prize: input.prize,
         fees: Number(PLATFORM_FEE),
@@ -39,7 +38,7 @@ export const BountyRoute = createTRPCRouter({
       return result;
     }),
 
-  // ── CREATOR: create bounty after payment confirmed ────────────────────────
+  // ── ANY AUTHORIZED USER: create bounty after payment confirmed ────────────
   createBounty: protectedProcedure
     .input(
       z.object({
@@ -53,11 +52,6 @@ export const BountyRoute = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const creator = await ctx.db.creator.findUnique({
-        where: { id: ctx.session.user.id },
-      });
-      if (!creator) throw new Error("You are not a creator");
-
       const bounty = await ctx.db.bounty.create({
         data: {
           title: input.title,
@@ -67,13 +61,13 @@ export const BountyRoute = createTRPCRouter({
           rewardNote: input.rewardNote,
           maxWinners: input.maxWinners,
           instructions: input.instructions,
-          creatorId: ctx.session.user.id,
+          userId: ctx.session.user.id,
         },
       });
       return bounty;
     }),
 
-  // ── CREATOR: update bounty info ───────────────────────────────────────────
+  // ── OWNER: update bounty info ─────────────────────────────────────────────
   updateBounty: protectedProcedure
     .input(
       z.object({
@@ -91,7 +85,7 @@ export const BountyRoute = createTRPCRouter({
         where: { id: input.bountyId },
       });
       if (!bounty) throw new Error("Bounty not found");
-      if (bounty.creatorId !== ctx.session.user.id)
+      if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
 
       const { bountyId, ...data } = input;
@@ -101,7 +95,7 @@ export const BountyRoute = createTRPCRouter({
       });
     }),
 
-  // ── CREATOR: change bounty status ─────────────────────────────────────────
+  // ── OWNER: change bounty status ───────────────────────────────────────────
   updateBountyStatus: protectedProcedure
     .input(
       z.object({
@@ -114,7 +108,7 @@ export const BountyRoute = createTRPCRouter({
         where: { id: input.bountyId },
       });
       if (!bounty) throw new Error("Bounty not found");
-      if (bounty.creatorId !== ctx.session.user.id)
+      if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
 
       return ctx.db.bounty.update({
@@ -123,7 +117,7 @@ export const BountyRoute = createTRPCRouter({
       });
     }),
 
-  // ── CREATOR: list own bounties ────────────────────────────────────────────
+  // ── OWNER: list own bounties ──────────────────────────────────────────────
   getMyBounties: protectedProcedure
     .input(
       z.object({
@@ -136,7 +130,7 @@ export const BountyRoute = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const items = await ctx.db.bounty.findMany({
         where: {
-          creatorId: ctx.session.user.id,
+          userId: ctx.session.user.id,
           status: input.status,
           title: input.search
             ? { contains: input.search, mode: "insensitive" }
@@ -146,7 +140,7 @@ export const BountyRoute = createTRPCRouter({
         cursor: input.cursor ? { id: input.cursor } : undefined,
         orderBy: { createdAt: "desc" },
         include: {
-          creator: { select: { id: true, name: true, profileUrl: true } },
+          user: { select: ownerSelect },
           _count: {
             select: { participants: true, submissions: true, winners: true },
           },
@@ -160,53 +154,53 @@ export const BountyRoute = createTRPCRouter({
       return { items, nextCursor };
     }),
 
-  // ── CREATOR: get single bounty with full details ──────────────────────────
-  getBountyForCreator: protectedProcedure
+  // ── OWNER: get single bounty with full details ────────────────────────────
+  getBountyForOwner: protectedProcedure
     .input(z.object({ bountyId: z.number() }))
     .query(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
         include: {
-          creator: { select: { id: true, name: true, profileUrl: true } },
+          user: { select: ownerSelect },
           _count: {
             select: { participants: true, submissions: true, winners: true },
           },
           winners: {
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
             },
           },
         },
       });
       if (!bounty) throw new Error("Bounty not found");
-      if (bounty.creatorId !== ctx.session.user.id)
+      if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
       return bounty;
     }),
 
-  // ── CREATOR: get all submissions for a bounty ──────────────────────────────
+  // ── OWNER: get all submissions for a bounty ───────────────────────────────
   getBountySubmissions: protectedProcedure
     .input(z.object({ bountyId: z.number() }))
     .query(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
-        select: { creatorId: true },
+        select: { userId: true },
       });
       if (!bounty) throw new Error("Bounty not found");
-      if (bounty.creatorId !== ctx.session.user.id)
+      if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
 
       return ctx.db.bountySubmission.findMany({
         where: { bountyId: input.bountyId },
         include: {
-          user: { select: { id: true, name: true, image: true } },
+          user: { select: ownerSelect },
           media: true,
         },
         orderBy: { createdAt: "desc" },
       });
     }),
 
-  // ── CREATOR: select winner ─────────────────────────────────────────────────
+  // ── OWNER: select winner ──────────────────────────────────────────────────
   selectWinner: protectedProcedure
     .input(
       z.object({
@@ -221,7 +215,7 @@ export const BountyRoute = createTRPCRouter({
         include: { _count: { select: { winners: true } } },
       });
       if (!bounty) throw new Error("Bounty not found");
-      if (bounty.creatorId !== ctx.session.user.id)
+      if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
       if (bounty._count.winners >= bounty.maxWinners)
         throw new Error("Maximum winners already selected");
@@ -297,14 +291,14 @@ export const BountyRoute = createTRPCRouter({
           title: input.search
             ? { contains: input.search, mode: "insensitive" }
             : undefined,
-          ...(userId && input.filter === "not_joined" ? { creatorId: { not: userId } } : {}),
+          ...(userId && input.filter === "not_joined" ? { userId: { not: userId } } : {}),
           ...(joinedBountyIds.length > 0 ? { id: { notIn: joinedBountyIds } } : {}),
         },
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
         orderBy,
         include: {
-          creator: { select: { id: true, name: true, profileUrl: true } },
+          user: { select: ownerSelect },
           _count: {
             select: { participants: true, submissions: true, winners: true },
           },
@@ -325,18 +319,18 @@ export const BountyRoute = createTRPCRouter({
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
         include: {
-          creator: { select: { id: true, name: true, profileUrl: true } },
+          user: { select: ownerSelect },
           _count: {
             select: { participants: true, submissions: true, winners: true },
           },
           winners: {
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
             },
           },
           participants: {
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
             },
             take: 20,
             orderBy: { joinedAt: "desc" },
@@ -353,10 +347,10 @@ export const BountyRoute = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
-        select: { id: true, status: true, title: true, creatorId: true },
+        select: { id: true, status: true, title: true, userId: true },
       });
       if (!bounty) throw new Error("Bounty not found");
-      if (bounty.creatorId === ctx.session.user.id)
+      if (bounty.userId === ctx.session.user.id)
         throw new Error("You cannot join your own bounty");
       if (bounty.status !== BountyStatus.RUNNING)
         throw new Error("Bounty is not accepting participants");
@@ -375,7 +369,7 @@ export const BountyRoute = createTRPCRouter({
         data: { bountyId: input.bountyId, userId: ctx.session.user.id },
       });
 
-      // Notify creator
+      // Notify owner
       const notifObj = await ctx.db.notificationObject.create({
         data: {
           entityType: NotificationType.BOUNTY_PARTICIPANT,
@@ -386,15 +380,115 @@ export const BountyRoute = createTRPCRouter({
       await ctx.db.notification.create({
         data: {
           notificationObjectId: notifObj.id,
-          notifierId: bounty.creatorId,
-          isCreator: true,
+          notifierId: bounty.userId,
+          isCreator: false,
         },
       });
 
       return participant;
     }),
 
-  // ── USER: get my joined bounties ──────────────────────────────────────────
+  // ── USER: get joined + own bounties (for /bounty/joined page) ─────────────
+  // Uses in-memory merge + paginate. The combined list is small (one user's
+  // own + joined bounties) so cursor pagination across two queries is overkill.
+  getMyBountiesCombined: protectedProcedure
+    .input(
+      z.object({
+        cursor: z.number().optional(),
+        limit: z.number().default(20),
+        search: z.string().optional(),
+        sortBy: z
+          .enum(["newest", "oldest", "prize_high", "prize_low", "title"])
+          .default("newest"),
+        filter: z.enum(["all", "joined", "owned"]).default("all"),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      const search = input.search
+        ? { contains: input.search, mode: "insensitive" as const }
+        : undefined;
+
+      const includeBounty = {
+        user: { select: ownerSelect },
+        _count: {
+          select: { participants: true, submissions: true, winners: true },
+        },
+      } as const;
+
+      const wantJoined = input.filter === "all" || input.filter === "joined";
+      const wantOwned = input.filter === "all" || input.filter === "owned";
+
+      const [owned, joined] = await Promise.all([
+        wantOwned
+          ? ctx.db.bounty.findMany({
+            where: { userId, title: search },
+            include: includeBounty,
+          })
+          : Promise.resolve([]),
+        wantJoined
+          ? ctx.db.bountyParticipant.findMany({
+            where: { userId, bounty: { title: search } },
+            include: { bounty: { include: includeBounty } },
+            orderBy: { joinedAt: "desc" },
+          })
+          : Promise.resolve([]),
+      ]);
+
+      type Row = {
+        bountyId: number;
+        owned: boolean;
+        joinedAt: Date;
+        bounty: (typeof owned)[number];
+      };
+
+      // Owned takes precedence over joined when both exist (dedupe by bountyId).
+      const map = new Map<number, Row>();
+      for (const j of joined) {
+        map.set(j.bountyId, {
+          bountyId: j.bountyId,
+          owned: false,
+          joinedAt: j.joinedAt,
+          bounty: j.bounty,
+        });
+      }
+      for (const o of owned) {
+        map.set(o.id, {
+          bountyId: o.id,
+          owned: true,
+          joinedAt: o.createdAt,
+          bounty: o,
+        });
+      }
+
+      const all = Array.from(map.values());
+
+      const cmp = (a: Row, b: Row) => {
+        switch (input.sortBy) {
+          case "oldest":
+            return a.bounty.createdAt.getTime() - b.bounty.createdAt.getTime();
+          case "prize_high":
+            return b.bounty.prizeAmount - a.bounty.prizeAmount;
+          case "prize_low":
+            return a.bounty.prizeAmount - b.bounty.prizeAmount;
+          case "title":
+            return a.bounty.title.localeCompare(b.bounty.title);
+          case "newest":
+          default:
+            return b.bounty.createdAt.getTime() - a.bounty.createdAt.getTime();
+        }
+      };
+      all.sort(cmp);
+
+      const startIndex = input.cursor ?? 0;
+      const slice = all.slice(startIndex, startIndex + input.limit);
+      const nextCursor =
+        startIndex + slice.length < all.length ? startIndex + slice.length : undefined;
+
+      return { items: slice, nextCursor };
+    }),
+
+  // ── USER: get my joined bounties (sidebar preview) ────────────────────────
   getJoinedBounties: protectedProcedure
     .input(
       z.object({
@@ -411,7 +505,7 @@ export const BountyRoute = createTRPCRouter({
         include: {
           bounty: {
             include: {
-              creator: { select: { id: true, name: true, profileUrl: true } },
+              user: { select: ownerSelect },
               _count: {
                 select: { participants: true, submissions: true, winners: true },
               },
@@ -447,7 +541,7 @@ export const BountyRoute = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
-        select: { id: true, status: true, creatorId: true, title: true },
+        select: { id: true, status: true, userId: true, title: true },
       });
       if (!bounty) throw new Error("Bounty not found");
       if (bounty.status !== BountyStatus.RUNNING)
@@ -481,7 +575,7 @@ export const BountyRoute = createTRPCRouter({
         include: { media: true },
       });
 
-      // Notify creator
+      // Notify owner
       const notifObj = await ctx.db.notificationObject.create({
         data: {
           entityType: NotificationType.BOUNTY_SUBMISSION,
@@ -492,8 +586,8 @@ export const BountyRoute = createTRPCRouter({
       await ctx.db.notification.create({
         data: {
           notificationObjectId: notifObj.id,
-          notifierId: bounty.creatorId,
-          isCreator: true,
+          notifierId: bounty.userId,
+          isCreator: false,
         },
       });
 
@@ -507,7 +601,7 @@ export const BountyRoute = createTRPCRouter({
       return ctx.db.bountySubmission.findMany({
         where: { bountyId: input.bountyId, userId: ctx.session.user.id },
         include: {
-          user: { select: { id: true, name: true, image: true } },
+          user: { select: ownerSelect },
           media: true,
         },
         orderBy: { createdAt: "desc" },
@@ -605,7 +699,7 @@ export const BountyRoute = createTRPCRouter({
         take: input.limit,
         orderBy: { prizeAmount: "desc" },
         include: {
-          creator: { select: { id: true, name: true, profileUrl: true } },
+          user: { select: ownerSelect },
           _count: {
             select: { participants: true, submissions: true, winners: true },
           },
@@ -623,7 +717,7 @@ export const BountyRoute = createTRPCRouter({
             take: input.limit,
             orderBy: { joinedAt: "desc" },
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
               bounty: { select: { id: true, title: true } },
             },
           }),
@@ -631,7 +725,7 @@ export const BountyRoute = createTRPCRouter({
             take: input.limit,
             orderBy: { createdAt: "desc" },
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
               bounty: { select: { id: true, title: true } },
             },
           }),
@@ -639,7 +733,7 @@ export const BountyRoute = createTRPCRouter({
             take: input.limit,
             orderBy: { selectedAt: "desc" },
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
               bounty: { select: { id: true, title: true } },
             },
           }),
@@ -693,45 +787,45 @@ export const BountyRoute = createTRPCRouter({
       return activities.slice(0, input.limit);
     }),
 
-  // ── Creator recent activities ──────────────────────────────────────────────
-  getCreatorActivities: protectedProcedure
+  // ── Owner recent activities (own bounties) ─────────────────────────────────
+  getOwnerActivities: protectedProcedure
     .input(z.object({ limit: z.number().default(10) }))
     .query(async ({ ctx, input }) => {
-      const creatorBountyIds = await ctx.db.bounty
+      const ownedBountyIds = await ctx.db.bounty
         .findMany({
-          where: { creatorId: ctx.session.user.id },
+          where: { userId: ctx.session.user.id },
           select: { id: true },
         })
         .then((b) => b.map((x) => x.id));
 
-      if (!creatorBountyIds.length) return [];
+      if (!ownedBountyIds.length) return [];
 
       const [recentParticipants, recentSubmissions, recentWinners] =
         await Promise.all([
           ctx.db.bountyParticipant.findMany({
-            where: { bountyId: { in: creatorBountyIds } },
+            where: { bountyId: { in: ownedBountyIds } },
             take: input.limit,
             orderBy: { joinedAt: "desc" },
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
               bounty: { select: { id: true, title: true } },
             },
           }),
           ctx.db.bountySubmission.findMany({
-            where: { bountyId: { in: creatorBountyIds } },
+            where: { bountyId: { in: ownedBountyIds } },
             take: input.limit,
             orderBy: { createdAt: "desc" },
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
               bounty: { select: { id: true, title: true } },
             },
           }),
           ctx.db.bountyWinner.findMany({
-            where: { bountyId: { in: creatorBountyIds } },
+            where: { bountyId: { in: ownedBountyIds } },
             take: input.limit,
             orderBy: { selectedAt: "desc" },
             include: {
-              user: { select: { id: true, name: true, image: true } },
+              user: { select: ownerSelect },
               bounty: { select: { id: true, title: true } },
             },
           }),
@@ -785,7 +879,7 @@ export const BountyRoute = createTRPCRouter({
       return activities.slice(0, input.limit);
     }),
 
-  // ── CREATOR: AI-draft a bounty from a short idea prompt ───────────────────
+  // ── ANY AUTHORIZED USER: AI-draft a bounty from a short idea prompt ───────
   draftBounty: protectedProcedure
     .input(
       z.object({
@@ -795,7 +889,7 @@ export const BountyRoute = createTRPCRouter({
     .mutation(async ({ input }) => {
       const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
-      const systemPrompt = `You are an assistant for creators on the Actionverse platform who want to launch a bounty (a public challenge with a token reward for the best submissions).
+      const systemPrompt = `You are an assistant for users on the Actionverse platform who want to launch a bounty (a public challenge with a token reward for the best submissions).
 
 Given a short idea from the user, generate a complete draft of the bounty. Return ONLY a JSON object with this exact shape:
 

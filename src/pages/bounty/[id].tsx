@@ -124,16 +124,16 @@ export default function BountyDetailPage() {
   /* queries */
   const bountyQ = api.bounty.Bounty.getBounty.useQuery({ bountyId: id }, { enabled: !!id });
   const bounty = bountyQ.data;
-  const isCreator = session?.user?.id === bounty?.creatorId;
+  const isOwner = session?.user?.id === bounty?.userId;
 
-  const creatorQ = api.bounty.Bounty.getBountyForCreator.useQuery({ bountyId: id }, { enabled: !!id && isCreator });
-  const submissionsQ = api.bounty.Bounty.getBountySubmissions.useQuery({ bountyId: id }, { enabled: !!id && isCreator });
-  const myParticipation = api.bounty.Bounty.getMyParticipation.useQuery({ bountyId: id }, { enabled: !!id && !!session && !isCreator });
-  const mySubmissions = api.bounty.Bounty.getMySubmissions.useQuery({ bountyId: id }, { enabled: !!id && !!session && !isCreator });
+  const ownerQ = api.bounty.Bounty.getBountyForOwner.useQuery({ bountyId: id }, { enabled: !!id && isOwner });
+  const submissionsQ = api.bounty.Bounty.getBountySubmissions.useQuery({ bountyId: id }, { enabled: !!id && isOwner });
+  const myParticipation = api.bounty.Bounty.getMyParticipation.useQuery({ bountyId: id }, { enabled: !!id && !!session && !isOwner });
+  const mySubmissions = api.bounty.Bounty.getMySubmissions.useQuery({ bountyId: id }, { enabled: !!id && !!session && !isOwner });
 
   /* mutations */
   const joinM = api.bounty.Bounty.joinBounty.useMutation({ onSuccess: () => { toast.success("Joined!"); void myParticipation.refetch(); void bountyQ.refetch(); }, onError: (e) => toast.error(e.message) });
-  const statusM = api.bounty.Bounty.updateBountyStatus.useMutation({ onSuccess: () => { toast.success("Status updated"); void bountyQ.refetch(); void creatorQ.refetch(); }, onError: (e) => toast.error(e.message) });
+  const statusM = api.bounty.Bounty.updateBountyStatus.useMutation({ onSuccess: () => { toast.success("Status updated"); void bountyQ.refetch(); void ownerQ.refetch(); }, onError: (e) => toast.error(e.message) });
   const winnerM = api.bounty.Bounty.selectWinner.useMutation({ onSuccess: () => { toast.success("Winner selected!"); void submissionsQ.refetch(); void bountyQ.refetch(); }, onError: (e) => toast.error(e.message) });
   const claimXdrM = api.bounty.Bounty.getClaimRewardXDR.useMutation({ onError: (e) => toast.error(e.message) });
   const claimM = api.bounty.Bounty.claimReward.useMutation({ onSuccess: () => { toast.success("Reward claimed!"); void myParticipation.refetch(); }, onError: (e) => toast.error(e.message) });
@@ -152,10 +152,10 @@ export default function BountyDetailPage() {
   /* Rules of Hooks: must be above every early return */
   const submittedUserIds = useMemo(() => {
     if (!bounty) return new Set<string>();
-    if (isCreator && submissionsQ.data) return new Set(submissionsQ.data.map((s) => s.userId));
-    if (!isCreator && session?.user?.id && mySubmissions.data?.length) return new Set([session.user.id]);
+    if (isOwner && submissionsQ.data) return new Set(submissionsQ.data.map((s) => s.userId));
+    if (!isOwner && session?.user?.id && mySubmissions.data?.length) return new Set([session.user.id]);
     return new Set<string>();
-  }, [bounty, isCreator, submissionsQ.data, mySubmissions.data, session]);
+  }, [bounty, isOwner, submissionsQ.data, mySubmissions.data, session]);
 
   /* loading / not found */
   if (bountyQ.isLoading) return (
@@ -175,9 +175,9 @@ export default function BountyDetailPage() {
   const sc = statusCfg[bounty.status];
   const isJoined = myParticipation.data?.joined ?? false;
   const winner = myParticipation.data?.winner;
-  const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isCreator;
+  const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isOwner;
   const perWinner = bounty.prizeAmount / bounty.maxWinners;
-  const submissionCount = isCreator ? bounty._count.submissions : (mySubmissions.data?.length ?? 0);
+  const submissionCount = isOwner ? bounty._count.submissions : (mySubmissions.data?.length ?? 0);
   const visibleReqs = bounty.instructions.slice(0, 4);
   const extraReqs = bounty.instructions.slice(4);
 
@@ -238,13 +238,13 @@ export default function BountyDetailPage() {
                   {/* Creator meta */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
                     <div className="flex items-center gap-2">
-                      <span>Creator:</span>
+                      <span>By</span>
                       <div className="flex items-center gap-1.5">
                         <Avatar className="h-5 w-5">
-                          <AvatarImage src={bounty.creator.profileUrl ?? ""} />
-                          <AvatarFallback className="text-[9px] bg-secondary">{bounty.creator.name.charAt(0)}</AvatarFallback>
+                          <AvatarImage src={bounty.user.image ?? ""} />
+                          <AvatarFallback className="text-[9px] bg-secondary">{(bounty.user.name ?? "?").charAt(0)}</AvatarFallback>
                         </Avatar>
-                        <span className="text-xs font-semibold text-foreground">{bounty.creator.name}</span>
+                        <span className="text-xs font-semibold text-foreground">{bounty.user.name ?? "Unknown"}</span>
                       </div>
                     </div>
                     <span className="hidden md:inline h-3 w-px bg-border" />
@@ -255,7 +255,7 @@ export default function BountyDetailPage() {
                   </div>
 
                   {/* Creator actions toolbar */}
-                  {isCreator && (
+                  {isOwner && (
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <div className="hidden md:block">
                         <Select
@@ -391,7 +391,7 @@ export default function BountyDetailPage() {
 
 
               {/* User actions (not winner) */}
-              {!isCreator && !winner && session && (
+              {!isOwner && !winner && session && (
                 <>
                   {bounty.status === BountyStatus.PAUSED && isJoined && (
                     <div className="flex items-start gap-2.5 text-sm">
@@ -417,7 +417,7 @@ export default function BountyDetailPage() {
               )}
 
               {/* Guest */}
-              {!isCreator && !session && bounty.status === BountyStatus.RUNNING && (
+              {!isOwner && !session && bounty.status === BountyStatus.RUNNING && (
                 <Button className="w-full h-11 gap-2 font-semibold" onClick={() => void router.push("/")}>
                   <Users className="h-4 w-4" />
                   Join Bounty
@@ -430,7 +430,7 @@ export default function BountyDetailPage() {
 
       {/* ── Mobile action footer (hidden on lg+) ─────────────────────────────── */}
       {
-        !isCreator && (
+        !isOwner && (
           <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
             <div className="mx-4 mb-4 rounded-2xl border border-border bg-background/95 backdrop-blur-xl p-3 shadow-xl">
               {winner && !winner.claimedAt ? (
@@ -449,7 +449,7 @@ export default function BountyDetailPage() {
                   <CheckCircle2 className="h-4 w-4" />
                   Reward claimed
                 </div>
-              ) : (!isCreator && !winner && session) ? (
+              ) : (!isOwner && !winner && session) ? (
                 <div className="space-y-2">
                   {bounty.status === BountyStatus.PAUSED && isJoined && (
                     <div className="flex items-start gap-2.5 text-sm">
@@ -480,7 +480,7 @@ export default function BountyDetailPage() {
                     <div className="text-xs text-muted-foreground text-center py-1">This bounty has ended</div>
                   )}
                 </div>
-              ) : (!isCreator && !session && bounty.status === BountyStatus.RUNNING) ? (
+              ) : (!isOwner && !session && bounty.status === BountyStatus.RUNNING) ? (
                 <Button className="w-full h-11 gap-2 font-semibold" onClick={() => void router.push("/")}>
                   <Users className="h-4 w-4" />
                   Join Bounty
@@ -502,7 +502,7 @@ export default function BountyDetailPage() {
                 {[
                   { value: "description", label: "Description" },
                   { value: "participants", label: `Participants`, count: bounty._count.participants },
-                  { value: "reports", label: isCreator ? "Submissions" : "My Reports", count: submissionCount },
+                  { value: "reports", label: isOwner ? "Submissions" : "My Reports", count: submissionCount },
                 ].map((t) => (
                   <TabsTrigger
                     key={t.value}
@@ -616,7 +616,7 @@ export default function BountyDetailPage() {
 
               {/* Reports tab */}
               <TabsContent value="reports" className="mt-6">
-                {isCreator ? (
+                {isOwner ? (
                   <CreatorReportsTab
                     submissions={submissionsQ.data ?? []}
                     loading={submissionsQ.isLoading}
@@ -657,16 +657,14 @@ export default function BountyDetailPage() {
               {bounty.maxWinners > 1 && (
                 <div className="pt-1 border-t border-border space-y-1">
                   <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Per winner</span>
+                    <span className="text-muted-foreground">Per winner </span>
                     <span className="font-semibold">{perWinner.toLocaleString()} {PLATFORM_ASSET.code}</span>
                   </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="font-semibold">{bounty.maxWinners}</span>
-                  </div>
+
                 </div>
               )}
 
-              {(winner || (!isCreator && !session && bounty.status === BountyStatus.RUNNING)) && (
+              {(winner || (!isOwner && !session && bounty.status === BountyStatus.RUNNING)) && (
                 <div className="border-t border-border/60 pt-4" />
               )}
 
@@ -689,7 +687,7 @@ export default function BountyDetailPage() {
                 </div>
               )}
 
-              {!isCreator && !winner && session && (
+              {!isOwner && !winner && session && (
                 <div className="space-y-2">
                   {bounty.status === BountyStatus.PAUSED && isJoined && (
                     <div className="flex items-start gap-2.5 text-sm">
@@ -712,7 +710,7 @@ export default function BountyDetailPage() {
                 </div>
               )}
 
-              {!isCreator && !session && bounty.status === BountyStatus.RUNNING && (
+              {!isOwner && !session && bounty.status === BountyStatus.RUNNING && (
                 <Button className="w-full h-11 gap-2 font-semibold" onClick={() => void router.push("/")}>
                   <Users className="h-4 w-4" />
                   Join Bounty
@@ -877,10 +875,6 @@ export default function BountyDetailPage() {
                         <div className="flex justify-between text-xs">
                           <span className="text-muted-foreground">Per winner</span>
                           <span className="font-semibold">{perWinner.toLocaleString()} {PLATFORM_ASSET.code}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Max winners</span>
-                          <span className="font-semibold">{bounty.maxWinners}</span>
                         </div>
                       </div>
                     )}

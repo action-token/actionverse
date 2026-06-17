@@ -135,22 +135,9 @@ export default Header;
 
 
 const HeaderButtons = () => {
-    const { setBalance, setActive } = useUserStellarAcc();
+    const { platformAssetBalance } = useUserStellarAcc();
     const session = useSession();
     const router = useRouter();
-    const bal = api.wallate.acc.getAccountBalance.useQuery(undefined, {
-        onSuccess: (data) => {
-            const { balances } = data;
-            setBalance(balances);
-            setActive(true);
-        },
-        onError: (error) => {
-            setActive(false);
-        },
-        enabled: session.data?.user?.id !== undefined,
-    });
-
-
     const { data: notificationCount } =
         api.fan.notification.getUnseenNotificationCount.useQuery(
             undefined,
@@ -165,7 +152,6 @@ const HeaderButtons = () => {
 
     if (walletType == WalletType.none) return null;
 
-    if (bal.isLoading) return <div className="skeleton h-10 w-48"></div>;
 
     if (notificationCount === undefined)
         return <div className="skeleton h-10 w-48"></div>;
@@ -177,10 +163,10 @@ const HeaderButtons = () => {
 
                     <span className="block md:hidden">
 
-                        {bal.data?.platformAssetBal.toFixed(0)}
+                        {platformAssetBalance.toFixed(0)}
                     </span>
                     <span className="hidden md:block">
-                        {bal.data?.platformAssetBal.toFixed(0)}  {PLATFORM_ASSET.code.toUpperCase()}
+                        {platformAssetBalance.toFixed(0)}  {PLATFORM_ASSET.code.toUpperCase()}
                     </span>
                 </Button>
             </Link>

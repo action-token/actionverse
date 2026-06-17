@@ -249,7 +249,6 @@ model Creator {
 
     SellPageAsset   SellPageAsset[]
     temporalFollows TemporalFollow[]
-    Bounty          Bounty[]
 
     @@index([bio, name])
 }
@@ -384,6 +383,7 @@ model User {
     communityPostLikes               CommunityPostLike[]
     communityActivities              CommunityActivity[]
     communityNotificationPreferences CommunityNotificationPreference[]
+    Bounty                           Bounty[]
     BountyParticipant                BountyParticipant[]
     BountySubmission                 BountySubmission[]
     BountyWinner                     BountyWinner[]
@@ -998,8 +998,8 @@ model Bounty {
     status      BountyStatus @default(RUNNING)
     txHash      String?
 
-    creatorId String
-    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     instructions String[] // what participants must submit
 
@@ -1010,7 +1010,7 @@ model Bounty {
     submissions  BountySubmission[]
     winners      BountyWinner[]
 
-    @@index([creatorId])
+    @@index([userId])
     @@index([status])
     @@index([createdAt])
 }

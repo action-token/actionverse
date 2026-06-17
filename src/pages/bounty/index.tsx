@@ -17,6 +17,7 @@ import {
   Star,
   SlidersHorizontal,
   X,
+  Plus,
 } from "lucide-react";
 import { PLATFORM_ASSET } from "~/lib/stellar/constant";
 import { cn } from "~/lib/utils";
@@ -56,8 +57,8 @@ export default function BountiesPage() {
 
   const { data: topBounties } = api.bounty.Bounty.getTopBounties.useQuery({ limit: 5 });
   const { data: activities } = api.bounty.Bounty.getRecentActivities.useQuery({ limit: 8 });
-  const joinedQuery = api.bounty.Bounty.getJoinedBounties.useQuery(
-    { limit: 5 },
+  const myBountiesQuery = api.bounty.Bounty.getMyBountiesCombined.useQuery(
+    { limit: 5, sortBy: "newest", filter: "all" },
     { enabled: !!session },
   );
 
@@ -90,14 +91,25 @@ export default function BountiesPage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-1 flex items-center gap-3">
-            <Trophy className="h-7 w-7 text-gold" />
-            Bounties
-          </h1>
-          <p className="text-muted-foreground">
-            Discover challenges, complete tasks, and earn {PLATFORM_ASSET.code} rewards
-          </p>
+        <div className="flex items-start justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-bold mb-1 flex items-center gap-3">
+              <Trophy className="h-7 w-7 text-gold" />
+              Bounties
+            </h1>
+            <p className="text-muted-foreground">
+              Discover challenges, complete tasks, and earn {PLATFORM_ASSET.code} rewards
+            </p>
+          </div>
+          {session && (
+            <Button
+              onClick={() => void router.push("/bounty/create")}
+              className="shrink-0"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create Bounty
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -213,7 +225,7 @@ export default function BountiesPage() {
               </div>
             )}
 
-            {/* My Joined Bounties */}
+            {/* My Joined + Owned Bounties */}
             {session && (
               <div className=" border border-border bg-card overflow-hidden">
                 <div className="px-4 py-3 border-b border-border flex items-center justify-between">
@@ -232,30 +244,33 @@ export default function BountiesPage() {
                   </Button>
                 </div>
                 <div className="p-2">
-                  {joinedQuery.isLoading ? (
+                  {myBountiesQuery.isLoading ? (
                     <div className="space-y-2">
                       {Array.from({ length: 3 }).map((_, i) => (
                         <div key={i} className="h-12 rounded-lg bg-secondary animate-pulse" />
                       ))}
                     </div>
-                  ) : joinedQuery.data?.items.length === 0 ? (
+                  ) : myBountiesQuery.data?.items.length === 0 ? (
                     <p className="text-xs text-muted-foreground text-center py-4">
-                      No joined bounties yet
+                      No bounties yet
                     </p>
                   ) : (
                     <ul className="space-y-1">
-                      {joinedQuery.data?.items.map((p) => (
-                        <li key={p.id}>
+                      {myBountiesQuery.data?.items.map((row) => (
+                        <li key={row.bountyId}>
                           <button
-                            onClick={() => void router.push(`/bounty/${p.bounty.id}`)}
+                            onClick={() => void router.push(`/bounty/${row.bountyId}`)}
                             className="group w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-secondary transition-colors text-left"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs font-semibold truncate text-foreground group-hover:text-primary transition-colors">
-                                {p.bounty.title}
+                              <p className="text-xs font-semibold truncate text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
+                                {row.owned && (
+                                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary shrink-0" title="You own this bounty" />
+                                )}
+                                <span className="truncate">{row.bounty.title}</span>
                               </p>
                               <p className="text-[11px] text-gold font-medium tabular-nums">
-                                {p.bounty.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+                                {row.bounty.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
                               </p>
                             </div>
                             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
@@ -427,28 +442,31 @@ export default function BountiesPage() {
                       </Button>
                     </div>
                     <div className="p-2 max-h-[60vh] overflow-y-auto">
-                      {joinedQuery.isLoading ? (
+                      {myBountiesQuery.isLoading ? (
                         <div className="space-y-2">
                           {Array.from({ length: 2 }).map((_, i) => (
                             <div key={i} className="h-12 rounded-lg bg-secondary animate-pulse" />
                           ))}
                         </div>
-                      ) : !joinedQuery.data?.items.length ? (
-                        <p className="text-xs text-muted-foreground text-center py-4">No joined bounties yet</p>
+                      ) : !myBountiesQuery.data?.items.length ? (
+                        <p className="text-xs text-muted-foreground text-center py-4">No bounties yet</p>
                       ) : (
                         <ul className="space-y-1">
-                          {joinedQuery.data.items.map((p) => (
-                            <li key={p.id}>
+                          {myBountiesQuery.data.items.map((row) => (
+                            <li key={row.bountyId}>
                               <button
-                                onClick={() => { setMobilePanel(null); void router.push(`/bounty/${p.bounty.id}`); }}
+                                onClick={() => { setMobilePanel(null); void router.push(`/bounty/${row.bountyId}`); }}
                                 className="group w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-secondary transition-colors text-left"
                               >
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-semibold truncate text-foreground group-hover:text-primary transition-colors">
-                                    {p.bounty.title}
+                                  <p className="text-xs font-semibold truncate text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
+                                    {row.owned && (
+                                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary shrink-0" title="You own this bounty" />
+                                    )}
+                                    <span className="truncate">{row.bounty.title}</span>
                                   </p>
                                   <p className="text-[11px] text-gold font-medium tabular-nums">
-                                    {p.bounty.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+                                    {row.bounty.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
                                   </p>
                                 </div>
                                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />

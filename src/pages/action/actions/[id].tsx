@@ -89,19 +89,19 @@ export default function ActionBountyDetailPage() {
     { enabled: !!id },
   );
   const bounty = bountyQ.data;
-  const isCreator = session?.user?.id === bounty?.creatorId;
+  const isOwner = session?.user?.id === bounty?.userId;
 
   const submissionsQ = api.bounty.Bounty.getBountySubmissions.useQuery(
     { bountyId: id },
-    { enabled: !!id && isCreator },
+    { enabled: !!id && isOwner },
   );
   const myParticipation = api.bounty.Bounty.getMyParticipation.useQuery(
     { bountyId: id },
-    { enabled: !!id && !!session && !isCreator },
+    { enabled: !!id && !!session && !isOwner },
   );
   const mySubmissions = api.bounty.Bounty.getMySubmissions.useQuery(
     { bountyId: id },
-    { enabled: !!id && !!session && !isCreator },
+    { enabled: !!id && !!session && !isOwner },
   );
 
   /* mutations */
@@ -189,9 +189,9 @@ export default function ActionBountyDetailPage() {
   const sc = statusCfg[bounty.status];
   const isJoined = myParticipation.data?.joined ?? false;
   const winner = myParticipation.data?.winner;
-  const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isCreator;
+  const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isOwner;
   const perWinner = bounty.prizeAmount / bounty.maxWinners;
-  const submissionCount = isCreator
+  const submissionCount = isOwner
     ? bounty._count.submissions
     : (mySubmissions.data?.length ?? 0);
 
@@ -242,16 +242,16 @@ export default function ActionBountyDetailPage() {
             )}
           </div>
 
-          {/* Creator + time */}
+          {/* Owner + time */}
           <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <Avatar className="h-5 w-5">
-                <AvatarImage src={bounty.creator.profileUrl ?? ""} />
+                <AvatarImage src={bounty.user.image ?? ""} />
                 <AvatarFallback className="text-[8px] bg-secondary">
-                  {bounty.creator.name.charAt(0)}
+                  {(bounty.user.name ?? "?").charAt(0)}
                 </AvatarFallback>
               </Avatar>
-              <span className="font-medium text-foreground">{bounty.creator.name}</span>
+              <span className="font-medium text-foreground">{bounty.user.name ?? "Unknown"}</span>
             </div>
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />

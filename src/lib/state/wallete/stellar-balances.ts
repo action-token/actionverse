@@ -1,5 +1,4 @@
 import { Horizon } from "@stellar/stellar-sdk";
-import { accountBalances } from "~/lib/stellar/marketplace/test/acc";
 import { PLATFORM_ASSET } from "~/lib/stellar/constant";
 import { create } from "zustand";
 
@@ -8,6 +7,14 @@ export type AccBalanceType =
   | Horizon.HorizonApi.BalanceLineAsset<"credit_alphanum4">
   | Horizon.HorizonApi.BalanceLineAsset<"credit_alphanum12">
   | Horizon.HorizonApi.BalanceLineLiquidityPool;
+
+type CreditAssetBalance = Horizon.HorizonApi.BalanceLineAsset<
+  "credit_alphanum4" | "credit_alphanum12"
+>;
+
+const isCreditAsset = (balance: AccBalanceType): balance is CreditAssetBalance =>
+  balance.asset_type === "credit_alphanum4" ||
+  balance.asset_type === "credit_alphanum12";
 
 interface Balance {
   balances: AccBalanceType[] | undefined;
@@ -26,128 +33,71 @@ interface Balance {
 
 export const useUserStellarAcc = create<Balance>((set, get) => ({
   active: false,
-  setActive: (active) => {
-    set({ active });
-  },
+  setActive: (active) => set({ active }),
+
   platformAssetBalance: 0,
   balances: undefined,
-  setBalance(balances) {
-    set({
-      balances,
-    });
+
+  setBalance: (balances) => {
+    set({ balances });
     get().setPlatformAssetBalance(balances);
   },
 
-  getAssetBalance: (props) => {
-    const balances = get().balances;
-    if (balances) {
-      for (const balance of balances) {
-        if (
-          balance.asset_type == "credit_alphanum12" ||
-          balance.asset_type == "credit_alphanum4"
-        ) {
-          if (
-            balance.asset_code == props.code &&
-            balance.asset_issuer == props.issuer
-          ) {
-            return balance.balance;
-          }
-        }
-      }
-    }
-  },
+  getAssetBalance: ({ code, issuer }) =>
+    get().balances?.find(
+      (balance) =>
+        isCreditAsset(balance) &&
+        balance.asset_code === code &&
+        balance.asset_issuer === issuer,
+    )?.balance,
 
   setPlatformAssetBalance: (balances) => {
-    for (const balance of balances) {
-      if (
-        balance.asset_type == "credit_alphanum12" ||
-        balance.asset_type == "credit_alphanum4"
-      )
-        if (
-          balance.asset_code == PLATFORM_ASSET.code &&
-          balance.asset_issuer == PLATFORM_ASSET.issuer
-        ) {
-          set({ platformAssetBalance: Number(balance.balance) });
-        }
-    }
-  },
-  getXLMBalance: () => {
-    const balances = get().balances;
-    if (balances) {
-      for (const bal of balances) {
-        if (bal.asset_type == "native") {
-          return bal.balance;
-        }
-      }
+    const platformBalance = balances.find(
+      (balance) =>
+        isCreditAsset(balance) &&
+        balance.asset_code === PLATFORM_ASSET.code &&
+        balance.asset_issuer === PLATFORM_ASSET.issuer,
+    );
+
+    if (platformBalance) {
+      set({ platformAssetBalance: Number(platformBalance.balance) });
     }
   },
 
-  userAssetsCodeIssuer: [],
-  hasTrust: (code, issuer) => {
-    const { balances } = get();
-    if (!balances) return undefined;
-    const trustline = balances.some((balance) => {
-      if (
-        (balance.asset_type === "credit_alphanum12" ||
-          balance.asset_type === "credit_alphanum4") &&
+  getXLMBalance: () =>
+    get().balances?.find((balance) => balance.asset_type === "native")?.balance,
+
+  hasTrust: (code, issuer) =>
+    get().balances?.some(
+      (balance) =>
+        isCreditAsset(balance) &&
         balance.asset_code === code &&
-        balance.asset_issuer === issuer
-      ) {
-        return true;
-      }
-    });
-    return trustline;
-  },
+        balance.asset_issuer === issuer,
+    ),
 }));
 
 interface CreatorBalance {
   balances: AccBalanceType[] | undefined;
   getXLMBalance: () => string | undefined;
   getAssetBalance: (props: { code?: string; issuer?: string }) => number;
-
   setBalance: (balances: AccBalanceType[]) => void;
-  // fetch: (pub: string) => Promise<void>;
 }
 
 export const useCreatorStorageAcc = create<CreatorBalance>((set, get) => ({
-  platformAssetBalance: 0,
   balances: undefined,
-  setBalance(balances) {
-    set({
-      balances,
-    });
-  },
 
-  getAssetBalance: (props) => {
-    const balances = get().balances;
-    if (balances) {
-      for (const balance of balances) {
-        if (
-          balance.asset_type == "credit_alphanum12" ||
-          balance.asset_type == "credit_alphanum4"
-        ) {
-          if (
-            balance.asset_code == props.code &&
-            balance.asset_issuer == props.issuer
-          ) {
-            return Number(balance.balance);
-          }
-        }
-      }
-    }
-    return 0;
-  },
+  setBalance: (balances) => set({ balances }),
 
-  getXLMBalance: () => {
-    const balances = get().balances;
-    if (balances) {
-      for (const bal of balances) {
-        if (bal.asset_type == "native") {
-          return bal.balance;
-        }
-      }
-    }
-  },
+  getAssetBalance: ({ code, issuer }) =>
+    Number(
+      get().balances?.find(
+        (balance) =>
+          isCreditAsset(balance) &&
+          balance.asset_code === code &&
+          balance.asset_issuer === issuer,
+      )?.balance ?? 0,
+    ),
 
-  userAssetsCodeIssuer: [],
+  getXLMBalance: () =>
+    get().balances?.find((balance) => balance.asset_type === "native")?.balance,
 }));

@@ -46,7 +46,7 @@ type BountyCardData = {
   prizeAmount: number;
   status: BountyStatus;
   maxWinners?: number | null;
-  creator: { id: string; name: string; profileUrl: string | null };
+  user: { id: string; name: string | null; image: string | null };
   _count: { participants: number; submissions: number; winners: number };
 };
 
@@ -138,15 +138,15 @@ function ActionBountyCard({
 
       {/* Footer */}
       <div className="flex items-center justify-between mt-auto">
-        {/* Creator */}
+        {/* Owner */}
         <div className="flex items-center gap-1.5 min-w-0">
           <Avatar className="h-4 w-4 shrink-0">
-            <AvatarImage src={bounty.creator.profileUrl ?? ""} />
+            <AvatarImage src={bounty.user.image ?? ""} />
             <AvatarFallback className="text-[8px] bg-secondary text-muted-foreground">
-              {bounty.creator.name.charAt(0).toUpperCase()}
+              {(bounty.user.name ?? "?").charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <span className="text-muted-foreground text-[11px] truncate">{bounty.creator.name}</span>
+          <span className="text-muted-foreground text-[11px] truncate">{bounty.user.name ?? "Unknown"}</span>
         </div>
 
         {/* Actions */}
@@ -199,11 +199,11 @@ function ActionBountyCard({
 function ActionBountyCardWithJoin({ bounty, onPress }: { bounty: BountyCardData; onPress: () => void }) {
   const { data: session } = useSession();
   const openShareModal = useShareBountyModalStore((s) => s.open);
-  const isCreator = session?.user?.id === bounty.creator.id;
+  const isOwner = session?.user?.id === bounty.user.id;
 
   const { data: participation, refetch } = api.bounty.Bounty.getMyParticipation.useQuery(
     { bountyId: bounty.id },
-    { enabled: !!session && !isCreator },
+    { enabled: !!session && !isOwner },
   );
 
   const joinM = api.bounty.Bounty.joinBounty.useMutation({
@@ -214,9 +214,9 @@ function ActionBountyCardWithJoin({ bounty, onPress }: { bounty: BountyCardData;
   return (
     <ActionBountyCard
       bounty={bounty}
-      isCreator={isCreator}
+      isCreator={isOwner}
       isJoined={participation?.joined ?? false}
-      showJoin={!!session && !isCreator && bounty.status === BountyStatus.RUNNING}
+      showJoin={!!session && !isOwner && bounty.status === BountyStatus.RUNNING}
       joining={joinM.isLoading}
       onJoin={() => joinM.mutate({ bountyId: bounty.id })}
       onShare={() =>

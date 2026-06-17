@@ -129,17 +129,17 @@ function BountyEmbed({ bountyId }: { bountyId: number }) {
           )}
         </div>
 
-        {/* Creator + CTA */}
+        {/* Owner + CTA */}
         <div className="flex items-center justify-between pt-0.5">
           <div className="flex items-center gap-1.5 min-w-0">
             <Avatar className="h-5 w-5 shrink-0">
-              <AvatarImage src={bounty.creator.profileUrl ?? ""} />
+              <AvatarImage src={bounty.user.image ?? ""} />
               <AvatarFallback className="text-[8px] bg-secondary text-muted-foreground">
-                {bounty.creator.name.charAt(0).toUpperCase()}
+                {(bounty.user.name ?? "?").charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <span className="text-[11px] text-muted-foreground truncate">
-              {bounty.creator.name}
+              {bounty.user.name ?? "Unknown"}
             </span>
           </div>
           <div className="flex items-center gap-1 text-primary text-[12px] font-semibold shrink-0">

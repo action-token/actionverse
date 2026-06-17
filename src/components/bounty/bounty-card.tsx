@@ -17,7 +17,7 @@ type BountyCardData = {
   prizeAmount: number;
   status: BountyStatus;
   instructions: string[];
-  creator: { id: string; name: string; profileUrl: string | null };
+  user: { id: string; name: string | null; image: string | null };
   _count: { participants: number; submissions: number; winners: number };
   maxWinners?: number;
 };
@@ -122,17 +122,17 @@ export function BountyCard({
         )}
       </div>
 
-      {/* Footer: creator | View → | Joined | Join | Share */}
+      {/* Footer: owner | View → | Joined | Join | Share */}
       <div className="flex items-center justify-between mt-auto">
         <div className="flex items-center gap-1.5 min-w-0">
           <Avatar className="h-5 w-5 shrink-0">
-            <AvatarImage src={bounty.creator.profileUrl ?? ""} />
+            <AvatarImage src={bounty.user.image ?? ""} />
             <AvatarFallback className="text-[9px] font-bold bg-secondary text-muted-foreground">
-              {bounty.creator.name.charAt(0).toUpperCase()}
+              {(bounty.user.name ?? "?").charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
           <span className="text-muted-foreground text-[12px] truncate">
-            By {bounty.creator.name}
+            By {bounty.user.name ?? "Unknown"}
           </span>
         </div>
 
@@ -209,11 +209,11 @@ export function BountyCardSkeleton() {
 /* ── BountyCardWithJoin ───────────────────────────────────────────────────── */
 export function BountyCardWithJoin({ bounty }: { bounty: BountyCardData }) {
   const { data: session } = useSession();
-  const isCreator = session?.user?.id === bounty.creator.id;
+  const isOwner = session?.user?.id === bounty.user.id;
 
   const { data: participation, refetch } = api.bounty.Bounty.getMyParticipation.useQuery(
     { bountyId: bounty.id },
-    { enabled: !!session && !isCreator },
+    { enabled: !!session && !isOwner },
   );
 
   const joinMutation = api.bounty.Bounty.joinBounty.useMutation({
@@ -227,8 +227,8 @@ export function BountyCardWithJoin({ bounty }: { bounty: BountyCardData }) {
   return (
     <BountyCard
       bounty={bounty}
-      showJoin={!!session && !isCreator}
-      isCreator={isCreator}
+      showJoin={!!session && !isOwner}
+      isCreator={isOwner}
       isJoined={participation?.joined ?? false}
       onJoin={() => joinMutation.mutate({ bountyId: bounty.id })}
       joining={joinMutation.isLoading}

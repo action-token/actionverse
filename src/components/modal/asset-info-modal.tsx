@@ -45,10 +45,7 @@ export default function AssetInfoModal() {
     const { selectedMenu, setSelectedMenu } = useMyCollectionTabs();
     const { getAssetBalance: creatorAssetBalance } = useUserStellarAcc();
     const {
-        getAssetBalance: creatorStorageAssetBalance,
-        setBalance,
-        balances,
-    } = useCreatorStorageAcc();
+        getAssetBalance: creatorStorageAssetBalance } = useCreatorStorageAcc();
 
 
     const handleClose = () => {
@@ -64,16 +61,7 @@ export default function AssetInfoModal() {
             navigator.clipboard.writeText(text)
         }
     }
-    const acc = api.wallate.acc.getCreatorStorageBallances.useQuery(undefined, {
-        onSuccess: (data) => {
-            setBalance(data);
-        },
-        onError: (error) => {
-            console.log(error);
-        },
-        refetchOnWindowFocus: false,
-        enabled: !!data,
-    });
+
 
     const copyCreatorAssetBalance = data
         ? selectedMenu === MyCollectionMenu.COLLECTION
