@@ -320,7 +320,7 @@ export default function ActionBountyDetailPage() {
               <Button
                 size="sm"
                 className="h-8 text-xs gap-1"
-                onClick={() => void router.push(`/organization/bounty/edit/${id}`)}
+                onClick={() => void router.push(`/bounty/edit/${id}`)}
               >
                 <Pencil className="h-3 w-3" />
                 Edit
