@@ -44,6 +44,7 @@ type BountyCardData = {
   title: string;
   summary: string;
   prizeAmount: number;
+  prizeAssetCode: string;
   status: BountyStatus;
   maxWinners?: number | null;
   user: { id: string; name: string | null; image: string | null };
@@ -102,7 +103,7 @@ function ActionBountyCard({
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
           <span className="text-primary font-bold text-sm">
-            {bounty.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+            {bounty.prizeAmount.toLocaleString()} {bounty.prizeAssetCode}
           </span>
           <span className="text-muted-foreground text-xs">
             / {maxW > 1 ? `${maxW} winners` : "winner"}
@@ -276,9 +277,9 @@ function FloatingRail({
   filter: "all" | "not_joined" | "joined";
   setFilter: (v: "all" | "not_joined" | "joined") => void;
   session: boolean;
-  topBounties?: { id: number; title: string; prizeAmount: number }[];
+  topBounties?: { id: number; title: string; prizeAmount: number; prizeAssetCode: string }[];
   activities?: Parameters<typeof RecentActivityItem>[0]["activity"][];
-  joinedItems?: { id: number; bounty: { id: number; title: string; prizeAmount: number } }[];
+  joinedItems?: { id: number; bounty: { id: number; title: string; prizeAmount: number; prizeAssetCode: string } }[];
   joinedLoading?: boolean;
   router: ReturnType<typeof useRouter>;
 }) {
@@ -375,7 +376,7 @@ function FloatingRail({
                             </span>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-medium truncate text-foreground">{b.title}</p>
-                              <p className="text-xs text-primary">{b.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}</p>
+                              <p className="text-xs text-primary">{b.prizeAmount.toLocaleString()} {b.prizeAssetCode}</p>
                             </div>
                           </button>
                         ))
@@ -437,7 +438,7 @@ function FloatingRail({
                               >
                                 <div className="min-w-0 flex-1">
                                   <p className="text-xs font-semibold truncate text-foreground">{p.bounty.title}</p>
-                                  <p className="text-[11px] text-primary">{p.bounty.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}</p>
+                                  <p className="text-[11px] text-primary">{p.bounty.prizeAmount.toLocaleString()} {p.bounty.prizeAssetCode}</p>
                                 </div>
                                 <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                               </button>

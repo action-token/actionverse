@@ -233,7 +233,7 @@ export default function ActionBountyDetailPage() {
               {bounty.prizeAmount.toLocaleString()}
             </span>
             <span className="text-sm font-semibold text-muted-foreground">
-              {PLATFORM_ASSET.code}
+              {bounty.prizeAssetCode}
             </span>
             {bounty.maxWinners > 1 && (
               <span className="text-xs text-muted-foreground ml-1">
@@ -344,7 +344,7 @@ export default function ActionBountyDetailPage() {
               ) : (
                 <Crown className="h-4 w-4" />
               )}
-              Claim {winner.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+              Claim {winner.prizeAmount.toLocaleString()} {bounty.prizeAssetCode}
             </Button>
           )}
 
@@ -491,7 +491,7 @@ export default function ActionBountyDetailPage() {
                         </p>
                         {isWin && winData && (
                           <p className="text-[10px] text-gold">
-                            {winData.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}
+                            {winData.prizeAmount.toLocaleString()} {bounty.prizeAssetCode}
                           </p>
                         )}
                       </div>
@@ -593,14 +593,14 @@ export default function ActionBountyDetailPage() {
                           <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Prize pool</p>
                           <p className="text-2xl font-black text-gold">
                             {bounty.prizeAmount.toLocaleString()}
-                            <span className="text-sm font-semibold text-muted-foreground ml-1.5">{PLATFORM_ASSET.code}</span>
+                            <span className="text-sm font-semibold text-muted-foreground ml-1.5">{bounty.prizeAssetCode}</span>
                           </p>
                         </div>
                         {bounty.maxWinners > 1 && (
                           <div className="border-t border-border pt-2 space-y-1">
                             <div className="flex justify-between text-xs">
                               <span className="text-muted-foreground">Per winner</span>
-                              <span className="font-semibold text-foreground">{perWinner.toLocaleString()} {PLATFORM_ASSET.code}</span>
+                              <span className="font-semibold text-foreground">{perWinner.toLocaleString()} {bounty.prizeAssetCode}</span>
                             </div>
                             <div className="flex justify-between text-xs">
                               <span className="text-muted-foreground">Max winners</span>
@@ -654,7 +654,7 @@ export default function ActionBountyDetailPage() {
                                 </Avatar>
                                 <div className="min-w-0 flex-1">
                                   <p className="text-xs font-semibold text-foreground truncate">{w.user.name ?? "Anonymous"}</p>
-                                  <p className="text-[10px] text-gold">{w.prizeAmount.toLocaleString()} {PLATFORM_ASSET.code}</p>
+                                  <p className="text-[10px] text-gold">{w.prizeAmount.toLocaleString()} {bounty.prizeAssetCode}</p>
                                 </div>
                                 {w.claimedAt && <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />}
                               </div>
