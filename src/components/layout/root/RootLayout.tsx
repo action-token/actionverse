@@ -31,6 +31,8 @@ import Sidebar from "../Left-sidebar/sidebar";
 import ARLayout from "./ARLayout";
 import CreatorLayout from "./CreatorLayout";
 import { Toaster as Sonner } from "~/components/shadcn/ui/sonner"
+import { api } from "~/utils/api";
+import { useCreatorStorageAcc, useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 
 export default function Layout({
   children,
@@ -40,6 +42,10 @@ export default function Layout({
   className?: string;
 }) {
   const session = useSession();
+  const { setBalance, setActive } = useUserStellarAcc();
+  const { setBalance: setCreatorBalance, } = useCreatorStorageAcc();
+
+
   const { isMinimized, toggle } = useSidebar();
 
   const router = useRouter();
@@ -62,6 +68,30 @@ export default function Layout({
   const handleToggle = () => {
     toggle();
   };
+  api.wallate.acc.getAccountBalance.useQuery(undefined, {
+    onSuccess: (data) => {
+      const { balances } = data;
+      setBalance(balances);
+      setActive(true);
+    },
+    onError: (error) => {
+      setActive(false);
+    },
+    refetchOnWindowFocus: false,
+    enabled: session.data?.user?.id !== undefined,
+  });
+
+  api.wallate.acc.getCreatorStorageBallances.useQuery(undefined, {
+    onSuccess: (data) => {
+      console.log("Storage Balance", data);
+      setCreatorBalance(data);
+    },
+    onError: (error) => {
+      console.log(error);
+    },
+    refetchOnWindowFocus: false,
+    enabled: session.data?.user?.id !== undefined,
+  });
 
   if (router.pathname.includes("/albedo")) {
     return <div>{children}</div>;

@@ -405,12 +405,12 @@ const CreatorNavigation: DockerItem[] = [
     label: "Followers",
     color: "bg-emerald-500",
   },
-  {
-    href: "/organization/bounty",
-    icon: "users",
-    label: "BOUNTY",
-    color: "bg-blue-500",
-  },
+  // {
+  //   href: "/organization/bounty",
+  //   icon: "users",
+  //   label: "BOUNTY",
+  //   color: "bg-blue-500",
+  // },
   // {
   //   href: "/organization/settings",
   //   icon: "bounty",

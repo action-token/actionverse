@@ -7,9 +7,6 @@ import { useRouter } from "next/router"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "~/lib/utils"
 import Image from "next/image"
-import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
-
-import { useSession } from "next-auth/react"
 
 interface NavItem {
     id: number

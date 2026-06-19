@@ -5,8 +5,6 @@ import { PinType } from "@prisma/client" // Import PinType enum
 export const getPinIcon = (type: PinType) => {
     // Use PinType enum
     switch (type) {
-        case PinType.BOUNTY:
-            return Target
         case PinType.EVENT:
             return Calendar
         case PinType.EXPERIENCE:

@@ -41,35 +41,6 @@ export default async function handler(
 
   const userAcc = await StellarAccount.create(userId);
 
-  // Step 1: Get all scavenger bounties user is participating in
-  const getUserActionBounties = await db.bounty.findMany({
-    where: {
-      bountyType: "SCAVENGER_HUNT",
-    },
-    select: {
-      ActionLocation: true,
-      participants: {
-        select: {
-          userId: true,
-          currentStep: true,
-        },
-      }
-    }
-  })
-
-  // Collect all scavenger group IDs and currentStep+1 group IDs
-  const allScavengerGroupIdsSet = new Set<string>();
-  const currentStepGroupIdsSet = new Set<string>();
-  for (const bounty of getUserActionBounties) {
-    const currentStep = bounty.participants.find((p) => p.userId === userId)?.currentStep ?? -1;
-    for (const action of bounty.ActionLocation) {
-      allScavengerGroupIdsSet.add(action.locationGroupId);
-      if (action.serial === currentStep + 1) {
-        currentStepGroupIdsSet.add(action.locationGroupId);
-      }
-    }
-  }
-
   // Get user's follower relationships
   const userFollowerRelationships = await db.creator.findMany({
     where: {
@@ -175,26 +146,6 @@ export default async function handler(
             subscriptionId: null,
             remaining: { gt: 0 },
             hidden: false,
-          },
-          {
-            // Include only:
-            // - groups NOT in any scavenger (to avoid duplicates)
-            // OR
-            // - current step+1 scavenger pins
-            OR: [
-              {
-                NOT: {
-                  id: {
-                    in: Array.from(allScavengerGroupIdsSet),
-                  },
-                },
-              },
-              {
-                id: {
-                  in: Array.from(currentStepGroupIdsSet),
-                },
-              },
-            ],
           },
           privacyConditions,
         ],

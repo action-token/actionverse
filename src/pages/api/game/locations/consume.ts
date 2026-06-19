@@ -95,38 +95,8 @@ export default async function handler(
         id: location.locationGroup.id,
       },
     });
-    const findActionLocation = await db.actionLocation.findFirst({
-      where: {
-        locationGroupId: location.locationGroup.id,
-      },
-    });
 
-    if (!checkMeAsAConsumer && findActionLocation) {
-      const bountyParticipant = await db.bountyParticipant.findUnique({
-        where: {
-          bountyId_userId: {
-            userId: pubkey,
-            bountyId: findActionLocation.bountyId,
-          },
-        },
-      });
-
-      if (bountyParticipant) {
-        await db.bountyParticipant.update({
-          where: {
-            bountyId_userId: {
-              userId: pubkey,
-              bountyId: findActionLocation.bountyId,
-            },
-          },
-          data: {
-            currentStep: {
-              increment: 1,
-            },
-          },
-        });
-      }
-
+    if (!checkMeAsAConsumer) {
       await db.locationConsumer.create({
         data: { locationId: location.id, userId: pubkey },
       });
@@ -137,21 +107,7 @@ export default async function handler(
       });
 
       return res.status(200).json({ success: true, data: "Location consumed" });
-    }
-    else if (!checkMeAsAConsumer && !findActionLocation) {
-      await db.locationConsumer.create({
-        data: { locationId: location.id, userId: pubkey },
-      });
-
-      await db.locationGroup.update({
-        where: { id: location.locationGroup.id },
-        data: { remaining: { decrement: 1 } },
-      });
-
-      return res.status(200).json({ success: true, data: "Location consumed" });
-
-    }
-    else {
+    } else {
       return res.status(422).json({
         success: false,
         data: "Location limit reached",

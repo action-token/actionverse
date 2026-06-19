@@ -1,519 +1,966 @@
-"use client"
-import type React from "react"
-import { useState } from "react"
-import { useRouter } from "next/router"
-import Image from "next/image"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage"
+import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/router";
+import { useSession } from "next-auth/react";
+import { createPortal } from "react-dom";
+import { api } from "~/utils/api";
+import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avatar";
+import { Badge } from "~/components/shadcn/ui/badge";
+import { Button } from "~/components/shadcn/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs";
 import {
-  ArrowLeft,
-  Upload,
-  FileText,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/shadcn/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/shadcn/ui/dialog";
+import { SubmitReportDialog } from "~/components/bounty/submit-report-dialog";
+import { ReportMediaViewer } from "~/components/bounty/report-media-viewer";
+import { Markdown } from "~/components/bounty/markdown";
+import { BountyStatus } from "@prisma/client";
+import {
   Trophy,
   Users,
-  DollarSign,
-  Award,
-  MapPin,
-  Navigation,
-  Target,
-  X,
+  FileText,
+  Pencil,
+  Share2,
+  ArrowLeft,
+  Loader2,
   CheckCircle2,
-} from "lucide-react"
-import { toast } from "react-hot-toast"
-import { Button } from "~/components/shadcn/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card"
-import { Input } from "~/components/shadcn/ui/input"
-import { Textarea } from "~/components/shadcn/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
-import { Badge } from "~/components/shadcn/ui/badge"
-import { Progress } from "~/components/shadcn/ui/progress"
-import { useBounty } from "~/lib/state/augmented-reality/useBounty"
-import type { Bounty } from "~/types/game/bounty"
-import { z } from "zod"
-import { storage } from "package/connect_wallet/src/lib/firebase/firebase-auth"
-import { PLATFORM_ASSET } from "~/lib/stellar/constant"
-import { UploadSubmission } from "~/lib/augmented-reality/upload-submission"
-import { Preview } from "~/components/common/quill-preview"
-import { motion, AnimatePresence } from "framer-motion"
-import { BountyTypeIndicator } from "~/components/bounty/bounty-type-indicator"
-import { ScavengerProgress } from "~/components/bounty/scavenger-progress"
-import { useLocation } from "~/hooks/use-location"
-import { isWithinRadius } from "~/utils/location"
-import { api } from "~/utils/api"
+  Crown,
+  Lock,
+  AlertCircle,
+  X,
+  Clock,
+  Zap,
+  Target,
+  Eye,
+  ArrowRight,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import { formatDistanceToNow } from "date-fns";
+import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g";
+import { cn } from "~/lib/utils";
+import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-store";
 
-type UploadProgress = Record<string, number>
+/* ── Types ───────────────────────────────────────────────────────────────── */
+interface Submission {
+  id: number;
+  userId: string;
+  content: string;
+  status: string;
+  createdAt: Date;
+  user?: { id: string; name: string | null; image: string | null };
+  media: { id: number; url: string; type: string; fileName: string | null }[];
+}
 
-export const SubmissionMediaInfo = z.object({
-  url: z.string(),
-  name: z.string(),
-  size: z.number(),
-  type: z.string(),
-})
+/* ── Status config ───────────────────────────────────────────────────────── */
+const statusCfg: Record<BountyStatus, { label: string; dot: string; pill: string }> = {
+  RUNNING: { label: "Live", dot: "bg-primary animate-pulse", pill: "bg-primary/10 text-primary border-primary/30" },
+  PAUSED: { label: "Paused", dot: "bg-warning", pill: "bg-warning/10 text-warning border-warning/30" },
+  COMPLETED: { label: "Ended", dot: "bg-muted-foreground", pill: "bg-secondary text-muted-foreground border-border" },
+};
 
-type SubmissionMediaInfoType = z.TypeOf<typeof SubmissionMediaInfo>
+/* ── Page ────────────────────────────────────────────────────────────────── */
+export default function ActionBountyDetailPage() {
+  const router = useRouter();
+  const id = parseInt(router.query.id as string);
+  const { data: session } = useSession();
+  const openShareModal = useShareBountyModalStore((s) => s.open);
 
-export type FileItem = File | { name: string; size: number; type: string; downloadableURL?: string }
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [viewSubmission, setViewSubmission] = useState<Submission | null>(null);
+  const [mobilePanel, setMobilePanel] = useState<
+    "requirements" | "rewards" | "stats" | "winners" | null
+  >(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
-const SingleBountyItem = () => {
-  const router = useRouter()
-  const { id } = router.query;
+  /* queries */
+  const bountyQ = api.bounty.Bounty.getBounty.useQuery(
+    { bountyId: id },
+    { enabled: !!id },
+  );
+  const bounty = bountyQ.data;
+  const isOwner = session?.user?.id === bounty?.userId;
 
-  const [activeTab, setActiveTab] = useState("information")
-  const [solution, setSolution] = useState("")
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress>({})
-  const [media, setMedia] = useState<SubmissionMediaInfoType[]>([])
-  const [uploadFiles, setUploadFiles] = useState<FileItem[]>([])
-  const queryClient = useQueryClient()
+  const submissionsQ = api.bounty.Bounty.getBountySubmissions.useQuery(
+    { bountyId: id },
+    { enabled: !!id && isOwner },
+  );
+  const myParticipation = api.bounty.Bounty.getMyParticipation.useQuery(
+    { bountyId: id },
+    { enabled: !!id && !!session && !isOwner },
+  );
+  const mySubmissions = api.bounty.Bounty.getMySubmissions.useQuery(
+    { bountyId: id },
+    { enabled: !!id && !!session && !isOwner },
+  );
 
-  const { data: bounty, isLoading: bountyLoading } = api.bounty.Bounty.getBountyByIDForApp.useQuery(
-    {
-      BountyId: Number(id),
+  /* mutations */
+  const joinM = api.bounty.Bounty.joinBounty.useMutation({
+    onSuccess: () => {
+      toast.success("Joined!");
+      void myParticipation.refetch();
+      void bountyQ.refetch();
     },
-    {
-      enabled: !!Number(id),
+    onError: (e) => toast.error(e.message),
+  });
+  const statusM = api.bounty.Bounty.updateBountyStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Status updated");
+      void bountyQ.refetch();
     },
-  )
-  const { location, loading: locationLoading, requestLocation } = useLocation()
-
-  const addMediaItem = (url: string, name: string, size?: number, type?: string) => {
-    if (size && type) {
-      setMedia((prevMedia) => [...prevMedia, { url, name, size, type }])
-    }
-  }
-
-  const createBountyAttachmentMutation = useMutation({
-    mutationFn: async ({
-      bountyId,
-      content,
-      media,
-    }: {
-      bountyId: string
-      content: string
-      media?: SubmissionMediaInfoType[]
-    }) => {
-      return await UploadSubmission({ bountyId, content, media })
+    onError: (e) => toast.error(e.message),
+  });
+  const winnerM = api.bounty.Bounty.selectWinner.useMutation({
+    onSuccess: () => {
+      toast.success("Winner selected!");
+      void submissionsQ.refetch();
+      void bountyQ.refetch();
     },
-    onSuccess: async () => {
-      toast.success("Solution submitted successfully")
-      setMedia([])
-      setSolution("")
-      setUploadFiles([])
-      setUploadProgress({})
-      await queryClient.invalidateQueries({ queryKey: ["bounties"] })
+    onError: (e) => toast.error(e.message),
+  });
+  const claimXdrM = api.bounty.Bounty.getClaimRewardXDR.useMutation({
+    onError: (e) => toast.error(e.message),
+  });
+  const claimM = api.bounty.Bounty.claimReward.useMutation({
+    onSuccess: () => {
+      toast.success("Reward claimed!");
+      void myParticipation.refetch();
     },
-    onError: (error) => {
-      console.error("Error following bounty:", error)
-    },
-  })
+    onError: (e) => toast.error(e.message),
+  });
 
-  if (!bounty) return null
-
-  const canParticipate = () => {
-    if (bounty.bountyType === "LOCATION_BASED") {
-      if (!location) return false
-      if (bounty.latitude && bounty.longitude) {
-        return isWithinRadius(
-          location.latitude,
-          location.longitude,
-          bounty.latitude,
-          bounty.longitude,
-          bounty.radius ?? 500,
-        )
-      }
-    }
-    return true
-  }
-
-  const handleSubmitSolution = () => {
-    createBountyAttachmentMutation.mutate({
-      content: solution,
-      bountyId: bounty.id ?? "0",
-      media: media,
-    })
-  }
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (files) {
-      const fileArray = Array.from(files)
-      setUploadFiles((prevFiles) => [...prevFiles, ...fileArray])
-      await uploadDocuments(fileArray)
-    }
-  }
-
-  const uploadDocuments = async (files: File[]) => {
+  const handleClaim = async () => {
+    if (!session?.user) return;
     try {
-      for (const file of files) {
-        const response = await fetch(URL.createObjectURL(file))
-        const blob = await response.blob()
-        const fileName = file.name
-        if (uploadFiles.some((existingFile) => existingFile.name === fileName)) {
-          return
-        }
-        const storageRef = ref(storage, `action/bounty/${bounty.id}/${fileName}/${new Date().getTime()}`)
-        const uploadTask = uploadBytesResumable(storageRef, blob)
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-            setUploadProgress((prevProgress) => ({
-              ...prevProgress,
-              [fileName]: progress,
-            }))
-          },
-          (error) => {
-            console.error("Upload error:", error)
-          },
-          () => {
-            void getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-              setUploadFiles((prevFiles) => {
-                return prevFiles.map((prevFile) =>
-                  prevFile.name === fileName
-                    ? {
-                      name: fileName,
-                      size: file.size,
-                      type: file.type,
-                      downloadableURL: downloadURL,
-                    }
-                    : prevFile,
-                )
-              })
-              addMediaItem(downloadURL, file.name, file.size, file.type)
-            })
-          },
-        )
-      }
-    } catch (error) {
-      console.log("error", error)
+      const result = await claimXdrM.mutateAsync({
+        bountyId: id,
+        signWith: { email: session.user.email! },
+      });
+      await submitSignedXDRToServer4User(result.xdr);
+      await claimM.mutateAsync({ bountyId: id });
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to claim reward");
     }
-  }
+  };
 
-  const getStatusColor = (status: Bounty["status"]) => {
-    switch (status) {
-      case "APPROVED":
-        return "bg-emerald-500 text-white"
-      case "PENDING":
-        return "bg-amber-500 text-white"
-      case "REJECTED":
-        return "bg-red-500 text-white"
-      default:
-        return "bg-slate-500 text-white"
-    }
-  }
+  const submittedUserIds = useMemo(() => {
+    if (!bounty) return new Set<string>();
+    if (isOwner && submissionsQ.data)
+      return new Set(submissionsQ.data.map((s) => s.userId));
+    if (!isOwner && session?.user?.id && mySubmissions.data?.length)
+      return new Set([session.user.id]);
+    return new Set<string>();
+  }, [bounty, isOwner, submissionsQ.data, mySubmissions.data, session]);
 
-  const removeFile = (fileName: string) => {
-    setUploadFiles((prev) => prev.filter((f) => f.name !== fileName))
-    setMedia((prev) => prev.filter((m) => m.name !== fileName))
-  }
-  if (bounty)
+  /* loading / not found */
+  if (bountyQ.isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
-        <div className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-b border-slate-200 dark:border-slate-800">
-          <div className="px-4 py-3 max-w-4xl mx-auto">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={() => router.back()} className="h-9 w-9 p-0 rounded-lg">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-lg font-bold text-slate-900 dark:text-white truncate">{bounty.title}</h1>
-              </div>
-              <BountyTypeIndicator bountyType={bounty.bountyType} />
-            </div>
+      <div className="min-h-full flex items-center justify-center bg-background">
+        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!bounty) {
+    return (
+      <div className="min-h-full flex flex-col items-center justify-center gap-4 bg-background px-4">
+        <AlertCircle className="h-10 w-10 text-muted-foreground" />
+        <p className="text-muted-foreground text-sm">Bounty not found</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void router.push("/action/actions")}
+        >
+          Back to Bounties
+        </Button>
+      </div>
+    );
+  }
+
+  const sc = statusCfg[bounty.status];
+  const isJoined = myParticipation.data?.joined ?? false;
+  const winner = myParticipation.data?.winner;
+  const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isOwner;
+  const perWinner = bounty.prizeAmount / bounty.maxWinners;
+  const submissionCount = isOwner
+    ? bounty._count.submissions
+    : (mySubmissions.data?.length ?? 0);
+
+  return (
+    <div className="min-h-full bg-background relative">
+
+      {/* ── Sticky header ──────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-20 bg-card border-b border-border">
+        <div className="h-[3px] w-full bg-primary" />
+        <div className="flex items-center gap-3 px-4 py-3">
+          <button
+            onClick={() => void router.back()}
+            className="shrink-0 -ml-1 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-foreground truncate">{bounty.title}</p>
+          </div>
+          <div
+            className={cn(
+              "shrink-0 flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide",
+              sc.pill,
+            )}
+          >
+            <span className={cn("h-1.5 w-1.5 rounded-full", sc.dot)} />
+            {sc.label}
           </div>
         </div>
+      </div>
 
-        <div className="px-4 py-6 max-w-4xl mx-auto space-y-6 pb-32">
-          <motion.div
-            className="relative overflow-hidden rounded-2xl"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <Image
-              src={bounty.imageUrls[0] ?? "https://app.action-tokens.com/images/action/logo.png"}
-              alt={bounty.title}
-              width={800}
-              height={320}
-              className="h-52 w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-            <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between">
-              <Badge className={`${getStatusColor(bounty.status)} px-3 py-1 text-xs font-semibold shadow-lg`}>
-                {bounty.status}
-              </Badge>
-              {bounty.bountyType === "LOCATION_BASED" && (
-                <div className="flex items-center gap-1.5 bg-emerald-500 rounded-full px-3 py-1.5 shadow-lg">
-                  <MapPin className="h-3.5 w-3.5 text-white" />
-                  <span className="text-xs text-white font-medium">Location Based</span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <Card className="border-slate-200 dark:border-slate-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col items-center text-center">
-                  <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 mb-2">
-                    <DollarSign className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Prize</p>
-
-                  <p className="text-xs text-slate-500 dark:text-slate-500">
-                    {bounty.priceInBand > 0 ? `${bounty.priceInBand} ${PLATFORM_ASSET.code}` : `${bounty.priceInUSD.toFixed(0)} USD`}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-slate-200 dark:border-slate-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col items-center text-center">
-                  <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/30 mb-2">
-                    <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Joined</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white">{bounty._count.participants}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-500">Participants</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-slate-200 dark:border-slate-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col items-center text-center">
-                  <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-900/30 mb-2">
-                    <Trophy className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Spots</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white">
-                    {bounty.totalWinner - bounty.currentWinnerCount}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-500">left</p>
-                </div>
-              </CardContent>
-            </Card>
+      {/* ── Hero card ──────────────────────────────────────────────────── */}
+      <div className="px-4 pt-4">
+        <div className="bg-card rounded-2xl border border-border shadow-sm p-4 space-y-3">
+          {/* Prize */}
+          <div className="flex items-baseline gap-1.5">
+            <Trophy className="h-4 w-4 text-gold shrink-0 mt-0.5" />
+            <span className="text-2xl font-black text-gold">
+              {bounty.prizeAmount.toLocaleString()}
+            </span>
+            <span className="text-sm font-semibold text-muted-foreground">
+              {bounty.prizeAssetCode}
+            </span>
+            {bounty.maxWinners > 1 && (
+              <span className="text-xs text-muted-foreground ml-1">
+                / {bounty.maxWinners} winners
+              </span>
+            )}
           </div>
 
-          {bounty.bountyType === "LOCATION_BASED" && (
-            <Card className="border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="p-2 rounded-xl bg-emerald-500 shrink-0">
-                    <MapPin className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">Location Required</h3>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">Be within 500m to participate</p>
-                  </div>
+          {/* Owner + time */}
+          <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <Avatar className="h-5 w-5">
+                <AvatarImage src={bounty.user.image ?? ""} />
+                <AvatarFallback className="text-[8px] bg-secondary">
+                  {(bounty.user.name ?? "?").charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="font-medium text-foreground">{bounty.user.name ?? "Unknown"}</span>
+            </div>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {formatDistanceToNow(new Date(bounty.createdAt), { addSuffix: true })}
+            </span>
+          </div>
+
+          {/* Summary */}
+          {bounty.summary && (
+            <p className="text-muted-foreground text-xs leading-relaxed">{bounty.summary}</p>
+          )}
+
+          {/* Creator tools */}
+          {isOwner && (
+            <div className="pt-1 border-t border-border flex flex-wrap items-center gap-2">
+              <Select
+                value={bounty.status}
+                onValueChange={(s) =>
+                  statusM.mutate({ bountyId: id, status: s as BountyStatus })
+                }
+                disabled={statusM.isLoading}
+              >
+                <SelectTrigger className="h-8 text-xs w-[130px] border-border bg-secondary">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="RUNNING">
+                    <span className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      Running
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="PAUSED">
+                    <span className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+                      Paused
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="COMPLETED">
+                    <span className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+                      Completed
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1"
+                onClick={() =>
+                  openShareModal({
+                    id: bounty.id,
+                    title: bounty.title,
+                    prizeAmount: bounty.prizeAmount,
+                    participantCount: bounty._count.participants,
+                    submissionCount: bounty._count.submissions,
+                  })
+                }
+              >
+                <Share2 className="h-3 w-3" />
+                Share
+              </Button>
+
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1"
+                onClick={() => void router.push(`/bounty/edit/${id}`)}
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Main action row (non-creator) ──────────────────────────────── */}
+      {!isOwner && session && (
+        <div className="px-4 pt-3">
+          {winner && !winner.claimedAt && (
+            <Button
+              className="w-full h-11 font-bold bg-gold hover:bg-gold/90 text-gold-foreground gap-2"
+              onClick={() => void handleClaim()}
+              disabled={claimXdrM.isLoading || claimM.isLoading}
+            >
+              {claimXdrM.isLoading || claimM.isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Crown className="h-4 w-4" />
+              )}
+              Claim {winner.prizeAmount.toLocaleString()} {bounty.prizeAssetCode}
+            </Button>
+          )}
+
+          {winner?.claimedAt && (
+            <div className="flex items-center justify-center gap-2 py-3 text-sm font-semibold text-primary bg-primary/10 rounded-2xl border border-primary/20">
+              <CheckCircle2 className="h-4 w-4" />
+              Reward claimed
+            </div>
+          )}
+
+          {!winner && (
+            <div className="space-y-2">
+              {bounty.status === BountyStatus.PAUSED && isJoined && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-warning/10 rounded-2xl border border-warning/20 text-xs text-warning">
+                  <Lock className="h-4 w-4 shrink-0" />
+                  Submissions are paused.
                 </div>
+              )}
+              {!isJoined && bounty.status === BountyStatus.RUNNING && (
                 <Button
-                  onClick={requestLocation}
-                  disabled={locationLoading}
-                  size="sm"
-                  className="w-full h-9 bg-emerald-500 hover:bg-emerald-600 text-white"
+                  className="w-full h-11 font-semibold gap-2"
+                  onClick={() => joinM.mutate({ bountyId: id })}
+                  disabled={joinM.isLoading}
                 >
-                  <Navigation className="h-3.5 w-3.5 mr-2" />
-                  {locationLoading ? "Checking..." : "Check My Location"}
-                </Button>
-                {location && bounty.latitude && bounty.longitude && (
-                  <div className="mt-3 p-3 bg-white dark:bg-slate-800 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      {canParticipate() ? (
-                        <>
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                          <span className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">
-                            You{"'"}re in range!
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <X className="h-4 w-4 text-red-500" />
-                          <span className="text-sm text-red-700 dark:text-red-400 font-medium">Too far away</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {bounty.bountyType === "SCAVENGER_HUNT" && (
-            <Card className="border-purple-200 dark:border-purple-900/50 bg-purple-50/50 dark:bg-purple-950/20">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Target className="h-4 w-4 text-purple-500" />
-                  <span>Hunt Progress</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScavengerProgress
-                  currentStep={bounty.currentStep ?? 0}
-                  totalSteps={bounty.ActionLocation?.length ?? 0}
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg h-10">
-              <TabsTrigger
-                value="information"
-                className="rounded-md text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm"
-              >
-                <FileText className="h-3.5 w-3.5 mr-1.5" />
-                Info
-              </TabsTrigger>
-              <TabsTrigger
-                value="submission"
-                className="rounded-md text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm"
-              >
-                <Award className="h-3.5 w-3.5 mr-1.5" />
-                Submit
-              </TabsTrigger>
-            </TabsList>
-
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeTab}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-              >
-                <TabsContent value="information" className="mt-0">
-                  <Card className="border-slate-200 dark:border-slate-800">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base">Description</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="prose prose-sm max-w-none dark:prose-invert">
-                        <Preview value={bounty.description ?? ""} />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="submission" className="mt-0 space-y-4">
-                  {bounty.BountyWinner.length < bounty.totalWinner && !bounty.isOwner ? (
-                    <>
-                      {uploadFiles.length > 0 && (
-                        <Card className="border-slate-200 dark:border-slate-800">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-sm flex items-center gap-2">
-                              <Upload className="h-4 w-4" />
-                              Uploading Files
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
-                            {uploadFiles.map((file, index) => (
-                              <div key={index} className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <p className="text-xs font-medium text-slate-900 dark:text-white truncate flex-1">
-                                    {file.name}
-                                  </p>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-slate-600 dark:text-slate-400">
-                                      {uploadProgress[file.name]?.toFixed(0) ?? 0}%
-                                    </span>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => removeFile(file.name)}
-                                      className="h-6 w-6 p-0"
-                                    >
-                                      <X className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                <Progress value={uploadProgress[file.name] ?? 0} className="h-1.5" />
-                              </div>
-                            ))}
-                          </CardContent>
-                        </Card>
-                      )}
-
-                      <Card className="border-slate-200 dark:border-slate-800">
-                        <CardHeader className="pb-3">
-                          <CardTitle className="text-base">Submit Solution</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div>
-                            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
-                              Your Solution
-                            </label>
-                            <Textarea
-                              placeholder="Describe your solution..."
-                              value={solution}
-                              onChange={(e) => setSolution(e.target.value)}
-                              className="min-h-[100px] text-sm resize-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
-                              Attachments (Optional)
-                            </label>
-                            <Input
-                              type="file"
-                              multiple
-                              onChange={handleFileChange}
-                              className="text-xs h-9 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
-                            />
-                          </div>
-                          <Button
-                            onClick={handleSubmitSolution}
-                            disabled={solution.length === 0 || createBountyAttachmentMutation.isLoading}
-                            className="w-full h-10 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-medium text-sm"
-                          >
-                            {createBountyAttachmentMutation.isLoading ? "Submitting..." : "Submit Solution"}
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    </>
+                  {joinM.isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Card className="border-slate-200 dark:border-slate-800">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Trophy className="h-4 w-4 text-amber-500" />
-                          Winners
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {bounty.BountyWinner.length > 0 ? (
+                    <Users className="h-4 w-4" />
+                  )}
+                  Join Bounty
+                </Button>
+              )}
+              {canSubmit && (
+                <Button
+                  className="w-full h-11 gap-2 font-semibold"
+                  variant="outline"
+                  onClick={() => setSubmitOpen(true)}
+                >
+                  <FileText className="h-4 w-4" />
+                  Submit Report
+                  <ArrowRight className="h-4 w-4 ml-auto" />
+                </Button>
+              )}
+              {bounty.status === BountyStatus.COMPLETED && !isJoined && (
+                <p className="text-xs text-muted-foreground text-center py-2">
+                  This bounty has ended
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tabs ───────────────────────────────────────────────────────── */}
+      <div className="px-4 pt-4 pb-4">
+        <Tabs defaultValue="description">
+          <TabsList className="h-9 bg-card border border-border rounded-xl p-1 gap-0 w-full shadow-sm">
+            {[
+              { value: "description", label: "Description" },
+              {
+                value: "participants",
+                label: "Participants",
+                count: bounty._count.participants,
+              },
+              {
+                value: "reports",
+                label: isOwner ? "Submissions" : "My Reports",
+                count: submissionCount,
+              },
+            ].map((t) => (
+              <TabsTrigger
+                key={t.value}
+                value={t.value}
+                className="flex-1 h-7 text-[11px] font-semibold rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=inactive]:text-muted-foreground"
+              >
+                {t.label}
+                {t.count !== undefined && t.count > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-black/10 text-[9px]">
+                    {t.count}
+                  </span>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {/* Description */}
+          <TabsContent value="description" className="mt-4 space-y-4">
+            <div className="bg-card rounded-2xl border border-border p-4">
+              {bounty.description ? (
+                <Markdown content={bounty.description} />
+              ) : (
+                <p className="text-xs text-muted-foreground italic">No description provided.</p>
+              )}
+            </div>
+            {bounty.rewardNote && (
+              <div className="bg-card rounded-2xl border border-border p-4 space-y-1">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                  Reward Delivery
+                </p>
+                <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                  {bounty.rewardNote}
+                </p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Participants */}
+          <TabsContent value="participants" className="mt-4">
+            {bounty.participants.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                <Users className="h-8 w-8 opacity-30" />
+                <p className="text-xs">No participants yet — be the first!</p>
+              </div>
+            ) : (
+              <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                {bounty.participants.map((p, idx) => {
+                  const isWin = bounty.winners.some((w) => w.userId === p.userId);
+                  const winData = bounty.winners.find((w) => w.userId === p.userId);
+                  const submitted = submittedUserIds.has(p.userId);
+                  return (
+                    <div
+                      key={p.id}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-3 border-b border-border last:border-0",
+                        isWin ? "bg-gold/5" : "",
+                      )}
+                    >
+                      <span className="text-xs text-muted-foreground w-5 shrink-0 text-center">
+                        {isWin ? (
+                          <Crown className="h-3.5 w-3.5 text-gold mx-auto" />
+                        ) : (
+                          idx + 1
+                        )}
+                      </span>
+                      <Avatar className="h-7 w-7 shrink-0">
+                        <AvatarImage src={p.user.image ?? ""} />
+                        <AvatarFallback className="text-[9px] bg-secondary">
+                          {(p.user.name ?? "U").charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          {p.user.name ?? "Anonymous"}
+                        </p>
+                        {isWin && winData && (
+                          <p className="text-[10px] text-gold">
+                            {winData.prizeAmount.toLocaleString()} {bounty.prizeAssetCode}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {submitted && (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                        )}
+                        {isWin && (
+                          <span className="text-[10px] font-bold text-gold bg-gold/20 border border-gold/30 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <Crown className="h-2.5 w-2.5" />
+                            Winner
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Reports / Submissions */}
+          <TabsContent value="reports" className="mt-4">
+            {isOwner ? (
+              <CreatorReportsTab
+                submissions={submissionsQ.data ?? []}
+                loading={submissionsQ.isLoading}
+                maxWinners={bounty.maxWinners}
+                currentWinners={bounty._count.winners}
+                onSelectWinner={(uid) =>
+                  winnerM.mutate({ bountyId: id, winnerId: uid, prizeAmount: perWinner })
+                }
+                selecting={winnerM.isLoading}
+                winnerIds={bounty.winners.map((w) => w.userId)}
+                onView={setViewSubmission}
+              />
+            ) : (
+              <UserReportsTab
+                submissions={(mySubmissions.data ?? []) as unknown as Submission[]}
+                loading={mySubmissions.isLoading}
+                onView={setViewSubmission}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* ── Floating right rail (portal — escapes ARLayout stacking context) ── */}
+      {mounted && createPortal(
+        <div className="fixed inset-0 pointer-events-none z-50">
+          <div className="max-w-md mx-auto relative h-full">
+            {mobilePanel && (
+              <div
+                className="absolute inset-0 bg-foreground/20 pointer-events-auto"
+                onClick={() => setMobilePanel(null)}
+              />
+            )}
+
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center pointer-events-auto">
+              {mobilePanel && (
+                <div className="mr-1 w-64 shadow-xl bg-card border border-border rounded-2xl relative">
+                  <button
+                    onClick={() => setMobilePanel(null)}
+                    className="absolute top-3 right-3 text-muted-foreground hover:text-foreground z-20"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="absolute right-0 top-6 translate-x-1/2 h-2.5 w-2.5 rounded-full bg-primary/60 border-2 border-card z-20" />
+                  <div className="max-h-[70vh] overflow-y-auto">
+
+                    {mobilePanel === "requirements" && (
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          <FileText className="h-3.5 w-3.5 text-primary" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-foreground">Requirements</p>
+                        </div>
+                        {bounty.instructions.length > 0 ? (
                           <div className="space-y-2">
-                            {bounty.BountyWinner.map((winner, index) => (
-                              <div
-                                key={index}
-                                className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg"
-                              >
-                                <div className="p-1.5 rounded-lg bg-emerald-500">
-                                  <Trophy className="h-3.5 w-3.5 text-white" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 truncate">
-                                    {winner.user.id}
-                                  </p>
-                                  <p className="text-xs text-emerald-600 dark:text-emerald-500">Winner #{index + 1}</p>
-                                </div>
+                            {bounty.instructions.map((inst, i) => (
+                              <div key={i} className="flex items-start gap-2 text-xs">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                                <span className="text-muted-foreground leading-snug">{inst}</span>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <div className="text-center py-12">
-                            <Trophy className="h-10 w-10 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
-                            <p className="text-sm text-slate-500 dark:text-slate-400">No winners yet</p>
+                          <p className="text-xs text-muted-foreground italic">No specific requirements.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {mobilePanel === "rewards" && (
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          <Trophy className="h-3.5 w-3.5 text-gold" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-foreground">Rewards</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Prize pool</p>
+                          <p className="text-2xl font-black text-gold">
+                            {bounty.prizeAmount.toLocaleString()}
+                            <span className="text-sm font-semibold text-muted-foreground ml-1.5">{bounty.prizeAssetCode}</span>
+                          </p>
+                        </div>
+                        {bounty.maxWinners > 1 && (
+                          <div className="border-t border-border pt-2 space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Per winner</span>
+                              <span className="font-semibold text-foreground">{perWinner.toLocaleString()} {bounty.prizeAssetCode}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Max winners</span>
+                              <span className="font-semibold text-foreground">{bounty.maxWinners}</span>
+                            </div>
                           </div>
                         )}
-                      </CardContent>
-                    </Card>
+                      </div>
+                    )}
+
+                    {mobilePanel === "stats" && (
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          <Zap className="h-3.5 w-3.5 text-primary" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-foreground">Stats</p>
+                        </div>
+                        {[
+                          { icon: <Target className="h-3.5 w-3.5 text-primary" />, label: "Max Winners", value: String(bounty.maxWinners) },
+                          { icon: <Users className="h-3.5 w-3.5 text-primary" />, label: "Participants", value: String(bounty._count.participants) },
+                          { icon: <FileText className="h-3.5 w-3.5 text-muted-foreground" />, label: "Submissions", value: String(bounty._count.submissions) },
+                          { icon: <Crown className="h-3.5 w-3.5 text-gold" />, label: "Winners", value: `${bounty._count.winners} / ${bounty.maxWinners}` },
+                        ].map(({ icon, label, value }) => (
+                          <div key={label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">{icon}{label}</span>
+                            <span className="text-xs font-bold text-foreground">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {mobilePanel === "winners" && (
+                      <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          <Crown className="h-3.5 w-3.5 text-gold" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-gold">
+                            Winners ({bounty.winners.length}/{bounty.maxWinners})
+                          </p>
+                        </div>
+                        {bounty.winners.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-4">No winners yet</p>
+                        ) : (
+                          <div className="space-y-2.5">
+                            {bounty.winners.map((w, i) => (
+                              <div key={w.id} className="flex items-center gap-2.5">
+                                <span className="text-xs font-bold text-gold w-4 shrink-0">#{i + 1}</span>
+                                <Avatar className="h-7 w-7 ring-1 ring-gold/30 shrink-0">
+                                  <AvatarImage src={w.user.image ?? ""} />
+                                  <AvatarFallback className="text-[9px] bg-gold/10 text-gold">
+                                    {(w.user.name ?? "U").charAt(0)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-semibold text-foreground truncate">{w.user.name ?? "Anonymous"}</p>
+                                  <p className="text-[10px] text-gold">{w.prizeAmount.toLocaleString()} {bounty.prizeAssetCode}</p>
+                                </div>
+                                {w.claimedAt && <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>{/* end scroll container */}
+                </div>
+              )}
+
+              {/* Tab rail */}
+              <div className="flex flex-col gap-px">
+                {(
+                  [
+                    { id: "requirements" as const, label: "Req", Icon: FileText },
+                    { id: "rewards" as const, label: "Prize", Icon: Trophy },
+                    { id: "stats" as const, label: "Stats", Icon: Zap },
+                    { id: "winners" as const, label: "Win", Icon: Crown },
+                  ] as const
+                ).map(({ id: tabId, label, Icon }) => (
+                  <button
+                    key={tabId}
+                    onClick={() => setMobilePanel((prev) => (prev === tabId ? null : tabId))}
+                    className={cn(
+                      "flex flex-col items-center gap-1 px-2 py-2.5 border border-r-0 rounded-l-lg transition-all duration-150",
+                      mobilePanel === tabId
+                        ? "bg-primary/5 border-primary/40 text-primary"
+                        : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary",
+                    )}
+                  >
+                    <Icon className="h-3 w-3 shrink-0" />
+                    <span className="[writing-mode:vertical-rl] rotate-180 text-[8px] font-semibold tracking-widest uppercase">
+                      {label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* ── Dialogs ────────────────────────────────────────────────────── */}
+      <SubmitReportDialog
+        bountyId={id}
+        open={submitOpen}
+        onClose={() => setSubmitOpen(false)}
+        onSuccess={() => {
+          void mySubmissions.refetch();
+          void bountyQ.refetch();
+        }}
+      />
+
+      <Dialog open={!!viewSubmission} onOpenChange={() => setViewSubmission(null)}>
+        <DialogContent className="max-w-sm mx-4 bg-card border-border max-h-[85vh] flex flex-col overflow-hidden p-0 gap-0">
+          <DialogHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              Submission
+            </DialogTitle>
+          </DialogHeader>
+          {viewSubmission && (
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={viewSubmission.user?.image ?? ""} />
+                  <AvatarFallback className="text-xs bg-secondary">
+                    {(viewSubmission.user?.name ?? "U").charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {viewSubmission.user?.name ?? "Anonymous"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(viewSubmission.createdAt), {
+                      addSuffix: true,
+                    })}
+                  </p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "ml-auto text-xs border capitalize",
+                    viewSubmission.status === "APPROVED"
+                      ? "border-primary/30 text-primary bg-primary/10"
+                      : viewSubmission.status === "REJECTED"
+                        ? "border-destructive/30 text-destructive bg-destructive/10"
+                        : "border-border text-muted-foreground",
                   )}
-                </TabsContent>
-              </motion.div>
-            </AnimatePresence>
-          </Tabs>
-        </div>
-      </div>
-    )
+                >
+                  {viewSubmission.status.toLowerCase()}
+                </Badge>
+              </div>
+              <div className="p-3 rounded-xl bg-secondary border border-border overflow-hidden">
+                <Markdown content={viewSubmission.content} />
+              </div>
+              {viewSubmission.media.length > 0 && (
+                <ReportMediaViewer media={viewSubmission.media} />
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
 
-export default SingleBountyItem
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+      <div className="opacity-30">{icon}</div>
+      <p className="text-xs">{text}</p>
+    </div>
+  );
+}
+
+/* ── Creator reports tab ─────────────────────────────────────────────────── */
+function CreatorReportsTab({
+  submissions,
+  loading,
+  maxWinners,
+  currentWinners,
+  onSelectWinner,
+  selecting,
+  winnerIds,
+  onView,
+}: {
+  submissions: Submission[];
+  loading: boolean;
+  maxWinners: number;
+  currentWinners: number;
+  onSelectWinner: (uid: string) => void;
+  selecting: boolean;
+  winnerIds: string[];
+  onView: (s: Submission) => void;
+}) {
+  if (loading)
+    return (
+      <div className="space-y-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-20 rounded-2xl bg-secondary animate-pulse" />
+        ))}
+      </div>
+    );
+  if (!submissions.length)
+    return <EmptyState icon={<FileText className="h-8 w-8" />} text="No submissions yet" />;
+
+  const slotsLeft = maxWinners - currentWinners;
+
+  return (
+    <div className="space-y-3">
+      {slotsLeft > 0 && (
+        <p className="text-xs text-muted-foreground bg-card rounded-xl px-3 py-2 border border-border">
+          {slotsLeft} winner slot{slotsLeft > 1 ? "s" : ""} remaining
+        </p>
+      )}
+      {submissions.map((sub) => {
+        const isWinner = winnerIds.includes(sub.userId);
+        const canSel = slotsLeft > 0 && !isWinner;
+        return (
+          <div
+            key={sub.id}
+            className={cn(
+              "rounded-2xl border p-4 space-y-3 bg-card",
+              isWinner ? "border-gold/30 bg-gold/5" : "border-border",
+            )}
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <Avatar className="h-8 w-8 shrink-0">
+                  <AvatarImage src={sub.user?.image ?? ""} />
+                  <AvatarFallback className="text-xs bg-secondary">
+                    {(sub.user?.name ?? "U").charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {sub.user?.name ?? "Anonymous"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {formatDistanceToNow(new Date(sub.createdAt), { addSuffix: true })}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {isWinner && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-gold bg-gold/20 border border-gold/30 px-2 py-0.5 rounded-full">
+                    <Crown className="h-2.5 w-2.5" />
+                    Winner
+                  </span>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => onView(sub)}
+                >
+                  <Eye className="h-3 w-3" />
+                  View
+                </Button>
+                {canSel && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-gold/30 text-gold hover:bg-gold/10 gap-1"
+                    onClick={() => onSelectWinner(sub.userId)}
+                    disabled={selecting}
+                  >
+                    {selecting ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Crown className="h-3 w-3" />
+                    )}
+                    Select
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="relative">
+              <div className="max-h-16 overflow-hidden text-xs text-muted-foreground leading-relaxed">
+                <Markdown content={sub.content} compact />
+              </div>
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── User reports tab ────────────────────────────────────────────────────── */
+function UserReportsTab({
+  submissions,
+  loading,
+  onView,
+}: {
+  submissions: Submission[];
+  loading: boolean;
+  onView: (s: Submission) => void;
+}) {
+  if (loading)
+    return (
+      <div className="space-y-3">
+        {[0, 1].map((i) => (
+          <div key={i} className="h-20 rounded-2xl bg-secondary animate-pulse" />
+        ))}
+      </div>
+    );
+  if (!submissions.length)
+    return (
+      <EmptyState
+        icon={<FileText className="h-8 w-8" />}
+        text="You haven't submitted yet"
+      />
+    );
+
+  return (
+    <div className="space-y-3">
+      {submissions.map((sub) => (
+        <div
+          key={sub.id}
+          className="rounded-2xl border border-border bg-card p-4 space-y-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-xs border capitalize",
+                  sub.status === "APPROVED"
+                    ? "border-primary/30 text-primary bg-primary/10"
+                    : sub.status === "REJECTED"
+                      ? "border-destructive/30 text-destructive bg-destructive/10"
+                      : "border-border text-muted-foreground",
+                )}
+              >
+                {sub.status.toLowerCase()}
+              </Badge>
+              <span className="text-[10px] text-muted-foreground">
+                {formatDistanceToNow(new Date(sub.createdAt), { addSuffix: true })}
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              onClick={() => onView(sub)}
+            >
+              <Eye className="h-3 w-3" />
+              View
+            </Button>
+          </div>
+          <div className="relative">
+            <div className="max-h-16 overflow-hidden text-xs text-muted-foreground leading-relaxed">
+              <Markdown content={sub.content} compact />
+            </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
