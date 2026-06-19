@@ -1,788 +1,534 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { useForm, type SubmitHandler, Controller } from "react-hook-form"
+import { useForm, type SubmitHandler, Controller, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { api } from "~/utils/api"
-
 import { MediaType } from "@prisma/client"
 import {
-    FileAudio,
-    FileVideo,
-    ImageIcon,
-    Music,
-    Users2,
-    Video,
-    X,
-    Plus,
-    Sparkles,
-    Play,
-    Pause,
-    Volume2,
-    VolumeX,
-    ArrowLeft,
-    ArrowRight,
-    Check,
-    Eye,
+    FileAudio, FileVideo, ImageIcon, Music, Users2, Video,
+    X, Sparkles, Play, Pause, Volume2, VolumeX, Check, Eye, Upload,
 } from "lucide-react"
-import clsx from "clsx"
 import Image from "next/image"
-
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
-import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
+import { Label } from "~/components/shadcn/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/shadcn/ui/select"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "~/components/shadcn/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "~/components/shadcn/ui/dialog"
 import toast from "react-hot-toast"
 import { useRouter } from "next/router"
-
 import { motion, AnimatePresence } from "framer-motion"
 import CustomAvatar from "../common/custom-avatar"
-import { Editor } from "../common/quill-editor"
+import { MarkdownEditor } from "~/components/bounty/markdown-editor"
+import { Markdown } from "~/components/bounty/markdown"
 import { UploadS3Button } from "../common/upload-button"
 import { useCreatePostModalStore } from "../store/create-post-modal-store"
-
-const mediaTypes = [
-    { type: MediaType.IMAGE, icon: ImageIcon, label: "Image" },
-    { type: MediaType.VIDEO, icon: Video, label: "Video" },
-    { type: MediaType.MUSIC, icon: Music, label: "Music" },
-]
+import { cn } from "~/lib/utils"
 
 export const MediaInfo = z.object({
     url: z.string(),
     type: z.nativeEnum(MediaType),
 })
-
 type MediaInfoType = z.TypeOf<typeof MediaInfo>
 
 export const PostSchema = z.object({
-    heading: z.string().min(1, { message: "Post must contain a title" }),
-    content: z.string().min(2, { message: "Minimum 2 characters required." }),
+    heading: z.string().min(1, { message: "Title is required" }),
+    content: z.string().min(2, { message: "Content is required" }),
     subscription: z.string().optional(),
     medias: z.array(MediaInfo).optional(),
 })
 
 type FormStep = "content" | "media" | "preview"
 
-export function CreatePostModal() {
-    const {
-        register,
-        handleSubmit,
-        reset,
-        control,
-        getValues,
-        setValue,
-        trigger,
-        formState: { errors, isValid },
-    } = useForm<z.infer<typeof PostSchema>>({
-        resolver: zodResolver(PostSchema),
-        mode: "onChange",
-        defaultValues: {
-            heading: "",
-            content: "",
-            subscription: "public",
-        },
-    })
+const STEPS: { key: FormStep; label: string; description: string }[] = [
+    { key: "content", label: "Write", description: "Title & content" },
+    { key: "media",   label: "Media",   description: "Images & files" },
+    { key: "preview", label: "Review",  description: "Preview & publish" },
+]
 
-    const [media, setMedia] = useState<MediaInfoType[]>([])
-    const [wantMediaType, setWantMedia] = useState<MediaType>()
-    const { isOpen, setIsOpen } = useCreatePostModalStore()
+const MEDIA_TYPES = [
+    { type: MediaType.IMAGE, icon: ImageIcon, label: "Image",  endpoint: "imageUploader" },
+    { type: MediaType.VIDEO, icon: Video,     label: "Video",  endpoint: "videoUploader" },
+    { type: MediaType.MUSIC, icon: Music,     label: "Music",  endpoint: "musicUploader" },
+] as const
+
+export function CreatePostModal() {
+    const { register, handleSubmit, reset, control, getValues, setValue, trigger, formState: { errors } } =
+        useForm<z.infer<typeof PostSchema>>({
+            resolver: zodResolver(PostSchema),
+            mode: "onChange",
+            defaultValues: { heading: "", content: "", subscription: "public" },
+        })
+
+    const watchedHeading = useWatch({ control, name: "heading" })
+    const [media, setMedia]               = useState<MediaInfoType[]>([])
+    const [editorContent, setEditorContent] = useState("")
+    const [activeUpload, setActiveUpload]  = useState<MediaType | null>(null)
+    const [currentStep, setCurrentStep]   = useState<FormStep>("content")
     const [previewMedia, setPreviewMedia] = useState<MediaInfoType | null>(null)
-    const [isPlaying, setIsPlaying] = useState(false)
-    const [isMuted, setIsMuted] = useState(false)
-    const [currentStep, setCurrentStep] = useState<FormStep>("content")
+    const [isPlaying, setIsPlaying]       = useState(false)
+    const [isMuted, setIsMuted]           = useState(false)
     const [showConfetti, setShowConfetti] = useState(false)
 
     const audioRef = useRef<HTMLAudioElement>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
+    const router   = useRouter()
 
-    const router = useRouter()
+    const { isOpen, setIsOpen } = useCreatePostModalStore()
     const creator = api.fan.creator.meCreator.useQuery()
+    const tiers   = api.fan.member.getAllMembership.useQuery({})
     const createPostMutation = api.fan.post.create.useMutation({
         onSuccess: async (data) => {
             setShowConfetti(true)
-            setMedia([])
-            setTimeout(() => {
-                handleClose()
-                router.push(`/organization/post/${data.id}`)
-            }, 2000)
+            setTimeout(() => { handleClose(); router.push(`/organization/post/${data.id}`) }, 2200)
         },
     })
-    const tiers = api.fan.member.getAllMembership.useQuery({})
 
     const onSubmit: SubmitHandler<z.infer<typeof PostSchema>> = (data) => {
         data.medias = media
         createPostMutation.mutate(data)
     }
 
-    const addMediaItem = (url: string, type: MediaType) => {
-        setMedia((prevMedia) => [...prevMedia, { url, type }])
+    function handleEditorChange(value: string) {
+        setEditorContent(value)
+        setValue("content", value, { shouldValidate: true })
     }
 
-    const handleWantMediaType = (type: MediaType) => {
-        setWantMedia((prevType) => (prevType === type ? undefined : type))
-    }
-
-    function handleEditorChange(value: string): void {
-        setValue("content", value)
-    }
-
-    const openMediaPreview = (item: MediaInfoType) => {
-        setPreviewMedia(item)
-        setIsPlaying(false)
-        if (audioRef.current) {
-            audioRef.current.pause()
-            audioRef.current.currentTime = 0
-        }
-        if (videoRef.current) {
-            videoRef.current.pause()
-            videoRef.current.currentTime = 0
-        }
-    }
-
-    const closeMediaPreview = () => {
-        setPreviewMedia(null)
-        setIsPlaying(false)
-        if (audioRef.current) {
-            audioRef.current.pause()
-        }
-        if (videoRef.current) {
-            videoRef.current.pause()
-        }
-    }
-
-    const togglePlay = () => {
-        if (previewMedia?.type === MediaType.MUSIC && audioRef.current) {
-            if (isPlaying) {
-                audioRef.current.pause()
-            } else {
-                audioRef.current.play()
-            }
-            setIsPlaying(!isPlaying)
-        } else if (previewMedia?.type === MediaType.VIDEO && videoRef.current) {
-            if (isPlaying) {
-                videoRef.current.pause()
-            } else {
-                videoRef.current.play()
-            }
-            setIsPlaying(!isPlaying)
-        }
-    }
-
-    const toggleMute = () => {
-        if (previewMedia?.type === MediaType.MUSIC && audioRef.current) {
-            audioRef.current.muted = !isMuted
-            setIsMuted(!isMuted)
-        } else if (previewMedia?.type === MediaType.VIDEO && videoRef.current) {
-            videoRef.current.muted = !isMuted
-            setIsMuted(!isMuted)
-        }
-    }
-
-    const goToNextStep = async () => {
+    const goNext = async () => {
         if (currentStep === "content") {
-            const isContentValid = await trigger(["heading", "content"])
-            if (isContentValid) {
-                setCurrentStep("media")
-            }
+            const ok = await trigger(["heading", "content"])
+            if (ok) setCurrentStep("media")
         } else if (currentStep === "media") {
             setCurrentStep("preview")
         }
     }
-
-    const goToPreviousStep = () => {
-        if (currentStep === "media") {
-            setCurrentStep("content")
-        } else if (currentStep === "preview") {
-            setCurrentStep("media")
-        }
+    const goBack = () => {
+        if (currentStep === "media") setCurrentStep("content")
+        else if (currentStep === "preview") setCurrentStep("media")
     }
 
     const handleClose = () => {
         setIsOpen(false)
-        resetForm()
-    }
-    const resetForm = () => {
         reset()
         setMedia([])
+        setEditorContent("")
         setCurrentStep("content")
-        setIsOpen(false)
+        setShowConfetti(false)
     }
 
+    const openPreview  = (item: MediaInfoType) => { setPreviewMedia(item); setIsPlaying(false) }
+    const closePreview = () => { setPreviewMedia(null); setIsPlaying(false); audioRef.current?.pause(); videoRef.current?.pause() }
 
-    function TiersOptions() {
-        if (tiers.isLoading) return <div className="h-10 w-full animate-pulse bg-muted sm:w-[180px]"></div>
-        if (tiers.data) {
-            return (
-                <Controller
-                    name="subscription"
-                    control={control}
-                    render={({ field }) => (
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <SelectTrigger className="w-full sm:w-[180px]">
-                                <SelectValue placeholder="Choose Subscription Model" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="public">Public</SelectItem>
-                                {tiers.data.map((model) => (
-                                    <SelectItem
-                                        key={model.id}
-                                        value={model.id.toString()}
-                                    >{`${model.name} : ${model.price} ${model.creator.pageAsset?.code ? model.creator.pageAsset.code : model.creator?.customPageAssetCodeIssuer?.split("-")[0]}`}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                />
-            )
-        }
+    const togglePlay = () => {
+        const el = previewMedia?.type === MediaType.MUSIC ? audioRef.current : videoRef.current
+        if (!el) return
+        isPlaying ? el.pause() : void el.play()
+        setIsPlaying(!isPlaying)
     }
-    if (creator.data)
-        return (
+    const toggleMute = () => {
+        if (audioRef.current) audioRef.current.muted = !isMuted
+        if (videoRef.current) videoRef.current.muted = !isMuted
+        setIsMuted(!isMuted)
+    }
 
-            <Dialog
-                open={isOpen}
-                onOpenChange={handleClose}
-            >
+    const stepIndex = STEPS.findIndex((s) => s.key === currentStep)
+    const canGoNext = !!watchedHeading && !!editorContent
 
+    if (!creator.data) return null
+
+    return (
+        <>
+            <Dialog open={isOpen} onOpenChange={handleClose}>
                 <DialogContent
-                    onInteractOutside={(e) => {
-                        e.preventDefault()
-                    }}
-                    className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto p-0">
+                    onInteractOutside={(e) => e.preventDefault()}
+                    className="p-0 gap-0 sm:max-w-[680px] max-h-[90vh] flex flex-col overflow-hidden rounded-2xl"
+                >
+                    <DialogTitle className="sr-only">Create a new post</DialogTitle>
+
+                    {/* ── Confetti ── */}
                     {showConfetti && (
-                        <div className="fixed inset-0 pointer-events-none z-50">
+                        <div className="fixed inset-0 z-50 pointer-events-none">
                             <div className="absolute inset-0 flex items-center justify-center">
-                                <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1, opacity: [0, 1, 0] }}
-                                    transition={{ duration: 2 }}
-                                    className="text-4xl"
+                                <motion.p
+                                    initial={{ scale: 0.6, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: [0, 1, 1, 0] }}
+                                    transition={{ duration: 2.2 }}
+                                    className="bg-background/90 backdrop-blur text-foreground font-semibold text-lg px-6 py-3 rounded-full shadow-xl flex items-center gap-2"
                                 >
-                                    <div className="flex items-center justify-center gap-2 text-primary">
-                                        <Sparkles className="h-8 w-8" />
-                                        <span className="font-bold">Post created successfully!</span>
-                                        <Sparkles className="h-8 w-8" />
-                                    </div>
-                                </motion.div>
+                                    <Sparkles className="h-5 w-5 text-primary" /> Post published!
+                                </motion.p>
                             </div>
-                            {Array.from({ length: 100 }).map((_, i) => (
-                                <motion.div
+                            {Array.from({ length: 50 }).map((_, i) => (
+                                <motion.span
                                     key={i}
-                                    className="absolute w-2 h-2 rounded-full"
-                                    initial={{
-                                        top: "50%",
-                                        left: "50%",
-                                        scale: 0,
-                                        backgroundColor: ["#FF5733", "#33FF57", "#3357FF", "#F3FF33", "#FF33F3"][Math.floor(Math.random() * 5)],
-                                    }}
-                                    animate={{
-                                        top: `${Math.random() * 100}%`,
-                                        left: `${Math.random() * 100}%`,
-                                        scale: [0, 1, 0],
-                                        opacity: [0, 1, 0],
-                                    }}
-                                    transition={{
-                                        duration: 2 + Math.random() * 2,
-                                        delay: Math.random() * 0.5,
-                                        ease: "easeOut",
-                                    }}
+                                    className="absolute block w-2 h-2 rounded-full"
+                                    style={{ backgroundColor: ["#f43f5e","#8b5cf6","#3b82f6","#10b981","#f59e0b"][i % 5] }}
+                                    initial={{ top: "50%", left: "50%", scale: 0, opacity: 1 }}
+                                    animate={{ top: `${Math.random() * 100}%`, left: `${Math.random() * 100}%`, scale: [0, 1, 0], opacity: [1, 1, 0] }}
+                                    transition={{ duration: 1.8 + Math.random() * 1.2, delay: Math.random() * 0.3 }}
                                 />
                             ))}
                         </div>
                     )}
-                    <DialogHeader className=" px-6 py-2">
-                        <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-                            <Sparkles className="h-5 w-5" /> Create a New Post
-                        </DialogTitle>
-                        <DialogDescription className="">
-                            Share your amazing content with your fans and followers
-                        </DialogDescription>
-                    </DialogHeader>
 
-
-                    <form onSubmit={handleSubmit(onSubmit)}>
-                        {/* Step Indicator */}
-                        <div className="px-6 ">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center w-full">
-                                    <div
-                                        className={clsx(
-                                            "flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-colors",
-                                            currentStep === "content" ? "bg-primary text-primary-foreground shadow-sm shadow-foreground" : "bg-gray-100 text-gray-400",
-                                        )}
-                                    >
-                                        1
-                                    </div>
-                                    <div
-                                        className={clsx("flex-1 h-1 mx-2", currentStep === "content" ? "bg-gray-200" : "bg-primary")}
-                                    />
-                                    <div
-                                        className={clsx(
-                                            "flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-colors",
-                                            currentStep === "media"
-                                                ? "bg-primary text-primary-foreground shadow-sm shadow-foreground"
-                                                : currentStep === "preview"
-                                                    ? "bg-gray-100 text-gray-400"
-                                                    : "bg-gray-100 text-gray-400",
-                                        )}
-                                    >
-                                        2
-                                    </div>
-                                    <div
-                                        className={clsx("flex-1 h-1 mx-2", currentStep === "preview" ? "bg-primary" : "bg-gray-200")}
-                                    />
-                                    <div
-                                        className={clsx(
-                                            "flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-colors",
-                                            currentStep === "preview" ? "bg-primary text-primary-foreground shadow-sm shadow-foreground" : "bg-gray-100 text-gray-400",
-                                        )}
-                                    >
-                                        3
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex justify-between text-sm mb-6">
-                                <div className={clsx("font-medium", currentStep === "content" ? "text-primary" : "text-gray-500")}>
-                                    Content
-                                </div>
-                                <div className={clsx("font-medium", currentStep === "media" ? "text-primary" : "text-gray-500")}>
-                                    Media
-                                </div>
-                                <div className={clsx("font-medium", currentStep === "preview" ? "text-primary" : "text-gray-500")}>
-                                    Preview
+                    {/* ── Header ── */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+                        <div className="flex items-center gap-3">
+                            <CustomAvatar className="h-10 w-10 ring-2 ring-primary/25 shrink-0" url={creator.data.profileUrl} />
+                            <div>
+                                <p className="font-semibold text-sm leading-none">{creator.data.name}</p>
+                                <div className="mt-2">
+                                    {tiers.isLoading ? (
+                                        <div className="h-7 w-24 animate-pulse rounded-full bg-muted" />
+                                    ) : tiers.data && (
+                                        <Controller
+                                            name="subscription"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                    <SelectTrigger className="h-7 rounded-full border border-border bg-muted px-3 text-xs font-medium shadow-none focus:ring-1 focus:ring-primary/30 gap-1.5 w-auto">
+                                                        <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="public">Public</SelectItem>
+                                                        {tiers.data.map((m) => (
+                                                            <SelectItem key={m.id} value={m.id.toString()}>
+                                                                {m.name} · {m.price} {m.creator.pageAsset?.code ?? m.creator?.customPageAssetCodeIssuer?.split("-")[0]}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
+                                        />
+                                    )}
                                 </div>
                             </div>
                         </div>
 
-                        <div className="px-6">
-                            <div className="flex flex-col items-start justify-between space-y-2 pb-4 sm:flex-row sm:items-center sm:space-y-0 border-b mb-4">
-                                <div className="flex items-center space-x-2">
-                                    <CustomAvatar className="h-12 w-12 ring-2 " url={creator.data.profileUrl} />
-                                    <span className="font-semibold text-lg">{creator.data.name}</span>
-                                </div>
-                                <div className="flex w-full items-center space-x-2 sm:w-auto">
-                                    <Users2 size={20} className="" />
-                                    <TiersOptions />
-                                </div>
-                            </div>
+                        {/* Step pills */}
+                        <div className="flex items-center gap-1.5">
+                            {STEPS.map((step, idx) => {
+                                const done    = idx < stepIndex
+                                const current = idx === stepIndex
+                                return (
+                                    <button
+                                        key={step.key}
+                                        type="button"
+                                        disabled={!done && !current}
+                                        onClick={() => done && setCurrentStep(step.key)}
+                                        className={cn(
+                                            "flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-all",
+                                            current && "bg-primary text-primary-foreground",
+                                            done && !current && "bg-primary/10 text-primary cursor-pointer hover:bg-primary/20",
+                                            !current && !done && "bg-muted text-muted-foreground/50 cursor-default",
+                                        )}
+                                    >
+                                        {done
+                                            ? <Check className="h-3 w-3" />
+                                            : <span className="text-[10px] font-bold">{idx + 1}</span>
+                                        }
+                                        {step.label}
+                                    </button>
+                                )
+                            })}
                         </div>
+                    </div>
 
-                        {/* Step 1: Content */}
-                        <AnimatePresence mode="wait">
-                            {currentStep === "content" && (
-                                <motion.div
-                                    className="px-6 py-4"
-                                    initial={{ opacity: 0, x: -20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: 20 }}
-                                    transition={{ duration: 0.3 }}
-                                >
-                                    <h3 className="text-lg font-medium mb-4">Step 1: Create Your Content</h3>
-                                    <div className="space-y-6">
-                                        <div className="space-y-2">
+                    {/* ── Body ── */}
+                    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+                        <div className="flex-1 overflow-y-auto">
+                            <AnimatePresence mode="wait">
+
+                                {/* Step 1 – Write */}
+                                {currentStep === "content" && (
+                                    <motion.div
+                                        key="write"
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        transition={{ duration: 0.18 }}
+                                        className="p-6 space-y-5"
+                                    >
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</Label>
                                             <Input
-                                                type="text"
-                                                placeholder="Add a compelling title..."
+                                                id="heading"
+                                                placeholder="Give your post a title…"
                                                 {...register("heading")}
-                                                className={clsx(
-                                                    "text-lg font-medium border-2 ",
-                                                    errors.heading ? "border-red-500" : "border-gray-200",
+                                                className={cn(
+                                                    "h-10 text-sm",
+                                                    errors.heading && "border-destructive focus-visible:ring-destructive/30",
                                                 )}
                                             />
-                                            {errors.heading && <p className="text-sm text-red-500">{errors.heading.message}</p>}
+                                            {errors.heading && <p className="text-xs text-destructive">{errors.heading.message}</p>}
                                         </div>
-                                        <div className="space-y-2">
-                                            <Editor onChange={handleEditorChange} value={getValues("content")} className="h-[240px]" />
-                                            {errors.content && <p className="text-sm text-red-500">{errors.content.message}</p>}
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            )}
 
-                            {/* Step 2: Media */}
-                            {currentStep === "media" && (
-                                <motion.div
-                                    className="px-6 py-4"
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                >
-                                    <h3 className="text-lg font-medium mb-4">Step 2: Add Media</h3>
-                                    <div className="space-y-6">
-                                        <AnimatePresence>
-                                            {media.length > 0 ? (
-                                                <motion.div
-                                                    className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
-                                                    initial={{ opacity: 0 }}
-                                                    animate={{ opacity: 1 }}
-                                                    exit={{ opacity: 0 }}
-                                                >
-                                                    {media.map((el, id) => (
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content</Label>
+                                            <MarkdownEditor
+                                                onChange={handleEditorChange}
+                                                value={editorContent}
+                                                placeholder="Write something for your fans…"
+                                                minHeight={240}
+                                            />
+                                            {errors.content && <p className="text-xs text-destructive">{errors.content.message}</p>}
+                                        </div>
+                                    </motion.div>
+                                )}
+
+                                {/* Step 2 – Media */}
+                                {currentStep === "media" && (
+                                    <motion.div
+                                        key="media"
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        transition={{ duration: 0.18 }}
+                                        className="p-6 space-y-5"
+                                    >
+                                        {/* Grid */}
+                                        {media.length > 0 ? (
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                                                <AnimatePresence>
+                                                    {media.map((el, i) => (
                                                         <motion.div
-                                                            key={id}
-                                                            className="relative group"
-                                                            initial={{ opacity: 0, scale: 0.8 }}
+                                                            key={i}
+                                                            initial={{ opacity: 0, scale: 0.85 }}
                                                             animate={{ opacity: 1, scale: 1 }}
-                                                            exit={{ opacity: 0, scale: 0.8 }}
-                                                            transition={{ duration: 0.2 }}
+                                                            exit={{ opacity: 0, scale: 0.85 }}
+                                                            className="relative group aspect-square"
                                                             layout
-                                                            whileHover={{ scale: 1.05 }}
-                                                            onClick={() => openMediaPreview(el)}
                                                         >
-                                                            <div className="aspect-square rounded-lg overflow-hidden shadow-md cursor-pointer border-2 border-transparent hover:border-purple-500 transition-all duration-300">
+                                                            <div
+                                                                onClick={() => openPreview(el)}
+                                                                className="h-full w-full rounded-xl overflow-hidden border border-border hover:border-primary/50 cursor-pointer transition-colors"
+                                                            >
                                                                 {el.type === MediaType.IMAGE ? (
                                                                     <div className="relative h-full w-full">
-                                                                        <Image
-                                                                            src={el.url ?? "/images/action/logo.png"}
-                                                                            alt="Uploaded media"
-                                                                            fill
-                                                                            className="object-cover"
-                                                                        />
-                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all duration-300">
-                                                                            <ImageIcon className="text-white opacity-0 group-hover:opacity-100 h-8 w-8" />
-                                                                        </div>
-                                                                    </div>
-                                                                ) : el.type === MediaType.VIDEO ? (
-                                                                    <div className="relative h-full w-full bg-gray-100 flex items-center justify-center">
-                                                                        <FileVideo className="h-12 w-12 text-gray-400" />
-                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all duration-300">
-                                                                            <Play className="text-white opacity-0 group-hover:opacity-100 h-8 w-8" />
+                                                                        <Image src={el.url} alt="" fill className="object-cover" />
+                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors flex items-center justify-center">
+                                                                            <Eye className="text-white opacity-0 group-hover:opacity-100 h-5 w-5" />
                                                                         </div>
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="relative h-full w-full bg-gray-100 flex items-center justify-center">
-                                                                        <FileAudio className="h-12 w-12 text-gray-400" />
-                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all duration-300">
-                                                                            <Music className="text-white opacity-0 group-hover:opacity-100 h-8 w-8" />
-                                                                        </div>
+                                                                    <div className="h-full w-full bg-muted flex flex-col items-center justify-center gap-1.5">
+                                                                        {el.type === MediaType.VIDEO
+                                                                            ? <FileVideo className="h-7 w-7 text-muted-foreground" />
+                                                                            : <FileAudio className="h-7 w-7 text-muted-foreground" />}
+                                                                        <span className="text-[10px] text-muted-foreground font-medium">
+                                                                            {el.type === MediaType.VIDEO ? "Video" : "Audio"}
+                                                                        </span>
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                            <Button
-                                                                size="icon"
-                                                                variant="destructive"
-                                                                className="absolute -right-2 -top-2 h-6 w-6 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation()
-                                                                    setMedia(media.filter((_, index) => index !== id))
-                                                                }}
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { e.stopPropagation(); setMedia(media.filter((_, j) => j !== i)) }}
+                                                                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
                                                             >
                                                                 <X className="h-3 w-3" />
-                                                            </Button>
+                                                            </button>
                                                         </motion.div>
                                                     ))}
-                                                </motion.div>
-                                            ) : (
+                                                </AnimatePresence>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center gap-3 py-14 rounded-2xl border-2 border-dashed border-border bg-muted/20">
+                                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                                    <Upload className="h-5 w-5 text-muted-foreground" />
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-sm font-medium">Add media to your post</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">Images, videos or music</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Upload buttons */}
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {MEDIA_TYPES.map(({ type, icon: Icon, label, endpoint }) => (
+                                                <div key={type} className="flex flex-col gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActiveUpload(activeUpload === type ? null : type)}
+                                                        className={cn(
+                                                            "flex flex-col items-center gap-1.5 rounded-xl border py-4 text-xs font-medium transition-all",
+                                                            activeUpload === type
+                                                                ? "border-primary bg-primary/5 text-primary"
+                                                                : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-border/80",
+                                                        )}
+                                                    >
+                                                        <Icon className="h-5 w-5" />
+                                                        {label}
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <AnimatePresence>
+                                            {activeUpload && (
                                                 <motion.div
-                                                    className="text-center py-8 rounded-lg border-2 border-dashed border-gray-300"
-                                                    initial={{ opacity: 0 }}
-                                                    animate={{ opacity: 1 }}
-                                                    exit={{ opacity: 0 }}
+                                                    initial={{ opacity: 0, height: 0 }}
+                                                    animate={{ opacity: 1, height: "auto" }}
+                                                    exit={{ opacity: 0, height: 0 }}
+                                                    className="overflow-hidden"
                                                 >
-                                                    <div className="flex flex-col items-center gap-2">
-                                                        <div className="p-3 rounded-full bg-purple-100">
-                                                            <ImageIcon className="h-6 w-6 text-purple-500" />
-                                                        </div>
-                                                        <h3 className="font-medium text-lg">No media added yet</h3>
-                                                        <p className="text-gray-500 max-w-md mx-auto">
-                                                            Add images, videos, or music to make your post more engaging
-                                                        </p>
+                                                    <div className="rounded-xl border border-border bg-muted/30 p-4 flex justify-center">
+                                                        <UploadS3Button
+                                                            endpoint={MEDIA_TYPES.find(m => m.type === activeUpload)!.endpoint}
+                                                            className="w-full max-w-xs"
+                                                            label={`Upload ${MEDIA_TYPES.find(m => m.type === activeUpload)!.label}`}
+                                                            onClientUploadComplete={(res) => {
+                                                                if (res?.url) {
+                                                                    setMedia(prev => [...prev, { url: res.url, type: activeUpload }])
+                                                                    setActiveUpload(null)
+                                                                    toast.success(`${MEDIA_TYPES.find(m => m.type === activeUpload)!.label} uploaded!`)
+                                                                }
+                                                            }}
+                                                            onUploadError={(e: Error) => toast.error(e.message)}
+                                                        />
                                                     </div>
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>
+                                    </motion.div>
+                                )}
 
-                                        <div className="flex flex-col items-center gap-6 pt-4">
-                                            <div className="flex flex-wrap items-center justify-center gap-3">
-                                                {mediaTypes.map(({ type, icon: IconComponent, label }) => (
-                                                    <motion.div key={type} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                                        <Button
-                                                            size="lg"
-                                                            type="button"
-                                                            variant={wantMediaType === type ? "default" : "outline"}
-                                                            onClick={() => handleWantMediaType(type)}
-                                                            className={clsx(
-                                                                "flex-1 sm:flex-none h-14 px-6",
-                                                                wantMediaType === type && "bg-purple-600 hover:bg-purple-700",
-                                                            )}
-                                                        >
-                                                            <IconComponent className="mr-2 h-5 w-5" />
-                                                            {label}
-                                                        </Button>
-                                                    </motion.div>
-                                                ))}
-                                            </div>
-
-                                            <AnimatePresence>
-                                                {wantMediaType && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, height: 0 }}
-                                                        animate={{ opacity: 1, height: "auto" }}
-                                                        exit={{ opacity: 0, height: 0 }}
-                                                        transition={{ duration: 0.3 }}
-                                                        className="overflow-hidden w-full flex justify-center"
-                                                    >
-                                                        <div className="bg-gray-50 p-6 rounded-lg border w-full max-w-md">
-                                                            <h3 className="font-medium text-center mb-4">
-                                                                {wantMediaType === "IMAGE"
-                                                                    ? "Upload an Image"
-                                                                    : wantMediaType === "VIDEO"
-                                                                        ? "Upload a Video"
-                                                                        : "Upload Music"}
-                                                            </h3>
-
-                                                            {wantMediaType === "IMAGE" ? (
-                                                                <UploadS3Button
-                                                                    endpoint="imageUploader"
-                                                                    className="w-full"
-                                                                    label="Upload Image"
-                                                                    onClientUploadComplete={(res) => {
-                                                                        const data = res
-                                                                        if (data?.url) {
-                                                                            addMediaItem(data.url, wantMediaType)
-                                                                            setWantMedia(undefined)
-                                                                            toast.success("Image uploaded successfully!")
-                                                                        }
-                                                                    }}
-                                                                    onUploadError={(error: Error) => {
-                                                                        toast.error(`ERROR! ${error.message}`)
-                                                                    }}
-                                                                />
-                                                            ) : wantMediaType === "VIDEO" ? (
-                                                                <UploadS3Button
-                                                                    className="w-full"
-                                                                    label="Upload Video"
-                                                                    endpoint="videoUploader"
-                                                                    onClientUploadComplete={(res) => {
-                                                                        const data = res
-                                                                        if (data?.url) {
-                                                                            addMediaItem(data.url, wantMediaType)
-                                                                            setWantMedia(undefined)
-                                                                            toast.success("Video uploaded successfully!")
-                                                                        }
-                                                                    }}
-                                                                    onUploadError={(error: Error) => {
-                                                                        toast.error(`ERROR! ${error.message}`)
-                                                                    }}
-                                                                />
-                                                            ) : (
-                                                                wantMediaType === "MUSIC" && (
-                                                                    <UploadS3Button
-                                                                        className="w-full"
-                                                                        label="Upload Audio"
-                                                                        endpoint="musicUploader"
-                                                                        onClientUploadComplete={(res) => {
-                                                                            const data = res
-                                                                            if (data?.url) {
-                                                                                addMediaItem(data.url, wantMediaType)
-                                                                                setWantMedia(undefined)
-                                                                                toast.success("Music uploaded successfully!")
-                                                                            }
-                                                                        }}
-                                                                        onUploadError={(error: Error) => {
-                                                                            toast.error(`ERROR! ${error.message}`)
-                                                                        }}
-                                                                    />
-                                                                )
-                                                            )}
-                                                        </div>
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {/* Step 3: Preview */}
-                            {currentStep === "preview" && (
-                                <motion.div
-                                    className="px-6 py-4"
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                >
-                                    <h3 className="text-lg font-medium mb-4">Step 3: Preview Your Post</h3>
-                                    <div className="border rounded-lg p-6 bg-white shadow-sm">
-                                        <div className="flex items-center gap-3 mb-4">
-                                            <CustomAvatar className="h-10 w-10" url={creator.data.profileUrl} />
-                                            <div>
-                                                <div className="font-medium">{creator.data.name}</div>
-                                                <div className="text-sm text-gray-500">
-                                                    {tiers.data?.find((t) => t.id.toString() === getValues("subscription"))?.name ?? "Public"}
+                                {/* Step 3 – Preview */}
+                                {currentStep === "preview" && (
+                                    <motion.div
+                                        key="preview"
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        transition={{ duration: 0.18 }}
+                                        className="p-6"
+                                    >
+                                        <div className="rounded-2xl border border-border overflow-hidden">
+                                            {/* Post header */}
+                                            <div className="flex items-center gap-3 p-4 border-b border-border">
+                                                <CustomAvatar className="h-9 w-9" url={creator.data.profileUrl} />
+                                                <div>
+                                                    <p className="text-sm font-semibold leading-none">{creator.data.name}</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        {tiers.data?.find(t => t.id.toString() === getValues("subscription"))?.name ?? "Public"}
+                                                    </p>
                                                 </div>
                                             </div>
-                                        </div>
 
-                                        <h2 className="text-xl font-bold mb-3">{getValues("heading")}</h2>
-
-                                        <div className="prose max-w-none mb-6" dangerouslySetInnerHTML={{ __html: getValues("content") }} />
-
-                                        {media.length > 0 && (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                                                {media.map((item, index) => (
-                                                    <div
-                                                        key={index}
-                                                        className="relative aspect-square rounded-md overflow-hidden cursor-pointer border"
-                                                        onClick={() => openMediaPreview(item)}
-                                                    >
-                                                        {item.type === MediaType.IMAGE ? (
-                                                            <Image
-                                                                src={item.url ?? "/images/action/logo.png"}
-                                                                alt="Media preview"
-                                                                fill
-                                                                className="object-cover"
-                                                            />
-                                                        ) : item.type === MediaType.VIDEO ? (
-                                                            <div className="flex items-center justify-center h-full bg-gray-100">
-                                                                <FileVideo className="h-10 w-10 text-gray-400" />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center justify-center h-full bg-gray-100">
-                                                                <FileAudio className="h-10 w-10 text-gray-400" />
-                                                            </div>
-                                                        )}
-                                                        <div className="absolute inset-0 bg-black/0 hover:bg-black/20 flex items-center justify-center transition-all duration-300">
-                                                            <Eye className="text-white opacity-0 hover:opacity-100 h-6 w-6" />
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                            {/* Post body */}
+                                            <div className="p-4 space-y-3">
+                                                <h2 className="text-lg font-bold leading-snug">{getValues("heading")}</h2>
+                                                <Markdown content={editorContent} />
                                             </div>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
 
-                        <div className="flex justify-between gap-3 mt-4 pt-4 border-t px-6 pb-6">
-                            {currentStep !== "content" ? (
-                                <Button type="button" variant="outline" onClick={goToPreviousStep} className="px-6">
-                                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                                </Button>
-                            ) : (
-                                <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="px-6">
-                                    Cancel
-                                </Button>
-                            )}
+                                            {/* Media grid */}
+                                            {media.length > 0 && (
+                                                <div className={cn("grid gap-0.5 border-t border-border", media.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
+                                                    {media.map((item, i) => (
+                                                        <div
+                                                            key={i}
+                                                            className="relative aspect-video cursor-pointer group overflow-hidden"
+                                                            onClick={() => openPreview(item)}
+                                                        >
+                                                            {item.type === MediaType.IMAGE ? (
+                                                                <Image src={item.url} alt="" fill className="object-cover" />
+                                                            ) : (
+                                                                <div className="h-full w-full bg-muted flex items-center justify-center">
+                                                                    {item.type === MediaType.VIDEO
+                                                                        ? <FileVideo className="h-10 w-10 text-muted-foreground" />
+                                                                        : <FileAudio className="h-10 w-10 text-muted-foreground" />}
+                                                                </div>
+                                                            )}
+                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-colors">
+                                                                <Eye className="text-white opacity-0 group-hover:opacity-100 h-6 w-6" />
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+
+                            </AnimatePresence>
+                        </div>
+
+                        {/* ── Footer ── */}
+                        <div className="flex items-center justify-between px-6 py-4 border-t bg-muted/30 shrink-0">
+                            <button
+                                type="button"
+                                onClick={currentStep === "content" ? handleClose : goBack}
+                                className="text-sm text-muted-foreground hover:text-foreground transition-colors font-medium"
+                            >
+                                {currentStep === "content" ? "Cancel" : "← Back"}
+                            </button>
 
                             {currentStep !== "preview" ? (
                                 <Button
                                     type="button"
-                                    onClick={goToNextStep}
-
-                                    disabled={currentStep === "content" && (!getValues("heading") || !getValues("content"))}
+                                    onClick={goNext}
+                                    disabled={currentStep === "content" && !canGoNext}
+                                    className="rounded-full px-6"
                                 >
-                                    Next <ArrowRight className="ml-2 h-4 w-4" />
+                                    Continue
                                 </Button>
                             ) : (
                                 <Button
                                     type="button"
-                                    disabled={createPostMutation.isLoading}
                                     onClick={handleSubmit(onSubmit)}
+                                    disabled={createPostMutation.isLoading}
+                                    className="rounded-full px-6 gap-2"
                                 >
                                     {createPostMutation.isLoading ? (
-                                        <>
-                                            <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent"></span>
-                                            Publishing...
-                                        </>
+                                        <><span className="h-4 w-4 rounded-full border-2 border-current border-r-transparent animate-spin" /> Publishing…</>
                                     ) : (
-                                        <>
-                                            <Check className="mr-2 h-4 w-4" /> Publish Post
-                                        </>
+                                        <><Sparkles className="h-4 w-4" /> Publish Post</>
                                     )}
                                 </Button>
                             )}
                         </div>
                     </form>
                 </DialogContent>
-                {/* Media Preview Dialog */}
-                <Dialog open={!!previewMedia} onOpenChange={(open) => !open && closeMediaPreview()}>
+
+                {/* ── Lightbox ── */}
+                <Dialog open={!!previewMedia} onOpenChange={(open) => !open && closePreview()}>
                     <DialogContent className="sm:max-w-[800px] p-0 overflow-hidden bg-black/95 border-none text-white">
+                        <DialogTitle className="sr-only">Media preview</DialogTitle>
                         <div className="relative">
                             {previewMedia?.type === MediaType.IMAGE && (
-                                <div className="flex items-center justify-center p-4 h-[80vh] max-h-[600px]">
-                                    <Image
-                                        src={previewMedia.url ?? "/images/action/logo.png"}
-                                        alt="Media preview"
-                                        width={800}
-                                        height={600}
-                                        className="max-h-full max-w-full object-contain"
-                                    />
+                                <div className="flex items-center justify-center p-6 h-[80vh] max-h-[600px]">
+                                    <Image src={previewMedia.url} alt="" width={800} height={600} className="max-h-full max-w-full object-contain rounded-lg" />
                                 </div>
                             )}
-
                             {previewMedia?.type === MediaType.VIDEO && (
                                 <div className="flex flex-col items-center justify-center p-4 h-[80vh] max-h-[600px]">
-                                    <video
-                                        ref={videoRef}
-                                        src={previewMedia.url}
-                                        className="max-h-full max-w-full"
-                                        controls={false}
-                                        onPlay={() => setIsPlaying(true)}
-                                        onPause={() => setIsPlaying(false)}
-                                        onEnded={() => setIsPlaying(false)}
-                                    />
-                                    <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="bg-black/50 border-white/20 hover:bg-black/70"
-                                            onClick={togglePlay}
-                                        >
+                                    <video ref={videoRef} src={previewMedia.url} className="max-h-full max-w-full rounded-lg"
+                                        onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => setIsPlaying(false)} />
+                                    <div className="absolute bottom-6 flex gap-3">
+                                        <Button variant="outline" size="icon" className="bg-white/10 border-white/20 hover:bg-white/20 backdrop-blur" onClick={togglePlay}>
                                             {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
                                         </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="bg-black/50 border-white/20 hover:bg-black/70"
-                                            onClick={toggleMute}
-                                        >
+                                        <Button variant="outline" size="icon" className="bg-white/10 border-white/20 hover:bg-white/20 backdrop-blur" onClick={toggleMute}>
                                             {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                                         </Button>
                                     </div>
                                 </div>
                             )}
-
                             {previewMedia?.type === MediaType.MUSIC && (
-                                <div className="flex flex-col items-center justify-center p-8 h-[50vh]">
-                                    <div className="w-64 h-64 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center mb-8">
-                                        <Music className="h-24 w-24 text-white" />
+                                <div className="flex flex-col items-center justify-center gap-8 p-10 h-[50vh]">
+                                    <div className="h-40 w-40 rounded-full bg-gradient-to-br from-primary/80 to-primary/20 flex items-center justify-center shadow-2xl">
+                                        <Music className="h-16 w-16 text-white" />
                                     </div>
-                                    <audio
-                                        ref={audioRef}
-                                        src={previewMedia.url}
-                                        className="hidden"
-                                        onPlay={() => setIsPlaying(true)}
-                                        onPause={() => setIsPlaying(false)}
-                                        onEnded={() => setIsPlaying(false)}
-                                    />
-                                    <div className="flex justify-center gap-4">
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="bg-black/50 border-white/20 hover:bg-black/70 h-12 w-12"
-                                            onClick={togglePlay}
-                                        >
+                                    <audio ref={audioRef} src={previewMedia.url} className="hidden"
+                                        onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => setIsPlaying(false)} />
+                                    <div className="flex gap-3">
+                                        <Button variant="outline" size="icon" className="h-12 w-12 bg-white/10 border-white/20 hover:bg-white/20 backdrop-blur" onClick={togglePlay}>
                                             {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
                                         </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="bg-black/50 border-white/20 hover:bg-black/70 h-12 w-12"
-                                            onClick={toggleMute}
-                                        >
+                                        <Button variant="outline" size="icon" className="h-12 w-12 bg-white/10 border-white/20 hover:bg-white/20 backdrop-blur" onClick={toggleMute}>
                                             {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
                                         </Button>
                                     </div>
@@ -791,11 +537,7 @@ export function CreatePostModal() {
                         </div>
                     </DialogContent>
                 </Dialog>
-
-
             </Dialog>
-
-
-        )
+        </>
+    )
 }
-

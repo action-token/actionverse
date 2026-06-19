@@ -11,11 +11,8 @@ import dynamic from "next/dynamic";
 import { Roboto, Lobster, Roboto_Slab, Rowdies } from "next/font/google";
 import "~/styles/globals.css";
 
-// Markdown editor styles (library + project override). Loaded globally
-// because the editor renders into a portal-style tree that can't be
-// styled via CSS Modules.
+// Markdown editor styles (library defaults only).
 import "@uiw/react-md-editor/markdown-editor.css";
-import "~/components/bounty/markdown-editor.css";
 
 import Layout from "~/components/layout/root/RootLayout";
 import { ShareBountyModal } from "~/components/modal/share-bounty-modal";

@@ -2,6 +2,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useRef, useEffect } from "react";
 import type { MDEditorProps } from "@uiw/react-md-editor";
 import { commands as defaultCommands } from "@uiw/react-md-editor";
+import { useTheme } from "next-themes";
 import { cn } from "~/lib/utils";
 import { Markdown } from "~/components/bounty/markdown";
 
@@ -79,6 +80,9 @@ export function MarkdownEditor({
   className,
   minHeight = 280,
 }: MarkdownEditorProps) {
+  const { resolvedTheme } = useTheme();
+  const colorMode = resolvedTheme === "dark" ? "dark" : "light";
+
   // Word count for soft / hard limits
   const wordCount = useMemo(() => countWords(value), [value]);
   const overLimit = maxWords !== undefined && wordCount > maxWords;
@@ -110,7 +114,7 @@ export function MarkdownEditor({
           // black edge against the dark page background. The toolbar's
           // own border-bottom against the textarea bg is enough visual
           // structure.
-          "rounded-lg overflow-hidden bg-secondary",
+          "rounded-lg overflow-hidden bg-secondary shadow-md dark:shadow-none",
           disabled && "opacity-60 pointer-events-none",
         )}
       >
@@ -135,8 +139,7 @@ export function MarkdownEditor({
               </div>
             ),
           }}
-          // Force dark mode so the library picks its GitHub-dark tokens.
-          data-color-mode="dark"
+          data-color-mode={colorMode}
           // No drag handle (would clash with the dialog scroll).
           visibleDragbar={false}
           textareaProps={{

@@ -13,7 +13,7 @@ import { api } from "~/utils/api"
 import CustomAvatar from "../common/custom-avatar"
 import { useShareModalStore } from "../store/share-modal-store"
 import { CommentSection } from "./comment/post-comment-section"
-import { Preview } from "../common/quill-preview"
+import { Markdown } from "~/components/bounty/markdown"
 import { PostContextMenu } from "../common/post-context-menu"
 import Link from "next/link"
 
@@ -167,13 +167,13 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
                                     {post.content && post.content.length > 400 && !expanded ? (
                                         <>
                                             <Link href={postUrl} >
-                                                <p className="text-gray-800 dark:text-gray-200 cursor-pointer"><Preview value={post.content.substring(0, 400)} /></p></Link>
+                                                <p className="text-gray-800 dark:text-gray-200 cursor-pointer"><Markdown content={post.content.substring(0, 400)} compact /></p></Link>
                                             <Button variant="link" size="sm" className="px-0 h-auto" onClick={toggleExpand}>
                                                 See more
                                             </Button>
                                         </>
                                     ) : (
-                                        <Link href={postUrl}> <p className="text-gray-800 dark:text-gray-200 cursor-pointer"><Preview value={post.content} /></p>  </Link>
+                                        <Link href={postUrl}> <p className="text-gray-800 dark:text-gray-200 cursor-pointer"><Markdown content={post.content} /></p>  </Link>
                                     )}
 
                                     {expanded && post.content && post.content.length > 150 && (
