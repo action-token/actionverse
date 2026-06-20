@@ -21,10 +21,12 @@ import {
 } from "lucide-react";
 import { PLATFORM_ASSET } from "~/lib/stellar/constant";
 import { cn } from "~/lib/utils";
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store";
 
 export default function BountiesPage() {
   const router = useRouter();
   const { data: session } = useSession();
+  const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"newest" | "prize">("newest");
   const [filter, setFilter] = useState<"all" | "not_joined" | "joined">("all");
@@ -101,15 +103,13 @@ export default function BountiesPage() {
               Discover challenges, complete tasks, and earn {PLATFORM_ASSET.code} rewards
             </p>
           </div>
-          {session && (
-            <Button
-              onClick={() => void router.push("/bounty/create")}
-              className="shrink-0"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create Bounty
-            </Button>
-          )}
+          <Button
+            onClick={() => session ? void router.push("/bounty/create") : setLoginModalOpen(true)}
+            className="shrink-0"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Create Bounty
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">

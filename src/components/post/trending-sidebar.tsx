@@ -11,8 +11,11 @@ import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Edit, Loader2, UserRoundPlus } from "lucide-react"
 import Link from "next/link"
 import toast from "react-hot-toast"
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store"
 
 export default function TrendingSidebar() {
+    const { data: session } = useSession()
+    const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore()
 
     // Use infinite query for trending creators
     const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, refetch } =
@@ -36,6 +39,10 @@ export default function TrendingSidebar() {
 
 
     const handleFollowClick = (creatorId: string) => {
+        if (!session) {
+            setLoginModalOpen(true)
+            return
+        }
         follow.mutate({ creatorId: creatorId })
     }
 

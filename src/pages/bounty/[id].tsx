@@ -55,6 +55,7 @@ import { clientsign } from "package/connect_wallet";
 import { clientSelect } from "~/lib/stellar/fan/utils";
 import { cn } from "~/lib/utils";
 import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-store";
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store";
 import useNeedSign from "~/lib/hook";
 
 /* ── Types ───────────────────────────────────────────────────────────────────── */
@@ -85,6 +86,7 @@ export default function BountyDetailPage() {
   const id = parseInt(router.query.id as string);
   const { data: session } = useSession();
   const openShareModal = useShareBountyModalStore((s) => s.open);
+  const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore();
 
   const [submitOpen, setSubmitOpen] = useState(false);
   const [showMoreReqs, setShowMoreReqs] = useState(false);
@@ -437,7 +439,7 @@ export default function BountyDetailPage() {
 
               {/* Guest */}
               {!isOwner && !session && bounty.status === BountyStatus.RUNNING && (
-                <Button className="w-full h-11 gap-2 font-semibold" onClick={() => void router.push("/")}>
+                <Button className="w-full h-11 gap-2 font-semibold" onClick={() => setLoginModalOpen(true)}>
                   <Users className="h-4 w-4" />
                   Join Bounty
                 </Button>
@@ -501,7 +503,7 @@ export default function BountyDetailPage() {
                   )}
                 </div>
               ) : (!isOwner && !session && bounty.status === BountyStatus.RUNNING) ? (
-                <Button className="w-full h-11 gap-2 font-semibold" onClick={() => void router.push("/")}>
+                <Button className="w-full h-11 gap-2 font-semibold" onClick={() => setLoginModalOpen(true)}>
                   <Users className="h-4 w-4" />
                   Join Bounty
                 </Button>
@@ -739,7 +741,7 @@ export default function BountyDetailPage() {
               )}
 
               {!isOwner && !session && bounty.status === BountyStatus.RUNNING && (
-                <Button className="w-full h-11 gap-2 font-semibold" onClick={() => void router.push("/")}>
+                <Button className="w-full h-11 gap-2 font-semibold" onClick={() => setLoginModalOpen(true)}>
                   <Users className="h-4 w-4" />
                   Join Bounty
                 </Button>

@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { useSession } from "next-auth/react";
 import { PLATFORM_ASSET, stellarExpertUrl } from "~/lib/stellar/constant";
 import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-store";
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store";
 
 type BountyCardData = {
   id: number;
@@ -50,11 +51,12 @@ export function BountyCard({
   const router = useRouter();
   const { data: session } = useSession();
   const openShareModal = useShareBountyModalStore((s) => s.open);
+  const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore();
 
   const maxW = bounty.maxWinners ?? 1;
   const slotsLeft = Math.max(0, maxW - bounty._count.winners);
   const showJoinBtn =
-    showJoin && session && !isJoined && bounty.status === BountyStatus.RUNNING;
+    !isJoined && bounty.status === BountyStatus.RUNNING && (showJoin || !session);
 
   const slotLabel =
     bounty.status === BountyStatus.COMPLETED
@@ -76,6 +78,10 @@ export function BountyCard({
 
   const handleJoin = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!session) {
+      setLoginModalOpen(true);
+      return;
+    }
     onJoin?.();
   };
 
@@ -245,7 +251,7 @@ export function BountyCardWithJoin({ bounty }: { bounty: BountyCardData }) {
   return (
     <BountyCard
       bounty={bounty}
-      showJoin={!!session && !isOwner}
+      showJoin={!isOwner}
       isCreator={isOwner}
       isJoined={participation?.joined ?? false}
       onJoin={() => joinMutation.mutate({ bountyId: bounty.id })}

@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avat
 import { api } from "~/utils/api"
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances"
 import toast from "react-hot-toast"
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store"
 
 interface TokenRequirement {
   id: number
@@ -94,6 +95,7 @@ export function CommunityCard({ community }: CommunityCardProps) {
   const router = useRouter()
   const utils = api.useUtils()
   const { getAssetBalance, hasTrust } = useUserStellarAcc()
+  const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore()
 
   const join = api.community.member.join.useMutation({
     onSuccess: () => {
@@ -139,7 +141,7 @@ export function CommunityCard({ community }: CommunityCardProps) {
     e.stopPropagation()
 
     if (!session?.user) {
-      toast.error("Please sign in to join")
+      setLoginModalOpen(true)
       return
     }
 

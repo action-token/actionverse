@@ -59,9 +59,15 @@ export default function Layout({
     "/",
     "/reward-checker",
     "/beam",
-    "/beam/[id]"
+    "/beam/[id]",
+    "/marketplace",
+    "/bounty",
+    "/community",
+    "/organization",
   ];
-  const isPublicRoute = publicRoutes.includes(router.pathname);
+  const isPublicRoute = publicRoutes.some(
+    (route) => router.pathname === route || router.pathname.startsWith(route + "/"),
+  );
   const isAugmentedRealityRoute = router.pathname.startsWith("/action/ar");
 
   const isHomeRoute = router.pathname === "/";
@@ -182,7 +188,11 @@ export default function Layout({
                 </div>
               ) : isPublicRoute ? (
                 <div className="w-full   overflow-y-auto    scrollbar-hide ">
-                  <>{children}</>
+                  {isArtistRoutes ? (
+                    <CreatorLayout>{children}</CreatorLayout>
+                  ) : (
+                    <>{children}</>
+                  )}
                   <LoginRequiredModal />
                 </div>
               ) : (

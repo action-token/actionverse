@@ -13,6 +13,7 @@ import { CommunitySearchFilter } from "~/components/community/community-search-f
 import { CommunitySidebar } from "~/components/community/community-sidebar"
 import { CreateCommunityModal } from "~/components/modal/create-community-modal"
 import { useCommunityModalStore } from "~/components/store/community-modal-store"
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store"
 
 function useDebounce(value: string, delay: number) {
   const [debounced, setDebounced] = useState(value)
@@ -29,6 +30,7 @@ const CommunityPage = () => {
   const debouncedSearch = useDebounce(search, 500)
   const [filter, setFilter] = useState<"ALL" | "TOKEN_GATED" | "OPEN">("ALL")
   const { setIsOpen } = useCommunityModalStore()
+  const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore()
 
   const communities = api.community.community.getAll.useInfiniteQuery(
     {
@@ -50,15 +52,13 @@ const CommunityPage = () => {
             <h1 className="text-2xl font-bold">Communities</h1>
             <BetaBadge />
           </div>
-          {session?.user && (
-            <Button
-              onClick={() => setIsOpen(true)}
-              className="gap-2 rounded-full px-5"
-            >
-              <Plus className="h-4 w-4" />
-              Create
-            </Button>
-          )}
+          <Button
+            onClick={() => session?.user ? setIsOpen(true) : setLoginModalOpen(true)}
+            className="gap-2 rounded-full px-5"
+          >
+            <Plus className="h-4 w-4" />
+            Create
+          </Button>
         </div>
         <div className="mt-4">
           <CommunitySearchFilter
@@ -100,9 +100,9 @@ const CommunityPage = () => {
                       ? "Try a different search term"
                       : "Be the first to create a community!"}
                   </p>
-                  {session?.user && !search && (
+                  {!search && (
                     <Button
-                      onClick={() => setIsOpen(true)}
+                      onClick={() => session?.user ? setIsOpen(true) : setLoginModalOpen(true)}
                       className="mt-2 gap-2 rounded-full px-6"
                     >
                       <Plus className="h-4 w-4" />

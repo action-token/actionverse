@@ -67,7 +67,7 @@ export const postRouter = createTRPCRouter({
       return post;
     }),
 
-  getPosts: protectedProcedure
+  getPosts: publicProcedure
     .input(
       z.object({
         pubkey: z.string().min(56, { message: "pubkey is more than 56" }),
@@ -117,7 +117,7 @@ export const postRouter = createTRPCRouter({
       };
     }),
 
-  getAllRecentPosts: protectedProcedure
+  getAllRecentPosts: publicProcedure
     .input(
       z.object({
         limit: z.number(),
@@ -129,6 +129,7 @@ export const postRouter = createTRPCRouter({
     )
     .query(async ({ input, ctx }) => {
       const { limit, skip, cursor } = input;
+      const userId = ctx.session?.user?.id;
 
       const items = await ctx.db.post.findMany({
         take: limit + 1,
@@ -160,7 +161,7 @@ export const postRouter = createTRPCRouter({
               customPageAssetCodeIssuer: true,
               followers: {
                 where: {
-                  userId: ctx.session.user.id,
+                  userId: userId ?? "",
                 },
               },
             },

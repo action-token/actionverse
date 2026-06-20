@@ -669,7 +669,7 @@ export const marketRouter = createTRPCRouter({
       }
     }),
 
-  getCreatorNftsByCreatorID: protectedProcedure
+  getCreatorNftsByCreatorID: publicProcedure
     .input(
       z.object({
         limit: z.number(),

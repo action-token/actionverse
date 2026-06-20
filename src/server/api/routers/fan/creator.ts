@@ -208,13 +208,14 @@ export const creatorRouter = createTRPCRouter({
       }
 
     }),
-  getCreator: protectedProcedure
+  getCreator: publicProcedure
     .input(z.object({ id: z.string() }).optional())
     .query(async ({ input, ctx }) => {
-      let id = ctx.session.user.id;
+      let id = ctx.session?.user?.id;
       if (input) {
         id = input.id;
       }
+      if (!id) return undefined;
       const creator = await ctx.db.creator.findFirst({
         where: { id: id },
         include: {
@@ -760,7 +761,7 @@ export const creatorRouter = createTRPCRouter({
       return { isAvailable: !exixt };
     }),
 
-  getTrandingCreators: protectedProcedure
+  getTrandingCreators: publicProcedure
     .input(
       z.object({
         limit: z.number().default(5),
@@ -769,6 +770,7 @@ export const creatorRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { limit, cursor } = input;
+      const userId = ctx.session?.user?.id;
       // Parse the cursor (which is the last creator's ID)
       const cursorObj = cursor ? { id: cursor } : undefined;
 
@@ -776,11 +778,13 @@ export const creatorRouter = createTRPCRouter({
       const creators = await ctx.db.creator.findMany({
         where: {
           approved: true,
-          temporalFollows: {
-            none: {
-              userId: ctx.session.user.id
+          ...(userId && {
+            temporalFollows: {
+              none: {
+                userId,
+              }
             }
-          }
+          }),
         },
         orderBy: {
           temporalFollows: {
@@ -814,21 +818,21 @@ export const creatorRouter = createTRPCRouter({
       }
 
       // Check if current user follows the creators
-      const followedCreators = await ctx.db.temporalFollow.findMany({
+      const followedCreators = userId ? await ctx.db.temporalFollow.findMany({
         where: {
           creatorId: {
             in: creators.map((creator) => creator.id),
           },
-          userId: ctx.session.user.id,
+          userId,
         },
-      });
+      }) : [];
 
       const creatorsWithFollow = creators.map((creator) => {
         const isFollowed = followedCreators.some((follow) => follow.creatorId === creator.id);
         return {
           ...creator,
           isFollowed,
-          isCurrentUser: creator.id === ctx.session.user.id,
+          isCurrentUser: !!userId && creator.id === userId,
         };
       });
 
@@ -1218,11 +1222,12 @@ export const creatorRouter = createTRPCRouter({
   }
   ),
 
-  getCreatorPackages: protectedProcedure.input(z.object({ id: z.string() }).optional()).query(async ({ ctx, input }) => {
-    let id = ctx.session.user.id;
+  getCreatorPackages: publicProcedure.input(z.object({ id: z.string() }).optional()).query(async ({ ctx, input }) => {
+    let id = ctx.session?.user?.id;
     if (input) {
       id = input.id;
     }
+    if (!id) return [];
     const creator = await ctx.db.creator.findUnique({
       where: { id: id },
     });

@@ -204,8 +204,8 @@ export function UploadS3Button({
         if (uploadStatus === "success") {
             return (
                 <div className="flex items-center gap-2">
-                    <Check className="h-4 w-4" />
-                    <span>Uploaded</span>
+                    <Upload className="h-4 w-4" />
+                    <span>Reupload</span>
                 </div>
             )
         }

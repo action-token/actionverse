@@ -13,6 +13,7 @@ import toast from "react-hot-toast"
 import { toast as sonner } from "sonner"
 import { checkStellarAccountActivity } from "~/lib/helper/helper_client"
 import { ActivationModal } from "../modal/activation-modal"
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store"
 
 interface FollowAndMembershipButtonProps {
   creatorId: string
@@ -29,6 +30,7 @@ export default function FollowAndMembershipButton({
 }: FollowAndMembershipButtonProps) {
   const session = useSession()
   const { needSign } = useNeedSign()
+  const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore()
   const [isFollowing, setIsFollowing] = useState(false)
   const [isMember, setIsMember] = useState(false)
   const [wasMember, setWasMember] = useState(false)
@@ -188,8 +190,26 @@ export default function FollowAndMembershipButton({
   }, [session.data?.user.id]);
   const isLoading = membershipXDR.isLoading || membership.isLoading || removeMembership.isLoading
 
-  if (session.data?.user.id === creatorId || !session.data?.user.id) {
+  if (session.data?.user.id === creatorId) {
     return null
+  }
+
+  if (!session.data?.user.id) {
+    return (
+      <div className={`flex items-center gap-3 relative ${className}`}>
+        <Button
+          variant="default"
+          className="relative pr-8 bg-blue-600 hover:bg-blue-700"
+          onClick={() => setLoginModalOpen(true)}
+        >
+          <Heart className="h-4 w-4 mr-2" />
+          Follow
+          <span className="ml-2 absolute top-0 right-0 rounded-full bg-emerald-500 px-2 py-0.5 text-xs text-white">
+            Free
+          </span>
+        </Button>
+      </div>
+    )
   }
 
   return (
