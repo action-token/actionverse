@@ -3,7 +3,7 @@ import { useState, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
-import { api } from "~/utils/api";
+import { api, type RouterOutputs } from "~/utils/api";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avatar";
 import { Badge } from "~/components/shadcn/ui/badge";
 import { Button } from "~/components/shadcn/ui/button";
@@ -126,7 +126,7 @@ export default function BountyDetailPage() {
     setMounted(true);
   }, []);
   const [viewSubmission, setViewSubmission] = useState<Submission | null>(null);
-  const [mobilePanel, setMobilePanel] = useState<"requirements" | "rewards" | "stats" | "winners" | null>(null);
+  const [mobilePanel, setMobilePanel] = useState<"participants" | "rewards" | "stats" | "winners" | null>(null);
 
   /* queries */
   const bountyQ = api.bounty.Bounty.getBounty.useQuery({ bountyId: id }, { enabled: !!id });
@@ -523,13 +523,19 @@ export default function BountyDetailPage() {
               <TabsList className="h-10 bg-transparent border-b border-border rounded-none p-0 gap-0 w-full justify-start">
                 {[
                   { value: "description", label: "Description" },
-                  { value: "participants", label: `Participants`, count: bounty._count.participants },
+                  // On md/sm the Participants slot is repurposed for Requirements (and the
+                  // participants table moves into the mobile rail). On lg+ this is hidden.
+                  { value: "requirements", label: "Requirements", count: bounty.instructions.length, className: "lg:hidden" },
+                  { value: "participants", label: "Participants", count: bounty._count.participants, className: "hidden lg:inline-flex" },
                   { value: "reports", label: isOwner ? "Submissions" : "My Reports", count: submissionCount },
                 ].map((t) => (
                   <TabsTrigger
                     key={t.value}
                     value={t.value}
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground text-muted-foreground px-4 h-10 text-sm font-medium bg-transparent"
+                    className={cn(
+                      "rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground text-muted-foreground px-4 h-10 text-sm font-medium bg-transparent",
+                      t.className,
+                    )}
                   >
                     {t.label}
                     {t.count !== undefined && (
@@ -556,84 +562,27 @@ export default function BountyDetailPage() {
                 )}
               </TabsContent>
 
-              {/* Participants tab */}
-              <TabsContent value="participants" className="mt-6">
-                {bounty.participants.length === 0 ? (
-                  <EmptyState icon={<Users className="h-8 w-8" />} text="No participants yet — be the first to join!" />
-                ) : (
-                  <div className="rounded-xl border border-border overflow-x-auto scrollbar-hide">
-                    <table className="w-full min-w-max">
-                      <thead>
-                        <tr className="border-b border-border bg-secondary/40">
-                          <th className="text-left py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide w-10">#</th>
-                          <th className="text-left py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Participant</th>
-                          <th className="text-left py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Joined</th>
-                          <th className="text-center py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Submitted</th>
-                          <th className="text-left py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Result</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bounty.participants.map((p, idx) => {
-                          const isWin = bounty.winners.some((w) => w.userId === p.userId);
-                          const winData = bounty.winners.find((w) => w.userId === p.userId);
-                          const submitted = submittedUserIds.has(p.userId);
-                          return (
-                            <tr
-                              key={p.id}
-                              className={cn(
-                                "border-b border-border/50 last:border-0 transition-colors",
-                                isWin ? "bg-gold/5 hover:bg-gold/8" : "hover:bg-secondary/40",
-                              )}
-                            >
-                              <td className="py-3 px-4">
-                                {isWin
-                                  ? <Crown className="h-4 w-4 text-gold" />
-                                  : <span className="text-xs text-muted-foreground">{idx + 1}</span>
-                                }
-                              </td>
-                              <td className="py-3 px-4">
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <Avatar className="h-7 w-7 shrink-0">
-                                    <AvatarImage src={p.user.image ?? ""} />
-                                    <AvatarFallback className="text-[10px] bg-secondary">{(p.user.name ?? "U").charAt(0)}</AvatarFallback>
-                                  </Avatar>
-                                  <span className="text-sm font-medium truncate">
-                                    {p.user.name ?? "Anonymous"}
-                                  </span>
-                                  {isWin && (
-                                    <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-gold bg-gold/10 border border-gold/20 px-1.5 py-0.5 rounded-full">
-                                      <Crown className="h-2.5 w-2.5" />Winner
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 hidden sm:table-cell">
-                                <span className="text-xs text-muted-foreground">
-                                  {formatDistanceToNow(new Date(p.joinedAt), { addSuffix: true })}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                {submitted
-                                  ? <CheckCircle2 className="h-4 w-4 text-primary mx-auto" />
-                                  : <span className="text-xs text-muted-foreground">—</span>
-                                }
-                              </td>
-                              <td className="py-3 px-4">
-                                {isWin && winData ? (
-                                  <span className="text-xs font-bold text-gold">
-                                    {winData.prizeAmount.toLocaleString()} {prizeAssetCode}
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+              {/* Requirements tab (md/sm only — replaces Participants on small screens) */}
+              <TabsContent value="requirements" className="mt-6">
+                <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Requirements</span>
+                    <span className="text-xs text-muted-foreground">
+                      {bounty.instructions.length} item{bounty.instructions.length === 1 ? "" : "s"}
+                    </span>
                   </div>
-                )}
+                  <RequirementsList instructions={bounty.instructions} />
+                </div>
+              </TabsContent>
+
+              {/* Participants tab (lg+ only — replaced by Requirements on md/sm) */}
+              <TabsContent value="participants" className="mt-6">
+                <ParticipantsTable
+                  participants={bounty.participants}
+                  winners={bounty.winners}
+                  prizeAssetCode={prizeAssetCode}
+                  submittedUserIds={submittedUserIds}
+                />
               </TabsContent>
 
               {/* Reports tab */}
@@ -864,25 +813,20 @@ export default function BountyDetailPage() {
                   <X className="h-4 w-4" />
                 </button>
 
-                {/* Requirements panel */}
-                {mobilePanel === "requirements" && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-3.5 w-3.5 text-primary" />
-                      <p className="text-xs font-semibold uppercase tracking-wide">Requirements</p>
+                {/* Participants panel (replaces Requirements slot on md/sm) */}
+                {mobilePanel === "participants" && (
+                  <div className="space-y-2 -mx-2">
+                    <div className="flex items-center gap-2 px-2">
+                      <Users className="h-3.5 w-3.5 text-primary" />
+                      <p className="text-xs font-semibold uppercase tracking-wide">Participants</p>
+                      <span className="ml-auto text-xs text-muted-foreground">{bounty._count.participants}</span>
                     </div>
-                    {bounty.instructions.length > 0 ? (
-                      <div className="space-y-2">
-                        {bounty.instructions.map((inst, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                            <span className="text-muted-foreground leading-snug">{inst}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground italic">No specific requirements listed.</p>
-                    )}
+                    <ParticipantsTable
+                      participants={bounty.participants}
+                      winners={bounty.winners}
+                      prizeAssetCode={prizeAssetCode}
+                      submittedUserIds={submittedUserIds}
+                    />
                   </div>
                 )}
 
@@ -982,7 +926,8 @@ export default function BountyDetailPage() {
           {/* Tab rail */}
           <div className="flex flex-col  gap-2">
             {[
-              { id: "requirements" as const, label: "Requirements", Icon: FileText },
+              // On md/sm the first rail slot is now Participants (the table moved here).
+              { id: "participants" as const, label: "Participants", Icon: Users },
               { id: "rewards" as const, label: "Rewards", Icon: Trophy },
               { id: "stats" as const, label: "Stats", Icon: Zap },
               { id: "winners" as const, label: "Winners", Icon: Crown },
@@ -1085,6 +1030,167 @@ function CreatorReportsTab({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/* ── Participants table (shared by main content tab + mobile rail) ──────────── */
+function ParticipantsTable({
+  participants,
+  winners,
+  prizeAssetCode,
+  submittedUserIds,
+}: {
+  participants: RouterOutputs["bounty"]["Bounty"]["getBounty"]["participants"];
+  winners: RouterOutputs["bounty"]["Bounty"]["getBounty"]["winners"];
+  prizeAssetCode: string;
+  submittedUserIds: Set<string>;
+}) {
+  if (participants.length === 0) {
+    return <EmptyState icon={<Users className="h-8 w-8" />} text="No participants yet — be the first to join!" />;
+  }
+  // Hoist per-row derived values so they're computed once and reused in both renders.
+  const rows = participants.map((p, idx) => {
+    const isWin = winners.some((w) => w.userId === p.userId);
+    const winData = winners.find((w) => w.userId === p.userId);
+    const submitted = submittedUserIds.has(p.userId);
+    return { p, idx, isWin, winData, submitted };
+  });
+  return (
+    <>
+      {/* Mobile / tablet — vertical card list (fits inside the 320px floating rail, no horizontal scroll) */}
+      <div className="lg:hidden space-y-2">
+        {rows.map(({ p, idx, isWin, winData, submitted }) => (
+          <div
+            key={p.id}
+            className={cn(
+              "rounded-xl border p-3 flex items-center gap-3",
+              isWin ? "border-gold/25 bg-gold/5" : "border-border bg-card",
+            )}
+          >
+            <div className="relative shrink-0">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={p.user.image ?? ""} />
+                <AvatarFallback className="text-[10px] bg-secondary">{(p.user.name ?? "U").charAt(0)}</AvatarFallback>
+              </Avatar>
+              {isWin && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-card border border-gold/30 flex items-center justify-center">
+                  <Crown className="h-2.5 w-2.5 text-gold" />
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-semibold truncate">{p.user.name ?? "Anonymous"}</span>
+                <span className="shrink-0 text-[10px] font-bold text-muted-foreground/70 tabular-nums">#{idx + 1}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                <span className="truncate">Joined {formatDistanceToNow(new Date(p.joinedAt), { addSuffix: true })}</span>
+                {submitted && (
+                  <span className="inline-flex items-center gap-1 text-primary shrink-0">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Submitted
+                  </span>
+                )}
+              </div>
+              {isWin && winData && (
+                <p className="text-xs font-bold text-gold mt-0.5">
+                  Won {winData.prizeAmount.toLocaleString()} {prizeAssetCode}
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Desktop — original table (unchanged content, only its wrapper is now lg+ only) */}
+      <div className="hidden lg:block rounded-xl border border-border overflow-x-auto scrollbar-hide">
+        <table className="w-full min-w-max">
+          <thead>
+            <tr className="border-b border-border bg-secondary/40">
+              <th className="text-left py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide w-10">#</th>
+              <th className="text-left py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Participant</th>
+              <th className="text-left py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Joined</th>
+              <th className="text-center py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Submitted</th>
+              <th className="text-left py-3 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ p, idx, isWin, winData, submitted }) => (
+              <tr
+                key={p.id}
+                className={cn(
+                  "border-b border-border/50 last:border-0 transition-colors",
+                  isWin ? "bg-gold/5 hover:bg-gold/8" : "hover:bg-secondary/40",
+                )}
+              >
+                <td className="py-3 px-4">
+                  {isWin
+                    ? <Crown className="h-4 w-4 text-gold" />
+                    : <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                  }
+                </td>
+                <td className="py-3 px-4">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar className="h-7 w-7 shrink-0">
+                      <AvatarImage src={p.user.image ?? ""} />
+                      <AvatarFallback className="text-[10px] bg-secondary">{(p.user.name ?? "U").charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium truncate">
+                      {p.user.name ?? "Anonymous"}
+                    </span>
+                    {isWin && (
+                      <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-gold bg-gold/10 border border-gold/20 px-1.5 py-0.5 rounded-full">
+                        <Crown className="h-2.5 w-2.5" />Winner
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="py-3 px-4 hidden sm:table-cell">
+                  <span className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(p.joinedAt), { addSuffix: true })}
+                  </span>
+                </td>
+                <td className="py-3 px-4 text-center">
+                  {submitted
+                    ? <CheckCircle2 className="h-4 w-4 text-primary mx-auto" />
+                    : <span className="text-xs text-muted-foreground">—</span>
+                  }
+                </td>
+                <td className="py-3 px-4">
+                  {isWin && winData ? (
+                    <span className="text-xs font-bold text-gold">
+                      {winData.prizeAmount.toLocaleString()} {prizeAssetCode}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+/* ── Requirements list (mobile-only — renders ALL items, no '+N more') ──────── */
+function RequirementsList({
+  instructions,
+}: {
+  instructions: string[];
+}) {
+  if (instructions.length === 0) {
+    return <p className="text-xs text-muted-foreground italic">No specific requirements listed.</p>;
+  }
+  return (
+    <div className="space-y-2.5">
+      {instructions.map((inst, i) => (
+        <div key={i} className="flex items-start gap-2.5 text-sm">
+          <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <span className="text-muted-foreground leading-snug">{inst}</span>
+        </div>
+      ))}
     </div>
   );
 }
