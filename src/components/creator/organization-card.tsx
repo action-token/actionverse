@@ -98,7 +98,6 @@ export interface OrganizationProps {
     twitter?: string | null
     instagram?: string | null
     _count: {
-        Bounty: number
         followers: number
     }
 }
@@ -115,8 +114,8 @@ export function OrganizationCard({
     _count,
 }: OrganizationProps) {
     return (
-        <Card className="w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-md snap-start">
-            <div className="relative flex h-32 items-center justify-center bg-gradient-to-r from-muted to-muted/50 p-4">
+        <Card className="w-[320px] flex flex-col justify-between items-center overflow-hidden bg-card shadow-md snap-start ">
+            <div className="relative w-full flex h-32 items-center justify-center bg-gradient-to-r from-muted to-muted/50 p-4">
                 <div className="relative h-20 w-20 overflow-hidden rounded-full border-4 border-background bg-background">
                     <ImageWithFallback
                         src={profileUrl ?? "/images/action/logo.png"}
@@ -130,15 +129,11 @@ export function OrganizationCard({
                 <CardTitle className="text-xl">{name}</CardTitle>
                 <CardDescription className="line-clamp-2 text-muted-foreground">{bio}</CardDescription>
             </CardHeader>
-            <CardContent className="p-4 pt-2">
+            <CardContent className="p-4 pt-2 ">
                 <div className="flex justify-center space-x-4 text-sm text-muted-foreground">
                     <div className="flex items-center gap-1">
                         <Users className="h-4 w-4 text-muted-foreground" />
                         <span>{_count.followers}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <Trophy className="h-4 w-4 text-muted-foreground" />
-                        <span>{_count.Bounty}</span>
                     </div>
                 </div>
                 <div className="flex justify-center mt-2 space-x-2">

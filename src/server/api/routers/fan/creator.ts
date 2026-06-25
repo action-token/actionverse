@@ -1,6 +1,5 @@
 import { Asset } from "@stellar/stellar-sdk";
 import axios from "axios";
-import { getAccSecret } from "package/connect_wallet";
 import { env } from "process";
 import { z } from "zod";
 import { creatorAprovalTrustlineTrx, creatorAprovalTrx } from "~/lib/stellar/fan/creator-aproval";
@@ -298,20 +297,6 @@ export const creatorRouter = createTRPCRouter({
     });
     return creator;
   }),
-  getCreatorSecret: protectedProcedure
-    .input(
-      z.object({
-        uid: z.string().optional(),
-        email: z.string().email().optional(),
-      }),
-    )
-    .query(async ({ ctx, input }) => {
-      const { email, uid } = input;
-      if (email && uid) {
-        const secret = await getAccSecret(uid, email);
-        return secret;
-      }
-    }),
 
   makeMeCreator: protectedProcedure
     .input(AccountSchema)
@@ -1256,7 +1241,6 @@ export const creatorRouter = createTRPCRouter({
         select: {
           _count: {
             select: {
-              Bounty: true,
               followers: true,
             }
           },
@@ -1268,7 +1252,6 @@ export const creatorRouter = createTRPCRouter({
           website: true,
           twitter: true,
           instagram: true,
-
         },
         where: {
           approved: true,
