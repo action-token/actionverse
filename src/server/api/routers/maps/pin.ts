@@ -338,6 +338,7 @@ export const pinRouter = createTRPCRouter({
           skipDuplicates: true,
         })
       }
+      return locationGroup;
     }),
   createForAdminPin: adminProcedure
     .input(createAdminPinFormSchema)
