@@ -202,7 +202,7 @@ export const gameRouter = createTRPCRouter({
           collected: true,
           collection_limit_remaining: remaining,
           brand_name: location.locationGroup.creator.name,
-          image_url: location.locationGroup.image ?? location.locationGroup.creator.profileUrl ?? WadzzoIconURL,
+          image_url: location.locationGroup.optimizedImage ?? location.locationGroup.image ?? location.locationGroup.creator.profileUrl ?? WadzzoIconURL,
           url: location.locationGroup.link ?? "https://app.action-tokens.com/images/action/logo.png",
         };
       })
