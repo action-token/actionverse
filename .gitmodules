@@ -4,3 +4,6 @@
 [submodule "connect_wallet"]
 	path = connect_wallet
 	url = https://github.com/Wadzzo2023/connect_wallet.git
+[submodule "package/express-wadzzo"]
+	path = package/express-wadzzo
+	url = https://github.com/Wadzzo2023/express-wadzzo.git
