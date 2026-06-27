@@ -20,7 +20,7 @@ interface MediaLoadOptions {
 
 export async function loadMedia(
     qrItem: {
-        type: "VIDEO" | "IMAGE" | "MUSIC" | "THREE_D" | "CARD" | "AI"
+        type: "VIDEO" | "IMAGE" | "MUSIC" | "THREE_D" | "CARD" | "AI" | "DOCUMENT"
         url: string
     },
     locar: LocationBased,

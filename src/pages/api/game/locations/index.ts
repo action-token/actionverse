@@ -5,7 +5,7 @@ import { getToken } from "next-auth/jwt";
 import { z } from "zod";
 import { EnableCors } from "~/server/api-cors";
 import { db } from "~/server/db";
-import { Location } from "~/types/game/location";
+import { ConsumedLocation } from "~/types/game/location";
 import { avaterIconUrl as abaterIconUrl } from "../brands";
 import { StellarAccount } from "~/lib/stellar/marketplace/test/Account";
 
@@ -156,6 +156,7 @@ export default async function handler(
             consumers: {
               select: {
                 userId: true,
+                viewedAt: true,
               },
             },
           },
@@ -221,7 +222,7 @@ export default async function handler(
       })
       .filter((location) => location !== undefined);
 
-    const locations: Location[] = pins.map((location) => {
+    const locations: ConsumedLocation[] = pins.map((location) => {
       return {
         id: location.id,
         lat: location.latitude,
@@ -235,6 +236,8 @@ export default async function handler(
         collected: location.collected,
         collection_limit_remaining: location.remaining,
         auto_collect: location.autoCollect,
+        viewed: location.consumers.some((el) => el.viewedAt != null),
+        modal_url: "https://vong.cong/",
         brand_image_url: location.creator.profileUrl ?? abaterIconUrl,
         brand_id: location.creatorId,
         public: true,

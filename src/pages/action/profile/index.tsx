@@ -2,9 +2,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { useQuery } from "@tanstack/react-query"
 import { Copy, Globe, LogOut, RotateCcw, Trash, User, Settings, Shield } from "lucide-react"
 import { toast } from "react-hot-toast"
+import { api } from "~/utils/api"
 import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Switch } from "~/components/shadcn/ui/switch"
@@ -19,12 +19,9 @@ import {
 import { ScrollArea } from "~/components/shadcn/ui/scroll-area"
 import { useAccountAction } from "~/lib/state/augmented-reality/useAccountAction"
 
-import { BASE_URL } from "~/lib/common"
 import { addrShort } from "~/utils/utils"
-
 import { signOut } from "next-auth/react"
 import { useWalkThrough } from "~/hooks/useWalkthrough"
-import { getTokenUser } from "~/lib/augmented-reality/get-token-user"
 import Loading from "~/components/common/loading"
 import { Walkthrough } from "~/components/common/walkthrough"
 
@@ -50,10 +47,7 @@ export default function SettingScreen() {
     const deleteDataButtonRef = useRef<HTMLButtonElement>(null)
     const signOutButtonRef = useRef<HTMLButtonElement>(null)
 
-    const { data, isLoading, error } = useQuery({
-        queryKey: ["currentUserInfo"],
-        queryFn: getTokenUser,
-    })
+    const { data, isLoading, error } = api.game.getCurrentUser.useQuery()
 
     const steps = [
         {
@@ -93,24 +87,16 @@ export default function SettingScreen() {
         })
     }
 
-    const deleteData = async () => {
-        try {
-            const response = await fetch(new URL("api/game/user/delete-user", BASE_URL).toString(), {
-                method: "GET",
-                credentials: "include",
-            })
-
-            if (!response.ok) {
-                toast.error("Error deleting")
-            }
-
-            await response.json()
+    const deleteUserM = api.game.deleteUser.useMutation({
+        onSuccess: () => {
             toast.success("Data deleted successfully")
             setShowDeleteDialog(false)
-        } catch (error) {
-            console.error("Error deleting user:", error)
-            throw error
-        }
+        },
+        onError: () => toast.error("Error deleting"),
+    })
+
+    const deleteData = () => {
+        deleteUserM.mutate()
     }
 
     const togglePinCollectionMode = () => {
@@ -196,8 +182,24 @@ export default function SettingScreen() {
     }, [walkthroughData])
 
     if (isLoading) return <Loading />
-    if (error) return <div>Error: {(error as Error).message}</div>
-    if (!data) return null
+    if (error) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="flex flex-col items-center space-y-4">
+                    <p className="text-muted-foreground">Error loading user data. Please try again later.</p>
+                </div>
+            </div>
+        )
+    }
+    if (!data) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="flex flex-col items-center space-y-4">
+                    <p className="text-muted-foreground">No user data found. Please sign in.</p>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <>

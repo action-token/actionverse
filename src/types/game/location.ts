@@ -1,4 +1,4 @@
-export interface Location {
+export interface ConsumedLocation {
   id: string | number;
   lat: number;
   lng: number;
@@ -13,9 +13,7 @@ export interface Location {
   auto_collect: boolean;
   brand_image_url: string;
   brand_id: string;
+  viewed: boolean;
+  modal_url?: string;
 }
 
-export interface ConsumedLocation extends Location {
-  modal_url: string;
-  viewed: boolean;
-}

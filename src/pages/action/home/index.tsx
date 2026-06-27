@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, useRef, useLayoutEffect } from "react"
-import { useQuery } from "@tanstack/react-query"
 import Map, { Marker } from "react-map-gl"
 import { useRouter } from 'next/navigation'
 import Image from "next/image"
@@ -16,11 +15,9 @@ import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Input } from "~/components/shadcn/ui/input"
-import { BASE_URL } from "~/lib/common"
 import { useBrandFollowMode } from "~/lib/state/augmented-reality/useBrandFollowMode"
 import { useWalkThrough } from "~/hooks/useWalkthrough"
-import { getMapAllPins } from "~/lib/augmented-reality/get-Map-all-pins"
-import { getUserPlatformAsset } from "~/lib/augmented-reality/get-user-platformAsset"
+import { api } from "~/utils/api"
 import Loading from "~/components/common/loading"
 import { Walkthrough } from "~/components/common/walkthrough"
 import { LocationPermissionHandler } from "~/components/common/location-permission-handler"
@@ -194,6 +191,8 @@ export default function HomeScreen() {
         })
     }
 
+    const consumePinM = api.game.consumePin.useMutation()
+
     const collectPinsSequentially = async (pins: ConsumedLocation[]) => {
         for (const pin of pins) {
             if (!autoCollectModeRef.current) {
@@ -204,21 +203,13 @@ export default function HomeScreen() {
                 console.log("Pin limit reached:", pin.id)
                 continue
             }
-            const response = await fetch(
-                new URL("api/game/locations/consume", BASE_URL).toString(),
-                {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ location_id: pin.id.toString() }),
-                },
-            )
-            if (response.ok) {
+            try {
+                await consumePinM.mutateAsync({ location_id: pin.id.toString() })
                 console.log("Collected pin:", pin.id)
                 setCollectedPinData(pin)
                 showPinCollectionAnimation()
+            } catch (e) {
+                console.error("Failed to collect pin:", pin.id, e)
             }
             await new Promise((resolve) => setTimeout(resolve, 20000))
         }
@@ -232,22 +223,16 @@ export default function HomeScreen() {
         }, 3000)
     }
 
-    const response = useQuery({
-        queryKey: ["MapsAllPins", brandFollowMode],
-        queryFn: () =>
-            getMapAllPins({
-                filterID: brandFollowMode ? "1" : "0",
-            }),
-    })
+    const response = api.game.getPins.useQuery(
+        { filterId: brandFollowMode ? "1" : "0" },
+    )
 
-    const balanceRes = useQuery({
-        queryKey: ["balance"],
-        queryFn: getUserPlatformAsset,
+    const balanceRes = api.game.getPlatformBalance.useQuery(undefined, {
         onSuccess: (data) => {
-            if (data && data >= 0) {
-                setActive(true);
+            if (data !== undefined && data >= 0) {
+                setActive(true)
             }
-        }
+        },
     })
 
     const locations = response.data?.locations ?? []

@@ -8,16 +8,13 @@ import { Input } from "~/components/shadcn/ui/input"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/shadcn/ui/select"
-import { useQuery } from "@tanstack/react-query"
-import { getUserPlatformAsset } from "~/lib/augmented-reality/get-user-platformAsset"
-import { getMapAllPins } from "~/lib/augmented-reality/get-Map-all-pins"
+import { api } from "~/utils/api"
 import type { ConsumedLocation } from "~/types/game/location"
 import Image from "next/image"
 import Loading from "~/components/common/loading"
 import { useRouter } from "next/router"
 import { useCollection } from "~/lib/state/augmented-reality/useCollection"
 import { formatDistanceToNow } from "date-fns"
-import { BASE_URL } from "~/lib/common"
 import { addrShort } from "~/utils/utils"
 import { useWalkThrough } from "~/hooks/useWalkthrough"
 import { Walkthrough } from "~/components/common/walkthrough"
@@ -137,32 +134,8 @@ export default function CollectionsPage() {
         }
     }, [walkthroughData])
 
-    const balanceRes = useQuery({
-        queryKey: ["balance"],
-        queryFn: getUserPlatformAsset,
-    })
-    const getCollections = async () => {
-        try {
-            const response = await fetch(new URL("api/game/locations/get_consumed_location", BASE_URL).toString(), {
-                method: "GET",
-                credentials: "include",
-            })
-
-            if (!response.ok) {
-                throw new Error("Failed to fetch collections")
-            }
-
-            const data = (await response.json()) as { locations: ConsumedLocation[] }
-            return data
-        } catch (error) {
-            console.error("Error fetching collections:", error)
-            throw error
-        }
-    }
-    const locationsRes = useQuery({
-        queryKey: ["MapsAllPins"],
-        queryFn: () => getCollections(),
-    })
+    const balanceRes = api.game.getPlatformBalance.useQuery()
+    const locationsRes = api.game.getConsumedPins.useQuery()
 
     const locations = locationsRes.data?.locations ?? []
 

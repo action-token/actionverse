@@ -1,6 +1,6 @@
 import * as THREE from "three"
 
-export interface Location {
+export interface ConsumedLocation {
     id: string | number
     lat: number
     lng: number
@@ -16,10 +16,7 @@ export interface Location {
     brand_id: string
 }
 
-export interface ConsumedLocation extends Location {
-    modal_url: string
-    viewed: boolean
-}
+
 
 export class ARCoin {
     private mesh: THREE.Mesh
