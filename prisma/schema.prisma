@@ -22,6 +22,7 @@ enum PinType {
     EXPERIENCE
     LAUNCH
     OTHER
+    LANDMARK
 }
 
 model Tag {
@@ -247,8 +248,14 @@ model Creator {
     createdAt          DateTime            @default(now())
     Appearance         Appearance[]
 
-    SellPageAsset   SellPageAsset[]
-    temporalFollows TemporalFollow[]
+    SellPageAsset        SellPageAsset[]
+    temporalFollows      TemporalFollow[]
+    hotspots             Hotspot[]
+    locationTags         LocationTag[]
+    locationGroupJobs    LocationGroupJob[]
+    agentJobs            AgentJob[]
+    creatorGalleries     CreatorGallery[]
+    gallerySlotOverrides GallerySlotOverride[]
 
     @@index([bio, name])
 }
@@ -387,6 +394,7 @@ model User {
     BountyParticipant                BountyParticipant[]
     BountySubmission                 BountySubmission[]
     BountyWinner                     BountyWinner[]
+    gallerySlotLikes                 GallerySlotLike[]
 }
 
 model VerificationToken {
@@ -572,6 +580,59 @@ model Admin {
 }
 
 // ------------------------Mapping SCHEMA-------------------------
+model Hotspot {
+    id        String  @id @default(cuid())
+    creatorId String
+    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+    // Drop schedule
+    dropEveryDays    Int // interval in days between drops
+    pinDurationDays  Int // lifetime of each dropped LocationGroup (days)
+    hotspotStartDate DateTime // when the first drop fires
+    hotspotEndDate   DateTime // after this no new drops
+
+    // Colletion
+    autoCollect Boolean @default(false) // if true then it will automatically collect from users when they come in the geo fence, otherwise they need to manually click collect button
+    multiPin    Boolean @default(false) // if true then it will drop multiple pins in the geo fence, otherwise it will drop only one pin
+
+    // Geo
+    shape   String // "circle" | "square" | "polygon"
+    geoJson Json // GeoJSON Feature
+
+    // QStash
+    qstashScheduleId String?
+    isActive         Boolean  @default(true)
+    hidden           Boolean  @default(false)
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    locationGroups LocationGroup[]
+}
+
+model LocationTag {
+    id        String  @id @default(cuid())
+    name      String  @unique
+    label     String
+    creatorId String
+    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+    locationGroups LocationGroupTag[]
+}
+
+model LocationGroupTag {
+    locationGroupId String
+    locationGroup   LocationGroup @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
+    tagId           String
+    tag             LocationTag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+    @@id([locationGroupId, tagId])
+}
+
+model LocationTagCache {
+    title     String   @id
+    tags      String[]
+    createdAt DateTime @default(now())
+}
 
 model LocationGroup {
     id String @id @default(cuid())
@@ -603,7 +664,12 @@ model LocationGroup {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
-    image String?
+    latitude  Float
+    longitude Float
+    radius    Float
+
+    image          String?
+    optimizedImage String?
 
     hidden Boolean @default(false)
     link   String?
@@ -611,7 +677,10 @@ model LocationGroup {
     multiPin Boolean @default(false)
     type     PinType @default(OTHER) // Added new type field
 
-    locations Location[]
+    locations         Location[]
+    hotspot           Hotspot?           @relation(fields: [hotspotId], references: [id])
+    hotspotId         String?
+    locationGroupTags LocationGroupTag[]
 }
 
 model Location {
@@ -644,6 +713,51 @@ model LocationConsumer {
     hidden Boolean @default(false)
 
     createdAt DateTime @default(now())
+}
+
+model LocationGroupJob {
+    id        String @id @default(cuid())
+    creatorId String
+
+    status    String @default("pending")
+    total     Int    @default(0)
+    completed Int    @default(0)
+
+    payload    Json
+    redeemMode String @default("separate")
+
+    log   Json    @default("[]")
+    error String?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+    @@index([creatorId, createdAt])
+}
+
+model AgentJob {
+    id        String  @id @default(cuid())
+    creatorId String
+    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+    status  String  @default("pending")
+    result  Json?
+    error   String?
+    payload Json // ← add this
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([creatorId, createdAt])
+}
+
+model GeoCache {
+    key       String   @id
+    value     String   @db.Text
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
 
 model Redeem {
@@ -1079,4 +1193,45 @@ model BountyWinner {
     @@unique([bountyId, userId])
     @@index([bountyId])
     @@index([userId])
+}
+
+model CreatorGallery {
+    creatorId          String   @id
+    creator            Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    musicURL           String?
+    creatorTitle       String?
+    creatorDescription String?
+    updatedAt          DateTime @updatedAt
+    createdAt          DateTime @default(now())
+}
+
+model GallerySlotOverride {
+    id                 Int      @id @default(autoincrement())
+    slotId             String
+    imageUrl           String?
+    title              String?
+    description        String?
+    aspectRatio        String?
+    photoDescription   String?
+    photoDescPlacement String?
+    gridCell           Int?
+    creatorId          String
+    creator            Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    updatedAt          DateTime @updatedAt
+    createdAt          DateTime @default(now())
+
+    @@unique([slotId, creatorId])
+    @@index([creatorId])
+}
+
+model GallerySlotLike {
+    id        Int      @id @default(autoincrement())
+    slotId    String
+    creatorId String
+    userId    String
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt DateTime @default(now())
+
+    @@unique([slotId, creatorId, userId])
+    @@index([slotId, creatorId])
 }

@@ -3,6 +3,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createAdminPinFormSchema } from "~/components/modal/admin-create-pin-modal";
 import { updateMapFormSchema } from "~/components/modal/pin-detail-modal";
+import { createHotspotFormSchema } from "~/components/modal/create-hotspot-modal";
+import { createOptimizedImage } from "~/server/image-optimizer";
 
 import {
   adminProcedure,
@@ -15,6 +17,7 @@ import { PinLocation } from "~/types/pin";
 import { BADWORDS } from "~/utils/banned-word";
 import { fetchUsersByPublicKeys } from "~/utils/get-pubkey";
 import { randomLocation as getLocationInLatLngRad } from "~/utils/map";
+import { hotspotClient } from "~/lib/express/hotspotClient-sdk";
 export type LocationWithConsumers = {
   title: string;
   description?: string;
@@ -69,6 +72,8 @@ export const createPinFormSchema = z.object({
   pinCollectionLimit: z.number().min(0),
   tier: z.string().optional(),
   multiPin: z.boolean().optional(),
+  tags: z.array(z.string()).default([]),
+
 });
 export const PAGE_ASSET_NUM = -10
 export const NO_ASSET = -99
@@ -77,6 +82,180 @@ export const pinRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
     return "you can now see this secret message!";
   }),
+  // ─── Hotspot mutations → Express task server ────────────────────────────────
+  //
+  // These no longer touch QStash or the cron scheduler directly.
+  // They call hotspotClient which POSTs to the Express /hotspots API.
+  // The Express server owns the node-cron scheduler lifecycle.
+
+  createHotspot: creatorProcedure
+    .input(createHotspotFormSchema.extend({ creatorId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const creatorId = input.creatorId ?? ctx.session.user.id;
+
+      try {
+        const result = await hotspotClient.create(creatorId, {
+          title: input.title,
+          description: input.description,
+          image: input.image,
+          url: input.url,
+          type: input.type,
+          dropEveryDays: input.dropEveryDays,
+          pinDurationDays: input.pinDurationDays,
+          hotspotStartDate: input.hotspotStartDate.toISOString(),
+          hotspotEndDate: input.hotspotEndDate.toISOString(),
+          pinNumber: input.pinNumber,
+          pinCollectionLimit: input.pinCollectionLimit,
+          autoCollect: input.autoCollect,
+          multiPin: input.multiPin,
+          hotspotShape: input.hotspotShape,
+          geoJson: input.geoJson,
+          token: input.token,
+          tier: input.tier,
+          creatorId,
+        });
+
+        return { hotspotId: result.hotspotId };
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            err instanceof Error ? err.message : "Failed to create hotspot",
+        });
+      }
+    }),
+
+  myHotspots: creatorProcedure.query(async ({ ctx }) => {
+    return ctx.db.hotspot.findMany({
+      where: { creatorId: ctx.session.user.id, hidden: false },
+      select: {
+        id: true,
+        creatorId: true,
+        isActive: true,
+        dropEveryDays: true,
+        pinDurationDays: true,
+        hotspotStartDate: true,
+        hotspotEndDate: true,
+        shape: true,
+        geoJson: true,
+        autoCollect: true,
+        multiPin: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }),
+
+  getHotspot: creatorProcedure
+    .input(z.object({ hotspotId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const hotspot = await ctx.db.hotspot.findFirst({
+        where: { id: input.hotspotId, creatorId: ctx.session.user.id },
+        select: {
+          id: true,
+          creatorId: true,
+          isActive: true,
+          dropEveryDays: true,
+          pinDurationDays: true,
+          hotspotStartDate: true,
+          hotspotEndDate: true,
+          shape: true,
+          geoJson: true,
+          autoCollect: true,
+          multiPin: true,
+          createdAt: true,
+          updatedAt: true,
+          locationGroups: {
+            where: { hidden: false },
+            orderBy: { startDate: "desc" },
+            include: {
+              locations: { include: { consumers: true } },
+            },
+          },
+        },
+      });
+      if (!hotspot) return null;
+
+      let scheduleState = { hasSchedule: false, nextRunTime: null as string | null };
+      try {
+        const expressData = await hotspotClient.get(ctx.session.user.id, input.hotspotId);
+        scheduleState = { hasSchedule: expressData.hasSchedule, nextRunTime: expressData.nextRunTime ?? null };
+      } catch {
+        // Express server unavailable — return hotspot without schedule state
+      }
+
+      return { ...hotspot, ...scheduleState };
+    }),
+
+  pauseHotspotSchedule: creatorProcedure
+    .input(z.object({ hotspotId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify ownership before delegating to Express
+      const h = await ctx.db.hotspot.findFirst({
+        where: { id: input.hotspotId, creatorId: ctx.session.user.id },
+        select: { id: true },
+      });
+      if (!h) throw new TRPCError({ code: "NOT_FOUND" });
+
+      try {
+        return await hotspotClient.pause(ctx.session.user.id, input.hotspotId);
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            err instanceof Error ? err.message : "Failed to pause hotspot",
+        });
+      }
+    }),
+
+  resumeHotspotSchedule: creatorProcedure
+    .input(z.object({ hotspotId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const h = await ctx.db.hotspot.findFirst({
+        where: { id: input.hotspotId, creatorId: ctx.session.user.id },
+        select: { id: true },
+      });
+      if (!h) throw new TRPCError({ code: "NOT_FOUND" });
+
+      try {
+        return await hotspotClient.resume(
+          ctx.session.user.id,
+          input.hotspotId
+        );
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            err instanceof Error ? err.message : "Failed to resume hotspot",
+        });
+      }
+    }),
+
+  deleteHotspotCascade: creatorProcedure
+    .input(z.object({ hotspotId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const h = await ctx.db.hotspot.findFirst({
+        where: { id: input.hotspotId, creatorId: ctx.session.user.id },
+        select: { id: true },
+      });
+      if (!h) throw new TRPCError({ code: "NOT_FOUND" });
+
+      try {
+        return await hotspotClient.delete(
+          ctx.session.user.id,
+          input.hotspotId
+        );
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            err instanceof Error ? err.message : "Failed to delete hotspot",
+        });
+      }
+    }),
+
+  // ─── Pin mutations → Prisma DB directly (unchanged) ────────────────────────
 
   createPin: creatorProcedure
     .input(createPinFormSchema)
@@ -119,8 +298,11 @@ export const pinRouter = createTRPCRouter({
           longitude: randomLocatin.longitude,
         };
       });
+      const optimizedImage = input.image
+        ? await createOptimizedImage(input.image).catch(() => null)
+        : null;
 
-      await ctx.db.locationGroup.create({
+      const locationGroup = await ctx.db.locationGroup.create({
         data: {
           creatorId: ctx.session.user.id,
           endDate: input.endDate,
@@ -131,7 +313,11 @@ export const pinRouter = createTRPCRouter({
           pageAsset: pageAsset,
           limit: pinCollectionLimit,
           image: input.image,
+          optimizedImage,
           link: input.url,
+          latitude: input.lat,
+          longitude: input.lng,
+          radius: input.radius,
           locations: {
             createMany: {
               data: locations,
@@ -143,6 +329,15 @@ export const pinRouter = createTRPCRouter({
           multiPin: multiPin,
         },
       });
+      if (input.tags && input.tags.length > 0) {
+        await ctx.db.locationGroupTag.createMany({
+          data: input.tags.map((tagId) => ({
+            locationGroupId: locationGroup.id,
+            tagId,
+          })),
+          skipDuplicates: true,
+        })
+      }
     }),
   createForAdminPin: adminProcedure
     .input(createAdminPinFormSchema)
@@ -198,8 +393,11 @@ export const pinRouter = createTRPCRouter({
           longitude: randomLocatin.longitude,
         };
       });
+      const optimizedImage = input.image
+        ? await createOptimizedImage(input.image).catch(() => null)
+        : null;
 
-      await ctx.db.locationGroup.create({
+      const locationGroup = await ctx.db.locationGroup.create({
         data: {
           creatorId: creatorId,
           endDate: input.endDate,
@@ -210,7 +408,11 @@ export const pinRouter = createTRPCRouter({
           pageAsset: pageAsset,
           limit: pinCollectionLimit,
           image: input.image,
+          optimizedImage,
           link: input.url,
+          latitude: input.lat,
+          longitude: input.lng,
+          radius: input.radius,
           locations: {
             createMany: {
               data: locations,
@@ -222,6 +424,17 @@ export const pinRouter = createTRPCRouter({
           multiPin: multiPin,
         },
       });
+      if (input.tags && input.tags.length > 0) {
+        await ctx.db.locationGroupTag.createMany({
+          data: input.tags.map((tagId) => ({
+            locationGroupId: locationGroup.id,
+            tagId,
+            creatorId,
+          })),
+          skipDuplicates: true,
+        })
+      }
+      return locationGroup;
     }),
 
   getPin: publicProcedure.input(z.string()).query(async ({ ctx, input }) => {
@@ -362,24 +575,22 @@ export const pinRouter = createTRPCRouter({
           updatedLimit = updatedLimit + limitDiff;
           updatedRemainingLimit = pinRemainingLimit;
         }
+        const imageChanged = image !== undefined && image !== findLocation.locationGroup.image;
+        const optimizedImage = imageChanged
+          ? await createOptimizedImage(image).catch(() => null)
+          : undefined;
 
         // console.log(">> prev", pinRemainingLimit);
         // console.log(">> updated", updatedLimit, updatedRemainingLimit);
-        console.log("Multipin, Auto Collection", multiPin, autoCollect)
         const updatedLocationGroup = await ctx.db.locationGroup.update({
           where: {
             id: findLocation.locationGroup.id, // Use locationGroup ID to update
           },
           data: {
-            title,
-            description,
-            image,
-            startDate,
-            endDate,
-            limit: updatedLimit,
-            remaining: updatedRemainingLimit,
-            link: url,
-            multiPin
+            title, description, image, startDate, endDate,
+            ...(optimizedImage !== undefined && { optimizedImage }),
+            limit: updatedLimit, remaining: updatedRemainingLimit,
+            link: url, multiPin,
           },
         });
 
@@ -1153,6 +1364,37 @@ export const pinRouter = createTRPCRouter({
       return {
         item: items.id,
       };
+    }),
+
+  updateLocationGroup: protectedProcedure
+    .input(z.object({
+      id: z.string(),
+      title: z.string().min(1).optional(),
+      description: z.string().optional(),
+      startDate: z.date().optional(),
+      endDate: z.date().optional(),
+      image: z.string().optional(),
+      link: z.string().optional(),
+      hidden: z.boolean().optional(),
+      remaining: z.number().optional(),
+      multiPin: z.boolean().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      const group = await ctx.db.locationGroup.findFirst({
+        where: { id, creatorId: ctx.session.user.id },
+      });
+      if (!group) throw new TRPCError({ code: "NOT_FOUND", message: "Group not found" });
+
+      const imageChanged = data.image !== undefined && data.image !== group.image;
+      const optimizedImage = imageChanged
+        ? await createOptimizedImage(data.image!).catch(() => null)
+        : undefined;
+
+      return ctx.db.locationGroup.update({
+        where: { id },
+        data: { ...data, ...(optimizedImage !== undefined && { optimizedImage }) },
+      });
     }),
 
   deleteLocationGroup: protectedProcedure

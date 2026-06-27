@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Controller, FormProvider, type SubmitHandler, useForm, useFormContext } from "react-hook-form"
 import { z } from "zod"
 import toast from "react-hot-toast"
-import { Loader, MapPin, ImageIcon, Settings, CheckCircle, Coins, Calendar } from "lucide-react"
+import { Loader, MapPin, ImageIcon, Settings, CheckCircle, Coins, Wand2, Calendar, Tag, Plus, Link2, Shield } from "lucide-react"
 import Image from "next/image"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog"
 import { Input } from "~/components/shadcn/ui/input"
@@ -67,6 +67,8 @@ export const createAdminPinFormSchema = z.object({
     multiPin: z.boolean().default(false),
     type: z.nativeEnum(PinType).default(PinType.OTHER),
     creatorId: z.string(),
+    tags: z.array(z.string()).default([]),
+
 })
 type CreateAdminPinType = z.infer<typeof createAdminPinFormSchema>
 
@@ -357,7 +359,7 @@ export default function CreateAdminPinModal() {
                                                         {errors.title && <p className="text-destructive text-sm">{errors.title.message}</p>}
                                                     </div>
 
-                                                    <div className="space-y-2">
+                                                    <div className="space-y-2 relative">
                                                         <Label htmlFor="description" className="text-sm font-medium">
                                                             Description
                                                         </Label>
@@ -367,6 +369,7 @@ export default function CreateAdminPinModal() {
                                                             className="bg-input border-border focus:ring-ring min-h-[100px] resize-none"
                                                             placeholder="Describe what makes this pin special..."
                                                         />
+                                                        <EnhanceDescriptionButton className="absolute bottom-2 right-4" />
                                                         {errors.description && (
                                                             <p className="text-destructive text-sm">{errors.description.message}</p>
                                                         )}
@@ -499,136 +502,159 @@ export default function CreateAdminPinModal() {
                                             </div>
 
                                         </div>
-
+                                        <TagsSection />
                                         <PinTypeToggles />
                                     </div>
                                 )}
 
                                 {currentStep === 2 && (
-                                    <div className="space-y-6">
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="flex items-center gap-2 text-lg">
-                                                    <CheckCircle className="w-5 h-5 text-primary" />
-                                                    Pin Preview
-                                                </CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                    <div className="space-y-4">
-                                                        <div className="aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden">
-                                                            {coverUrl ? (
-                                                                <Image
-                                                                    src={coverUrl || "/placeholder.svg"}
-                                                                    alt="Pin preview"
-                                                                    width={400}
-                                                                    height={300}
-                                                                    className="w-full h-full object-cover"
-                                                                />
-                                                            ) : (
-                                                                <div className="text-center text-muted-foreground">
-                                                                    <ImageIcon className="w-12 h-12 mx-auto mb-2" />
-                                                                    <p className="text-sm">No image uploaded</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                                            <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
+                                            <div>
+                                                <p className="text-sm font-semibold text-green-800">Ready to publish</p>
+                                                <p className="text-xs text-green-600">Review your pin details before creating</p>
+                                            </div>
+                                        </div>
 
-                                                        <div className="space-y-3">
-                                                            <h2 className="text-xl font-bold text-foreground">{getValues("title") || "Pin Title"}</h2>
-                                                            <p className="text-muted-foreground">
-                                                                {getValues("description")}
-                                                            </p>
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <Badge variant="outline">{getValues("type")}</Badge>
-                                                                <Badge variant={collectionMode === "auto" ? "default" : "secondary"}>
-                                                                    {collectionMode === "auto" ? "Auto Collect" : "Manual Collect"}
-                                                                </Badge>
-                                                                {getValues("multiPin") && <Badge variant="outline">Multi-Pin</Badge>}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="p-3 bg-muted rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">Location</div>
-                                                            <div className="font-medium">
-                                                                {getValues("lat")?.toFixed(6)}, {getValues("lng")?.toFixed(6)}
-                                                            </div>
-                                                        </div>
-                                                        <div className="p-3 bg-muted rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">Radius</div>
-                                                            <div className="font-medium">{getValues("radius")} meters</div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="p-3 bg-muted rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">Number of Pins</div>
-                                                            <div className="font-medium">{getValues("pinNumber")}</div>
-                                                        </div>
-                                                        <div className="p-3 bg-muted rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">Collection Limit</div>
-                                                            <div className="font-medium">{getValues("pinCollectionLimit")}</div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="p-3 bg-muted rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">Start Date</div>
-                                                            <div className="font-medium text-xs">
-                                                                {getValues("startDate")?.toLocaleDateString()}{" "}
-                                                                {getValues("startDate")?.toLocaleTimeString()}
-                                                            </div>
-                                                        </div>
-                                                        <div className="p-3 bg-muted rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">End Date</div>
-                                                            <div className="font-medium text-xs">
-                                                                {getValues("endDate")?.toLocaleDateString()}{" "}
-                                                                {getValues("endDate")?.toLocaleTimeString()}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {getValues("url") && (
-                                                        <div className="p-3 bg-muted rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">URL</div>
-                                                            <div className="font-medium text-sm break-all">{getValues("url")}</div>
-                                                        </div>
-                                                    )}
-
-                                                    {selectedToken && (
-                                                        <div className="p-4 bg-card rounded-lg border">
-                                                            <div className="flex items-center gap-2 mb-3">
-                                                                <Coins className="w-5 h-5 text-accent" />
-                                                                <span className="font-medium">Token Details</span>
-                                                            </div>
-                                                            <div className="space-y-2 text-sm">
-                                                                <div className="flex justify-between">
-                                                                    <span className="text-muted-foreground">Asset:</span>
-                                                                    <span className="font-medium">{selectedToken.code}</span>
-                                                                </div>
-                                                                <div className="flex justify-between">
-                                                                    <span className="text-muted-foreground">Available Balance:</span>
-                                                                    <span className="font-medium">{selectedToken.bal}</span>
-                                                                </div>
-                                                                <div className="flex justify-between">
-                                                                    <span className="text-muted-foreground">Collection Limit:</span>
-                                                                    <span className="font-medium">{getValues("pinCollectionLimit") || 0}</span>
-                                                                </div>
-                                                                <div className="flex justify-between">
-                                                                    <span className="text-muted-foreground">Remaining Balance:</span>
-                                                                    <span
-                                                                        className={`font-medium ${remainingBalance < 0 ? "text-destructive" : "text-accent"}`}
-                                                                    >
-                                                                        {remainingBalance}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            {/* Visual pin card */}
+                                            <div className="rounded-2xl overflow-hidden border shadow-sm">
+                                                <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
+                                                    {coverUrl ? (
+                                                        <Image
+                                                            src={coverUrl}
+                                                            alt="Pin cover"
+                                                            width={400}
+                                                            height={300}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <div className="text-center text-muted-foreground">
+                                                            <ImageIcon className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                                                            <p className="text-xs">No image uploaded</p>
                                                         </div>
                                                     )}
                                                 </div>
-                                            </CardContent>
-                                        </Card>
+                                                <div className="p-4 space-y-3 bg-card">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                                                        <span className="text-xs text-muted-foreground font-mono">
+                                                            {getValues("lat")?.toFixed(5)}, {getValues("lng")?.toFixed(5)}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <h2 className="text-lg font-bold text-foreground leading-tight">
+                                                            {getValues("title") || <span className="text-muted-foreground italic text-base">Untitled Pin</span>}
+                                                        </h2>
+                                                        {getValues("description") && (
+                                                            <p className="text-sm text-muted-foreground mt-1 line-clamp-3">{getValues("description")}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border">
+                                                        <Badge variant="outline" className="text-xs capitalize">{getValues("type")?.toLowerCase()}</Badge>
+                                                        <Badge variant={collectionMode === "auto" ? "default" : "secondary"} className="text-xs">
+                                                            {collectionMode === "auto" ? "Auto Collect" : "Manual Collect"}
+                                                        </Badge>
+                                                        {getValues("multiPin") && <Badge variant="outline" className="text-xs">Multi-Pin</Badge>}
+                                                        {(getValues("tags")?.length ?? 0) > 0 && (
+                                                            <Badge variant="outline" className="text-xs gap-1">
+                                                                <Tag className="w-3 h-3" />
+                                                                {getValues("tags").length} tag{getValues("tags").length !== 1 ? "s" : ""}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Config summary */}
+                                            <div className="space-y-3">
+                                                <div className="p-4 rounded-xl border bg-card">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <Calendar className="w-4 h-4 text-primary" />
+                                                        <span className="text-sm font-semibold">Schedule</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Start</p>
+                                                            <p className="text-xs font-medium mt-0.5">
+                                                                {getValues("startDate")?.toLocaleDateString()}<br />
+                                                                {getValues("startDate")?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">End</p>
+                                                            <p className="text-xs font-medium mt-0.5">
+                                                                {getValues("endDate")?.toLocaleDateString()}<br />
+                                                                {getValues("endDate")?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-4 rounded-xl border bg-card">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <Settings className="w-4 h-4 text-primary" />
+                                                        <span className="text-sm font-semibold">Collection</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-3">
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Pins</p>
+                                                            <p className="text-sm font-semibold mt-0.5">{getValues("pinNumber")}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Limit</p>
+                                                            <p className="text-sm font-semibold mt-0.5">{getValues("pinCollectionLimit")}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Radius</p>
+                                                            <p className="text-sm font-semibold mt-0.5">{getValues("radius")}m</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {getValues("tier") && (
+                                                    <div className="p-4 rounded-xl border bg-card flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <Shield className="w-4 h-4 text-primary" />
+                                                            <span className="text-sm font-semibold">Access Tier</span>
+                                                        </div>
+                                                        <Badge variant="secondary" className="capitalize">{getValues("tier")}</Badge>
+                                                    </div>
+                                                )}
+
+                                                {getValues("url") && (
+                                                    <div className="p-4 rounded-xl border bg-card">
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            <Link2 className="w-4 h-4 text-primary" />
+                                                            <span className="text-sm font-semibold">Link</span>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground break-all">{getValues("url")}</p>
+                                                    </div>
+                                                )}
+
+                                                {selectedToken && (
+                                                    <div className="p-4 rounded-xl border bg-card">
+                                                        <div className="flex items-center gap-2 mb-3">
+                                                            <Coins className="w-4 h-4 text-primary" />
+                                                            <span className="text-sm font-semibold">Token — {selectedToken.code}</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <p className="text-xs text-muted-foreground">Available</p>
+                                                                <p className="text-sm font-semibold mt-0.5">{selectedToken.bal}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-muted-foreground">After creation</p>
+                                                                <p className={`text-sm font-semibold mt-0.5 ${remainingBalance < 0 ? "text-destructive" : "text-accent"}`}>
+                                                                    {remainingBalance}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </form>
@@ -1104,4 +1130,237 @@ function TiersOptions({ creatorId }: { creatorId: string }) {
             // </div>
         );
     }
+}
+
+
+function EnhanceDescriptionButton({ className }: { className?: string }) {
+    const { watch, setValue } = useFormContext<z.infer<typeof createAdminPinFormSchema>>()
+    const description = watch("description")
+    const [isLoading, setIsLoading] = useState(false)
+    const enhanceDescriptionMutation = api.agent.enhanceDescription.useMutation({
+        onSuccess: (data) => {
+            setValue("description", data.enhancedDescription)
+            toast.success("Description enhanced!")
+        },
+        onError: (err) => {
+            toast.error(err.message || "Failed to enhance description")
+        },
+    })
+
+    const handleEnhance = async () => {
+        if (!description || description.trim().length === 0) {
+            toast.error("Please enter a description first")
+            return
+        }
+
+        setIsLoading(true)
+        enhanceDescriptionMutation.mutate({
+            description: description.trim(),
+        })
+        setIsLoading(false)
+    }
+
+    return (
+        <Button
+            type="button"
+
+            size="sm"
+            onClick={handleEnhance}
+            disabled={!description || description.trim().length === 0 || enhanceDescriptionMutation.isLoading}
+            className={`${className} h-6 w-6 px-2 text-xs gap-1 hover:bg-primary/10  rounded-full`}
+        >
+            {enhanceDescriptionMutation.isLoading ? (
+                <>
+                    <Loader className="w-3 h-3 animate-spin" />
+
+                </>
+            ) : (
+                <>
+                    <Wand2 className="w-3 h-3" />
+
+                </>
+            )}
+        </Button>
+    )
+}
+function TagsSection({ creatorId }: { creatorId?: string }) {
+    const { watch, getValues } = useFormContext<CreateAdminPinType>()
+    const title = watch("title")
+    const description = watch("description")
+    const type = watch("type")
+
+    const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
+    const [newTagInput, setNewTagInput] = useState("")
+    const [aiTags, setAiTags] = useState<string[]>([])
+    const [loadingTag, setLoadingTag] = useState<string | null>(null)
+
+    const myTagsQuery = api.tag.myTags.useQuery({
+        creatorId: creatorId,
+    }, {
+        enabled: !!creatorId
+    })
+
+    const createTagM = api.tag.create.useMutation({
+        onSuccess: () => { void myTagsQuery.refetch() },
+        onError: (err) => toast.error(err.message),
+    })
+
+    const aiGenerateM = api.tag.aiGenerate.useMutation({
+        onSuccess: (data) => {
+            setAiTags(data.tags)
+            toast.success("AI tags generated!")
+        },
+        onError: (err) => toast.error(err.message),
+    })
+
+    const handleCreateTag = () => {
+        const label = newTagInput.trim()
+        if (!label) return
+        createTagM.mutate({ label, creatorId }, {
+            onSuccess: (tag) => {
+                setSelectedTagIds((prev) => [...prev, tag.id])
+                setNewTagInput("")
+            },
+        })
+    }
+
+    const handleAiGenerate = () => {
+        aiGenerateM.mutate({
+            title: title ?? "",
+            description: description ?? "",
+            type: type ?? "OTHER",
+            latitude: getValues("lat"),   // add this
+            longitude: getValues("lng"),  // add this
+        })
+    }
+
+    const handleAddAiTag = (label: string) => {
+        setLoadingTag(label)
+        createTagM.mutate({ label, creatorId: creatorId }, {
+            onSuccess: (tag) => {
+                setSelectedTagIds((prev) =>
+                    prev.includes(tag.id) ? prev : [...prev, tag.id]
+                )
+                setAiTags((prev) => prev.filter((t) => t !== label))
+                setLoadingTag(null)
+            },
+            onError: () => setLoadingTag(null),
+        })
+    }
+
+    const toggleTag = (id: string) => {
+        setSelectedTagIds((prev) =>
+            prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
+        )
+    }
+
+    // sync to form
+    const { setValue } = useFormContext<CreateAdminPinType>()
+    useEffect(() => {
+        setValue("tags", selectedTagIds)
+    }, [selectedTagIds, setValue])
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                    <Tag className="w-5 h-5 text-primary" />
+                    Tags
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                    <div className="flex items-center gap-2 flex-1">
+                        <Input
+                            placeholder="New tag name..."
+                            value={newTagInput}
+                            onChange={(e) => setNewTagInput(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleCreateTag())}
+                            className="bg-input border-border"
+                        />
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleCreateTag}
+                            disabled={!newTagInput.trim() || createTagM.isLoading}
+                        >
+                            {createTagM.isLoading ? <Loader className="w-3 h-3 animate-spin" /> : <Plus className="w-4 h-4" />}
+                            New Tag
+                        </Button>
+                    </div>
+
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleAiGenerate}
+                        disabled={!title || aiGenerateM.isLoading}
+                        className="border-primary/40 text-primary hover:bg-primary/10"
+                    >
+                        {aiGenerateM.isLoading
+                            ? <Loader className="w-3 h-3 animate-spin mr-1" />
+                            : <Wand2 className="w-3 h-3 mr-1" />}
+                        AI Tags
+                    </Button>
+                </div>
+
+                {/* AI suggested tags */}
+                {aiTags.length > 0 && (
+                    <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground font-medium">AI Suggestions — click to add:</p>
+                        <div className="flex flex-wrap gap-2">
+                            {aiTags.map((label) => (
+                                <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => handleAddAiTag(label)}
+                                    disabled={loadingTag === label || createTagM.isLoading}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-full border border-dashed border-primary/50 text-primary text-xs hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {loadingTag === label
+                                        ? <Loader className="w-3 h-3 animate-spin" />
+                                        : <Plus className="w-3 h-3" />}
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Creator's existing tags */}
+                {myTagsQuery.isLoading && <p className="text-xs text-muted-foreground">Loading tags...</p>}
+                {myTagsQuery.data && myTagsQuery.data.length > 0 && (
+                    <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground font-medium">Your tags:</p>
+                        <div className="flex flex-wrap gap-2">
+                            {myTagsQuery.data.map((tag) => {
+                                const selected = selectedTagIds.includes(tag.id)
+                                return (
+                                    <button
+                                        key={tag.id}
+                                        type="button"
+                                        onClick={() => toggleTag(tag.id)}
+                                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${selected
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-muted text-muted-foreground border-border hover:border-primary/50"
+                                            }`}
+                                    >
+                                        {selected && <span className="mr-1">✓</span>}
+                                        {tag.label}
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {selectedTagIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground">{selectedTagIds.length} tag(s) selected</p>
+                )}
+            </CardContent>
+        </Card>
+    )
 }

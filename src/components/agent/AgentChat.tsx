@@ -1,483 +1,649 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState, useRef, useEffect } from "react"
-import { api } from "~/utils/api"
-import { MessageCircle, X, Send, Loader2, MapPin, Calendar, ExternalLink, Eye, ChevronDown, Minimize2, Trash2, Minus } from "lucide-react"
-import type { EventData } from "~/lib/agent/types"
-import { useMapInteractionStore } from "../store/map-stores"
+import { useState, useRef, useCallback, useMemo } from "react";
+import { api } from "~/utils/api";
+import { parseAgentResponse } from "~/types/agent/types";
+import type {
+    LocalChatMessage, PinIntent, AgentStage,
+    Pin, PinOptions, AgentPollResult, AgentMode,
+    SuccessResponse,
+    PinListData, ReportData, CollectorReportData,
+    PinListResponse, ReportResponse, CollectorReportResponse,
+    CollectorLoyaltyResponse, LocationCollectorsResponse,
+} from "~/types/agent/types";
+import type { PinEditFields, HotspotScope, LocationEditFields } from "~/components/agent/pins/pin-edit-form";
+import type { HotspotEditFields } from "~/components/agent/hotspot/hotspot-edit-form";
+import AgentBlockDisplay from "~/components/agent/AgentBlockDisplay";
 
-interface Message {
-    role: "user" | "assistant" | "system"
-    content: string
-    events?: EventData[]
-    type?: "text" | "events" | "update"
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+const DEFAULT_INTENT: PinIntent = {
+    count: null, query: null, area: null,
+    areaType: "unknown", confirmed: false,
+    countSpecified: false, isNiche: false,
+    pinNumber: undefined, ambiguousPinIntent: false,
+};
+
+// ─── Poll hook ────────────────────────────────────────────────────────────────
+
+function usePollAgentJob() {
+    const utils = api.useUtils();
+
+    return useCallback(
+        (jobId: string, onStatusChange?: (status: string) => void): Promise<AgentPollResult> =>
+            new Promise((resolve, reject) => {
+                const TIMEOUT_MS = 90_000;
+                const INTERVAL_MS = 1_500;
+                const startedAt = Date.now();
+
+                const tick = async () => {
+                    if (Date.now() - startedAt > TIMEOUT_MS) {
+                        reject(new Error("Timed out waiting for agent job"));
+                        return;
+                    }
+                    try {
+                        const job = await utils.agent.pollJobResult.fetch({ jobId });
+                        onStatusChange?.(job.status);
+                        if (job.status === "completed" && job.result) {
+                            console.log("[pollJob] completed with result:", job.result);
+                            resolve(job.result as AgentPollResult);
+                        } else if (job.status === "failed") {
+                            reject(new Error(job.error ?? "Agent job failed"));
+                        } else {
+                            setTimeout(() => void tick(), INTERVAL_MS);
+                        }
+                    } catch (err) { reject(err); }
+                };
+                void tick();
+            }),
+        [utils],
+    );
 }
-export default function AgentChat() {
-    const [isOpen, setIsOpen] = useState(false)
-    const [isMinimized, setIsMinimized] = useState(false)
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            role: "assistant",
-            content: "Hi! I'm your Actionverse assistant. How can I help you today?",
-        },
-    ])
-    const [inputMessage, setInputMessage] = useState("")
-    const messagesEndRef = useRef<HTMLDivElement>(null)
 
-    const chatMutation = api.agent.chat.useMutation()
+// ─── Merge helpers ────────────────────────────────────────────────────────────
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }
+function mergePinListData(existing: PinListData, incoming: PinListData): PinListData {
+    return {
+        standalone: [...existing.standalone, ...(incoming.standalone ?? [])],
+        hotspots: mergeHotspots(existing.hotspots, incoming.hotspots ?? []),
+        pagination: incoming.pagination,
+    };
+}
 
-    useEffect(() => {
-        scrollToBottom()
-    }, [messages])
-
-    const handleSendMessage = async () => {
-        if (!inputMessage.trim() || chatMutation.isLoading) return
-
-        const userMessage: Message = {
-            role: "user",
-            content: inputMessage,
+function mergeHotspots(
+    existing: PinListData["hotspots"],
+    incoming: PinListData["hotspots"],
+): PinListData["hotspots"] {
+    const merged = [...existing];
+    for (const hs of incoming) {
+        const idx = merged.findIndex(h => h.hotspotName === hs.hotspotName);
+        if (idx >= 0) {
+            merged[idx] = {
+                ...merged[idx]!,
+                locationGroups: [...merged[idx]!.locationGroups, ...hs.locationGroups],
+            };
+        } else {
+            merged.push(hs);
         }
+    }
+    return merged;
+}
 
-        setMessages((prev) => [...prev, userMessage])
-        setInputMessage("")
-        setIsOpen(true)
+function mergeReportData(existing: ReportData, incoming: ReportData): ReportData {
+    return {
+        ...existing,
+        perPin: [...existing.perPin, ...(incoming.perPin ?? [])],
+        pagination: incoming.pagination,
+    };
+}
+
+function mergeCollectorReport(
+    existing: CollectorReportData,
+    incoming: CollectorReportData,
+): CollectorReportData {
+    if (existing.mode === "single_collector") {
+        return {
+            ...existing,
+            collections: [...(existing.collections ?? []), ...(incoming.collections ?? [])],
+            pagination: incoming.pagination,
+        };
+    }
+    return {
+        ...existing,
+        collectors: [...(existing.collectors ?? []), ...(incoming.collectors ?? [])],
+        pagination: incoming.pagination,
+    };
+}
+
+function mergeCollectorLoyalty(
+    existing: CollectorLoyaltyResponse["data"],
+    incoming: CollectorLoyaltyResponse["data"],
+): CollectorLoyaltyResponse["data"] {
+    // Merge topLoyal; segments are recalculated server-side per page
+    return {
+        ...incoming,
+        topLoyal: [...existing.topLoyal, ...incoming.topLoyal],
+        pagination: incoming.pagination,
+    };
+}
+
+function mergeLocationCollectors(
+    existing: LocationCollectorsResponse["data"],
+    incoming: LocationCollectorsResponse["data"],
+): LocationCollectorsResponse["data"] {
+    return {
+        ...existing,
+        collectors: [...existing.collectors, ...incoming.collectors],
+        pagination: incoming.pagination,
+    };
+}
+
+// ─── Stage labels ─────────────────────────────────────────────────────────────
+
+export const STAGE_LABEL: Record<AgentStage, string> = {
+    idle: "",
+    extracting_intent: "Understanding request…",
+    clarifying: "",
+    searching: "Searching…",
+    confirming: "Ready",
+    dropping_pins: "Dropping pins…",
+    done: "All done!",
+    error: "Something went wrong",
+};
+
+// ─── Loadable response types ──────────────────────────────────────────────────
+
+const LOADABLE_TYPES = new Set([
+    "pin_list", "report", "collector_report",
+    "collector_loyalty", "location_collectors",
+]);
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function AgentChat({ creatorId }: { creatorId?: string }) {
+    const [messages, setMessages] = useState<LocalChatMessage[]>([]);
+    const [input, setInput] = useState("");
+    const [intent, setIntent] = useState<PinIntent>(DEFAULT_INTENT);
+    const [stage, setStage] = useState<AgentStage>("idle");
+    const [isLoading, setIsLoading] = useState(false);
+    const [isDropping, setIsDropping] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [currentPins, setCurrentPins] = useState<Pin[]>([]);
+    const [isOpen, setIsOpen] = useState(true);
+    const [isMinimized, setIsMinimized] = useState(true);
+
+    const inputRef = useRef<HTMLInputElement>(null);
+    const chatCreate = api.agent.create.useMutation();
+    const pollJob = usePollAgentJob();
+
+    // ── History builder ───────────────────────────────────────────────────────
+
+    const buildHistory = useCallback((extraUserText?: string) => {
+        const history = messages
+            .map(m => {
+                if (m.content.kind === "text") return { role: m.role as "user" | "assistant", text: m.content.text };
+                if (m.content.kind === "response") {
+                    const d = m.content.data;
+                    const text = (d.type === "question" || d.type === "success" || d.type === "confirm")
+                        ? d.message : "";
+                    return { role: "assistant" as const, text };
+                }
+                return null;
+            })
+            .filter(Boolean) as { role: "user" | "assistant"; text: string }[];
+
+        if (extraUserText) history.push({ role: "user", text: extraUserText });
+        return history;
+    }, [messages]);
+
+    // ── Core send ─────────────────────────────────────────────────────────────
+
+    const sendMessage = useCallback(async (userText: string, intentOverride?: Partial<PinIntent>) => {
+        if (!userText.trim() || isLoading) return;
+
+        const mergedIntent = { ...intent, ...intentOverride };
+        const loadingId = uid();
+
+        setMessages(prev => [
+            ...prev,
+            { id: uid(), role: "user", content: { kind: "text", text: userText }, createdAt: new Date() },
+            { id: loadingId, role: "assistant", content: { kind: "loading", label: STAGE_LABEL.extracting_intent }, createdAt: new Date() },
+        ]);
+        setIsLoading(true);
+        setInput("");
 
         try {
-            const historyWithEvents = messages.map((msg) => ({
-                role: msg.role,
-                content:
-                    msg.events && msg.events.length > 0
-                        ? `${msg.content}\n\nEvents:\n${JSON.stringify(msg.events, null, 2)}`
-                        : msg.content,
-            }))
+            const { jobId } = await chatCreate.mutateAsync({
+                messages: buildHistory(userText),
+                intent: mergedIntent,
+                creatorId,
+            });
 
-            const response = await chatMutation.mutateAsync({
-                message: inputMessage,
-                conversationHistory: historyWithEvents.filter((m) => m.role !== "system"),
-            })
+            const result = await pollJob(jobId, (status) => {
+                const label = status === "processing" ? STAGE_LABEL.searching : STAGE_LABEL.extracting_intent;
+                setMessages(prev => prev.map(m =>
+                    m.id === loadingId ? { ...m, content: { kind: "loading" as const, label } } : m,
+                ));
+            });
 
-            if (response.success) {
-                const assistantMessage: Message = {
+            const serverPins = result.pins ?? [];
+            if (serverPins.length > 0) setCurrentPins(serverPins);
+
+            const agentResponse = parseAgentResponse(result.reply);
+            const mode: AgentMode | undefined = result.mode;
+
+            // Reset area if topic changed
+            if (result.intent.query !== intent.query && intent.query !== null) {
+                result.intent.area = null;
+                result.intent.areaType = "unknown";
+            }
+
+            setMessages(prev => [
+                ...prev.filter(m => m.id !== loadingId),
+                {
+                    id: uid(),
                     role: "assistant",
-                    content: response.message,
-                    events: response.events,
-                    type: response.type as "text" | "events" | "update",
+                    content: { kind: "response", data: agentResponse, pins: serverPins.length > 0 ? serverPins : currentPins, mode },
+                    createdAt: new Date(),
+                },
+            ]);
+
+            setStage(result.stage);
+            setIntent(result.intent);
+        } catch (err) {
+            console.error("[AgentChat] sendMessage error:", err);
+            setMessages(prev => [
+                ...prev.filter(m => m.id !== loadingId),
+                { id: uid(), role: "assistant", content: { kind: "text", text: "Sorry, something went wrong. Please try again." }, createdAt: new Date() },
+            ]);
+            setStage("error");
+        } finally {
+            setIsLoading(false);
+            inputRef.current?.focus();
+        }
+    }, [isLoading, intent, currentPins, buildHistory, chatCreate, pollJob, creatorId]);
+
+    // ── Load more ─────────────────────────────────────────────────────────────
+    // Finds the last paginated message, fetches the next page, merges it in.
+
+    const handleLoadMore = useCallback(async (nextOffset: number) => {
+        if (isLoadingMore) return;
+        setIsLoadingMore(true);
+
+        // Find last loadable message and last user query
+        let targetMsgId: string | null = null;
+        let loadMoreType: string | null = null;
+        let lastQuery = "show my pins";
+
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]!;
+            if (m.content.kind === "response" && LOADABLE_TYPES.has(m.content.data.type)) {
+                targetMsgId = m.id;
+                loadMoreType = m.content.data.type;
+                break;
+            }
+        }
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]!;
+            if (m.role === "user" && m.content.kind === "text") { lastQuery = m.content.text; break; }
+        }
+
+        if (!targetMsgId || !loadMoreType) { setIsLoadingMore(false); return; }
+
+        try {
+            const { jobId } = await chatCreate.mutateAsync({
+                messages: [{ role: "user", text: lastQuery }],
+                intent,
+                creatorId,
+                loadMore: true,
+                loadMoreOffset: nextOffset,
+                loadMoreType,
+            });
+
+            const result = await pollJob(jobId);
+            const agentResponse = parseAgentResponse(result.reply);
+
+            setMessages(prev => prev.map(m => {
+                if (m.id !== targetMsgId || m.content.kind !== "response") return m;
+                const existing = m.content.data;
+
+                if (loadMoreType === "pin_list" && existing.type === "pin_list" && agentResponse.type === "pin_list") {
+                    return { ...m, content: { ...m.content, data: { ...existing, data: mergePinListData(existing.data, agentResponse.data) } satisfies PinListResponse } };
                 }
-                setMessages((prev) => [...prev, assistantMessage])
-            }
-        } catch (error) {
-            console.error("Chat error:", error)
-            const errorMessage: Message = {
-                role: "assistant",
-                content: "Sorry, something went wrong. Please try again.",
-                type: "text",
-            }
-            setMessages((prev) => [...prev, errorMessage])
+                if (loadMoreType === "report" && existing.type === "report" && agentResponse.type === "report") {
+                    return { ...m, content: { ...m.content, data: { ...existing, data: mergeReportData(existing.data, agentResponse.data) } satisfies ReportResponse } };
+                }
+                if (loadMoreType === "collector_report" && existing.type === "collector_report" && agentResponse.type === "collector_report") {
+                    return { ...m, content: { ...m.content, data: { ...existing, data: mergeCollectorReport(existing.data, agentResponse.data) } satisfies CollectorReportResponse } };
+                }
+                if (loadMoreType === "collector_loyalty" && existing.type === "collector_loyalty" && agentResponse.type === "collector_loyalty") {
+                    return { ...m, content: { ...m.content, data: { ...existing, data: mergeCollectorLoyalty(existing.data, agentResponse.data) } } };
+                }
+                if (loadMoreType === "location_collectors" && existing.type === "location_collectors" && agentResponse.type === "location_collectors") {
+                    return { ...m, content: { ...m.content, data: { ...existing, data: mergeLocationCollectors(existing.data, agentResponse.data) } } };
+                }
+                return m;
+            }));
+        } catch (err) {
+            console.error("[AgentChat] loadMore error:", err);
+        } finally {
+            setIsLoadingMore(false);
         }
-    }
+    }, [isLoadingMore, messages, intent, chatCreate, pollJob, creatorId]);
 
-    const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // ── View location collectors (Level 3 drill-down) ─────────────────────────
+    // Sends a SYSTEM message so the agent fetches collectors for that location.
+
+    const handleViewLocationCollectors = useCallback((locationId: string) => {
+        void sendMessage(`Show collectors for this location. SYSTEM: locationId=${locationId}`);
+    }, [sendMessage]);
+
+    // ── Question answers ──────────────────────────────────────────────────────
+
+    const handleAnswer = useCallback((msgId: string, answers: Record<string, string>) => {
+        setMessages(prev => prev.map(m => {
+            if (m.id !== msgId || m.content.kind !== "response") return m;
+            return { ...m, content: { ...m.content, questionAnswered: true, questionAnsweredValues: answers } };
+        }));
+
+        const intentPatch: Partial<PinIntent> = {
+            count: intent.count, countSpecified: intent.countSpecified,
+            area: intent.area, pinNumber: intent.pinNumber, areaType: intent.areaType,
+        };
+
+        for (const [k, v] of Object.entries(answers)) {
+            const key = k.toLowerCase().trim();
+            if (["count", "how_many", "how many"].includes(key)) {
+                intentPatch.count = parseInt(v, 10) || null;
+                intentPatch.countSpecified = true;
+            } else if (["query", "what", "search"].includes(key)) {
+                intentPatch.query = v;
+            } else if (["area", "where", "location", "city"].includes(key)) {
+                intentPatch.area = v;
+            }
+        }
+
+        const parts: string[] = [];
+        if (intentPatch.query) parts.push(`find ${intentPatch.query}`);
+        if (intentPatch.area) parts.push(`in ${intentPatch.area}`);
+        if (intentPatch.count && intentPatch.countSpecified) parts.push(`(${intentPatch.count} locations)`);
+
+        void sendMessage(
+            parts.length > 0 ? parts.join(" ") : Object.values(answers).join(", "),
+            intentPatch,
+        );
+    }, [sendMessage, intent]);
+
+    // ── List confirm ──────────────────────────────────────────────────────────
+
+    const handleListConfirm = useCallback((msgId: string, selectedIds: string[]) => {
+        setMessages(prev => prev.map(m => {
+            if (m.id !== msgId || m.content.kind !== "response") return m;
+            if (m.content.data.type !== "pin_list" && m.content.data.type !== "hotspot_list") return m;
+            const action = m.content.data.mode;
+            const verb: Record<string, string> = { edit: "Update", delete: "Delete", pause: "Pause", resume: "Resume" };
+            const displayText = `${verb[action] ?? "Process"} selected pins (${selectedIds.length})`;
+            const agentText = `${displayText}. SYSTEM: locationGroupIds=${selectedIds.join(",")} action=${action}`;
+            setTimeout(() => void sendMessage(agentText), 0);
+            return m;
+        }));
+    }, [sendMessage]);
+
+    const handleListDismiss = useCallback(
+        () => void sendMessage("Cancel that, let me start over."),
+        [sendMessage],
+    );
+
+    // ── Inline pin edit ───────────────────────────────────────────────────────
+
+    const editPinDirect = api.agent.editPinDirect.useMutation();
+
+    const handleEdit = useCallback(async (
+        ids: string[],
+        fields: PinEditFields,
+        _scope?: HotspotScope,
+        locationEdits?: Record<string, LocationEditFields>,
+    ) => {
+        const fieldSummary = Object.entries(fields)
+            .filter(([, v]) => v !== null && v !== undefined && v !== "")
+            .map(([k, v]) => `${k} to "${String(v)}"`)
+            .join(", ");
+
+        const locCount = locationEdits ? Object.keys(locationEdits).length : 0;
+        const displayText = [
+            fieldSummary ? `Update pin: set ${fieldSummary}` : "",
+            locCount > 0 ? `${locCount} location${locCount > 1 ? "s" : ""} modified` : "",
+        ].filter(Boolean).join(". ");
+
+        setMessages(prev => [...prev,
+        { id: uid(), role: "user", content: { kind: "text", text: displayText }, createdAt: new Date() },
+        ]);
+
+        try {
+            await editPinDirect.mutateAsync({ locationGroupIds: ids, fields, locationEdits });
+            setMessages(prev => [...prev, {
+                id: uid(), role: "assistant",
+                content: { kind: "response", data: { type: "success", message: `Updated ${ids.length} pin${ids.length > 1 ? "s" : ""} successfully!`, count: ids.length }, pins: [] },
+                createdAt: new Date(),
+            }]);
+        } catch (err) {
+            console.error("[handleEdit] error:", err);
+            setMessages(prev => [...prev, {
+                id: uid(), role: "assistant",
+                content: { kind: "response", data: { type: "info", message: "Failed to update. Please try again." }, pins: [] },
+                createdAt: new Date(),
+            }]);
+        }
+    }, [editPinDirect]);
+
+    // ── Inline pin delete ─────────────────────────────────────────────────────
+
+    const deletePinDirect = api.agent.deletePinDirect.useMutation();
+
+    const handleDelete = useCallback(async (ids: string[]) => {
+        const displayText = `Delete ${ids.length} pin${ids.length > 1 ? "s" : ""}`;
+        setMessages(prev => [...prev,
+        { id: uid(), role: "user", content: { kind: "text", text: displayText }, createdAt: new Date() },
+        ]);
+        try {
+            await deletePinDirect.mutateAsync({ locationGroupIds: ids });
+            setMessages(prev => [...prev, {
+                id: uid(), role: "assistant",
+                content: { kind: "response", data: { type: "success", message: `Deleted ${ids.length} pin${ids.length > 1 ? "s" : ""} successfully!`, count: ids.length }, pins: [] },
+                createdAt: new Date(),
+            }]);
+        } catch (err) {
+            console.error("[handleDelete] error:", err);
+            setMessages(prev => [...prev, {
+                id: uid(), role: "assistant",
+                content: { kind: "response", data: { type: "info", message: "Failed to delete. Please try again." }, pins: [] },
+                createdAt: new Date(),
+            }]);
+        }
+    }, [deletePinDirect]);
+
+    // ── Hotspot actions ───────────────────────────────────────────────────────
+
+    const handleEditHotspot = useCallback(async (hotspotId: string, fields: HotspotEditFields) => {
+        const summary = Object.entries(fields).filter(([, v]) => v != null).map(([k, v]) => `${k} to "${String(v)}"`).join(", ");
+        await sendMessage(`Update hotspot: set ${summary}. SYSTEM: hotspotId=${hotspotId}`);
+    }, [sendMessage]);
+
+    const handleDeleteHotspot = useCallback(async (hotspotId: string) => void sendMessage(`Delete hotspot. SYSTEM: hotspotId=${hotspotId}`), [sendMessage]);
+    const handlePauseHotspot = useCallback(async (hotspotId: string) => void sendMessage(`Pause hotspot. SYSTEM: hotspotId=${hotspotId}`), [sendMessage]);
+    const handleResumeHotspot = useCallback(async (hotspotId: string) => void sendMessage(`Resume hotspot. SYSTEM: hotspotId=${hotspotId}`), [sendMessage]);
+
+    // ── Pin-drop confirm with options ─────────────────────────────────────────
+
+    const handleConfirmWithOptions = useCallback(async (options: PinOptions) => {
+        setIsDropping(true);
+        setIsLoading(true);
+        try {
+            const { jobId } = await chatCreate.mutateAsync({
+                messages: buildHistory("Yes, confirm and drop the pins."),
+                intent: { ...intent, confirmed: true },
+                pinOptions: options,
+                pins: currentPins,
+                creatorId,
+            });
+
+            const result = await pollJob(jobId);
+            const locationGroupJobId = result.jobId;
+
+            setMessages(prev => {
+                const copy = [...prev];
+                for (let i = copy.length - 1; i >= 0; i--) {
+                    const m = copy[i]!;
+                    if (m.content.kind === "response" && m.content.data.type === "results") {
+                        copy[i] = { ...m, content: { ...m.content, resultsConfirmed: true, resultsJobId: locationGroupJobId } };
+                        break;
+                    }
+                }
+                return copy;
+            });
+
+            if (!locationGroupJobId) {
+                setMessages(prev => [...prev, {
+                    id: uid(), role: "assistant",
+                    content: { kind: "response", data: { type: "success", message: `Successfully dropped ${currentPins.length} pins!`, count: currentPins.length } satisfies SuccessResponse, pins: [] },
+                    createdAt: new Date(),
+                }]);
+            }
+
+            setStage("dropping_pins");
+            setIntent(p => ({ ...p, confirmed: true }));
+        } catch {
+            setMessages(prev => [...prev, {
+                id: uid(), role: "assistant",
+                content: { kind: "response", data: { type: "info", message: "Failed to drop pins. Please try again." }, pins: [] },
+                createdAt: new Date(),
+            }]);
+        } finally {
+            setIsDropping(false);
+            setIsLoading(false);
+        }
+    }, [intent, currentPins, buildHistory, chatCreate, pollJob, creatorId]);
+
+    // ── Legacy confirm pins ───────────────────────────────────────────────────
+
+    const handleConfirmPins = useCallback(async (pins: Pin[]) => {
+        setIsDropping(true);
+        setIsLoading(true);
+        const pinsToUse = pins.length > 0 ? pins : currentPins;
+        try {
+            const { jobId } = await chatCreate.mutateAsync({
+                messages: buildHistory("Yes, confirm and drop the pins."),
+                intent: { ...intent, confirmed: true },
+                creatorId,
+            });
+            await pollJob(jobId);
+            setMessages(prev => [...prev, {
+                id: uid(), role: "assistant",
+                content: { kind: "response", data: { type: "success", message: `Successfully dropped ${pinsToUse.length} pins!`, count: pinsToUse.length } satisfies SuccessResponse, pins: [] },
+                createdAt: new Date(),
+            }]);
+            setStage("done");
+            setIntent(p => ({ ...p, confirmed: true }));
+            setCurrentPins([]);
+        } catch {
+            setMessages(prev => [...prev, {
+                id: uid(), role: "assistant",
+                content: { kind: "response", data: { type: "info", message: "Failed to drop pins. Please try again." }, pins: [] },
+                createdAt: new Date(),
+            }]);
+        } finally {
+            setIsDropping(false);
+            setIsLoading(false);
+        }
+    }, [intent, currentPins, buildHistory, chatCreate, pollJob, creatorId]);
+
+    // ── Job complete ──────────────────────────────────────────────────────────
+
+    const handleJobComplete = useCallback((count: number) => {
+        setStage("done");
+        setCurrentPins([]);
+        setMessages(prev => [...prev, {
+            id: uid(), role: "assistant",
+            content: { kind: "response", data: { type: "success", message: `Successfully dropped ${count} pin${count !== 1 ? "s" : ""}!`, count } satisfies SuccessResponse, pins: [] },
+            createdAt: new Date(),
+        }]);
+    }, []);
+
+    // ── Dismiss / reset ───────────────────────────────────────────────────────
+
+    const handleDismiss = useCallback(() => void sendMessage("Cancel that, let me start over."), [sendMessage]);
+
+    const handleReset = useCallback(() => {
+        setMessages([]);
+        setIntent(DEFAULT_INTENT);
+        setStage("idle");
+        setInput("");
+        setCurrentPins([]);
+        inputRef.current?.focus();
+    }, []);
+
+    // ── Interaction pending guard ─────────────────────────────────────────────
+
+    const isInteractionPending = useMemo(() => {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (!m || m.role !== "assistant" || m.content.kind !== "response") continue;
+            const { data, questionAnswered, resultsConfirmed } = m.content;
+            if (data.type === "question" && !questionAnswered) return true;
+            if (data.type === "results" && !resultsConfirmed) return true;
+            if (data.type === "confirm") return true;
+            break;
+        }
+        return false;
+    }, [messages]);
+
+    // ── Key handler ───────────────────────────────────────────────────────────
+
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault()
-            handleSendMessage()
+            e.preventDefault();
+            void sendMessage(input);
         }
-    }
+    }, [input, sendMessage]);
 
-    const handleClearMessages = () => {
-        setMessages([
-            {
-                role: "assistant",
-                content: "Hi! I'm your Actionverse assistant. How can I help you today?",
-            },
-        ])
-    }
+    // ── Render ────────────────────────────────────────────────────────────────
 
     return (
-        <>
-            {/* Minimized Button - Shows when drawer is minimized */}
-            {isMinimized && (
-                <button
-                    onClick={() => {
-                        setIsMinimized(false)
-                        setIsOpen(true)
-                    }}
-                    className="fixed bottom-12 left-1/2 -translate-x-1/2 translate-y-1/2 z-40 px-6 py-3 rounded-full bg-primary text-primary-foreground font-semibold shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-105 active:scale-95"
-                >
-                    Actionverse Assistant
-                </button>
-            )}
-
-            {/* Neon Glowing Input Box - Hidden when minimized */}
-            {!isMinimized && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4">
-                    <style>{`
-                        @keyframes neon-glow {
-                            0%, 100% {
-                                box-shadow: 0 0 5px rgba(34, 197, 94, 0.3), 0 0 10px rgba(34, 197, 94, 0.2), inset 0 0 5px rgba(34, 197, 94, 0.1);
-                            }
-                            50% {
-                                box-shadow: 0 0 15px rgba(34, 197, 94, 0.6), 0 0 25px rgba(34, 197, 94, 0.4), inset 0 0 10px rgba(34, 197, 94, 0.2);
-                            }
-                        }
-                        
-                        @keyframes border-run {
-                            0% {
-                                background-position: 0% 50%;
-                            }
-                            50% {
-                                background-position: 100% 50%;
-                            }
-                            100% {
-                                background-position: 0% 50%;
-                            }
-                        }
-
-                        /* Added four gradient lines that move around the edges */
-                        @keyframes gradient-line-top {
-                            0% {
-                                left: -100%;
-                            }
-                            100% {
-                                left: 100%;
-                            }
-                        }
-
-                        @keyframes gradient-line-right {
-                            0% {
-                                top: -100%;
-                            }
-                            100% {
-                                top: 100%;
-                            }
-                        }
-
-                        @keyframes gradient-line-bottom {
-                            0% {
-                                right: -100%;
-                            }
-                            100% {
-                                right: 100%;
-                            }
-                        }
-
-                        @keyframes gradient-line-left {
-                            0% {
-                                bottom: -100%;
-                            }
-                            100% {
-                                bottom: 100%;
-                            }
-                        }
-
-                        .neon-input-wrapper {
-                            animation: neon-glow 3s ease-in-out infinite, border-run 4s ease-in-out infinite;
-                            border: 2px solid rgba(34, 197, 94, 0.5);
-                            border-radius: 9999px;
-                            background: linear-gradient(90deg, rgba(34, 197, 94, 0.05), rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
-                            background-size: 200% 100%;
-                            position: relative;
-                            overflow: hidden;
-                        }
-
-                        .neon-input-wrapper::before,
-                        .neon-input-wrapper::after {
-                            content: '';
-                            position: absolute;
-                            pointer-events: none;
-                        }
-
-                        /* Top gradient line */
-                        .neon-input-wrapper::before {
-                            top: 0;
-                            left: 0;
-                            width: 100%;
-                            height: 2px;
-                            background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.8), transparent);
-                            animation: gradient-line-top 3s ease-in-out infinite;
-                        }
-
-                        /* Right gradient line */
-                        .gradient-line-right {
-                            position: absolute;
-                            right: 0;
-                            top: 0;
-                            width: 2px;
-                            height: 100%;
-                            background: linear-gradient(180deg, transparent, rgba(34, 197, 94, 0.8), transparent);
-                            animation: gradient-line-right 3s ease-in-out infinite;
-                            pointer-events: none;
-                        }
-
-                        /* Bottom gradient line */
-                        .gradient-line-bottom {
-                            position: absolute;
-                            bottom: 0;
-                            left: 0;
-                            width: 100%;
-                            height: 2px;
-                            background: linear-gradient(270deg, transparent, rgba(34, 197, 94, 0.8), transparent);
-                            animation: gradient-line-bottom 3s ease-in-out infinite;
-                            pointer-events: none;
-                        }
-
-                        /* Left gradient line */
-                        .gradient-line-left {
-                            position: absolute;
-                            left: 0;
-                            top: 0;
-                            width: 2px;
-                            height: 100%;
-                            background: linear-gradient(360deg, transparent, rgba(34, 197, 94, 0.8), transparent);
-                            animation: gradient-line-left 3s ease-in-out infinite;
-                            pointer-events: none;
-                        }
-                    `}</style>
-
-                    <div className="neon-input-wrapper flex items-center gap-2 p-1 backdrop-blur-sm bg-white rounded-full shadow-lg">
-                        <div className="gradient-line-bottom" />
-
-                        <input
-                            type="text"
-                            value={inputMessage}
-                            onChange={(e) => setInputMessage(e.target.value)}
-                            onKeyPress={handleKeyPress}
-                            placeholder="Ask me anything..."
-                            disabled
-                            className="flex-1 bg-white rounded-full px-5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50 transition-all duration-200"
-                        />
-
-                        {/* Send Button */}
-                        <button
-                            onClick={handleSendMessage}
-                            disabled={!inputMessage.trim() || chatMutation.isLoading}
-                            className="flex items-center justify-center rounded-full bg-primary px-4 py-3 text-primary-foreground transition-all duration-200 hover:shadow-lg hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 flex-shrink-0"
-                            aria-label="Send message"
-                        >
-                            {chatMutation.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                        </button>
-
-                        {/* Chevron Down Button */}
-                        <button
-                            onClick={() => setIsOpen(!isOpen)}
-                            className="flex items-center justify-center rounded-full bg-primary/80 px-4 py-3 text-primary-foreground transition-all duration-200 hover:shadow-lg hover:scale-105 active:scale-95 flex-shrink-0"
-                            aria-label="Toggle chat history"
-                        >
-                            <ChevronDown className={`h-5 w-5 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`} />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Chat History Drawer */}
-            {isOpen && !isMinimized && (
-                <>
-                    {/* Backdrop */}
-                    {/* <div
-                        className="fixed inset-0 z-30 bg-black/40 backdrop-blur-md transition-opacity duration-300 animate-in fade-in"
-                        onClick={() => setIsOpen(false)}
-                    /> */}
-
-                    {/* Chat Drawer - Adjusted bottom position to prevent overlap with input box */}
-                    <div className="fixed inset-x-0 bottom-24 z-40 mx-auto flex max-w-2xl flex-col bg-background rounded-2xl border border-border overflow-hidden animate-in slide-in-from-bottom-5 duration-300 shadow-2xl h-[80vh] md:h-[70vh] sm:bottom-24">
-                        {/* Header */}
-                        <div className="flex items-center justify-between bg-primary px-6 py-3 text-primary-foreground sm:rounded-t-2xl">
-                            <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-foreground/20 backdrop-blur-sm">
-                                    <MessageCircle className="h-5 w-5" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-base">Actionverse Assistant</h3>
-                                    <p className="text-xs text-white/80">Powered by AI</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={handleClearMessages}
-                                    className="rounded-full p-2 transition-colors hover:bg-white/20 active:bg-white/30"
-                                    aria-label="Clear chat"
-                                    title="Clear"
-                                >
-                                    <Trash2 className="h-5 w-5" />
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setIsMinimized(true)
-                                        setIsOpen(false)
-                                    }}
-                                    className="rounded-full p-2 transition-colors hover:bg-white/20 active:bg-white/30"
-                                    aria-label="Minimize chat"
-                                    title="Minimize"
-                                >
-                                    <Minus className="h-5 w-5" />
-                                </button>
-
-                                <button
-                                    onClick={() => setIsOpen(false)}
-                                    className="rounded-full p-2 transition-colors hover:bg-white/20 active:bg-white/30"
-                                    aria-label="Close chat"
-                                    title="Close"
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="flex-1 space-y-4 overflow-y-auto p-6 bg-gradient-to-b from-background via-background to-background/80">
-                            <span>This feature is currently under development.</span>
-                        </div>
-
-                        {/*
-                        <div className="flex-1 space-y-4 overflow-y-auto p-6 bg-gradient-to-b from-background via-background to-background/80">
-                            {messages.map((message, index) => (
-                                <div key={index} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                    {message.role === "user" ? (
-                                        <div className="flex justify-end">
-                                            <div className="max-w-[75%] rounded-3xl rounded-tr-lg bg-primary px-5 py-3 text-primary-foreground shadow-lg">
-                                                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed font-medium">
-                                                    {message.content}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col gap-3">
-                                            {message.content && (
-                                                <div className="flex justify-start">
-                                                    <div className="max-w-[75%] rounded-3xl rounded-tl-lg bg-muted px-5 py-3 text-muted-foreground shadow-md">
-                                                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p>
-                                                    </div>
-                                                </div>
-                                            )}
-                                            {message.events && message.events.length > 0 && (
-                                                <div className="space-y-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    {message.events.map((event, eventIndex) => (
-                                                        <EventCard key={eventIndex} event={event} />
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                            {chatMutation.isLoading && (
-                                <div className="flex justify-start animate-in fade-in">
-                                    <div className="rounded-3xl rounded-tl-lg bg-muted px-5 py-3 shadow-md">
-                                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                                    </div>
-                                </div>
-                            )}
-                            <div ref={messagesEndRef} />
-                        </div> */}
-                    </div>
-                </>
-            )}
-        </>
-    )
-}
-
-function EventCard({ event }: { event: EventData }) {
-    const { openCreatePinModal, setPosition, setPrevData } = useMapInteractionStore()
-
-    const handleCreatePin = () => {
-        setPosition({
-            lat: event.latitude,
-            lng: event.longitude,
-        })
-
-        setPrevData({
-            title: event.title,
-            description: event.description,
-            lat: event.latitude,
-            lng: event.longitude,
-            startDate: new Date(event.startDate),
-            endDate: new Date(event.endDate),
-            url: event.url,
-            autoCollect: event.autoCollect ?? false,
-            pinCollectionLimit: event.pinCollectionLimit ?? 1,
-            pinNumber: event.pinNumber ?? 1,
-            radius: event.radius ?? 50,
-            tier: null,
-        })
-
-        openCreatePinModal()
-    }
-
-    const handleViewOnMap = () => {
-        setPosition({
-            lat: event.latitude,
-            lng: event.longitude,
-        })
-    }
-
-    return (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-md transition-all duration-200 hover:shadow-lg hover:border-blue-500/50">
-            <div className="p-4 flex flex-col justify-between">
-                <h4 className="mb-2 font-bold text-card-foreground text-sm">{event.title}</h4>
-                {event.venue && <p className="mb-2 text-xs text-muted-foreground font-medium">{event.venue}</p>}
-                <p className="mb-3 line-clamp-2 text-xs text-card-foreground">{event.description}</p>
-
-                <div className="mb-2 flex items-start gap-2 text-xs text-muted-foreground">
-                    <MapPin className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                    <span className="line-clamp-1">
-                        {event.address ?? `${event.latitude.toFixed(4)}, ${event.longitude.toFixed(4)}`}
-                    </span>
-                </div>
-
-                <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-                    <Calendar className="h-3 w-3 flex-shrink-0" />
-                    <span>
-                        {new Date(event.startDate).toLocaleDateString()} - {new Date(event.endDate).toLocaleDateString()}
-                    </span>
-                </div>
-
-                {(event.pinCollectionLimit !== 1 ||
-                    event.pinNumber !== 1 ||
-                    (event.autoCollect ?? false) ||
-                    (event.multiPin ?? false) ||
-                    (event.radius && event.radius !== 50)) && (
-                        <div className="mb-3 rounded-lg bg-accent p-3 text-xs border border-border">
-                            <p className="font-semibold text-accent-foreground mb-2">Pin Configuration:</p>
-                            <div className="space-y-1 text-accent-foreground/80">
-                                {event.pinNumber && event.pinNumber !== 1 && <p>• Pins: {event.pinNumber}</p>}
-                                {event.pinCollectionLimit && event.pinCollectionLimit !== 1 && (
-                                    <p>• Collection Limit: {event.pinCollectionLimit}</p>
-                                )}
-                                {event.radius && event.radius !== 50 && <p>• Radius: {event.radius}m</p>}
-                                {event.autoCollect && <p>• Auto Collect: Yes</p>}
-                                {event.multiPin && <p>• Multi Pin: Yes</p>}
-                            </div>
-                        </div>
-                    )}
-
-                <div className="flex gap-2 ">
-                    <button
-                        onClick={handleCreatePin}
-                        className="flex-1 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-all duration-200 hover:shadow-md active:scale-95"
-                    >
-                        Create
-                    </button>
-                    <button
-                        onClick={handleViewOnMap}
-                        className="flex items-center justify-center gap-1 rounded-lg border border-primary px-3 py-2 text-xs font-semibold text-primary transition-all duration-200 hover:bg-accent active:scale-95"
-                    >
-                        <Eye className="h-3 w-3" />
-                        View
-                    </button>
-                    {event.url && (
-                        <a
-                            href={event.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-center rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-all duration-200 hover:bg-muted active:scale-95"
-                        >
-                            <ExternalLink className="h-3 w-3" />
-                        </a>
-                    )}
-                </div>
-            </div>
-        </div>
-    )
+        <AgentBlockDisplay
+            messages={messages}
+            input={input}
+            intent={intent}
+            stage={stage}
+            isLoading={isLoading}
+            isDropping={isDropping}
+            isLoadingMore={isLoadingMore}
+            isOpen={isOpen}
+            isMinimized={isMinimized}
+            isInteractionPending={isInteractionPending}
+            setInput={setInput}
+            setIsOpen={setIsOpen}
+            setIsMinimized={setIsMinimized}
+            onSendMessage={sendMessage}
+            onAnswer={handleAnswer}
+            onConfirmWithOptions={handleConfirmWithOptions}
+            onConfirmPins={handleConfirmPins}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onEditHotspot={handleEditHotspot}
+            onDeleteHotspot={handleDeleteHotspot}
+            onPauseHotspot={handlePauseHotspot}
+            onResumeHotspot={handleResumeHotspot}
+            onDismiss={handleDismiss}
+            onReset={handleReset}
+            onJobComplete={handleJobComplete}
+            onLoadMore={handleLoadMore}
+            onViewLocationCollectors={handleViewLocationCollectors}
+            onListConfirm={handleListConfirm}
+            onListDismiss={handleListDismiss}
+            onKeyDown={handleKeyDown}
+            inputRef={inputRef}
+        />
+    );
 }

@@ -1,5 +1,5 @@
 "use client"
-import { Search, Plus } from "lucide-react"
+import { Search, Plus, Target } from "lucide-react"
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "~/components/shadcn/ui/select"
@@ -19,6 +19,8 @@ interface MapHeaderProps {
     setZoom: (zoom: number) => void
     setShowExpired: (value: boolean) => void
     onManualPinClick: () => void
+    onCreateHotspot?: () => void
+
 }
 
 export function MapHeader({
@@ -32,6 +34,8 @@ export function MapHeader({
     showExpired,
     setShowExpired,
     onManualPinClick,
+    onCreateHotspot,
+
 }: MapHeaderProps) {
     const creator = api.fan.creator.getCreators.useQuery(undefined, {
         enabled: showCreatorList,
@@ -40,11 +44,11 @@ export function MapHeader({
 
     return (
         <div className="absolute top-0 left-0 right-0 z-30 p-4">
-            <div className="mx-auto max-w-4xl">
-                <div className="flex items-center justify-between gap-4">
+            <div className="mx-auto max-w-6xl w-full">
+                <div className="flex items-center justify-center gap-4">
 
                     {showCreatorList && creator.data && (
-                        <div className="w-64 shrink-0">
+                        <div className="w-36 shrink-0">
                             <Select
                                 value={selectedCreator?.id}
                                 onValueChange={(value) => {
@@ -71,7 +75,7 @@ export function MapHeader({
                     )}
                     <PinToggleSwitch showExpired={showExpired} setShowExpired={setShowExpired} />
 
-                    <div className="flex-1 ">
+                    <div className="flex-1 min-w-0">
                         <div className="relative">
                             <div className="absolute inset-0 bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-white/30" />
                             <div className="relative flex items-center  ">
@@ -95,16 +99,30 @@ export function MapHeader({
 
                     {
                         (!showCreatorList || (showCreatorList && selectedCreator)) && (
-                            <Button
-                                variant="default"
-                                size="lg"
-                                className="md:px-6 px-3  md:rounded-2xl"
-                                onClick={onManualPinClick}
-                                aria-label="Create manual pin"
-                            >
-                                <Plus className="" />
-                                <span className="hidden md:block"> Create Pin</span>
-                            </Button>
+                            <div className="flex gap-2">
+                                {onCreateHotspot && (
+                                    <Button
+                                        variant="accent"
+                                        size="lg"
+                                        className="md:px-6 px-3 md:rounded-2xl"
+                                        onClick={onCreateHotspot}
+                                        aria-label="Create hotspot area selection"
+                                    >
+                                        <Target className="h-5 w-5" />
+                                        <span className="hidden md:block"> Create Hotspot</span>
+                                    </Button>
+                                )}
+                                <Button
+                                    variant="default"
+                                    size="lg"
+                                    className="md:px-6 px-3 md:rounded-2xl"
+                                    onClick={onManualPinClick}
+                                    aria-label="Create manual pin"
+                                >
+                                    <Plus className="" />
+                                    <span className="hidden md:block"> Create Pin</span>
+                                </Button>
+                            </div>
                         )
                     }
                 </div>

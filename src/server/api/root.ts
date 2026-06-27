@@ -17,6 +17,7 @@ import { qrRouter } from "./routers/qr";
 import { agentRouter } from "./routers/agent";
 import { beamRouter } from "./routers/beam";
 import { communityRouters } from "./routers/community/root";
+import { tagRouter } from "./routers/tags";
 
 /**
  * This is the primary router for your server.
@@ -41,6 +42,7 @@ export const appRouter = createTRPCRouter({
   agent: agentRouter,
   beam: beamRouter,
   community: communityRouters,
+  tag: tagRouter,
 });
 
 // export type definition of API

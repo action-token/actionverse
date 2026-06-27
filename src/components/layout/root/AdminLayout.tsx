@@ -60,9 +60,7 @@ export default function AdminLayout({
         // { href: "/admin/creator-report", icon: "report", label: "COLLECTION REPORTS", color: "bg-amber-500" },
         { href: "/admin/creators", icon: "creator", label: "CREATORS", color: "bg-emerald-500" },
         { href: "/admin/users", icon: "users", label: "USERS", color: "bg-blue-500" },
-        { href: "/admin/bounty", icon: "bounty", label: "BOUNTY", color: "bg-purple-500" },
         { href: "/admin/map", icon: "map", label: "MAP", color: "bg-pink-500" },
-
     ]
 
 
