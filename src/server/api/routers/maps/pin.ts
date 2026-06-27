@@ -429,7 +429,6 @@ export const pinRouter = createTRPCRouter({
           data: input.tags.map((tagId) => ({
             locationGroupId: locationGroup.id,
             tagId,
-            creatorId,
           })),
           skipDuplicates: true,
         })
