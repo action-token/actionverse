@@ -1,4 +1,4 @@
-import { ItemPrivacy } from "@prisma/client";
+import { ItemPrivacy, PinType } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createAdminPinFormSchema } from "~/components/modal/admin-create-pin-modal";
@@ -77,6 +77,7 @@ export const createPinFormSchema = z.object({
 });
 export const PAGE_ASSET_NUM = -10
 export const NO_ASSET = -99
+const PAGE_SIZE = 10;
 
 export const pinRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
@@ -1452,4 +1453,284 @@ export const pinRouter = createTRPCRouter({
         nextCursor,
       };
     }),
+  lookupRedeemCode: protectedProcedure
+    .input(z.object({
+      code: z.string().trim().toUpperCase().length(6),
+      locationId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const consumer = await ctx.db.locationConsumer.findUnique({
+        where: { redeemCode: input.code },
+        include: {
+          user: { select: { name: true, image: true, email: true } },
+          location: {
+            include: {
+              locationGroup: {
+                select: {
+                  id: true, title: true, description: true, image: true,
+                  link: true, type: true, startDate: true, endDate: true,
+                  creator: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!consumer) return { status: "not_found" as const };
+
+      if (consumer.locationId !== input.locationId) {
+        return {
+          status: "wrong_location" as const,
+          actualLocation: {
+            id: consumer.location.id,
+            latitude: consumer.location.latitude,
+            longitude: consumer.location.longitude,
+            groupTitle: consumer.location.locationGroup?.title,
+          },
+        };
+      }
+
+      if (consumer.isRedeemed) {
+        return {
+          status: "already_redeemed" as const,
+          redeemedAt: consumer.redeemedAt?.toISOString() ?? null,
+          claimedAt: consumer.claimedAt?.toISOString() ?? null,
+          user: consumer.user,
+          location: consumer.location.locationGroup,
+          locationData: { latitude: consumer.location.latitude, longitude: consumer.location.longitude },
+        };
+      }
+
+      return {
+        status: "pending" as const,
+        claimedAt: consumer.claimedAt?.toISOString() ?? null,
+        user: consumer.user,
+        location: consumer.location.locationGroup,
+        locationData: { latitude: consumer.location.latitude, longitude: consumer.location.longitude },
+      };
+    }),
+
+  getLocationGroupsWithConsumers: protectedProcedure
+    .input(z.object({
+      cursor: z.string().optional(),
+      search: z.string().optional(),
+      type: z.enum(["LANDMARK", "EVENT"]).optional(),
+      limit: z.number().min(1).max(50).default(PAGE_SIZE),
+    }))
+    .query(async ({ ctx, input }) => {
+      const creatorId = ctx.session.user.id;
+      const { cursor, search, type, limit } = input;
+
+      const where = {
+        creatorId,
+        hidden: false,
+        type: type ? { equals: type } : { in: [PinType.LANDMARK, PinType.EVENT] },
+        ...(search?.trim()
+          ? { title: { contains: search.trim(), mode: "insensitive" as const } }
+          : {}),
+      };
+
+      const total = await ctx.db.locationGroup.count({ where });
+      const groups = await ctx.db.locationGroup.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        include: {
+          locations: {
+            include: {
+              consumers: {
+                include: { user: { select: { name: true, image: true, email: true } } },
+                orderBy: { createdAt: "desc" },
+              },
+            },
+          },
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (groups.length > limit) {
+        groups.pop();
+        nextCursor = groups[groups.length - 1]?.id;
+      }
+
+      const items = groups
+        .map((group) => {
+          const allConsumers = group.locations.flatMap((l) => l.consumers);
+          const latestConsumer = allConsumers.reduce<Date | null>((latest, c) => {
+            const d = c.claimedAt ?? c.createdAt;
+            return !latest || d > latest ? d : latest;
+          }, null);
+
+          return {
+            id: group.id, title: group.title, description: group.description,
+            image: group.image, link: group.link, type: group.type,
+            startDate: group.startDate, endDate: group.endDate,
+            limit: group.limit, remaining: group.remaining,
+            totalConsumers: allConsumers.length,
+            totalRedeemed: allConsumers.filter((c) => c.isRedeemed).length,
+            latestConsumerAt: latestConsumer?.toISOString() ?? null,
+            locations: group.locations.map((loc) => ({
+              id: loc.id, latitude: loc.latitude, longitude: loc.longitude,
+              consumers: loc.consumers.map((c) => ({
+                id: c.id, redeemCode: c.redeemCode, isRedeemed: c.isRedeemed,
+                redeemedAt: c.redeemedAt?.toISOString() ?? null,
+                claimedAt: c.claimedAt?.toISOString() ?? null,
+                user: c.user,
+              })),
+            })),
+          };
+        })
+        .sort((a, b) => {
+          if (!a.latestConsumerAt && !b.latestConsumerAt) return 0;
+          if (!a.latestConsumerAt) return 1;
+          if (!b.latestConsumerAt) return -1;
+          return new Date(b.latestConsumerAt).getTime() - new Date(a.latestConsumerAt).getTime();
+        });
+
+      return { items, nextCursor, total };
+    }),
+
+  getRedeemedByCreator: protectedProcedure
+    .input(z.object({
+      cursor: z.string().optional(),
+      search: z.string().optional(),
+      type: z.enum(["LANDMARK", "EVENT"]).optional(),
+      limit: z.number().min(1).max(50).default(PAGE_SIZE),
+    }))
+    .query(async ({ ctx, input }) => {
+      const creatorId = ctx.session.user.id;
+      const { cursor, search, type, limit } = input;
+      const searchTrim = search?.trim();
+
+      const where = {
+        isRedeemed: true,
+        location: {
+          locationGroup: {
+            creatorId, hidden: false,
+            type: type ? { equals: type } : { in: [PinType.LANDMARK, PinType.EVENT] },
+          },
+        },
+        ...(searchTrim ? {
+          OR: [
+            { redeemCode: { contains: searchTrim, mode: "insensitive" as const } },
+            { user: { name: { contains: searchTrim, mode: "insensitive" as const } } },
+            { user: { email: { contains: searchTrim, mode: "insensitive" as const } } },
+            { location: { locationGroup: { title: { contains: searchTrim, mode: "insensitive" as const } } } },
+          ],
+        } : {}),
+      };
+
+      const total = await ctx.db.locationConsumer.count({ where });
+      const redeemed = await ctx.db.locationConsumer.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: { redeemedAt: "desc" },
+        include: {
+          user: { select: { id: true, name: true, image: true, email: true } },
+          location: {
+            include: {
+              locationGroup: {
+                select: {
+                  id: true, title: true, description: true, image: true,
+                  link: true, type: true, startDate: true, endDate: true,
+                  creator: { select: { name: true, id: true, profileUrl: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (redeemed.length > limit) nextCursor = redeemed.pop()?.id;
+
+      return {
+        items: redeemed.map((c) => ({
+          id: c.id, redeemCode: c.redeemCode,
+          redeemedAt: c.redeemedAt?.toISOString() ?? null,
+          claimedAt: c.claimedAt?.toISOString() ?? null,
+          user: c.user, location: c.location.locationGroup,
+          locationData: { latitude: c.location.latitude, longitude: c.location.longitude },
+        })),
+        nextCursor,
+        total,
+      };
+    }),
+
+  redeemByCode: publicProcedure
+    .input(z.object({
+      code: z.string().trim().toUpperCase().length(6, "Code must be exactly 6 characters"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const consumer = await ctx.db.locationConsumer.findUnique({
+        where: { redeemCode: input.code },
+        include: {
+          user: { select: { name: true, image: true, email: true } },
+          location: {
+            include: {
+              locationGroup: {
+                select: {
+                  id: true, title: true, description: true, image: true,
+                  link: true, type: true, startDate: true, endDate: true,
+                  creator: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!consumer) return { status: "not_found" as const };
+
+      if (consumer.isRedeemed) {
+        return {
+          status: "already_redeemed" as const,
+          redeemedAt: consumer.redeemedAt?.toISOString() ?? null,
+          user: consumer.user,
+          location: consumer.location.locationGroup,
+          locationData: { latitude: consumer.location.latitude, longitude: consumer.location.longitude },
+        };
+      }
+
+      const updated = await ctx.db.locationConsumer.update({
+        where: { id: consumer.id },
+        data: { isRedeemed: true, redeemedAt: new Date() },
+        include: {
+          user: { select: { name: true, image: true, email: true } },
+          location: {
+            include: {
+              locationGroup: {
+                select: {
+                  id: true, title: true, description: true, image: true,
+                  link: true, type: true, startDate: true, endDate: true,
+                  creator: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      return {
+        status: "success" as const,
+        redeemedAt: updated.redeemedAt?.toISOString() ?? null,
+        user: updated.user,
+        location: updated.location.locationGroup,
+        locationData: { latitude: updated.location.latitude, longitude: updated.location.longitude },
+      };
+    }),
+
+  getSummary: protectedProcedure.query(async ({ ctx }) => {
+    const creatorId = ctx.session.user.id;
+    const [general, landmark, event, hotspot] = await Promise.all([
+      ctx.db.locationGroup.count({ where: { creatorId, hotspotId: null, type: PinType.OTHER } }),
+      ctx.db.locationGroup.count({ where: { creatorId, hotspotId: null, type: PinType.LANDMARK } }),
+      ctx.db.locationGroup.count({ where: { creatorId, hotspotId: null, type: PinType.EVENT } }),
+      ctx.db.hotspot.count({ where: { creatorId } }),
+    ]);
+    return { general, landmark, event, hotspot };
+  }),
+
 });

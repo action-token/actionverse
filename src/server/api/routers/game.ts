@@ -15,6 +15,7 @@ import { avaterIconUrl } from "~/pages/api/game/brands";
 import { WadzzoIconURL } from "~/pages/api/game/locations/index";
 import type { ConsumedLocation } from "~/types/game/location";
 import { initAdmin } from "package/connect_wallet/src/lib/firebase/admin/config";
+import { generateRedeemCode } from "~/lib/utils";
 
 export const gameRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
@@ -227,10 +228,21 @@ export const gameRouter = createTRPCRouter({
       if (!location?.locationGroup) {
         throw new Error("Could not find the location");
       }
-
+      // ── Helper: generate a unique redeem code with collision retry ──────────────
+      const getUniqueRedeemCode = async (): Promise<string> => {
+        for (let i = 0; i < 10; i++) {
+          const code = generateRedeemCode();
+          const exists = await db.locationConsumer.findUnique({ where: { redeemCode: code } });
+          if (!exists) return code;
+        }
+        // Extremely unlikely — 32^6 = ~1 billion combinations
+        throw new Error("Could not generate a unique redeem code");
+      };
       if (location.locationGroup.multiPin) {
         if (location._count.consumers <= 0 && location.locationGroup.remaining > 0) {
-          await db.locationConsumer.create({ data: { locationId: location.id, userId } });
+          const redeemCode = await getUniqueRedeemCode();
+
+          await db.locationConsumer.create({ data: { locationId: location.id, userId, redeemCode } });
           await db.locationGroup.update({
             where: { id: location.locationGroup.id },
             data: { remaining: { decrement: 1 } },
@@ -247,7 +259,8 @@ export const gameRouter = createTRPCRouter({
         });
 
         if (!alreadyConsumed) {
-          await db.locationConsumer.create({ data: { locationId: location.id, userId } });
+          const redeemCode = await getUniqueRedeemCode();
+          await db.locationConsumer.create({ data: { locationId: location.id, userId, redeemCode } });
           await db.locationGroup.update({
             where: { id: location.locationGroup.id },
             data: { remaining: { decrement: 1 } },
