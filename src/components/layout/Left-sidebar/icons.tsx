@@ -45,6 +45,7 @@ import {
   ImageIcon,
   ScanLine,
   Users2,
+  Ticket
 
 } from "lucide-react";
 import { RiAdminFill } from "react-icons/ri";
@@ -81,6 +82,7 @@ export const Icons = {
     </svg>
   ),
   twitter: Twitter,
+  ticket: Ticket,
   check: Check,
   admin: RiAdminFill,
   wallet: FaWallet,
