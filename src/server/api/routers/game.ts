@@ -157,7 +157,6 @@ export const gameRouter = createTRPCRouter({
   // Returns all pins the current user has collected
   getConsumedPins: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session.user.id;
-
     const dbLocations = await db.location.findMany({
       include: {
         locationGroup: {

@@ -480,6 +480,9 @@ export interface ConfirmResponse {
   type: "confirm";
   message: string;
   summary: {
+    type?: string;
+    where?: string;
+    what?: string;
     action: "edit" | "delete" | "pause" | "resume" | null;
     targets: string[] | null;
     count: number | null;
