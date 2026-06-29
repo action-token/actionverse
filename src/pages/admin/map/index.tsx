@@ -29,6 +29,32 @@ import { GoogleMapDrawing } from "~/components/map/google-map-drawing";
 
 type DrawingMode = "polygon" | "rectangle" | "circle";
 
+function MapViewController({
+  centerCommand,
+  zoomCommand,
+}: {
+  centerCommand: { center: google.maps.LatLngLiteral; version: number };
+  zoomCommand: { zoom: number; version: number };
+}) {
+  const map = useMap();
+  const lastCenterVersion = useRef(0);
+  const lastZoomVersion = useRef(0);
+
+  useEffect(() => {
+    if (!map || centerCommand.version === lastCenterVersion.current) return;
+    lastCenterVersion.current = centerCommand.version;
+    map.panTo(centerCommand.center);
+  }, [map, centerCommand]);
+
+  useEffect(() => {
+    if (!map || zoomCommand.version === lastZoomVersion.current) return;
+    lastZoomVersion.current = zoomCommand.version;
+    map.setZoom(zoomCommand.zoom);
+  }, [map, zoomCommand]);
+
+  return null;
+}
+
 function MapDrawingLayer({
   isCreatingHotspot,
   onSelectionChange,
@@ -89,10 +115,12 @@ function AdminMapDashboardContent() {
 
   const { setBalance } = useCreatorStorageAcc();
   const {
-    mapZoom,
+    centerCommand,
+    zoomCommand,
+    currentZoomRef,
     setMapZoom,
-    mapCenter,
     setMapCenter,
+    trackZoom,
     centerChanged,
     setCenterChanged,
     isCordsSearch,
@@ -139,7 +167,7 @@ function AdminMapDashboardContent() {
       duplicate,
       copiedPinData,
       setMapZoom,
-      mapZoom,
+      currentZoomRef,
       filterNearbyPins: (bounds) => filterNearbyPins(bounds, "admin"),
       centerChanged,
     });
@@ -216,11 +244,10 @@ function AdminMapDashboardContent() {
           <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-b from-slate-900/5 via-transparent to-transparent" />
           <Map
             onCenterChanged={(center) => {
-              setMapCenter(center.detail.center);
               setCenterChanged(center.detail.bounds);
             }}
             onZoomChanged={(zoom) => {
-              setMapZoom(zoom.detail.zoom);
+              trackZoom(zoom.detail.zoom);
             }}
             onClick={handleMapClick}
             mapId={"bf51eea910020fa25a"}
@@ -228,12 +255,11 @@ function AdminMapDashboardContent() {
             defaultCenter={{ lat: 22.54992, lng: 0 }}
             defaultZoom={3}
             minZoom={3}
-            zoom={mapZoom}
-            center={mapCenter}
             gestureHandling={"greedy"}
             disableDefaultUI={true}
             onDragend={handleDragEnd}
           >
+            <MapViewController centerCommand={centerCommand} zoomCommand={zoomCommand} />
             {position && !isCordsSearch && (
               <Marker position={{ lat: position.lat, lng: position.lng }} />
             )}

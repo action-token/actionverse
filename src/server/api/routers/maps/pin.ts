@@ -1732,5 +1732,17 @@ export const pinRouter = createTRPCRouter({
     ]);
     return { general, landmark, event, hotspot };
   }),
+  getAdminLocationGroups: adminProcedure.query(async ({ ctx }) => {
+    return ctx.db.locationGroup.findMany({
+      where: { approved: { equals: null }, endDate: { gte: new Date() }, hidden: false },
+      include: {
+        creator: { select: { name: true, id: true } },
+        locations: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }),
+
+
 
 });
