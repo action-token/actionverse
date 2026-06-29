@@ -114,7 +114,7 @@ export function OrganizationCard({
     _count,
 }: OrganizationProps) {
     return (
-        <Card className="w-[320px] flex flex-col justify-between items-center overflow-hidden bg-card shadow-md snap-start ">
+        <Card className="w-[280px] sm:w-[320px] flex-shrink-0 flex flex-col justify-between items-center overflow-hidden bg-card shadow-md snap-start">
             <div className="relative w-full flex h-32 items-center justify-center bg-gradient-to-r from-muted to-muted/50 p-4">
                 <div className="relative h-20 w-20 overflow-hidden rounded-full border-4 border-background bg-background">
                     <ImageWithFallback
@@ -173,7 +173,7 @@ export function OrganizationCard({
 
 export function OrganizationCardSkeleton() {
     return (
-        <Card className="w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-md snap-start">
+        <Card className="w-[280px] sm:w-[320px] flex-shrink-0 overflow-hidden bg-card shadow-md snap-start">
             {/* Logo background */}
             <div className="relative flex h-32 items-center justify-center bg-gradient-to-r from-muted to-muted/50 p-4">
                 <div className="relative h-20 w-20 overflow-hidden rounded-full border-4 border-background bg-background">
