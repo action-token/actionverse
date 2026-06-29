@@ -1223,6 +1223,7 @@ export default function ArtistDashboard() {
                                                             locked={post.subscription ? true : false}
                                                             show={true}
                                                             media={post.medias}
+                                                            unCollectedPostId={post.posts[0]?.id}
                                                         />
                                                     ))}
                                                 </React.Fragment>

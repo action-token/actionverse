@@ -114,11 +114,11 @@ export default function StoredItemsView() {
             icon: ShoppingBag,
             onClick: () => setIsOpenNFTModal(true),
         },
-        {
-            label: "Create QR Code",
-            icon: QrCode,
-            onClick: () => setIsQRModalOpen(true),
-        },
+        // {
+        //     label: "Create QR Code",
+        //     icon: QrCode,
+        //     onClick: () => setIsQRModalOpen(true),
+        // },
         {
             label: "Sell Page Assets",
             icon: Coins,

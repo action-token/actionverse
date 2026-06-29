@@ -374,6 +374,8 @@ const SinglePostView = ({
                                         <span className="font-medium">{creator.name || "User"}</span>
                                     </div>
                                 </div>
+
+
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -398,6 +400,7 @@ const SinglePostView = ({
                             <SinglePostCommentSection postId={post?.id || 1} initialCommentCount={commentCount || 0} />
 
                         </div>
+                        <span className="font-medium w-full max-h-[20vh] overflow-y-auto">{post?.content}</span>
 
                         {/* Actions section */}
                         <div className="border-t">
@@ -446,7 +449,7 @@ const SinglePostView = ({
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     )
 }
 

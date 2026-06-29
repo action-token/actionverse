@@ -11,8 +11,8 @@ import {
 import { ArrowLeft, Coins, Navigation, X, Camera, Smartphone, MapPin, AlertTriangle, RefreshCw, Circle } from "lucide-react"
 import ArCard from "~/components/common/ar-card"
 import { ARCoin } from "~/components/common/AR-Coin"
-import { BASE_URL } from "~/lib/common"
 import { useNearByPin } from "~/lib/state/augmented-reality/useNearbyPin"
+import { api } from "~/utils/api"
 import useWindowDimensions from "~/lib/state/augmented-reality/useWindowWidth"
 import type { ConsumedLocation } from "~/types/game/location"
 import { Button } from "~/components/shadcn/ui/button"
@@ -379,46 +379,34 @@ const ARPage = () => {
     setShowPathToNearest(false)
   }
 
-  const simulateApiCall = async () => {
-    if (!selectedPin) return
-
-    try {
-      setShowLoading(true)
-      const response = await fetch(new URL("api/game/locations/consume", BASE_URL).toString(), {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ location_id: selectedPin.id.toString() }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to consume location")
-      }
-
-      // Set the collected pin and show collection animation
-      setCollectedPin(selectedPin)
+  const consumePinMutation = api.game.consumePin.useMutation({
+    onSuccess: () => {
+      setShowLoading(false)
+      setCollectedPin(selectedPin ?? null)
       setShowCollectionAnimation(true)
 
-      // Hide the collection animation after 4 seconds
       setTimeout(() => {
         setShowCollectionAnimation(false)
         setShowSuccess(true)
 
-        // Navigate back after success
         setTimeout(() => {
           setShowSuccess(false)
           setCollectedPin(null)
           router.push("/action/home")
         }, 2000)
       }, 4000)
-    } catch (error) {
+    },
+    onError: (error) => {
+      setShowLoading(false)
       console.error("Error consuming location", error)
       alert("Error consuming location")
-    } finally {
-      setShowLoading(false)
-    }
+    },
+  })
+
+  const simulateApiCall = async () => {
+    if (!selectedPin) return
+    setShowLoading(true)
+    consumePinMutation.mutate({ pinId: selectedPin.id.toString() })
   }
 
   // Handle retry with proper cleanup

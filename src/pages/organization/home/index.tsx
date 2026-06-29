@@ -182,6 +182,7 @@ export default function UserNewsFeedContent() {
                                                 locked={locked}
                                                 show={hasAccess}
                                                 media={post.medias}
+                                                unCollectedPostId={post.posts[0]?.id}
                                             />
                                         )
                                     })}

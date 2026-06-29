@@ -26,7 +26,7 @@ export function SinglePostCommentSection({ postId, initialCommentCount }: Commen
 
 
     const comments = api.fan.post.getComments.useQuery({
-        postId: postId,
+        postGroupId: postId,
     });
 
 

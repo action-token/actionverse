@@ -64,7 +64,7 @@ export function CreatePostModal() {
     const watchedHeading = useWatch({ control, name: "heading" })
     const [media, setMedia]               = useState<MediaInfoType[]>([])
     const [editorContent, setEditorContent] = useState("")
-    const [activeUpload, setActiveUpload]  = useState<MediaType | null>(null)
+    const [uploadingType, setUploadingType] = useState<MediaType | null>(null)
     const [currentStep, setCurrentStep]   = useState<FormStep>("content")
     const [previewMedia, setPreviewMedia] = useState<MediaInfoType | null>(null)
     const [isPlaying, setIsPlaying]       = useState(false)
@@ -346,53 +346,51 @@ export function CreatePostModal() {
                                             </div>
                                         )}
 
-                                        {/* Upload buttons */}
+                                        {/* Upload buttons — clicking directly opens file picker */}
                                         <div className="grid grid-cols-3 gap-2">
                                             {MEDIA_TYPES.map(({ type, icon: Icon, label, endpoint }) => (
-                                                <div key={type} className="flex flex-col gap-2">
+                                                <div key={type}>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setActiveUpload(activeUpload === type ? null : type)}
+                                                        disabled={uploadingType === type}
+                                                        onClick={() => document.getElementById(`media-upload-${type}`)?.click()}
                                                         className={cn(
-                                                            "flex flex-col items-center gap-1.5 rounded-xl border py-4 text-xs font-medium transition-all",
-                                                            activeUpload === type
+                                                            "flex flex-col items-center gap-1.5 rounded-xl border py-4 text-xs font-medium transition-all w-full",
+                                                            uploadingType === type
                                                                 ? "border-primary bg-primary/5 text-primary"
-                                                                : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-border/80",
+                                                                : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-primary/5",
                                                         )}
                                                     >
-                                                        <Icon className="h-5 w-5" />
-                                                        {label}
+                                                        {uploadingType === type
+                                                            ? <span className="h-5 w-5 rounded-full border-2 border-current border-r-transparent animate-spin" />
+                                                            : <Icon className="h-5 w-5" />
+                                                        }
+                                                        {uploadingType === type ? "Uploading…" : label}
                                                     </button>
+                                                    <UploadS3Button
+                                                        id={`media-upload-${type}`}
+                                                        endpoint={endpoint}
+                                                        variant="hidden"
+                                                        showPreview={false}
+                                                        onBeforeUploadBegin={(file) => {
+                                                            setUploadingType(type)
+                                                            return file
+                                                        }}
+                                                        onClientUploadComplete={(res) => {
+                                                            if (res?.url) {
+                                                                setMedia(prev => [...prev, { url: res.url, type }])
+                                                                setUploadingType(null)
+                                                                toast.success(`${label} uploaded!`)
+                                                            }
+                                                        }}
+                                                        onUploadError={(e: Error) => {
+                                                            setUploadingType(null)
+                                                            toast.error(e.message)
+                                                        }}
+                                                    />
                                                 </div>
                                             ))}
                                         </div>
-
-                                        <AnimatePresence>
-                                            {activeUpload && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, height: 0 }}
-                                                    animate={{ opacity: 1, height: "auto" }}
-                                                    exit={{ opacity: 0, height: 0 }}
-                                                    className="overflow-hidden"
-                                                >
-                                                    <div className="rounded-xl border border-border bg-muted/30 p-4 flex justify-center">
-                                                        <UploadS3Button
-                                                            endpoint={MEDIA_TYPES.find(m => m.type === activeUpload)!.endpoint}
-                                                            className="w-full max-w-xs"
-                                                            label={`Upload ${MEDIA_TYPES.find(m => m.type === activeUpload)!.label}`}
-                                                            onClientUploadComplete={(res) => {
-                                                                if (res?.url) {
-                                                                    setMedia(prev => [...prev, { url: res.url, type: activeUpload }])
-                                                                    setActiveUpload(null)
-                                                                    toast.success(`${MEDIA_TYPES.find(m => m.type === activeUpload)!.label} uploaded!`)
-                                                                }
-                                                            }}
-                                                            onUploadError={(e: Error) => toast.error(e.message)}
-                                                        />
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
                                     </motion.div>
                                 )}
 

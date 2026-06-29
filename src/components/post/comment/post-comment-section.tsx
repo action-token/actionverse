@@ -26,7 +26,7 @@ export function CommentSection({ postId, initialCommentCount }: CommentSectionPr
     const [isCommentsVisible, setIsCommentsVisible] = useState(true)
 
     const comments = api.fan.post.getComments.useQuery({
-        postId: postId,
+        postGroupId: postId,
         limit: 5,
     }, {
         enabled: isCommentsVisible

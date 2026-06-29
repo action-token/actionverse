@@ -16,6 +16,7 @@ import { WadzzoIconURL } from "~/pages/api/game/locations/index";
 import type { ConsumedLocation } from "~/types/game/location";
 import { initAdmin } from "package/connect_wallet/src/lib/firebase/admin/config";
 import { generateRedeemCode } from "~/lib/utils";
+import { TRPCError } from "@trpc/server";
 
 export const gameRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
@@ -212,63 +213,247 @@ export const gameRouter = createTRPCRouter({
   }),
 
   // Marks a location as consumed by the current user
-  consumePin: protectedProcedure
-    .input(z.object({ location_id: z.string() }))
+  consumePin: publicProcedure
+
+    .input(z.object({
+      pinId: z.string().optional(),
+      postId: z.string().optional()
+    }))
     .mutation(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id;
 
-      const location = await db.location.findUnique({
-        include: {
-          _count: { select: { consumers: { where: { userId } } } },
-          locationGroup: true,
-        },
-        where: { id: input.location_id },
-      });
-
-      if (!location?.locationGroup) {
-        throw new Error("Could not find the location");
-      }
-      // ── Helper: generate a unique redeem code with collision retry ──────────────
+      // ── Helper: unique 6-char redeem code with collision retry ──────────────
       const getUniqueRedeemCode = async (): Promise<string> => {
         for (let i = 0; i < 10; i++) {
           const code = generateRedeemCode();
-          const exists = await db.locationConsumer.findUnique({ where: { redeemCode: code } });
+          const exists = await ctx.db.locationConsumer.findUnique({
+            where: { redeemCode: code },
+          });
           if (!exists) return code;
         }
-        // Extremely unlikely — 32^6 = ~1 billion combinations
-        throw new Error("Could not generate a unique redeem code");
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not generate a unique redeem code" });
       };
-      if (location.locationGroup.multiPin) {
-        if (location._count.consumers <= 0 && location.locationGroup.remaining > 0) {
-          const redeemCode = await getUniqueRedeemCode();
+      const redeemCode = await getUniqueRedeemCode();
 
-          await db.locationConsumer.create({ data: { locationId: location.id, userId, redeemCode } });
-          await db.locationGroup.update({
-            where: { id: location.locationGroup.id },
-            data: { remaining: { decrement: 1 } },
+      if (input.pinId) {
+        const { pinId } = input;
+        if (ctx.session?.user.id) {
+          const userId = ctx.session.user.id;
+          const location = await ctx.db.location.findUnique({
+            include: {
+              _count: {
+                select: {
+                  consumers: {
+                    where: { userId: userId },
+                  },
+                },
+              },
+              locationGroup: true,
+            },
+            where: { id: pinId },
           });
-          return { success: true };
-        }
-        throw new Error("Location limit reached");
-      } else {
-        const alreadyConsumed = await db.locationGroup.findFirst({
-          where: {
-            id: location.locationGroup.id,
-            locations: { some: { consumers: { some: { userId } } } },
-          },
-        });
+          if (!location?.locationGroup) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Could not find the location" });
+          }
 
-        if (!alreadyConsumed) {
-          const redeemCode = await getUniqueRedeemCode();
-          await db.locationConsumer.create({ data: { locationId: location.id, userId, redeemCode } });
-          await db.locationGroup.update({
-            where: { id: location.locationGroup.id },
-            data: { remaining: { decrement: 1 } },
-          });
-          return { success: true };
+          if (location.locationGroup.multiPin) {
+            // user have not consumed this location
+            if (
+              location._count.consumers <= 0 &&
+              location.locationGroup.remaining > 0
+            ) {
+              // also check limit of the group
+
+              await ctx.db.locationConsumer.create({
+                data: { locationId: location.id, userId: userId, redeemCode, claimedAt: new Date() },
+              });
+              await ctx.db.locationGroup.update({
+                where: { id: location.locationGroup.id },
+                data: { remaining: { decrement: 1 } },
+              });
+
+              return { success: true, data: "Location consumed" };
+            } else {
+              return { success: false, data: "You have already consumed this location or no remaining pins" };
+            }
+          } else {
+            const checkMeAsAConsumer = await ctx.db.locationGroup.findFirst({
+              where: {
+                locations: {
+                  some: {
+                    consumers: {
+                      some: {
+                        userId: userId,
+                      },
+                    },
+                  },
+                },
+                id: location.locationGroup.id,
+              },
+            });
+
+
+            if (!checkMeAsAConsumer) {
+              await ctx.db.locationConsumer.create({
+                data: { locationId: location.id, userId: userId, redeemCode, claimedAt: new Date() },
+              });
+
+              await ctx.db.locationGroup.update({
+                where: { id: location.locationGroup.id },
+                data: { remaining: { decrement: 1 } },
+              });
+
+              return { success: true, data: "Location consumed" };
+
+            }
+            else {
+              return { success: false, data: "You have already consumed this location" };
+            }
+          }
         }
-        throw new Error("Location limit reached");
+        else {
+          return {
+            success: true,
+            data: "You can view this location but need to login to consume it"
+          }
+        }
       }
+      else {
+        if (ctx.session?.user.id) {
+          const userId = ctx.session.user.id;
+          if (!input.postId) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Post ID is required to consume a post" });
+          }
+          return await ctx.db.$transaction(async (tx) => {
+
+            // 1. Get the post and check if already collected
+            const post = await tx.post.findUnique({
+              where: { id: Number(input.postId) },
+            });
+            if (!post) throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Post not found",
+            });
+            if (post.isCollected) throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Post already collected",
+            });
+
+            const alreadyCollected = await tx.postCollection.findUnique({
+              where: {
+                postGroupId_userId: {
+                  postGroupId: post.postGroupId,
+                  userId,
+                },
+              },
+            });
+            if (alreadyCollected) throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "You already collected a post from this group",
+            });
+
+            // 2. Mark post as collected + create collection record in parallel
+            await Promise.all([
+              tx.post.update({
+                where: { id: Number(input.postId) },
+                data: { isCollected: true },
+              }),
+              tx.postCollection.create({
+                data: {
+                  postId: Number(input.postId),
+                  userId,
+                  postGroupId: post.postGroupId,
+                },
+                include: {
+                  post: true,
+                  postGroup: {
+                    include: {
+                      medias: true,
+                      creator: {
+                        select: {
+                          name: true,
+                          id: true,
+                          profileUrl: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              }),
+            ]);
+
+            return ({ success: true, data: "Post collected successfully!" });
+          });
+
+        } else {
+          return {
+            success: true,
+            data: "You can view this post but need to login to collect it"
+          }
+        }
+      }
+    }),
+
+  getConsumedLocationById: protectedProcedure
+    .input(z.object({ locationId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      const location = await db.location.findFirst({
+        where: {
+          id: input.locationId,
+          consumers: {
+            some: { userId, hidden: false },
+            none: { userId, hidden: true },
+          },
+        },
+        include: {
+          locationGroup: {
+            include: {
+              creator: true,
+              locations: {
+                include: {
+                  _count: { select: { consumers: { where: { userId } } } },
+                },
+              },
+            },
+          },
+          consumers: {
+            where: { userId },
+            select: { userId: true, viewedAt: true, redeemCode: true },
+          },
+        },
+      });
+
+      if (!location?.locationGroup) {
+        throw new Error("Collection not found");
+      }
+
+      const group = location.locationGroup;
+      const totalGroupConsumers = group.locations.reduce(
+        (sum, loc) => sum + loc._count.consumers,
+        0,
+      );
+      const remaining = group.limit - totalGroupConsumers;
+
+      const loc: ConsumedLocation & { redeemCode?: string | null } = {
+        id: location.id,
+        lat: location.latitude,
+        lng: location.longitude,
+        title: group.title,
+        description: group.description ?? "No description provided",
+        viewed: location.consumers.some((el) => el.viewedAt != null),
+        auto_collect: location.autoCollect,
+        brand_image_url: group.creator.profileUrl ?? avaterIconUrl,
+        brand_id: group.creator.id,
+        collected: true,
+        collection_limit_remaining: remaining,
+        brand_name: group.creator.name,
+        image_url: group.optimizedImage ?? group.image ?? group.creator.profileUrl ?? WadzzoIconURL,
+        url: group.link ?? "https://app.action-tokens.com/images/action/logo.png",
+        redeemCode: location.consumers[0]?.redeemCode,
+      };
+
+      return loc;
     }),
 
   // Deletes the current user's account from the database and Firebase

@@ -103,42 +103,35 @@ export default function Layout({
     return <div>{children}</div>;
   }
   if (router.pathname.includes("/action/")) {
-    if (router.pathname.includes("/action/enter")) {
-      return <>{children}</>;
-
-    }
     // if (router.pathname.includes("/action/enter")) {
     //   return <>{children}</>;
     // }
     return (
       <>
-        {session?.status === "authenticated" || router.pathname.includes("/action/qr") ? (
-          <div className="h-screen w-full  overflow-hidden fixed inset-0 ">
-            {
-              isAugmentedRealityRoute ? (
-
-                <>
-                  <ARModalProvider />
-                  {children}
-                </>
-              ) : (
-                <>
-
-                  <ARLayout>
-                    <ARModalProvider />
-                    {children}
-                  </ARLayout>
-                </>
-              )
-            }
-
+        {session?.status === "authenticated" ? (
+          <div className="fixed inset-0 h-screen w-full overflow-hidden">
+            {isAugmentedRealityRoute ? (
+              <>
+                <ARModalProvider />
+                {children}
+              </>
+            ) : (
+              <ARLayout>
+                <ARModalProvider />
+                {children}
+              </ARLayout>
+            )}
           </div>
         ) : (
           <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
-            <Card className="w-full max-w-[350px] mx-4">
+            <Card className="mx-4 w-full max-w-[350px]">
               <CardHeader className="text-center">
-                <CardTitle className="text-lg sm:text-xl">Welcome to Actionverse AR</CardTitle>
-                <CardDescription className="text-sm sm:text-base">Please login/signup to continue</CardDescription>
+                <CardTitle className="text-lg sm:text-xl">
+                  Welcome to Action-tokens AR
+                </CardTitle>
+                <CardDescription className="text-sm sm:text-base">
+                  Please login/signup to continue
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex items-center justify-center">
                 <ConnectWalletButton />
@@ -147,7 +140,7 @@ export default function Layout({
           </div>
         )}
       </>
-    )
+    );
   }
   return (
     <ThemeProvider

@@ -98,6 +98,7 @@ export default function RecentPostsWidget({ editMode, creatorData }: RecentPosts
                                     locked={post.subscription ? true : false}
                                     show={true}
                                     media={post.medias}
+                                    unCollectedPostId={post.posts[0]?.id}
                                 />
 
                             ))}

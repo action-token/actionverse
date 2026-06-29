@@ -18,6 +18,7 @@ import {
     ExternalLink,
     Check,
     Info,
+    Download,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import Image from "next/image"
@@ -46,7 +47,9 @@ import { useMapInteractionStore } from "~/components/store/map-stores" // Change
 // Re-using the Pin type from map-stores.ts for consistency
 import type { Location, LocationGroup } from "@prisma/client"
 import { PinType as PinTypeEnum } from "@prisma/client" // Declare PinType
+import QRCode from "react-qr-code"
 import { UploadS3Button } from "../common/upload-button"
+import { LocationAddressDisplay } from "../map/address-display"
 
 type Pin = {
     locationGroup:
@@ -468,6 +471,100 @@ function PinInfo({
     data: Pin // Use the consistent Pin type
     isLoading?: boolean
 }) {
+    const svgToCanvas = (svg: SVGElement, size = 512): Promise<HTMLCanvasElement> => {
+        return new Promise((resolve, reject) => {
+            // Force explicit size on the SVG clone
+            const cloned = svg.cloneNode(true) as SVGElement;
+            cloned.setAttribute("width", String(size));
+            cloned.setAttribute("height", String(size));
+            cloned.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+            const svgData = new XMLSerializer().serializeToString(cloned);
+            const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(svgBlob);
+
+            const img = new window.Image();
+            img.onload = () => {
+                // Add quiet zone: ISO 18004 recommends 4 modules; we use ~10% of total size
+                const padding = Math.floor(size * 0.1);
+                const qrSize = size - padding * 2;
+
+                const canvas = document.createElement("canvas");
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) return reject("No canvas context");
+
+                // White background (acts as quiet zone)
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0, 0, size, size);
+                // Draw QR inset so white border surrounds it on all sides
+                ctx.drawImage(img, padding, padding, qrSize, qrSize);
+
+                URL.revokeObjectURL(url);
+                resolve(canvas);
+            };
+            img.onerror = reject;
+            img.src = url;
+        });
+    };
+
+    const getQRSvg = (): SVGElement | null => {
+        const container = document.getElementById("qr-code-container");
+        return container?.querySelector("svg") ?? null;
+    };
+
+    const handleDownloadQR = async (pinId: string) => {
+        const svg = getQRSvg();
+        if (!svg) {
+            toast.error("QR code not found");
+            return;
+        }
+
+        try {
+            const canvas = await svgToCanvas(svg, 512);
+            const link = document.createElement("a");
+            link.href = canvas.toDataURL("image/png");
+            link.download = `pin-qr-${pinId}.png`;
+            link.click();
+            toast.success("QR code downloaded!");
+        } catch {
+            toast.error("Failed to download QR code");
+        }
+    };
+
+    const handleCopyQR = async () => {
+        const svg = getQRSvg();
+        if (!svg) {
+            toast.error("QR code not found");
+            return;
+        }
+
+        try {
+            const canvas = await svgToCanvas(svg, 512);
+            canvas.toBlob((blob) => {
+                if (!blob) return toast.error("Failed to generate image");
+                navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(() => {
+                    toast.success("QR code copied to clipboard!");
+                }).catch(() => {
+                    toast.error("Failed to copy QR code");
+                });
+
+            }, "image/png");
+        } catch {
+            toast.error("Failed to copy QR code");
+        }
+    };
+
+    const handleUrlCopy = () => {
+        const url = `${window.location.origin}/action/qr/${data.id}`;
+        navigator.clipboard.writeText(url).then(() => {
+            toast.success("URL copied to clipboard!");
+        }).catch(() => {
+            toast.error("Failed to copy URL");
+        });
+    }
+
     if (isLoading) {
         return (
             <div className="space-y-4">
@@ -529,25 +626,66 @@ function PinInfo({
                     />
                 </div>
             )}
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Location</CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                        <span className="text-muted-foreground">Latitude:</span>
-                        <Badge variant="outline" className="ml-2 font-mono">
-                            {data.latitude?.toFixed(6)}
-                        </Badge>
+            <Card className="overflow-hidden">
+                <div className="bg-gradient-to-b from-muted/50 to-background py-6 flex flex-col items-center gap-3">
+                    <div className="bg-white p-5 rounded-2xl shadow-md" id="qr-code-container">
+                        <QRCode
+                            value={`${window.location.origin}/action/qr?pinId=${data.id}`}
+                            size={160}
+                            bgColor="#ffffff"
+                            fgColor="#000000"
+                            level="H"
+                        />
                     </div>
-                    <div>
-                        <span className="text-muted-foreground">Longitude:</span>
-                        <Badge variant="outline" className="ml-2 font-mono">
-                            {data.longitude?.toFixed(6)}
-                        </Badge>
+                    <p className="text-xs text-muted-foreground">Scan to interact with this pin</p>
+                </div>
+                <CardContent className="space-y-4 pt-4">
+                    <div className="flex flex-col items-center gap-1.5 text-sm">
+                        <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <LocationAddressDisplay
+                                className="p-0"
+                                latitude={data?.latitude ?? 0}
+                                longitude={data?.longitude ?? 0}
+                            />
+                        </div>
+                        <span className="font-mono text-xs text-muted-foreground">
+                            {data.latitude?.toFixed(6)}, {data.longitude?.toFixed(6)}
+                        </span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownloadQR(data.id)}
+                            className="flex items-center gap-2"
+                        >
+                            <Download className="h-4 w-4" />
+                            Download
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCopyQR()}
+                            className="flex items-center gap-2"
+                        >
+                            <Copy className="h-4 w-4" />
+                            Copy QR
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUrlCopy()}
+                            className="flex items-center gap-2"
+                        >
+                            <LinkIcon className="h-4 w-4" />
+                            Copy URL
+                        </Button>
                     </div>
                 </CardContent>
             </Card>
+
             {locationGroup.description && (
                 <Card>
                     <CardHeader className="pb-2">

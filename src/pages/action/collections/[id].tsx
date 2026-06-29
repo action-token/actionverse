@@ -1,31 +1,51 @@
 "use client"
 import { useRouter } from "next/router"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import Image from "next/image"
 import Link from "next/link"
 import Map, { Marker } from "react-map-gl"
-import { ArrowLeft, MapPin, Hash, HandIcon, Eye, Globe, Package, Star, Navigation, Clock, Trophy, Zap, Share2, Heart, Bookmark, Camera, Info, ChevronRight, ExternalLink } from 'lucide-react'
+import { ArrowLeft, MapPin, Hash, HandIcon, Eye, Globe, Package, Star, Navigation, Clock, Trophy, Zap, Share2, Heart, Bookmark, Camera, Info, ChevronRight, ExternalLink, QrCode, Check, Copy, User, Ticket } from 'lucide-react'
 import { Button } from "~/components/shadcn/ui/button"
 import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
 import { Avatar, AvatarImage, AvatarFallback } from "~/components/shadcn/ui/avatar"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
-import { useCollection } from "~/lib/state/augmented-reality/useCollection"
 import { useNearByPin } from "~/lib/state/augmented-reality/useNearbyPin"
 import { useModal } from "~/lib/state/augmented-reality/useModal"
 import { BASE_URL } from "~/lib/common"
-import { formatDistanceToNow } from "date-fns"
+import Loading from "~/components/common/loading"
+import { api } from "~/utils/api"
+import ARPhotoFrame from "~/components/ar/ar-photo-frame"
 
 const SingleCollectionItem = () => {
-  const { data } = useCollection()
-  const { setData } = useNearByPin()
   const { onOpen } = useModal()
   const router = useRouter()
   const [userLocation, setUserLocation] = useState<{ lat: number, lng: number } | null>(null)
-  const [isLiked, setIsLiked] = useState(false)
-  const [isBookmarked, setIsBookmarked] = useState(false)
+
+
   const [activeTab, setActiveTab] = useState("overview")
+  const [copied, setCopied] = useState(false)
+
+
+  const locationId = router.query.id as string
+  const locationsRes = api.game.getConsumedLocationById.useQuery(
+    { locationId: locationId },
+    { enabled: !!locationId },
+  )
+
+  const data = locationsRes.data
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(data?.redeemCode ?? "")
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Split into two groups of 3 for readability: "X7K" "2PQ"
+  const part1 = data?.redeemCode?.slice(0, 3)
+  const part2 = data?.redeemCode?.slice(3, 6)
+
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -55,17 +75,21 @@ const SingleCollectionItem = () => {
     return R * c
   }
 
-  const distance = userLocation && data.collections ?
-    calculateDistance(userLocation.lat, userLocation.lng, data.collections.lat, data.collections.lng) : null
+  const distance = userLocation && data ?
+    calculateDistance(userLocation.lat, userLocation.lng, data.lat, data.lng) : null
 
-  if (!data.collections) {
+  if (locationsRes.isLoading) {
+    return <Loading />
+  }
+
+  if (!data) {
     return (
       <div className="min-h-screen  bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center">
         <div className="text-center">
           <Package className="w-16 h-16 text-slate-400 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Collection not found</h2>
           <p className="text-slate-600 dark:text-slate-400 mb-6">The collection you{"'"}re looking for doesn{"'"}t exist.</p>
-          <Button onClick={() => router.back()} className="rounded-xl">
+          <Button onClick={() => router.replace("/action/collections")} className="rounded-xl">
             Go Back
           </Button>
         </div>
@@ -88,14 +112,14 @@ const SingleCollectionItem = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => router.back()}
+                onClick={() => router.replace("/action/collections")}
                 className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <ArrowLeft className="h-5 w-5" />
               </Button>
               <div>
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white line-clamp-1">
-                  {data.collections.title}
+                  {data.title}
                 </h1>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Collection Details</p>
               </div>
@@ -139,8 +163,8 @@ const SingleCollectionItem = () => {
           transition={{ duration: 0.5 }}
         >
           <Image
-            src={data.collections.image_url || "/placeholder.svg"}
-            alt={data.collections.title}
+            src={data.image_url || "/placeholder.svg"}
+            alt={data.title}
             width={800}
             height={400}
             className="h-80 w-full object-cover"
@@ -149,15 +173,15 @@ const SingleCollectionItem = () => {
 
           {/* Enhanced Status Badges */}
           <div className="absolute top-6 right-6 flex flex-col gap-2">
-            {data.collections.collected ? (
+            {data.collected ? (
               <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg border-0 px-4 py-2 text-sm font-semibold">
                 <Trophy className="w-4 h-4 mr-2" />
                 Collected
               </Badge>
-            ) : data.collections.collection_limit_remaining > 0 ? (
+            ) : data.collection_limit_remaining > 0 ? (
               <Badge className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-0 px-4 py-2 text-sm font-semibold">
                 <Zap className="w-4 h-4 mr-2" />
-                {data.collections.collection_limit_remaining} uses left
+                {data.collection_limit_remaining} uses left
               </Badge>
             ) : (
               <Badge className="bg-gradient-to-r from-slate-500 to-slate-600 text-white shadow-lg border-0 px-4 py-2 text-sm font-semibold">
@@ -183,13 +207,13 @@ const SingleCollectionItem = () => {
             >
               <Avatar className="h-12 w-12 border-2 border-white dark:border-slate-800 shadow-lg">
                 <AvatarImage
-                  src={data.collections.brand_image_url || "/placeholder.svg"}
-                  alt={data.collections.brand_name}
+                  src={data.brand_image_url || "/placeholder.svg"}
+                  alt={data.brand_name}
                 />
-                <AvatarFallback>{data.collections.brand_name?.charAt(0)}</AvatarFallback>
+                <AvatarFallback>{data.brand_name?.charAt(0)}</AvatarFallback>
               </Avatar>
               <div>
-                <p className="font-bold text-slate-900 dark:text-white text-lg">{data.collections.brand_name}</p>
+                <p className="font-bold text-slate-900 dark:text-white text-lg">{data.brand_name}</p>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Brand Creator</p>
               </div>
             </motion.div>
@@ -198,7 +222,7 @@ const SingleCollectionItem = () => {
 
         {/* Enhanced Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl p-1">
+          <TabsList className="grid w-full grid-cols-3 backdrop-blur-xl rounded-2xl p-1">
             <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
             <TabsTrigger value="location" className="rounded-xl">Location</TabsTrigger>
             <TabsTrigger value="details" className="rounded-xl">Details</TabsTrigger>
@@ -222,7 +246,7 @@ const SingleCollectionItem = () => {
                   {/* Description */}
                   <div>
                     <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-base">
-                      {data.collections.description}
+                      {data.description}
                     </p>
                   </div>
 
@@ -234,7 +258,7 @@ const SingleCollectionItem = () => {
                       </div>
                       <div>
                         <p className="text-sm font-medium text-slate-900 dark:text-white">Collection ID</p>
-                        <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">#{data.collections.id}</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">#{data.id}</p>
                       </div>
                     </div>
 
@@ -245,7 +269,7 @@ const SingleCollectionItem = () => {
                       <div>
                         <p className="text-sm font-medium text-slate-900 dark:text-white">Status</p>
                         <p className="text-xs text-slate-600 dark:text-slate-400">
-                          {data.collections.collected ? 'Collected' : 'Available'}
+                          {data.collected ? 'Collected' : 'Available'}
                         </p>
                       </div>
                     </div>
@@ -256,7 +280,7 @@ const SingleCollectionItem = () => {
 
             {/* Action Buttons */}
             <motion.div
-              className="grid grid-cols-1 md:grid-cols-3 gap-4"
+              className="grid grid-cols-1 md:grid-cols-2 gap-2"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
@@ -269,37 +293,18 @@ const SingleCollectionItem = () => {
                     className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-2xl shadow-lg shadow-blue-500/25"
                   >
                     <Link
-                      href={data?.collections?.url ?? "https://www.app.wadzoo.com"}
+                      href={data?.url ?? "https://www.app.wadzoo.com"}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
                       <Globe className="mr-2 h-5 w-5" />
                       Visit Website
-                      <ExternalLink className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
                 </CardContent>
               </Card>
 
               {/* View in AR */}
-              <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-lg hover:shadow-xl transition-all duration-200">
-                <CardContent className="p-6">
-                  <Button
-                    onClick={() => {
-                      setData({
-                        nearbyPins: data.collections ? [data.collections] : [],
-                        singleAR: true,
-                      })
-                      router.push("/action/ar")
-                    }}
-                    className="w-full h-12 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-semibold rounded-2xl shadow-lg shadow-violet-500/25"
-                  >
-                    <Eye className="mr-2 h-5 w-5" />
-                    View in AR
-                    <Camera className="ml-2 h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
 
               {/* Claim Reward */}
               <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-lg hover:shadow-xl transition-all duration-200">
@@ -310,11 +315,12 @@ const SingleCollectionItem = () => {
                   >
                     <HandIcon className="mr-2 h-5 w-5" />
                     Claim Reward
-                    <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
                 </CardContent>
               </Card>
             </motion.div>
+            <ARPhotoFrame imageUrl={data.image_url ?? data.brand_image_url} />
+
           </TabsContent>
 
           <TabsContent value="location" className="space-y-6">
@@ -340,7 +346,7 @@ const SingleCollectionItem = () => {
                       <div>
                         <p className="text-sm font-medium text-slate-900 dark:text-white">Coordinates</p>
                         <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">
-                          {data.collections.lat.toFixed(6)}, {data.collections.lng.toFixed(6)}
+                          {data.lat.toFixed(6)}, {data.lng.toFixed(6)}
                         </p>
                       </div>
                     </div>
@@ -375,19 +381,19 @@ const SingleCollectionItem = () => {
                     <Map
                       mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_API}
                       initialViewState={{
-                        latitude: data.collections.lat,
-                        longitude: data.collections.lng,
+                        latitude: data.lat,
+                        longitude: data.lng,
                         zoom: 14,
                       }}
                       style={{ width: "100%", height: "100%" }}
                       mapStyle="mapbox://styles/suppport-10/cmcntcaoj010m01sb66oiddp8"
                     >
                       <Marker
-                        latitude={data.collections.lat}
-                        longitude={data.collections.lng}
+                        latitude={data.lat}
+                        longitude={data.lng}
                         onClick={() =>
                           onOpen("LocationInformation", {
-                            Collection: data.collections,
+                            Collection: data,
                           })
                         }
                       >
@@ -422,57 +428,91 @@ const SingleCollectionItem = () => {
           <TabsContent value="details" className="space-y-6">
             {/* Technical Details */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
+              transition={{ duration: 0.4 }}
             >
-              <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl">
-                <CardHeader>
-                  <div className="flex items-center space-x-2">
-                    <Package className="h-5 w-5 text-violet-500" />
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Technical Details</h2>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-slate-900 dark:text-white">Collection ID</span>
-                        <span className="text-sm text-slate-600 dark:text-slate-400 font-mono">#{data.collections.id}</span>
-                      </div>
+              <Card className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-0 shadow-xl overflow-hidden">
+                <CardContent className="p-6">
+                  {/* Label */}
+                  <div className="flex items-center gap-2 mb-5">
+                    <div className="p-2 rounded-xl bg-emerald-500 shadow-md">
+                      <Ticket className="h-4 w-4 text-white" />
                     </div>
-
-                    <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-slate-900 dark:text-white">Remaining Uses</span>
-                        <span className="text-sm text-slate-600 dark:text-slate-400">
-                          {data.collections.collection_limit_remaining}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-slate-900 dark:text-white">Status</span>
-                        <Badge className={`${data.collections.collected
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : data.collections.collection_limit_remaining > 0
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-slate-100 text-slate-700'
-                          }`}>
-                          {data.collections.collected ? 'Collected' :
-                            data.collections.collection_limit_remaining > 0 ? 'Available' : 'Expired'}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-slate-900 dark:text-white">Brand</span>
-                        <span className="text-sm text-slate-600 dark:text-slate-400">{data.collections.brand_name}</span>
-                      </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">Your Redeem Code</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Read this code to the creator to claim your reward
+                      </p>
                     </div>
                   </div>
+
+                  {/* Big code display */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-1">
+                      {/* Part 1 */}
+                      <div className="flex gap-1.5 flex-1 justify-center">
+                        {part1?.split("").map((char, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                            className="w-11 h-14 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm"
+                          >
+                            <span className="text-2xl font-black tracking-tight text-slate-900 dark:text-white font-mono">
+                              {char}
+                            </span>
+                          </motion.div>
+                        ))}
+                      </div>
+
+                      {/* Divider */}
+                      <span className="text-slate-300 dark:text-slate-600 font-bold text-xl select-none">–</span>
+
+                      {/* Part 2 */}
+                      <div className="flex gap-1.5 flex-1 justify-center">
+                        {part2?.split("").map((char, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: (i + 3) * 0.05 }}
+                            className="w-11 h-14 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm"
+                          >
+                            <span className="text-2xl font-black tracking-tight text-slate-900 dark:text-white font-mono">
+                              {char}
+                            </span>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Copy button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCopy}
+                      className="rounded-xl h-14 w-11 flex-shrink-0 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                    >
+                      <motion.div
+                        key={copied ? "check" : "copy"}
+                        initial={{ scale: 0.7, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        {copied
+                          ? <Check className="h-5 w-5 text-emerald-500" />
+                          : <Copy className="h-5 w-5 text-slate-400" />
+                        }
+                      </motion.div>
+                    </Button>
+                  </div>
+
+                  {/* Helper text */}
+                  <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-4">
+                    One-time use · Not transferable
+                  </p>
                 </CardContent>
               </Card>
             </motion.div>

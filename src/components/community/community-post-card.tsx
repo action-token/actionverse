@@ -56,7 +56,7 @@ interface CommunityPostCardProps {
     medias: Array<{
       id: number
       url: string
-      type: "MUSIC" | "VIDEO" | "IMAGE" | "THREE_D"
+      type: "MUSIC" | "VIDEO" | "IMAGE" | "THREE_D" | "DOCUMENT"
     }>
     _count: {
       comments: number
