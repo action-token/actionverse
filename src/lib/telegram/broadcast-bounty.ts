@@ -1,4 +1,5 @@
 import { db } from "~/server/db";
+import { BASE_URL } from "../common";
 
 /**
  * Broadcasts a newly-created bounty to the configured Telegram channel.
@@ -89,7 +90,7 @@ export async function broadcastBounty(b: BountyBroadcastInput): Promise<void> {
     return;
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_URL ?? "https://www.action-tokens.com";
+  const baseUrl = BASE_URL ?? "https://www.action-tokens.com";
   const message = buildBountyMessage(b, baseUrl);
 
   const res = await fetch(
