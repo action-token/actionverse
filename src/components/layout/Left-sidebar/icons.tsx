@@ -45,7 +45,8 @@ import {
   ImageIcon,
   ScanLine,
   Users2,
-  Ticket
+  Ticket,
+  Send
 
 } from "lucide-react";
 import { RiAdminFill } from "react-icons/ri";
@@ -92,6 +93,7 @@ export const Icons = {
   creator: SiSpringCreators,
   users: User2Icon,
   bounty: Trophy,
+  telegram: Send,
   music: Music,
   map: MapPinned,
   qr: QrCode,

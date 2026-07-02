@@ -61,6 +61,7 @@ export default function AdminLayout({
         { href: "/admin/users", icon: "users", label: "USERS", color: "bg-blue-500" },
         { href: "/admin/pins", icon: "pins", label: "PINS", color: "bg-pink-500" },
         { href: "/admin/map", icon: "map", label: "MAP", color: "bg-pink-500" },
+        { href: "/admin/telegram", icon: "telegram", label: "TELEGRAM", color: "bg-sky-500" },
     ]
 
 
@@ -101,59 +102,56 @@ export default function AdminLayout({
                                 {LeftNavigation.map((item, index) => {
 
                                     const Icon = Icons[item.icon as keyof typeof Icons];
+                                    const target = item.disabled ? "/admin/admins" : item.href;
 
                                     return (
-                                        <Link
+                                        <motion.div
                                             key={index}
-                                            href={item.disabled ? "/admin/admins" : item.href}
+                                            initial={{
+                                                y: 0,
+                                                x: 0,
+                                                scale: 0.5,
+                                                opacity: 0,
+                                            }}
+                                            animate={{
+                                                y: -60 * (index + 1),
+                                                x: - Math.sin((index + 1) * 0.4) * 25, // Create a small natural curve
+                                                scale: 1,
+                                                opacity: 1,
+                                            }}
+                                            exit={{
+                                                y: 0,
+                                                x: Math.sin((index + 1) * 0.5) * 5, // Maintain curve during exit
+                                                scale: 0.5,
+                                                opacity: 0,
+                                                transition: {
+                                                    duration: 0.2,
+                                                    delay: (LeftNavigation.length - index) * 0.05,
+                                                },
+                                            }}
+                                            transition={{
+                                                duration: 0.3,
+                                                delay: index * 0.05,
+                                                type: "spring",
+                                                stiffness: 260,
+                                                damping: 20,
+                                            }}
+                                            className="absolute left-1/2 -translate-x-1/2 "
                                         >
-                                            <motion.div
+                                            <Button
+                                                size="icon"
+                                                className={cn(
+                                                    "h-12 w-12 hover:bg-foreground hover:text-primary  shadow-lg transition-transform hover:scale-109",
+                                                    item.color,
+                                                    "text-white", path === item.href ? "bg-foreground " : ""
 
-                                                initial={{
-                                                    y: 0,
-                                                    x: 0,
-                                                    scale: 0.5,
-                                                    opacity: 0,
-                                                }}
-                                                animate={{
-                                                    y: -60 * (index + 1),
-                                                    x: - Math.sin((index + 1) * 0.4) * 25, // Create a small natural curve
-                                                    scale: 1,
-                                                    opacity: 1,
-                                                }}
-                                                exit={{
-                                                    y: 0,
-                                                    x: Math.sin((index + 1) * 0.5) * 5, // Maintain curve during exit
-                                                    scale: 0.5,
-                                                    opacity: 0,
-                                                    transition: {
-                                                        duration: 0.2,
-                                                        delay: (LeftNavigation.length - index) * 0.05,
-                                                    },
-                                                }}
-                                                transition={{
-                                                    duration: 0.3,
-                                                    delay: index * 0.05,
-                                                    type: "spring",
-                                                    stiffness: 260,
-                                                    damping: 20,
-                                                }}
-                                                className="absolute left-1/2 -translate-x-1/2 "
+                                                )}
+                                                onClick={() => router.push(target)}
                                             >
-                                                <Button
-                                                    size="icon"
-                                                    className={cn(
-                                                        "h-12 w-12 hover:bg-foreground hover:text-primary  shadow-lg transition-transform hover:scale-109",
-                                                        item.color,
-                                                        "text-white", path === item.href ? "bg-foreground " : ""
 
-                                                    )}
-                                                    onClick={() => console.log(`Clicked ${item.label}`)}
-                                                >
-
-                                                    <Icon />
-                                                    <span className="sr-only">{item.label}</span>
-                                                </Button>
+                                                <Icon />
+                                                <span className="sr-only">{item.label}</span>
+                                            </Button>
                                                 <motion.span
                                                     initial={{ opacity: 0, x: 20 }}
                                                     animate={{ opacity: 1, x: 0 }}
@@ -163,8 +161,7 @@ export default function AdminLayout({
                                                 >
                                                     {item.label}
                                                 </motion.span>
-                                            </motion.div>
-                                        </Link>
+                                        </motion.div>
                                     )
                                 })}
                             </div>

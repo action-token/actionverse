@@ -261,6 +261,7 @@ model Creator {
     agentJobs         AgentJob[]
     gallery           CreatorGallery?
     gallerySlots      GallerySlotOverride[]
+    museumRooms       MuseumRoom[]
     postGroups        PostGroup[]
 
     @@index([bio, name])
@@ -873,6 +874,17 @@ model AppConfig {
     nearbyPinRadius Float
 }
 
+// Singleton-style config (one row) for broadcasting bounties to Telegram.
+// The bot token is sensitive — never expose the full token to the client.
+model TelegramConfig {
+    id        Int      @id @default(autoincrement())
+    botToken  String   // Telegram bot token from @BotFather
+    chatId    String   // Channel/group chat id (e.g. -100xxxxxxxxxx)
+    enabled   Boolean  @default(false)
+    updatedAt DateTime @updatedAt
+    updatedBy String?  // admin user id who last changed it
+}
+
 model SellPageAsset {
     id           Int      @id @default(autoincrement())
     title        String
@@ -1258,12 +1270,13 @@ model GallerySlotOverride {
     photoDescription   String?
     photoDescPlacement String?
     gridCell           Int?
+    roomIndex          Int      @default(0)
     creatorId          String
     creator            Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
     updatedAt          DateTime @updatedAt
     createdAt          DateTime @default(now())
 
-    @@unique([slotId, creatorId])
+    @@unique([slotId, creatorId, roomIndex])
     @@index([creatorId])
 }
 
@@ -1271,10 +1284,26 @@ model GallerySlotLike {
     id        Int      @id @default(autoincrement())
     slotId    String
     creatorId String
+    roomIndex Int      @default(0)
     userId    String
     user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
     createdAt DateTime @default(now())
 
-    @@unique([slotId, creatorId, userId])
-    @@index([slotId, creatorId])
+    @@unique([slotId, creatorId, roomIndex, userId])
+    @@index([slotId, creatorId, roomIndex])
+}
+
+model MuseumRoom {
+    id            Int      @id @default(autoincrement())
+    creatorId     String
+    creator       Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    roomIndex     Int
+    label         String?
+    northDoorCell Int?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([creatorId, roomIndex])
+    @@index([creatorId])
 }

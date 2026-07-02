@@ -14,6 +14,10 @@ import { SignUser } from "~/lib/stellar/utils";
 import { PLATFORM_ASSET, PLATFORM_FEE } from "~/lib/stellar/constant";
 import { env } from "~/env";
 import { getplatformAssetNumberForXLM } from "~/lib/stellar/fan/get_token_price";
+import {
+  broadcastBounty,
+  invalidateTelegramConfig,
+} from "~/lib/telegram/broadcast-bounty";
 
 // Helper: include shape used by bounty queries that surface the owner.
 // Returns `name`, `image`, and `id` of the user (not the legacy creator profile).
@@ -87,7 +91,23 @@ export const BountyRoute = createTRPCRouter({
           prizeAssetCode: input.prizeAssetCode,
           prizeAssetIssuer: input.prizeAssetIssuer,
         },
+        include: { user: { select: { name: true } } },
       });
+
+      // Fire-and-forget: notify the Telegram channel if the admin has configured one.
+      // Errors are swallowed so a Telegram outage never fails bounty creation.
+      void broadcastBounty({
+        id: bounty.id,
+        title: bounty.title,
+        summary: bounty.summary,
+        prizeAmount: bounty.prizeAmount,
+        prizeAssetCode: bounty.prizeAssetCode,
+        maxWinners: bounty.maxWinners,
+        creatorName: bounty.user.name ?? "Unknown",
+      }).catch((err) =>
+        console.error("[telegram] bounty broadcast failed:", err),
+      );
+
       return bounty;
     }),
 
