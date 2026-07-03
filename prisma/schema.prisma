@@ -878,11 +878,11 @@ model AppConfig {
 // The bot token is sensitive — never expose the full token to the client.
 model TelegramConfig {
     id        Int      @id @default(autoincrement())
-    botToken  String   // Telegram bot token from @BotFather
-    chatId    String   // Channel/group chat id (e.g. -100xxxxxxxxxx)
+    botToken  String // Telegram bot token from @BotFather
+    chatId    String // Channel/group chat id (e.g. -100xxxxxxxxxx)
     enabled   Boolean  @default(false)
     updatedAt DateTime @updatedAt
-    updatedBy String?  // admin user id who last changed it
+    updatedBy String? // admin user id who last changed it
 }
 
 model SellPageAsset {
@@ -1174,6 +1174,10 @@ model Bounty {
     prizeAssetCode   String
     prizeAssetIssuer String?
 
+    // When true, participants must submit proof via Action Cam (live capture,
+    // server-stamped + cryptographically sealed). Owner can toggle off at any time.
+    requiresActionCam Boolean @default(false)
+
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
@@ -1213,7 +1217,8 @@ model BountySubmission {
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
-    media BountySubmissionMedia[]
+    captures BountySubmissionCapture[]
+    media    BountySubmissionMedia[]
 
     @@index([bountyId])
     @@index([userId])
@@ -1231,6 +1236,44 @@ model BountySubmissionMedia {
     createdAt DateTime @default(now())
 
     @@index([submissionId])
+}
+
+// One submission can contain many captures (photos + videos mixed, or just
+// one). Each capture row is one file. Used for both Action Cam (signed) and
+// plain (unsigned) flows — the difference is which fields are populated.
+model BountySubmissionCapture {
+    id           Int              @id @default(autoincrement())
+    submissionId Int
+    submission   BountySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+    // Type of media.
+    captureType String // "PHOTO" | "VIDEO"
+
+    // ── Integrity hashes ────────────────────────────────────────────
+    captureOriginalHash String // sha256 of the raw bytes (client-computed)
+    captureSealedHash   String // sha256 of the bytes now in S3
+
+    // ── Action Cam metadata (null for plain uploads) ────────────────
+    captureLat        Float?
+    captureLon        Float?
+    captureCapturedAt DateTime? // server-stamped at seal time
+    captureWallet     String?
+    captureSignature  String? // HMAC-SHA256 hex, present for Action Cam
+    captureSealedAt   DateTime?
+
+    // ── Storage URLs (always full public S3 URLs) ─────────────────
+    captureStorageUrl String // URL of the ORIGINAL media in S3
+    capturePreviewUrl String? // URL of the stamped preview (Action Cam only);
+    // null for plain uploads
+
+    // ── Per-capture status (independent review) ───────────────────
+    status BountySubmissionStatus @default(PENDING)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([submissionId])
+    @@index([status])
 }
 
 model BountyWinner {
@@ -1294,9 +1337,9 @@ model GallerySlotLike {
 }
 
 model MuseumRoom {
-    id            Int      @id @default(autoincrement())
+    id            Int     @id @default(autoincrement())
     creatorId     String
-    creator       Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    creator       Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
     roomIndex     Int
     label         String?
     northDoorCell Int?

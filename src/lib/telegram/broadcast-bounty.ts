@@ -20,6 +20,7 @@ interface BountyBroadcastInput {
   prizeAssetCode: string;
   maxWinners: number;
   creatorName: string;
+  requiresActionCam: boolean;
 }
 
 interface CachedConfig {
@@ -69,13 +70,17 @@ function formatPrize(amount: number, assetCode: string): string {
 
 export function buildBountyMessage(b: BountyBroadcastInput, baseUrl: string): string {
   const url = `${baseUrl.replace(/\/$/, "")}/bounty/${b.id}`;
+  const perWinner = b.prizeAmount / b.maxWinners;
   return [
     "🎯 *New bounty posted*",
     "",
     `*${escapeMd(b.title)}*`,
     escapeMd(b.summary),
     "",
-    `💰 Reward: ${escapeMd(formatPrize(b.prizeAmount, b.prizeAssetCode))} per verified claim`,
+    ...(b.requiresActionCam
+      ? [`🎥 *Action Cam required* — proof must be live\\-captured & sealed`]
+      : []),
+    `💰 Reward: ${escapeMd(formatPrize(perWinner, b.prizeAssetCode))} per winner`,
     `🙋 Claims available: ${b.maxWinners}`,
     `👤 Posted by: ${escapeMd(b.creatorName)}`,
     "",

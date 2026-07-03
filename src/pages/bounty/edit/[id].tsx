@@ -10,6 +10,7 @@ import { Label } from "~/components/shadcn/ui/label";
 import { Badge } from "~/components/shadcn/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card";
 import { Separator } from "~/components/shadcn/ui/separator";
+import { Switch } from "~/components/shadcn/ui/switch";
 import {
   Plus,
   X,
@@ -23,6 +24,7 @@ import {
   Wand2,
   Lock,
   Users,
+  Camera,
 } from "lucide-react";
 import { api } from "~/utils/api";
 import { PLATFORM_ASSET, stellarExpertUrl } from "~/lib/stellar/constant";
@@ -48,6 +50,7 @@ export default function EditBountyPage() {
   const [maxWinners, setMaxWinners] = useState("1");
   const [instructions, setInstructions] = useState<string[]>([]);
   const [instructionInput, setInstructionInput] = useState("");
+  const [requiresActionCam, setRequiresActionCam] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
   /* auth guard */
@@ -74,6 +77,7 @@ export default function EditBountyPage() {
       setRewardNote(bounty.rewardNote ?? "");
       setMaxWinners(String(bounty.maxWinners));
       setInstructions(bounty.instructions ?? []);
+      setRequiresActionCam(bounty.requiresActionCam ?? false);
       setInitialized(true);
     }
   }, [bounty, initialized]);
@@ -124,6 +128,7 @@ export default function EditBountyPage() {
       rewardNote: rewardNote.trim() || undefined,
       // maxWinners is locked at creation — cannot be changed post-launch.
       instructions,
+      requiresActionCam,
     });
   };
 
@@ -430,6 +435,33 @@ export default function EditBountyPage() {
                         ≈ {perWinner.toLocaleString()} {prizeAssetCode} per winner
                       </p>
                     )}
+                  </div>
+
+                  <Separator className="bg-border" />
+
+                  {/* Action Cam verification toggle */}
+                  <div className="space-y-2 rounded-lg border border-border bg-secondary/40 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Camera className="h-3.5 w-3.5 text-primary" />
+                          <Label htmlFor="requiresActionCam" className="text-sm font-semibold">
+                            Action Cam proof
+                          </Label>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Require submitters to use Action Cam — live capture, stamped with
+                          time/location/wallet, cryptographically sealed by the server. You can
+                          toggle this off anytime.
+                        </p>
+                      </div>
+                      <Switch
+                        id="requiresActionCam"
+                        checked={requiresActionCam}
+                        onCheckedChange={setRequiresActionCam}
+                        disabled={isSaving}
+                      />
+                    </div>
                   </div>
 
                   <Separator className="bg-border" />

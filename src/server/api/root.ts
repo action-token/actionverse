@@ -10,6 +10,7 @@ import { wallateBalanceRouter } from "./routers/walletBalance/root";
 import { adminRouter } from "./routers/admin/root";
 import { BountyRouters } from "./routers/bounty/root";
 import { s3Router } from "./routers/s3";
+import { actionCamStorageRouter } from "./routers/action-cam-storage";
 import { actionTokenRouter } from "./routers/action-token/root";
 import { trigger } from "@trigger.dev/sdk/dist/commonjs/v3/shared";
 import { triggerRouter } from "./routers/trigger";
@@ -36,6 +37,7 @@ export const appRouter = createTRPCRouter({
   admin: adminRouter,
   bounty: BountyRouters,
   s3: s3Router,
+  actionCamStorage: actionCamStorageRouter,
   action: actionTokenRouter,
   trigger: triggerRouter,
   qr: qrRouter,

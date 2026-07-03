@@ -18,6 +18,12 @@ import {
   broadcastBounty,
   invalidateTelegramConfig,
 } from "~/lib/telegram/broadcast-bounty";
+import { deriveValidation } from "~/lib/action-cam/derive-validation";
+import { captureMetadataSchema, signCapture, verifyCapture } from "~/lib/action-cam/seal";
+import { createHash } from "crypto";
+import { HeadObjectCommand } from "@aws-sdk/client-s3";
+import { s3Client } from "~/server/s3";
+import { TRPCError } from "@trpc/server";
 
 // Helper: include shape used by bounty queries that surface the owner.
 // Returns `name`, `image`, and `id` of the user (not the legacy creator profile).
@@ -75,6 +81,9 @@ export const BountyRoute = createTRPCRouter({
         instructions: z.array(z.string()).min(1),
         prizeAssetCode: z.string(),
         prizeAssetIssuer: z.string().nullable().default(null),
+        // Action Cam: when true, submissions must use the live capture + seal flow.
+        // Owner can toggle off later via `updateBounty`.
+        requiresActionCam: z.boolean().default(false),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -90,6 +99,7 @@ export const BountyRoute = createTRPCRouter({
           userId: ctx.session.user.id,
           prizeAssetCode: input.prizeAssetCode,
           prizeAssetIssuer: input.prizeAssetIssuer,
+          requiresActionCam: input.requiresActionCam,
         },
         include: { user: { select: { name: true } } },
       });
@@ -104,6 +114,7 @@ export const BountyRoute = createTRPCRouter({
         prizeAssetCode: bounty.prizeAssetCode,
         maxWinners: bounty.maxWinners,
         creatorName: bounty.user.name ?? "Unknown",
+        requiresActionCam: bounty.requiresActionCam,
       }).catch((err) =>
         console.error("[telegram] bounty broadcast failed:", err),
       );
@@ -122,6 +133,8 @@ export const BountyRoute = createTRPCRouter({
         rewardNote: z.string().max(600).optional(),
         maxWinners: z.number().int().positive().optional(),
         instructions: z.array(z.string()).optional(),
+        // Owner can flip the Action Cam requirement on or off at any time.
+        requiresActionCam: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -234,14 +247,22 @@ export const BountyRoute = createTRPCRouter({
       if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
 
-      return ctx.db.bountySubmission.findMany({
+      const submissions = await ctx.db.bountySubmission.findMany({
         where: { bountyId: input.bountyId },
         include: {
           user: { select: ownerSelect },
           media: true,
+          captures: {
+            orderBy: { createdAt: "asc" },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
+      return submissions.map((s) => ({
+        ...s,
+        validation: deriveValidation(s),
+        captures: s.captures.map((c) => ({ ...c, validation: deriveValidation(c) })),
+      }));
     }),
 
   // ── OWNER: select winner ──────────────────────────────────────────────────
@@ -299,6 +320,74 @@ export const BountyRoute = createTRPCRouter({
       });
 
       return winner;
+    }),
+
+  // ── OWNER: approve / reject a single capture inside a submission ────────────
+  // The parent submission status is rolled up automatically after the change:
+  //   - all captures APPROVED       → submission.status = APPROVED
+  //   - any capture REJECTED        → submission.status = REJECTED
+  //   - everything else still PENDING → submission.status = PENDING
+  setCaptureStatus: protectedProcedure
+    .input(
+      z.object({
+        captureId: z.number().int().positive(),
+        status: z.enum(["PENDING", "APPROVED", "REJECTED"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Look up the capture + its parent submission + the parent bounty.
+      const capture = await ctx.db.bountySubmissionCapture.findUnique({
+        where: { id: input.captureId },
+        select: {
+          id: true,
+          status: true,
+          submissionId: true,
+          submission: {
+            select: {
+              bountyId: true,
+              bounty: { select: { userId: true } },
+            },
+          },
+        },
+      });
+      if (!capture) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Capture not found" });
+      }
+      if (capture.submission.bounty.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the bounty owner can review captures",
+        });
+      }
+
+      // Update the capture status.
+      await ctx.db.bountySubmissionCapture.update({
+        where: { id: input.captureId },
+        data: { status: input.status },
+      });
+
+      // Roll up the parent submission status from its children:
+      //   - any capture REJECTED          → submission.status = REJECTED
+      //   - all captures APPROVED         → submission.status = APPROVED
+      //   - everything else still PENDING  → submission.status = PENDING
+      const siblings = await ctx.db.bountySubmissionCapture.findMany({
+        where: { submissionId: capture.submissionId },
+        select: { status: true },
+      });
+      let rolled: "PENDING" | "APPROVED" | "REJECTED" = "PENDING";
+      if (siblings.some((s) => s.status === "REJECTED")) rolled = "REJECTED";
+      else if (
+        siblings.length > 0 &&
+        siblings.every((s) => s.status === "APPROVED")
+      ) {
+        rolled = "APPROVED";
+      }
+      await ctx.db.bountySubmission.update({
+        where: { id: capture.submissionId },
+        data: { status: rolled },
+      });
+
+      return { captureId: input.captureId, status: input.status };
     }),
 
   // ── USER: public bounty list ───────────────────────────────────────────────
@@ -642,14 +731,22 @@ export const BountyRoute = createTRPCRouter({
   getMySubmissions: protectedProcedure
     .input(z.object({ bountyId: z.number() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.bountySubmission.findMany({
+      const submissions = await ctx.db.bountySubmission.findMany({
         where: { bountyId: input.bountyId, userId: ctx.session.user.id },
         include: {
           user: { select: ownerSelect },
           media: true,
+          captures: {
+            orderBy: { createdAt: "asc" },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
+      return submissions.map((s) => ({
+        ...s,
+        validation: deriveValidation(s),
+        captures: s.captures.map((c) => ({ ...c, validation: deriveValidation(c) })),
+      }));
     }),
 
   // ── USER: check participation ─────────────────────────────────────────────
@@ -938,7 +1035,7 @@ export const BountyRoute = createTRPCRouter({
   draftBounty: protectedProcedure
     .input(
       z.object({
-        prompt: z.string().min(5).max(2000),
+        prompt: z.string().min(5).max(4000),
       }),
     )
     .mutation(async ({ input }) => {
@@ -1020,4 +1117,374 @@ Rules:
       return await getplatformAssetNumberForXLM(input.xlm);
     }),
 
+  // ── ACTION CAM: submit one OR MORE captures as a single submission ────────
+  // The client uploads each file (original + optional stamped preview) directly
+  // to S3 via presigned URLs, then calls this mutation with the array. One
+  // parent BountySubmission + N BountySubmissionCapture children are created
+  // in a single transaction.
+  //
+  // Supports two flows:
+  //   - Action Cam: each capture has a `signature` (HMAC) + `previewUrl` + lat/lon
+  //   - Plain upload: no signature, no previewUrl — just the original uploaded
+  submitCapture: protectedProcedure
+    .input(
+      z.object({
+        bountyId: z.number().int().positive(),
+        captures: z
+          .array(
+            z.object({
+              captureType: z.enum(["PHOTO", "VIDEO"]),
+
+              // ── Integrity hashes (sha256 hex, lowercase) ────────────
+              originalHash: z.string().regex(/^[a-f0-9]{64}$/),
+              sealedHash: z.string().regex(/^[a-f0-9]{64}$/),
+
+              // ── Storage (full public S3 URLs + keys for HEAD check) ────
+              storageKey: z.string().min(1).max(500),
+              storageUrl: z.string().url(),
+              storageSize: z.number().int().nonnegative(),
+
+              // ── Preview (Action Cam only) ──────────────────────────────
+              previewKey: z.string().min(1).max(500).optional(),
+              previewUrl: z.string().url().optional(),
+              previewSize: z.number().int().nonnegative().optional(),
+
+              // ── MIME ────────────────────────────────────────────────────
+              mediaContentType: z.string().min(1),
+
+              // ── Action Cam metadata (all optional for plain uploads) ──
+              // Note: signature is NOT supplied by the client — the server
+              // computes it after verifying the upload, using its own HMAC
+              // secret. Client only supplies hashes + uploaded URLs.
+              lat: z.number().min(-90).max(90).optional(),
+              lon: z.number().min(-180).max(180).optional(),
+              wallet: z.string().optional(),
+            }),
+          )
+          .min(1, "At least one capture is required")
+          .max(20, "Maximum 20 captures per submission"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      // ── 1. Per-type size + MIME constraints (shared limits) ──────────
+      const LIMITS: Record<"PHOTO" | "VIDEO", {
+        maxBytes: number;
+        allowed: Set<string>;
+      }> = {
+        PHOTO: {
+          maxBytes: 10 * 1024 * 1024,
+          allowed: new Set(["image/jpeg", "image/png", "image/webp"]),
+        },
+        VIDEO: {
+          maxBytes: 50 * 1024 * 1024,
+          allowed: new Set([
+            "video/mp4",
+            "video/webm",
+            "video/quicktime",
+          ]),
+        },
+      };
+
+      // ── 2. Per-capture input validation ──────────────────────────────────
+      const serverCapturedAt = new Date();
+
+      const prepared = input.captures.map((cap, idx) => {
+        // Per-type MIME + size
+        const limits = LIMITS[cap.captureType];
+        if (!limits) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Capture ${idx + 1}: unsupported type ${cap.captureType}`,
+          });
+        }
+        if (!limits.allowed.has(cap.mediaContentType)) {
+          throw new TRPCError({
+            code: "UNSUPPORTED_MEDIA_TYPE",
+            message: `Capture ${idx + 1}: unsupported ${cap.captureType} MIME type: ${cap.mediaContentType}`,
+          });
+        }
+        if (cap.storageSize > limits.maxBytes) {
+          throw new TRPCError({
+            code: "PAYLOAD_TOO_LARGE",
+            message: `Capture ${idx + 1}: file too large (${cap.storageSize} > ${limits.maxBytes} bytes)`,
+          });
+        }
+
+        // Preview is REQUIRED for every capture (we always render a stamped
+        // preview client-side, even on plain bounties, so the canonical HMAC
+        // payload is uniform and the row shape is identical).
+        if (!cap.previewKey || !cap.previewUrl || cap.previewSize === undefined) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Capture ${idx + 1}: previewKey, previewUrl, previewSize are required`,
+          });
+        }
+        if (cap.previewSize === 0 || cap.previewSize > 2 * 1024 * 1024) {
+          throw new TRPCError({
+            code: "PAYLOAD_TOO_LARGE",
+            message: `Capture ${idx + 1}: preview must be 1 byte – 2 MB (got ${cap.previewSize})`,
+          });
+        }
+
+        // Truncate wallet for storage (if present)
+        const truncatedWallet =
+          cap.wallet && cap.wallet.length > 16
+            ? `${cap.wallet.slice(0, 6)}…${cap.wallet.slice(-4)}`
+            : cap.wallet ?? null;
+
+        return { cap, truncatedWallet };
+      });
+
+      // ── 3. Verify caller has joined this bounty ────────────────────────
+      const bounty = await ctx.db.bounty.findUnique({
+        where: { id: input.bountyId },
+        select: {
+          id: true,
+          status: true,
+          requiresActionCam: true,
+          userId: true,
+          participants: { where: { userId }, select: { id: true } },
+        },
+      });
+      if (!bounty) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bounty not found" });
+      }
+      if (bounty.status !== "RUNNING") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Bounty is not accepting submissions",
+        });
+      }
+      if (bounty.userId === userId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Owner cannot submit to their own bounty",
+        });
+      }
+      if (bounty.participants.length === 0) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Must join the bounty before submitting",
+        });
+      }
+
+      // ── 4. HEAD-check every uploaded file, then compute signature per ────
+      // capture when Action Cam is required. Signature is always server-side
+      // because the HMAC secret never leaves this server.
+      const signaturesByIndex: (string | null)[] = [];
+
+      async function headCheck(key: string, expectedSize: number, label: string): Promise<void> {
+        try {
+          const head = await s3Client.send(
+            new HeadObjectCommand({
+              Bucket: env.AWS_BUCKET_NAME,
+              Key: key,
+            }),
+          );
+          const size = head.ContentLength ?? -1;
+          if (size !== expectedSize) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `${label}: S3 object ${key} size mismatch (expected ${expectedSize}, got ${size})`,
+            });
+          }
+        } catch (e: unknown) {
+          if (e instanceof TRPCError) throw e;
+          const name = (e as { name?: string })?.name ?? "Error";
+          if (name === "NotFound" || name === "NoSuchKey") {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: `${label}: S3 object not found: ${key}`,
+            });
+          }
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `${label}: S3 HEAD failed: ${name}`,
+          });
+        }
+      }
+
+      for (let i = 0; i < prepared.length; i++) {
+        const { cap } = prepared[i]!;
+        await Promise.all([
+          headCheck(cap.storageKey, cap.storageSize, `Capture ${i + 1} original`),
+          ...(cap.previewKey && cap.previewSize !== undefined
+            ? [headCheck(cap.previewKey, cap.previewSize, `Capture ${i + 1} preview`)]
+            : []),
+        ]);
+      }
+
+      // ── 5. Compute HMAC signature per capture (only when required) ───────
+      if (bounty.requiresActionCam) {
+        for (let i = 0; i < prepared.length; i++) {
+          const { cap, truncatedWallet } = prepared[i]!;
+          const canonical = captureMetadataSchema.parse({
+            bountyId: input.bountyId,
+            userId,
+            captureType: cap.captureType,
+            originalHash: cap.originalHash,
+            previewHash: cap.sealedHash,
+            capturedAt: serverCapturedAt.toISOString(),
+            lat: cap.lat ?? null,
+            lon: cap.lon ?? null,
+            wallet: truncatedWallet,
+          });
+          signaturesByIndex.push(
+            signCapture(canonical, env.ACTION_CAM_HMAC_SECRET),
+          );
+        }
+      } else {
+        // Plain upload — no signature, no per-capture Action Cam metadata.
+        for (let i = 0; i < prepared.length; i++) {
+          signaturesByIndex.push(null);
+        }
+      }
+
+      // ── 6. Persist: one parent submission + N child captures ───────────
+      const capturesCreate = prepared.map(({ cap, truncatedWallet }, idx) => {
+        const signature = signaturesByIndex[idx] ?? null;
+        const isActionCam = signature !== null;
+        // For Action Cam, sealedHash is the client-computed hash of the
+        // preview; the server has already verified it via HMAC. For plain
+        // uploads, sealedHash == originalHash (the only file uploaded).
+        return {
+          captureType: cap.captureType,
+          captureOriginalHash: cap.originalHash,
+          captureSealedHash: cap.sealedHash,
+          // URLs: always store the full public URL, not the key, so consumers
+          // (UI, public verify, owner view) can use them directly.
+          captureStorageUrl: cap.storageUrl,
+          capturePreviewUrl: cap.previewUrl ?? null,
+          // Action Cam metadata (only populated when bounty requires it)
+          captureLat: isActionCam ? cap.lat ?? null : null,
+          captureLon: isActionCam ? cap.lon ?? null : null,
+          captureCapturedAt: isActionCam ? serverCapturedAt : null,
+          captureWallet: isActionCam ? truncatedWallet : null,
+          captureSignature: signature,
+          captureSealedAt: isActionCam ? serverCapturedAt : null,
+        };
+      });
+
+      const submission = await ctx.db.bountySubmission.create({
+        data: {
+          bountyId: input.bountyId,
+          userId,
+          content: "",
+          status: "PENDING",
+          captures: {
+            create: capturesCreate,
+          },
+        },
+        select: {
+          id: true,
+          captures: { select: { id: true, captureStorageUrl: true, capturePreviewUrl: true } },
+        },
+      });
+
+      return {
+        submissionId: submission.id,
+        captureIds: submission.captures.map((c) => c.id),
+        captures: submission.captures.map((c) => ({
+          id: c.id,
+          storageUrl: c.captureStorageUrl,
+          previewUrl: c.capturePreviewUrl,
+        })),
+      };
+    }),
+
+  // ── ACTION CAM: public verification (capture-level) ──────────────
+  // Takes a captureId, re-runs HMAC over the stored canonical payload, and
+  // returns the verdict + metadata for one specific capture. The HMAC secret
+  // is NEVER returned.
+  verifyCapture: publicProcedure
+    .input(z.object({ captureId: z.number().int().positive() }))
+    .query(async ({ ctx, input }) => {
+      const capture = await ctx.db.bountySubmissionCapture.findUnique({
+        where: { id: input.captureId },
+        select: {
+          id: true,
+          captureType: true,
+          captureOriginalHash: true,
+          captureSealedHash: true,
+          captureSignature: true,
+          captureCapturedAt: true,
+          captureSealedAt: true,
+          captureLat: true,
+          captureLon: true,
+          captureWallet: true,
+          captureStorageUrl: true,
+          capturePreviewUrl: true,
+          submission: {
+            select: {
+              bountyId: true,
+              userId: true,
+            },
+          },
+        },
+      });
+
+      if (!capture) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Capture not found",
+        });
+      }
+
+      // Plain upload — no signature, just metadata.
+      if (!capture.captureSignature || !capture.captureCapturedAt) {
+        return {
+          captureId: capture.id,
+          sealed: false as const,
+          reason: "Capture was not made via Action Cam (plain upload)",
+        };
+      }
+
+      // Rebuild the canonical payload exactly as it was at seal time
+      // (using the SAME fields the server used in submitCapture).
+      let canonicalValid = true;
+      let signatureValid = false;
+      try {
+        const canonical = captureMetadataSchema.parse({
+          bountyId: capture.submission.bountyId,
+          userId: capture.submission.userId,
+          captureType: capture.captureType,
+          originalHash: capture.captureOriginalHash,
+          previewHash: capture.captureSealedHash,
+          capturedAt: capture.captureCapturedAt.toISOString(),
+          lat: capture.captureLat,
+          lon: capture.captureLon,
+          wallet: capture.captureWallet,
+        });
+        signatureValid = verifyCapture(
+          canonical,
+          capture.captureSignature,
+          env.ACTION_CAM_HMAC_SECRET,
+        );
+      } catch {
+        canonicalValid = false;
+      }
+
+      const validation = deriveValidation(capture);
+
+      return {
+        captureId: capture.id,
+        sealed: true as const,
+        canonicalValid,
+        signatureValid,
+        validation,
+        metadata: {
+          bountyId: submission.bountyId,
+          captureType: submission.captureType,
+          originalHash: submission.captureOriginalHash,
+          sealedHash: submission.captureSealedHash,
+          capturedAt: submission.captureCapturedAt,
+          sealedAt: submission.captureSealedAt,
+          lat: submission.captureLat,
+          lon: submission.captureLon,
+          wallet: submission.captureWallet,
+        },
+      };
+    }),
 });

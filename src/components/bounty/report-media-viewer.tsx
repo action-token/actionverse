@@ -1,8 +1,39 @@
+"use client";
+
 import React, { useState, useRef } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/shadcn/ui/dialog";
 import { Button } from "~/components/shadcn/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/shadcn/ui/dialog";
-import { Play, Pause, Volume2, VolumeX, Download, Maximize2, ImageIcon, Music, Video, FileText, X } from "lucide-react";
+import {
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Download,
+  Maximize2,
+  ImageIcon,
+  Music,
+  Video,
+  FileText,
+  X,
+} from "lucide-react";
 import { cn } from "~/lib/utils";
+
+/**
+ * ReportMediaViewer — renders a grid of media thumbnails and opens a full-screen
+ * lightbox on click. Used as the **legacy fallback** for submissions whose
+ * media[] rows pre-date the BountySubmissionCapture table.
+ *
+ * For NEW submissions (with captures[]), use SubmissionCapturesSection +
+ * CaptureDetailDialog instead — they have the richer 3-layer validation
+ * display and per-capture approve/reject UX.
+ *
+ * All colors come from globals.css tokens (no fixed white/black/opacity).
+ */
 
 interface MediaItem {
   id: number;
@@ -23,50 +54,57 @@ export function ReportMediaViewer({ media, className }: ReportMediaViewerProps) 
 
   return (
     <>
-      <div className={cn("flex flex-wrap gap-2", className)}>
-        {media.map((item) => (
-          <MediaThumbnail
-            key={item.id}
-            item={item}
-            onClick={() => setSelected(item)}
-          />
-        ))}
+      <div className={cn("space-y-2", className)}>
+        <div className="flex flex-wrap gap-2">
+          {media.map((item) => (
+            <MediaThumbnail
+              key={item.id}
+              item={item}
+              onClick={() => setSelected(item)}
+            />
+          ))}
+        </div>
       </div>
 
-      {selected && (
-        <MediaLightbox
-          item={selected}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      <MediaLightbox
+        item={selected}
+        onClose={() => setSelected(null)}
+      />
     </>
   );
 }
 
-function MediaThumbnail({ item, onClick }: { item: MediaItem; onClick: () => void }) {
-  const iconMap: Record<string, React.ReactNode> = {
-    IMAGE: <ImageIcon className="h-5 w-5" />,
-    VIDEO: <Video className="h-5 w-5" />,
-    MUSIC: <Music className="h-5 w-5" />,
-    AUDIO: <Music className="h-5 w-5" />,
-    THREE_D: <FileText className="h-5 w-5" />,
-    DOCUMENT: <FileText className="h-5 w-5" />,
+function MediaThumbnail({
+  item,
+  onClick,
+}: {
+  item: MediaItem;
+  onClick: () => void;
+}) {
+  const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+    IMAGE: ImageIcon,
+    VIDEO: Video,
+    MUSIC: Music,
+    AUDIO: Music,
+    THREE_D: FileText,
+    DOCUMENT: FileText,
   };
-  const icon = iconMap[item.type] ?? <FileText className="h-5 w-5" />;
+  const Icon = iconMap[item.type] ?? FileText;
 
   if (item.type === "IMAGE") {
     return (
       <button
         onClick={onClick}
-        className="relative h-20 w-20 rounded-lg overflow-hidden border border-white/10 hover:border-white/30 transition-all group"
+        className="group relative h-20 w-20 rounded-lg overflow-hidden border border-border bg-muted hover:border-foreground/30 transition-all"
       >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={item.url}
           alt={item.fileName ?? "image"}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover transition-transform group-hover:scale-105"
         />
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <Maximize2 className="h-4 w-4 text-white" />
+        <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <Maximize2 className="h-4 w-4 text-primary-foreground" />
         </div>
       </button>
     );
@@ -75,18 +113,24 @@ function MediaThumbnail({ item, onClick }: { item: MediaItem; onClick: () => voi
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2 h-10 px-3 rounded-lg border border-white/10 hover:border-white/30 bg-white/5 hover:bg-white/10 transition-all text-sm text-muted-foreground hover:text-foreground"
+      className="flex items-center gap-2 h-10 px-3 rounded-lg border border-border bg-muted hover:bg-card transition-all text-sm text-muted-foreground hover:text-foreground"
     >
-      {icon}
-      <span className="max-w-[120px] truncate">
+      <Icon className="h-4 w-4" />
+      <span className="max-w-[140px] truncate">
         {item.fileName ?? item.type.toLowerCase()}
       </span>
-      <Play className="h-3 w-3 ml-1" />
+      <Play className="h-3 w-3 ml-1 text-muted-foreground" />
     </button>
   );
 }
 
-function MediaLightbox({ item, onClose }: { item: MediaItem; onClose: () => void }) {
+function MediaLightbox({
+  item,
+  onClose,
+}: {
+  item: MediaItem | null;
+  onClose: () => void;
+}) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -111,80 +155,156 @@ function MediaLightbox({ item, onClose }: { item: MediaItem; onClose: () => void
   };
 
   const download = () => {
+    if (!item) return;
     const a = document.createElement("a");
     a.href = item.url;
     a.download = item.fileName ?? "download";
+    a.target = "_blank";
+    a.rel = "noreferrer";
+    document.body.appendChild(a);
     a.click();
+    a.remove();
   };
 
   return (
-    <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-3xl w-full p-0 overflow-hidden bg-black/95 border-white/10">
-        <DialogHeader className="px-4 pt-4 pb-2 flex-row items-center justify-between">
-          <DialogTitle className="text-sm font-medium text-white/80 truncate">
-            {item.fileName ?? item.type.toLowerCase()}
-          </DialogTitle>
-          <div className="flex items-center gap-2">
-            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={download}>
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </DialogHeader>
-
-        <div className="flex flex-col items-center justify-center min-h-[300px] p-4">
-          {item.type === "IMAGE" && (
-            <img
-              src={item.url}
-              alt={item.fileName ?? "image"}
-              className="max-h-[70vh] max-w-full object-contain rounded"
-            />
-          )}
-
-          {item.type === "VIDEO" && (
-            <div className="w-full">
-              <video
-                ref={videoRef}
-                src={item.url}
-                className="w-full max-h-[60vh] rounded"
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                controls
-              />
-            </div>
-          )}
-
-          {(item.type === "MUSIC" || item.type === "AUDIO") && (
-            <div className="flex flex-col items-center gap-6 py-8 w-full max-w-sm">
-              <div className="h-24 w-24 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                <Music className="h-10 w-10 text-white" />
+    <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="!max-w-none !w-screen !h-screen !max-h-screen p-0 gap-0 bg-background text-foreground border-border sm:rounded-none overflow-hidden flex flex-col" showCloseButton={false}>
+        {item && (
+          <>
+            {/* ── Top bar ─────────────────────────────────────────── */}
+            <DialogHeader className="px-4 py-3 border-b border-border flex flex-row items-center justify-between space-y-0 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-9 w-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                  <FileText className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-sm font-bold tracking-wide truncate">
+                    {item.fileName ?? item.type}
+                  </DialogTitle>
+                  <span className="text-[11px] text-muted-foreground uppercase tracking-wider">
+                    {item.type}
+                  </span>
+                </div>
               </div>
-              <p className="text-sm text-white/70 text-center truncate w-full">
-                {item.fileName ?? "Audio file"}
-              </p>
-              <audio
-                ref={audioRef}
-                src={item.url}
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                className="hidden"
-              />
-              <div className="flex items-center gap-3">
-                <Button size="icon" variant="outline" className="h-10 w-10" onClick={toggleMute}>
-                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                </Button>
-                <Button size="icon" className="h-12 w-12" onClick={togglePlay}>
-                  {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-                </Button>
-                <Button size="icon" variant="outline" className="h-10 w-10" onClick={download}>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={download}
+                  aria-label="Download"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
                   <Download className="h-4 w-4" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
+            </DialogHeader>
+
+            {/* ── Centered media viewer ─────────────────────────── */}
+            <div className="flex-1 flex flex-col items-center justify-center bg-foreground/[0.03] p-4 overflow-hidden">
+              {item.type === "IMAGE" && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={item.url}
+                  alt={item.fileName ?? "image"}
+                  className="max-h-[80vh] max-w-full object-contain rounded-lg shadow-2xl"
+                />
+              )}
+
+              {item.type === "VIDEO" && (
+                <div className="w-full max-w-4xl">
+                  <video
+                    ref={videoRef}
+                    src={item.url}
+                    className="w-full max-h-[70vh] rounded-lg bg-foreground/[0.03] shadow-2xl"
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
+                    controls
+                    playsInline
+                  />
+                </div>
+              )}
+
+              {(item.type === "MUSIC" || item.type === "AUDIO") && (
+                <div className="flex flex-col items-center gap-6 py-8 w-full max-w-sm">
+                  <div className="h-32 w-32 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-2xl">
+                    <Music className="h-14 w-14 text-primary-foreground" />
+                  </div>
+                  <p className="text-sm text-foreground text-center truncate w-full px-4">
+                    {item.fileName ?? "Audio file"}
+                  </p>
+                  <audio
+                    ref={audioRef}
+                    src={item.url}
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
+                    onEnded={() => setPlaying(false)}
+                  />
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10"
+                      onClick={toggleMute}
+                      aria-label={muted ? "Unmute" : "Mute"}
+                    >
+                      {muted ? (
+                        <VolumeX className="h-4 w-4" />
+                      ) : (
+                        <Volume2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      size="icon"
+                      className="h-12 w-12 rounded-full"
+                      onClick={togglePlay}
+                      aria-label={playing ? "Pause" : "Play"}
+                    >
+                      {playing ? (
+                        <Pause className="h-5 w-5" />
+                      ) : (
+                        <Play className="h-5 w-5" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10"
+                      onClick={download}
+                      aria-label="Download"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {item.type !== "IMAGE" &&
+                item.type !== "VIDEO" &&
+                item.type !== "MUSIC" &&
+                item.type !== "AUDIO" && (
+                  <div className="flex flex-col items-center gap-3 p-8">
+                    <FileText className="h-12 w-12 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      No preview available for {item.type}
+                    </p>
+                    <Button onClick={download}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </Button>
+                  </div>
+                )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

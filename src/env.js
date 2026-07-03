@@ -49,6 +49,15 @@ export const env = createEnv({
     QSTASH_NEXT_SIGNING_KEY: z.string(),
     KV_REST_API_URL: z.string(),
     KV_REST_API_TOKEN: z.string(),
+
+    // Action Cam: server-side HMAC secret used to sign captured submissions.
+    // Anyone with this secret can forge a "valid" seal, so it MUST be:
+    //   1. At least 32 chars
+    //   2. Never committed to git (use your secret manager / .env)
+    //   3. Rotated if leaked (rotating invalidates all existing seals)
+    ACTION_CAM_HMAC_SECRET: z
+      .string()
+      .min(32, "ACTION_CAM_HMAC_SECRET must be at least 32 chars"),
   },
 
   /**
@@ -123,6 +132,8 @@ export const env = createEnv({
     QSTASH_NEXT_SIGNING_KEY: process.env.QSTASH_NEXT_SIGNING_KEY,
     KV_REST_API_URL: process.env.KV_REST_API_URL,
     KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN,
+
+    ACTION_CAM_HMAC_SECRET: process.env.ACTION_CAM_HMAC_SECRET,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

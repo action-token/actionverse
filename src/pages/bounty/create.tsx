@@ -9,6 +9,7 @@ import { Textarea } from "~/components/shadcn/ui/textarea";
 import { Label } from "~/components/shadcn/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui/card";
 import { Separator } from "~/components/shadcn/ui/separator";
+import { Switch } from "~/components/shadcn/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip";
 import {
   Select,
@@ -36,6 +37,7 @@ import {
   Wallet,
   Building2,
   Users,
+  Camera,
 } from "lucide-react";
 import { api } from "~/utils/api";
 import { PLATFORM_ASSET, PLATFORM_FEE, stellarExpertUrl } from "~/lib/stellar/constant";
@@ -133,6 +135,7 @@ export default function CreateBountyPage() {
   const [draftAi, setDraftAi] = useState("");
   const [step, setStep] = useState<"form" | "paying" | "creating" | "done">("form");
   const [selectedAssetKey, setSelectedAssetKey] = useState<string>("");
+  const [requiresActionCam, setRequiresActionCam] = useState(false);
 
 
   const selectedAsset = useMemo(
@@ -179,6 +182,7 @@ export default function CreateBountyPage() {
           instructions,
           prizeAssetCode: selectedAsset.code,
           prizeAssetIssuer: selectedAsset.issuer,
+          requiresActionCam,
         });
       }
     },
@@ -749,6 +753,47 @@ export default function CreateBountyPage() {
                       </div>
                     </>
                   )}
+
+                  <Separator className="bg-border" />
+
+                  {/* Action Cam verification toggle */}
+                  <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Camera className="h-4 w-4 text-primary" />
+                          <Label htmlFor="requiresActionCam" className="text-sm font-semibold">
+                            Require Action Cam proof
+                          </Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>
+                                  When on, participants must submit proof using Action Cam — a live
+                                  camera capture stamped with time, location, and wallet, then
+                                  cryptographically sealed by our server. You can turn this off at
+                                  any time from the bounty settings.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Submitters open the in-app camera, capture live (no uploads), and the server
+                          signs the photo so edits are detectable. Off by default.
+                        </p>
+                      </div>
+                      <Switch
+                        id="requiresActionCam"
+                        checked={requiresActionCam}
+                        onCheckedChange={setRequiresActionCam}
+                        disabled={isDisabled}
+                      />
+                    </div>
+                  </div>
 
                   <Separator className="bg-border" />
 

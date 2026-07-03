@@ -5,7 +5,6 @@ import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
 import { api, type RouterOutputs } from "~/utils/api";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/shadcn/ui/avatar";
-import { Badge } from "~/components/shadcn/ui/badge";
 import { Button } from "~/components/shadcn/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs";
 import {
@@ -22,7 +21,9 @@ import {
   DialogTitle,
 } from "~/components/shadcn/ui/dialog";
 import { SubmitReportDialog } from "~/components/bounty/submit-report-dialog";
-import { ReportMediaViewer } from "~/components/bounty/report-media-viewer";
+import { ActionCamCaptureModal } from "~/components/action-cam/capture-modal";
+import { ActionCamGuideCard } from "~/components/action-cam/guide-card";
+import { CaptureValidationBadge } from "~/components/action-cam/validation-badge";
 import { Markdown } from "~/components/bounty/markdown";
 import { BountyStatus } from "@prisma/client";
 import {
@@ -43,9 +44,11 @@ import {
   Clock,
   Target,
   Zap,
-  Eye,
   ArrowRight,
   ExternalLink,
+  Camera,
+  Video,
+  Download,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -57,13 +60,18 @@ import { cn } from "~/lib/utils";
 import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-store";
 import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store";
 import useNeedSign from "~/lib/hook";
-
 /* ── Types ───────────────────────────────────────────────────────────────────── */
 interface Submission {
   id: number; userId: string; content: string; status: string; createdAt: Date;
-  /** Optional — `getMySubmissions` now includes it too, but keep optional for safety. */
+  bountyId: number;
   user?: { id: string; name: string | null; image: string | null };
   media: { id: number; url: string; type: string; fileName: string | null }[];
+  captures?: {
+    id: number; captureType: string; status: string;
+    capturePreviewUrl: string | null; captureStorageUrl: string;
+    captureOriginalHash: string; createdAt: Date;
+    validation?: { live: boolean; stamped: boolean; sealed: boolean; sealedAt: Date | null } | null;
+  }[];
 }
 
 /* ── Status config ───────────────────────────────────────────────────────────── */
@@ -125,8 +133,9 @@ export default function BountyDetailPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
-  const [viewSubmission, setViewSubmission] = useState<Submission | null>(null);
+  const [lightboxItem, setLightboxItem] = useState<{ url: string; type: string } | null>(null);
   const [mobilePanel, setMobilePanel] = useState<"participants" | "rewards" | "stats" | "winners" | null>(null);
+  const [actionCamOpen, setActionCamOpen] = useState(false);
 
   /* queries */
   const bountyQ = api.bounty.Bounty.getBounty.useQuery({ bountyId: id }, { enabled: !!id });
@@ -198,7 +207,6 @@ export default function BountyDetailPage() {
   const winner = myParticipation.data?.winner;
   const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isOwner;
   const perWinner = bounty.prizeAmount / bounty.maxWinners;
-  const submissionCount = isOwner ? bounty._count.submissions : (mySubmissions.data?.length ?? 0);
   const visibleReqs = bounty.instructions.slice(0, 4);
   const extraReqs = bounty.instructions.slice(4);
 
@@ -243,6 +251,12 @@ export default function BountyDetailPage() {
                         <Trophy className="h-3 w-3 text-gold" />
                         Bounty
                       </span>
+                      {bounty.requiresActionCam && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-primary/40 bg-primary/10 text-[11px] font-semibold text-primary">
+                          <Camera className="h-3 w-3" />
+                          Action Cam required
+                        </span>
+                      )}
                     </div>
 
                     {/* Title */}
@@ -344,7 +358,7 @@ export default function BountyDetailPage() {
             </div>
 
             {/* ── Right: glass requirements card ────────────────────────── */}
-            <div className="hidden lg:block rounded-2xl backdrop-blur-xl border border-white/20 p-5 space-y-4 shadow-md">
+            <div className="hidden lg:block rounded-2xl backdrop-blur-xl border border-border/40 p-5 space-y-4 shadow-md">
 
               {/* Status line */}
               <div className="flex items-center justify-between">
@@ -424,10 +438,18 @@ export default function BountyDetailPage() {
                   {canSubmit && (
                     <Button
                       className="w-full h-11 gap-2 font-semibold"
-                      onClick={() => setSubmitOpen(true)}
+                      onClick={() =>
+                        bounty.requiresActionCam
+                          ? setActionCamOpen(true)
+                          : setSubmitOpen(true)
+                      }
                     >
-                      <FileText className="h-4 w-4" />
-                      Submit Report
+                      {bounty.requiresActionCam ? (
+                        <Camera className="h-4 w-4" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                      {bounty.requiresActionCam ? "Open Action Cam" : "Submit Report"}
                       <ArrowRight className="h-4 w-4 ml-auto" />
                     </Button>
                   )}
@@ -492,10 +514,18 @@ export default function BountyDetailPage() {
                   {canSubmit && (
                     <Button
                       className="w-full h-11 gap-2 font-semibold"
-                      onClick={() => setSubmitOpen(true)}
+                      onClick={() =>
+                        bounty.requiresActionCam
+                          ? setActionCamOpen(true)
+                          : setSubmitOpen(true)
+                      }
                     >
-                      <FileText className="h-4 w-4" />
-                      Submit Report
+                      {bounty.requiresActionCam ? (
+                        <Camera className="h-4 w-4" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                      {bounty.requiresActionCam ? "Open Action Cam" : "Submit Report"}
                     </Button>
                   )}
                   {bounty.status === BountyStatus.COMPLETED && !isJoined && (
@@ -520,29 +550,22 @@ export default function BountyDetailPage() {
           {/* ── Tabs ────────────────────────────────────────────────────── */}
           <div className="min-w-0">
             <Tabs defaultValue="description">
-              <TabsList className="h-10 bg-transparent border-b border-border rounded-none p-0 gap-0 w-full justify-start">
+              <TabsList className="h-12 bg-secondary/50 rounded-2xl p-1.5 gap-1 w-full justify-start border border-border/40">
                 {[
                   { value: "description", label: "Description" },
-                  // On md/sm the Participants slot is repurposed for Requirements (and the
-                  // participants table moves into the mobile rail). On lg+ this is hidden.
-                  { value: "requirements", label: "Requirements", count: bounty.instructions.length, className: "lg:hidden" },
-                  { value: "participants", label: "Participants", count: bounty._count.participants, className: "hidden lg:inline-flex" },
-                  { value: "reports", label: isOwner ? "Submissions" : "My Reports", count: submissionCount },
+                  { value: "requirements", label: "Requirements", className: "lg:hidden" },
+                  { value: "participants", label: "Participants", className: "hidden lg:inline-flex" },
+                  { value: "reports", label: isOwner ? "Submissions" : "My Reports" },
                 ].map((t) => (
                   <TabsTrigger
                     key={t.value}
                     value={t.value}
                     className={cn(
-                      "rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground text-muted-foreground px-4 h-10 text-sm font-medium bg-transparent",
+                      "rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground px-3 sm:px-4 h-9 text-sm font-medium transition-all",
                       t.className,
                     )}
                   >
                     {t.label}
-                    {t.count !== undefined && (
-                      <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded bg-secondary text-[10px] text-muted-foreground">
-                        {t.count}
-                      </span>
-                    )}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -596,14 +619,26 @@ export default function BountyDetailPage() {
                     onSelectWinner={(uid) => winnerM.mutate({ bountyId: id, winnerId: uid, prizeAmount: perWinner })}
                     selecting={winnerM.isLoading}
                     winnerIds={bounty.winners.map((w) => w.userId)}
-                    onView={setViewSubmission}
+                    requiresActionCam={bounty.requiresActionCam}
+                    onOpenMedia={setLightboxItem}
                   />
                 ) : (
-                  <UserReportsTab
-                    submissions={(mySubmissions.data ?? []) as unknown as Submission[]}
-                    loading={mySubmissions.isLoading}
-                    onView={setViewSubmission}
-                  />
+                  <>
+                    {bounty.requiresActionCam &&
+                      canSubmit &&
+                      !mySubmissions.isLoading &&
+                      (mySubmissions.data?.length ?? 0) === 0 && (
+                        <ActionCamGuideCard
+                          onOpenCapture={() => setActionCamOpen(true)}
+                        />
+                      )}
+                    <UserReportsTab
+                      submissions={(mySubmissions.data ?? []) as unknown as Submission[]}
+                      loading={mySubmissions.isLoading}
+                      requiresActionCam={bounty.requiresActionCam}
+                      onOpenMedia={setLightboxItem}
+                    />
+                  </>
                 )}
               </TabsContent>
             </Tabs>
@@ -750,42 +785,100 @@ export default function BountyDetailPage() {
         onSuccess={() => { void mySubmissions.refetch(); void bountyQ.refetch(); }}
       />
 
-      {/* Submission view dialog */}
-      <Dialog open={!!viewSubmission} onOpenChange={() => setViewSubmission(null)}>
-        <DialogContent className="max-w-3xl bg-card border-border max-h-[85vh] flex flex-col overflow-hidden p-0 gap-0">
-          <DialogHeader className="px-5 pt-5 pb-3 border-b border-border shrink-0">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              Submission
-            </DialogTitle>
-          </DialogHeader>
-          {viewSubmission && (
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={viewSubmission.user?.image ?? ""} />
-                  <AvatarFallback className="text-xs bg-secondary">{(viewSubmission.user?.name ?? "U").charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="text-sm font-semibold">{viewSubmission.user?.name ?? "Anonymous"}</p>
-                  <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(viewSubmission.createdAt), { addSuffix: true })}</p>
+      <ActionCamCaptureModal
+        open={actionCamOpen}
+        onOpenChange={setActionCamOpen}
+        bountyId={id}
+        onSubmitted={() => {
+          void mySubmissions.refetch();
+          void bountyQ.refetch();
+        }}
+      />
+
+      {/* Media lightbox */}
+      <Dialog open={!!lightboxItem} onOpenChange={() => setLightboxItem(null)}>
+        <DialogContent
+          className="!max-w-none !w-screen !h-screen !max-h-screen p-0 gap-0 bg-background text-foreground border-border rounded-none top-0 left-0 translate-x-0 translate-y-0 overflow-hidden flex flex-col"
+          showCloseButton={false}
+        >
+          {lightboxItem && (
+            <>
+              {/* Top bar */}
+              <DialogHeader className="px-4 py-3 border-b border-border flex flex-row items-center justify-between space-y-0 shrink-0 bg-card/30 backdrop-blur-md">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-9 w-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                    {lightboxItem.type === "VIDEO" ? (
+                      <Video className="h-4 w-4 text-primary" />
+                    ) : lightboxItem.type === "IMAGE" || lightboxItem.type === "PHOTO" ? (
+                      <Camera className="h-4 w-4 text-primary" />
+                    ) : (
+                      <FileText className="h-4 w-4 text-primary" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <DialogTitle className="text-sm font-bold tracking-wide">
+                      {lightboxItem.type === "VIDEO" ? "Video" : lightboxItem.type === "IMAGE" || lightboxItem.type === "PHOTO" ? "Image" : "File"}
+                    </DialogTitle>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                      {lightboxItem.type === "VIDEO" ? "Video player" : lightboxItem.type === "IMAGE" || lightboxItem.type === "PHOTO" ? "Full resolution" : "Download available"}
+                    </span>
+                  </div>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={cn("ml-auto text-xs border capitalize",
-                    viewSubmission.status === "APPROVED" ? "border-primary/30 text-primary bg-primary/10"
-                      : viewSubmission.status === "REJECTED" ? "border-destructive/30 text-destructive bg-destructive/10"
-                        : "border-border text-muted-foreground",
-                  )}
-                >
-                  {viewSubmission.status.toLowerCase()}
-                </Badge>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button variant="ghost" size="icon" asChild className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted">
+                    <a href={lightboxItem.url} target="_blank" rel="noopener noreferrer" title="Download">
+                      <Download className="h-4 w-4" />
+                    </a>
+                  </Button>
+                  <Button variant="ghost" size="icon" asChild className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted">
+                    <a href={lightboxItem.url} target="_blank" rel="noopener noreferrer" title="Open in new tab">
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted" onClick={() => setLightboxItem(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </DialogHeader>
+
+              {/* Media viewer */}
+              <div className="flex-1 flex items-center justify-center bg-foreground/[0.03] overflow-hidden p-4 sm:p-6">
+                {(lightboxItem.type === "IMAGE" || lightboxItem.type === "PHOTO") && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={lightboxItem.url}
+                    alt="Full size"
+                    className="max-h-[calc(100vh-8rem)] max-w-full object-contain rounded-xl shadow-2xl"
+                  />
+                )}
+                {lightboxItem.type === "VIDEO" && (
+                  <video
+                    src={lightboxItem.url}
+                    className="max-h-[calc(100vh-8rem)] max-w-full rounded-xl shadow-2xl"
+                    controls
+                    autoPlay
+                    playsInline
+                  />
+                )}
+                {lightboxItem.type !== "IMAGE" && lightboxItem.type !== "PHOTO" && lightboxItem.type !== "VIDEO" && (
+                  <div className="flex flex-col items-center gap-5 py-12">
+                    <div className="h-20 w-20 rounded-2xl bg-muted flex items-center justify-center">
+                      <FileText className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <div className="text-center space-y-1">
+                      <p className="text-sm font-semibold text-foreground">No preview available</p>
+                      <p className="text-xs text-muted-foreground">This file type cannot be previewed in the browser</p>
+                    </div>
+                    <Button asChild variant="outline" size="sm">
+                      <a href={lightboxItem.url} target="_blank" rel="noopener noreferrer">
+                        <Download className="h-3.5 w-3.5 mr-1.5" />
+                        Download file
+                      </a>
+                    </Button>
+                  </div>
+                )}
               </div>
-              <div className="p-4 rounded-xl bg-secondary border border-border overflow-hidden">
-                <Markdown content={viewSubmission.content} />
-              </div>
-              {viewSubmission.media.length > 0 && <ReportMediaViewer media={viewSubmission.media} />}
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
@@ -958,9 +1051,11 @@ export default function BountyDetailPage() {
 /* ── Empty state ─────────────────────────────────────────────────────────────── */
 function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-14 gap-3 text-muted-foreground">
-      <div className="opacity-20">{icon}</div>
-      <p className="text-sm">{text}</p>
+    <div className="flex flex-col items-center justify-center py-16 gap-4">
+      <div className="h-16 w-16 rounded-2xl bg-secondary border border-border/50 flex items-center justify-center text-muted-foreground/30">
+        {icon}
+      </div>
+      <p className="text-sm font-medium text-muted-foreground">{text}</p>
     </div>
   );
 }
@@ -968,65 +1063,190 @@ function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
 /* ── Creator reports tab ─────────────────────────────────────────────────────── */
 function CreatorReportsTab({
   submissions, loading, maxWinners, currentWinners,
-  onSelectWinner, selecting, winnerIds, onView,
+  onSelectWinner, selecting, winnerIds, requiresActionCam, onOpenMedia,
 }: {
   submissions: Submission[]; loading: boolean; maxWinners: number; currentWinners: number;
   onSelectWinner: (uid: string) => void; selecting: boolean; winnerIds: string[];
-  onView: (s: Submission) => void;
+  requiresActionCam: boolean;
+  onOpenMedia: (item: { url: string; type: string }) => void;
 }) {
-  if (loading) return <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-24 rounded-2xl bg-secondary animate-pulse" />)}</div>;
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const toggleExpand = (id: number) => setExpandedIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  if (loading) return (
+    <div className="space-y-3">
+      {[0, 1, 2].map(i => (
+        <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-32 rounded-lg bg-secondary animate-pulse" />
+              <div className="h-3 w-20 rounded-lg bg-secondary animate-pulse" />
+            </div>
+          </div>
+          <div className="px-4 pb-4"><div className="h-16 rounded-xl bg-secondary/50 animate-pulse" /></div>
+        </div>
+      ))}
+    </div>
+  );
   if (!submissions.length) return <EmptyState icon={<FileText className="h-8 w-8" />} text="No submissions yet" />;
 
   const slotsLeft = maxWinners - currentWinners;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {slotsLeft > 0 && (
-        <p className="text-xs text-muted-foreground bg-secondary rounded-xl px-4 py-2 border border-border">
-          {slotsLeft} winner slot{slotsLeft > 1 ? "s" : ""} remaining
-        </p>
+        <div className="flex items-center gap-2.5 text-xs bg-primary/5 border border-primary/20 rounded-xl px-4 py-2.5">
+          <Crown className="h-3.5 w-3.5 text-primary shrink-0" />
+          <span className="text-primary font-medium">{slotsLeft} winner slot{slotsLeft > 1 ? "s" : ""} remaining</span>
+        </div>
       )}
       {submissions.map((sub) => {
         const isWinner = winnerIds.includes(sub.userId);
         const canSel = slotsLeft > 0 && !isWinner;
+        const captures = sub.captures ?? [];
+        const media = sub.media ?? [];
+        const isExpanded = expandedIds.has(sub.id);
+        const shouldTruncate = !requiresActionCam && (sub.content?.length ?? 0) > 250;
+
         return (
-          <div key={sub.id} className={cn("rounded-2xl border p-5 space-y-3", isWinner ? "border-gold/25 bg-gold/5" : "border-border bg-card")}>
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-9 w-9 shrink-0">
-                  <AvatarImage src={sub.user?.image ?? ""} />
-                  <AvatarFallback className="text-xs bg-secondary">{(sub.user?.name ?? "U").charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="text-sm font-semibold">{sub.user?.name ?? "Anonymous"}</p>
-                  <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(sub.createdAt), { addSuffix: true })}</p>
+          <div
+            key={sub.id}
+            className={cn(
+              "rounded-2xl border overflow-hidden transition-all duration-200",
+              isWinner
+                ? "border-gold/30 bg-gradient-to-br from-gold/[0.04] via-card to-card"
+                : "border-border bg-card",
+            )}
+          >
+            {/* Header row */}
+            <div className="flex items-center justify-between gap-3 p-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative shrink-0">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={sub.user?.image ?? ""} />
+                    <AvatarFallback className="text-xs bg-secondary font-semibold">{(sub.user?.name ?? "U").charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  {isWinner && (
+                    <span className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-gold flex items-center justify-center ring-2 ring-card">
+                      <Crown className="h-2.5 w-2.5 text-gold-foreground" />
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold truncate">{sub.user?.name ?? "Anonymous"}</p>
+                    {isWinner && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gold bg-gold/10 border border-gold/20 px-2 py-0.5 rounded-full shrink-0">
+                        Winner
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatDistanceToNow(new Date(sub.createdAt), { addSuffix: true })}
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {isWinner && (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold text-gold bg-gold/10 border border-gold/20 px-2.5 py-1 rounded-full">
-                    <Crown className="h-3 w-3" />Winner
-                  </span>
-                )}
-                <Button size="sm" variant="outline" className="h-8 text-xs border-border gap-1.5" onClick={() => onView(sub)}>
-                  <Eye className="h-3 w-3" />View
-                </Button>
+
+              <div className="flex items-center gap-2 shrink-0">
                 {canSel && (
-                  <Button size="sm" variant="outline" className="h-8 text-xs border-gold/25 text-gold hover:bg-gold/10 gap-1.5"
-                    onClick={() => onSelectWinner(sub.userId)} disabled={selecting}>
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs bg-gold/10 text-gold border border-gold/25 hover:bg-gold/20 gap-1.5"
+                    onClick={() => onSelectWinner(sub.userId)}
+                    disabled={selecting}
+                  >
                     {selecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Crown className="h-3 w-3" />}
-                    Select Winner
+                    <span className="hidden sm:inline">Select Winner</span>
                   </Button>
                 )}
               </div>
             </div>
-            {/* Markdown preview snippet */}
-            <div className="relative">
-              <div className="max-h-24 overflow-hidden text-sm text-muted-foreground leading-relaxed">
-                <Markdown content={sub.content} compact />
+
+            {/* Markdown content — show whenever the submission has text.
+                Action Cam submissions store content="" so they won't render this. */}
+            {sub.content && (
+              <div className="px-4 pb-3">
+                <div className={cn(
+                  "text-sm text-muted-foreground leading-relaxed",
+                  !isExpanded && shouldTruncate && "line-clamp-4",
+                )}>
+                  <Markdown content={isExpanded || !shouldTruncate ? sub.content : sub.content.slice(0, 250) + "…"} compact />
+                </div>
+                {shouldTruncate && (
+                  <button
+                    onClick={() => toggleExpand(sub.id)}
+                    className="mt-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+                  >
+                    {isExpanded ? "Show less" : "Continue reading"}
+                  </button>
+                )}
               </div>
-              {/* Fade indicator so the user knows there's more */}
-            </div>
+            )}
+
+            {/* Media grid — captures + legacy combined — owner gets download + validation */}
+            {(captures.length > 0 || media.length > 0) && (
+              <div className="px-4 pb-4">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {captures.map((cap) => (
+                    <div key={`cap-${cap.id}`} className="group/card rounded-xl border border-border bg-muted overflow-hidden">
+                      <button
+                        onClick={() => onOpenMedia({ url: cap.captureStorageUrl, type: cap.captureType })}
+                        className="group/thumb relative w-full aspect-square overflow-hidden"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={cap.capturePreviewUrl ?? cap.captureStorageUrl}
+                          alt=""
+                          className="h-full w-full object-cover transition-transform group-hover/thumb:scale-105"
+                        />
+                        <div className="absolute top-1.5 left-1.5 h-5 w-5 rounded-full bg-foreground/60 backdrop-blur-sm flex items-center justify-center">
+                          {cap.captureType === "VIDEO" ? <Video className="h-2.5 w-2.5 text-background" /> : <Camera className="h-2.5 w-2.5 text-background" />}
+                        </div>
+                        <div className="absolute inset-0 bg-foreground/0 group-hover/thumb:bg-foreground/20 transition-colors" />
+                      </button>
+                      <div className="px-1.5 py-1 flex items-center justify-between gap-1">
+                        {cap.validation ? (
+                          <CaptureValidationBadge validation={cap.validation} compact />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground uppercase">{cap.captureType}</span>
+                        )}
+                        <a href={cap.captureStorageUrl} target="_blank" rel="noopener noreferrer" className="h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors" title="Download">
+                          <Download className="h-3 w-3" />
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                  {media.map((m) => (
+                    <div key={`med-${m.id}`} className="group/card rounded-xl border border-border bg-muted overflow-hidden">
+                      <button
+                        onClick={() => onOpenMedia({ url: m.url, type: m.type })}
+                        className="group/thumb relative w-full aspect-square overflow-hidden"
+                      >
+                        {m.type === "IMAGE" ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={m.url} alt="" className="h-full w-full object-cover transition-transform group-hover/thumb:scale-105" />
+                            <div className="absolute inset-0 bg-foreground/0 group-hover/thumb:bg-foreground/20 transition-colors" />
+                          </>
+                        ) : (
+                          <div className="h-full w-full flex flex-col items-center justify-center gap-1.5 bg-secondary">
+                            {m.type === "VIDEO" ? <Video className="h-6 w-6 text-muted-foreground" /> : <FileText className="h-6 w-6 text-muted-foreground" />}
+                            <span className="text-[10px] text-muted-foreground truncate max-w-[90%] px-1">{m.fileName ?? m.type.toLowerCase()}</span>
+                          </div>
+                        )}
+                      </button>
+                      <div className="px-1.5 py-1 flex items-center justify-between gap-1">
+                        <span className="text-[10px] text-muted-foreground uppercase truncate">{m.type}</span>
+                        <a href={m.url} target="_blank" rel="noopener noreferrer" className="h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors" title="Download">
+                          <Download className="h-3 w-3" />
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -1196,32 +1416,161 @@ function RequirementsList({
 }
 
 /* ── User reports tab ────────────────────────────────────────────────────────── */
-function UserReportsTab({ submissions, loading, onView }: { submissions: Submission[]; loading: boolean; onView: (s: Submission) => void }) {
-  if (loading) return <div className="space-y-3">{[0, 1].map(i => <div key={i} className="h-24 rounded-2xl bg-secondary animate-pulse" />)}</div>;
+function UserReportsTab({ submissions, loading, requiresActionCam, onOpenMedia }: {
+  submissions: Submission[]; loading: boolean; requiresActionCam: boolean;
+  onOpenMedia: (item: { url: string; type: string }) => void;
+}) {
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const toggleExpand = (id: number) => setExpandedIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  if (loading) return (
+    <div className="space-y-3">
+      {[0, 1].map(i => (
+        <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-secondary animate-pulse" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-28 rounded-lg bg-secondary animate-pulse" />
+              <div className="h-3 w-16 rounded-lg bg-secondary animate-pulse" />
+            </div>
+          </div>
+          <div className="px-4 pb-4"><div className="h-16 rounded-xl bg-secondary/50 animate-pulse" /></div>
+        </div>
+      ))}
+    </div>
+  );
   if (!submissions.length) return <EmptyState icon={<FileText className="h-8 w-8" />} text="You haven't submitted yet" />;
 
   return (
-    <div className="space-y-4">
-      {submissions.map((sub) => (
-        <div key={sub.id} className="rounded-2xl border border-border bg-card p-5 space-y-3">
+    <div className="space-y-3">
+      {submissions.map((sub) => {
+        const captures = sub.captures ?? [];
+        const media = sub.media ?? [];
+        const totalCaptures = captures.length;
+        const approvedCount = captures.filter((c) => c.status === "APPROVED").length;
+        const rejectedCount = captures.filter((c) => c.status === "REJECTED").length;
+        const pendingCount = totalCaptures - approvedCount - rejectedCount;
+        const isExpanded = expandedIds.has(sub.id);
+        const shouldTruncate = !requiresActionCam && (sub.content?.length ?? 0) > 250;
 
-          {/* Markdown preview snippet */}
-          <div className="relative">
-            <div className="max-h-38 overflow-hidden text-sm text-muted-foreground leading-relaxed">
-              <Markdown content={sub.content} compact />
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+        return (
+          <div
+            key={sub.id}
+            className="rounded-2xl border border-border bg-card overflow-hidden"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 p-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <Avatar className="h-10 w-10 shrink-0">
+                  <AvatarImage src={sub.user?.image ?? ""} />
+                  <AvatarFallback className="text-xs bg-secondary font-semibold">
+                    {(sub.user?.name ?? "U").charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">
+                    {sub.user?.name ?? "You"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatDistanceToNow(new Date(sub.createdAt), { addSuffix: true })}
+                  </p>
+                </div>
+              </div>
 
-              <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(sub.createdAt), { addSuffix: true })}</span>
+              {/* Capture status pills */}
+              {totalCaptures > 0 && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {approvedCount > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                      <CheckCircle2 className="h-3 w-3" />
+                      {approvedCount}
+                    </span>
+                  )}
+                  {pendingCount > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground bg-secondary border border-border px-2 py-0.5 rounded-full">
+                      <Clock className="h-3 w-3" />
+                      {pendingCount}
+                    </span>
+                  )}
+                  {rejectedCount > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 px-2 py-0.5 rounded-full">
+                      <X className="h-3 w-3" />
+                      {rejectedCount}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-            <Button size="sm" variant="outline" className="h-8 text-xs border-border gap-1.5" onClick={() => onView(sub)}>
-              <Eye className="h-3 w-3" />View
-            </Button>
+
+            {/* Markdown content — show whenever the submission has text.
+                Action Cam submissions store content="" so they won't render this. */}
+            {sub.content && (
+              <div className="px-4 pb-3">
+                <div className={cn(
+                  "text-sm text-muted-foreground leading-relaxed",
+                  !isExpanded && shouldTruncate && "line-clamp-4",
+                )}>
+                  <Markdown content={isExpanded || !shouldTruncate ? sub.content : sub.content.slice(0, 250) + "…"} compact />
+                </div>
+                {shouldTruncate && (
+                  <button
+                    onClick={() => toggleExpand(sub.id)}
+                    className="mt-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+                  >
+                    {isExpanded ? "Show less" : "Continue reading"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Media grid — captures + legacy combined */}
+            {(captures.length > 0 || media.length > 0) && (
+              <div className="px-4 pb-4">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {captures.map((cap) => (
+                    <button
+                      key={`cap-${cap.id}`}
+                      onClick={() => onOpenMedia({ url: cap.captureStorageUrl, type: cap.captureType })}
+                      className="group/thumb relative aspect-square rounded-xl overflow-hidden border border-border bg-muted hover:border-primary/40 transition-all"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={cap.capturePreviewUrl ?? cap.captureStorageUrl}
+                        alt=""
+                        className="h-full w-full object-cover transition-transform group-hover/thumb:scale-105"
+                      />
+                      <div className="absolute top-1.5 left-1.5 h-5 w-5 rounded-full bg-foreground/60 backdrop-blur-sm flex items-center justify-center">
+                        {cap.captureType === "VIDEO" ? <Video className="h-2.5 w-2.5 text-background" /> : <Camera className="h-2.5 w-2.5 text-background" />}
+                      </div>
+                      <div className="absolute inset-0 bg-foreground/0 group-hover/thumb:bg-foreground/20 transition-colors" />
+                    </button>
+                  ))}
+                  {media.map((m) => (
+                    <button
+                      key={`med-${m.id}`}
+                      onClick={() => onOpenMedia({ url: m.url, type: m.type })}
+                      className="group/thumb relative aspect-square rounded-xl overflow-hidden border border-border bg-muted hover:border-primary/40 transition-all"
+                    >
+                      {m.type === "IMAGE" ? (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={m.url} alt="" className="h-full w-full object-cover transition-transform group-hover/thumb:scale-105" />
+                          <div className="absolute inset-0 bg-foreground/0 group-hover/thumb:bg-foreground/20 transition-colors" />
+                        </>
+                      ) : (
+                        <div className="h-full w-full flex flex-col items-center justify-center gap-1.5 bg-secondary">
+                          {m.type === "VIDEO" ? <Video className="h-6 w-6 text-muted-foreground" /> : <FileText className="h-6 w-6 text-muted-foreground" />}
+                          <span className="text-[10px] text-muted-foreground truncate max-w-[90%] px-1">{m.fileName ?? m.type.toLowerCase()}</span>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
