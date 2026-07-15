@@ -195,7 +195,7 @@ export default function CreateBountyPage() {
       } catch (e) {
         console.error("Funding transaction failed", e);
         toast.error("Funding transaction could not be confirmed.");
-        deleteBountyMutation.mutateAsync({ bountyId: variables.bountyId }).catch(() => {});
+        await deleteBountyMutation.mutateAsync({ bountyId: variables.bountyId });
         setStep("form");
       }
     },
@@ -213,7 +213,7 @@ export default function CreateBountyPage() {
           signWith: needSign(),
         });
       } catch {
-        await deleteBountyMutation.mutateAsync({ bountyId: bounty.id }).catch(() => {});
+        await deleteBountyMutation.mutateAsync({ bountyId: bounty.id })
       }
     },
     onError: (e) => {
