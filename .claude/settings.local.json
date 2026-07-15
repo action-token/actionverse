@@ -13,7 +13,8 @@
       "Bash(node -e \"console.log\\(require\\('./node_modules/@stellar/stellar-sdk/package.json'\\).version\\)\")",
       "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./node_modules/@stellar/stellar-sdk/package.json'\\).exports, null, 2\\)\\)\")",
       "Bash(timeout 180 pnpm exec tsc --noEmit)",
-      "Bash(echo \"EXIT:$?\")"
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(pnpm db:push)"
     ]
   },
   "enabledPlugins": {

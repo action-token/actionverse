@@ -6,15 +6,15 @@ import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 import { BountyStatus } from "@prisma/client"
 import { cn } from "~/lib/utils"
 
-const BOUNTY_PATH_RE = /\/bounty\/(\d+)/g
+const BOUNTY_PATH_RE = /\/bounty\/([a-zA-Z0-9-]+)/g
 
-export function extractBountyIds(content: string): number[] {
-  const ids: number[] = []
+export function extractBountyIds(content: string): string[] {
+  const ids: string[] = []
   let match: RegExpExecArray | null
   const re = new RegExp(BOUNTY_PATH_RE.source, "g")
   while ((match = re.exec(content)) !== null) {
-    const id = Number(match[1])
-    if (!isNaN(id) && !ids.includes(id)) ids.push(id)
+    const id = match[1]
+    if (id && !ids.includes(id)) ids.push(id)
   }
   return ids
 }
@@ -25,7 +25,7 @@ const statusLabel: Record<BountyStatus, { text: string; dot: string }> = {
   COMPLETED: { text: "Ended", dot: "bg-gray-400" },
 }
 
-function BountyEmbed({ bountyId }: { bountyId: number }) {
+function BountyEmbed({ bountyId }: { bountyId: string }) {
   const router = useRouter()
   const { data: bounty, isLoading } = api.bounty.Bounty.getBounty.useQuery(
     { bountyId },

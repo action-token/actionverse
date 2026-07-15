@@ -128,7 +128,7 @@ export async function buildCreateBountyXDR({
   amount,
   maxWinners,
 }: {
-  bountyId: number;
+  bountyId: string;
   creatorPubKey: string;
   assetCode: string;
   assetIssuer: string | null;
@@ -139,7 +139,7 @@ export async function buildCreateBountyXDR({
   const client = getClient(creatorPubKey);
   const token = resolveTokenAddress(assetCode, assetIssuer);
   const tx = await client.create_bounty({
-    bounty_id: BigInt(bountyId),
+    bounty_id: bountyId,
     creator: creatorPubKey,
     token,
     amount: toContractAmount(amount),
@@ -155,7 +155,7 @@ export async function buildSelectWinnerXDR({
   winnerPubKey,
   amount,
 }: {
-  bountyId: number;
+  bountyId: string;
   creatorPubKey: string;
   winnerPubKey: string;
   amount: number;
@@ -163,7 +163,7 @@ export async function buildSelectWinnerXDR({
   const client = getClient(creatorPubKey);
   const tx = await client.select_winner({
     caller: creatorPubKey,
-    bounty_id: BigInt(bountyId),
+    bounty_id: bountyId,
     winner: winnerPubKey,
     amount: toContractAmount(amount),
   });
@@ -175,12 +175,12 @@ export async function buildClaimXDR({
   bountyId,
   winnerPubKey,
 }: {
-  bountyId: number;
+  bountyId: string;
   winnerPubKey: string;
 }): Promise<string> {
   const client = getClient(winnerPubKey);
   const tx = await client.claim_reward({
-    bounty_id: BigInt(bountyId),
+    bounty_id: bountyId,
     winner: winnerPubKey,
   });
   return tx.toXDR();
@@ -191,27 +191,27 @@ export async function buildCancelBountyXDR({
   bountyId,
   creatorPubKey,
 }: {
-  bountyId: number;
+  bountyId: string;
   creatorPubKey: string;
 }): Promise<string> {
   const client = getClient(creatorPubKey);
   const tx = await client.cancel_bounty({
     caller: creatorPubKey,
-    bounty_id: BigInt(bountyId),
+    bounty_id: bountyId,
   });
   return tx.toXDR();
 }
 
-export async function getOnChainBounty(bountyId: number) {
+export async function getOnChainBounty(bountyId: string) {
   const client = getClient();
-  const tx = await client.get_bounty({ bounty_id: BigInt(bountyId) });
+  const tx = await client.get_bounty({ bounty_id: bountyId });
   return tx.result.isOk() ? tx.result.unwrap() : null;
 }
 
-export async function getOnChainWinnerAward(bountyId: number, winnerPubKey: string) {
+export async function getOnChainWinnerAward(bountyId: string, winnerPubKey: string) {
   const client = getClient();
   const tx = await client.get_winner_award({
-    bounty_id: BigInt(bountyId),
+    bounty_id: bountyId,
     winner: winnerPubKey,
   });
   return tx.result;
@@ -229,25 +229,25 @@ export async function verifyContractTransaction(txHash: string): Promise<boolean
 
 /** Build XDR for the admin-only bounty TTL extension. */
 export async function buildAdminExtendBountyTTLXDR(
-  bountyId: number,
+  bountyId: string,
   adminPubKey: string,
 ): Promise<string> {
   const client = getClient(adminPubKey);
   const tx = await client.admin_extend_bounty_ttl({
-    bounty_id: BigInt(bountyId),
+    bounty_id: bountyId,
   });
   return tx.toXDR();
 }
 
 /** Build XDR for the admin-only winner-award TTL extension. */
 export async function buildAdminExtendWinnerAwardTTLXDR(
-  bountyId: number,
+  bountyId: string,
   winnerPubKey: string,
   adminPubKey: string,
 ): Promise<string> {
   const client = getClient(adminPubKey);
   const tx = await client.admin_extend_winner_award_ttl({
-    bounty_id: BigInt(bountyId),
+    bounty_id: bountyId,
     winner: winnerPubKey,
   });
   return tx.toXDR();
@@ -275,13 +275,14 @@ export async function getCurrentLedger(): Promise<number> {
 }
 
 /** Check the TTL of a specific bounty entry. */
-export async function getBountyTTL(bountyId: number): Promise<StorageTTL | null> {
+export async function getBountyTTL(bountyId: string): Promise<StorageTTL | null> {
   const server = new rpc.Server(SOROBAN_RPC_URL);
   const currentLedger = await getCurrentLedger();
 
+  // DataKey::Bounty(String) — variant index 2 + the UUID string
   const key = xdr.ScVal.scvVec([
-    xdr.ScVal.scvU32(2), // DataKey::Bounty variant index
-    xdr.ScVal.scvU64(BigInt(bountyId) as unknown as xdr.Uint64),
+    xdr.ScVal.scvU32(2),
+    xdr.ScVal.scvString(bountyId),
   ]);
 
   const contractId = BOUNTY_ESCROW_CONTRACT_ID.startsWith("C")

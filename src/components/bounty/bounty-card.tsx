@@ -11,7 +11,7 @@ import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-
 import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store";
 
 type BountyCardData = {
-  id: number;
+  id: string;
   title: string;
   summary: string;
   description: string;

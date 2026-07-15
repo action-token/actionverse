@@ -130,7 +130,7 @@ function uid(): string {
 interface ActionCamCaptureModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  bountyId: number;
+  bountyId: string;
   onSubmitted?: (submissionIds: number[]) => void;
 }
 

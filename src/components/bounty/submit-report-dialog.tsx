@@ -34,7 +34,7 @@ interface UploadedMedia {
 }
 
 interface SubmitReportDialogProps {
-  bountyId: number;
+  bountyId: string;
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;

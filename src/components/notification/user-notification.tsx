@@ -23,7 +23,8 @@ type NotificationItem = {
     isCreator: boolean
     notificationObject: {
         entityType: NotificationType
-        entityId: number
+        entityId: number | null
+        entityStringId: string | null
         createdAt: Date
         actor: { id: string; name: string | null; image: string | null }
     }
@@ -145,7 +146,7 @@ const getNotificationUrl = (n: NotificationItem) => {
         case NotificationType.BOUNTY_PARTICIPANT:
         case NotificationType.BOUNTY_SUBMISSION:
         case NotificationType.BOUNTY_WINNER:
-            return `/bounty/${n.notificationObject.entityId}`
+            return `/bounty/${n.notificationObject.entityStringId}`
         case NotificationType.COMMUNITY_POST:
         case NotificationType.COMMUNITY_COMMENT:
         case NotificationType.COMMUNITY_REPLY:

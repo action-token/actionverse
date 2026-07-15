@@ -39,7 +39,7 @@ const MAX_INSTRUCTION = 200;
 
 export default function EditBountyPage() {
   const router = useRouter();
-  const id = parseInt(router.query.id as string);
+  const id = router.query.id as string;
   const { data: session, status } = useSession();
 
   /* form state */
@@ -59,7 +59,7 @@ export default function EditBountyPage() {
   }, [status, router]);
 
   /* load bounty */
-  const bountyQ = api.bounty.Bounty.getBounty.useQuery({ bountyId: id }, { enabled: !!id && !isNaN(id) });
+  const bountyQ = api.bounty.Bounty.getBounty.useQuery({ bountyId: id }, { enabled: !!id });
   const bounty = bountyQ.data;
   const isOwner = session?.user?.id === bounty?.userId;
 

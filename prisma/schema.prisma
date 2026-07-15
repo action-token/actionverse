@@ -79,7 +79,10 @@ model Notification {
 model NotificationObject {
     id           Int              @id @default(autoincrement())
     entityType   NotificationType
-    entityId     Int
+    // Int id for entities with numeric PKs (Post, Comment, Follow, CommunityMember, ...).
+    entityId     Int?
+    // String id for entities with non-numeric PKs (Bounty uses a UUID).
+    entityStringId String?
     createdAt    DateTime         @default(now())
     Notification Notification[]
     actorId      String
@@ -1156,7 +1159,7 @@ enum BountySubmissionStatus {
 }
 
 model Bounty {
-    id          Int          @id @default(autoincrement())
+    id          String       @id @default(uuid())
     title       String
     summary     String
     description String
@@ -1204,7 +1207,7 @@ model Bounty {
 
 model BountyParticipant {
     id       Int    @id @default(autoincrement())
-    bountyId Int
+    bountyId String
     bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
     userId   String
     user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1218,7 +1221,7 @@ model BountyParticipant {
 
 model BountySubmission {
     id       Int    @id @default(autoincrement())
-    bountyId Int
+    bountyId String
     bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
     userId   String
     user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1290,7 +1293,7 @@ model BountySubmissionCapture {
 
 model BountyWinner {
     id       Int    @id @default(autoincrement())
-    bountyId Int
+    bountyId String
     bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
     userId   String
     user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)

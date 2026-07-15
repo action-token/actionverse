@@ -10,6 +10,7 @@ const notificationInclude = {
     select: {
       entityType: true,
       entityId: true,
+      entityStringId: true,
       createdAt: true,
       actor: {
         select: {

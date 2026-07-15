@@ -5,4 +5,4 @@ export const EXPRESS_SERVER_URL = "https://portal.actn.xyz/actionverse/api/"
 
 // Bounty escrow Soroban contract ID.
 // TODO: Replace with the actual contract ID after deploying the contract.
-export const BOUNTY_ESCROW_CONTRACT_ID = "CCWJHRCWA2HYOBAINZTOEABDWPYD3TZ2ADQL7BEK3BTTKCVLGBZJEXOS";
+export const BOUNTY_ESCROW_CONTRACT_ID = "CC6LOIHN7I5JY6FAHSAXIPLAXFGEKBRNQIPERPTVI72YINPPEYJ6EE44";

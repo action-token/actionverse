@@ -60,7 +60,7 @@ export default function AdminBountyTTL() {
   const utils = api.useContext()
   const admin = api.wallate.admin.checkAdmin.useQuery()
 
-  const [extendingBountyId, setExtendingBountyId] = useState<number | null>(null)
+  const [extendingBountyId, setExtendingBountyId] = useState<string | null>(null)
   const [extendingWinnerId, setExtendingWinnerId] = useState<string | null>(null)
   const [extendingInstance, setExtendingInstance] = useState(false)
 
@@ -104,7 +104,7 @@ export default function AdminBountyTTL() {
     throw new Error("Unexpected signing result")
   }
 
-  async function handleExtendBounty(bountyId: number) {
+  async function handleExtendBounty(bountyId: string) {
     setExtendingBountyId(bountyId)
     const toastId = toast.loading("Building extend transaction...")
     try {
@@ -125,7 +125,7 @@ export default function AdminBountyTTL() {
     }
   }
 
-  async function handleExtendWinner(bountyId: number, winnerId: string) {
+  async function handleExtendWinner(bountyId: string, winnerId: string) {
     setExtendingWinnerId(winnerId)
     const toastId = toast.loading("Building winner award extend transaction...")
     try {

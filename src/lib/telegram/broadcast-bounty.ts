@@ -13,7 +13,7 @@ import { BASE_URL } from "../common";
  */
 
 interface BountyBroadcastInput {
-  id: number;
+  id: string;
   title: string;
   summary: string;
   prizeAmount: number;

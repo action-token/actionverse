@@ -36,7 +36,6 @@ import { s3Client } from "~/server/s3";
 import { TRPCError } from "@trpc/server";
 
 // Helper: include shape used by bounty queries that surface the owner.
-// Returns `name`, `image`, and `id` of the user (not the legacy creator profile).
 const ownerSelect = { id: true, name: true, image: true } as const;
 
 function deriveSubmissionValidation(
@@ -69,12 +68,7 @@ function deriveSubmissionValidation(
 }
 
 export const BountyRoute = createTRPCRouter({
-  // ── ANY AUTHORIZED USER: create bounty row (unfunded until payment confirms) ──
-  // Contract-backed and legacy bounties both go through create -> pay -> confirm
-  // now, so the on-chain bounty_id (== this row's id) always exists before the
-  // escrow contract's create_bounty call needs it. For legacy (no escrow
-  // contract configured) bounties this is a harmless reordering — the classic
-  // payment doesn't depend on when the DB row was created.
+  // ── Create bounty row (DB generates UUID via @default(uuid())) ──
   createBounty: protectedProcedure
     .input(
       z.object({
@@ -87,11 +81,7 @@ export const BountyRoute = createTRPCRouter({
         instructions: z.array(z.string()).min(1),
         prizeAssetCode: z.string(),
         prizeAssetIssuer: z.string().nullable().default(null),
-        // Action Cam: when true, submissions must use the live capture + seal flow.
-        // Owner can toggle off later via `updateBounty`.
         requiresActionCam: z.boolean().default(false),
-        // Fund escrow from the owner's Creator storage account (custodial,
-        // server holds the secret) instead of their own wallet/session identity.
         fromCreatorWallet: z.boolean().default(false),
       }),
     )
@@ -117,9 +107,9 @@ export const BountyRoute = createTRPCRouter({
       return bounty;
     }),
 
-  // ── OWNER: get XDR to fund the bounty's on-chain escrow ───────────────────
+  // ── OWNER: get XDR to fund the bounty's on-chain escrow ───────
   getCreateBountyXDR: protectedProcedure
-    .input(z.object({ bountyId: z.number(), signWith: SignUser }))
+    .input(z.object({ bountyId: z.string(), signWith: SignUser }))
     .mutation(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
@@ -149,11 +139,9 @@ export const BountyRoute = createTRPCRouter({
       return { xdr: signedXdr, pubKey: creatorPubKey, fullySignedByServer };
     }),
 
-  // ── OWNER: confirm funding succeeded on-chain, activate the bounty ───────
-  // Verifies the invoke transaction actually succeeded before recording it —
-  // the client's report of "submitted" alone is never trusted.
+  // ── OWNER: confirm funding succeeded on-chain ─────────────────
   confirmBountyFunded: protectedProcedure
-    .input(z.object({ bountyId: z.number(), txHash: z.string() }))
+    .input(z.object({ bountyId: z.string(), txHash: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
@@ -162,10 +150,13 @@ export const BountyRoute = createTRPCRouter({
       if (!bounty) throw new Error("Bounty not found");
       if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
-      if (bounty.txHash) return bounty; // already confirmed — idempotent
+      if (bounty.txHash) return bounty;
 
       const ok = await verifyContractTransaction(input.txHash);
-      if (!ok) throw new Error("Funding transaction did not succeed on-chain");
+      if (!ok) {
+        await ctx.db.bounty.delete({ where: { id: input.bountyId } });
+        throw new Error("Funding transaction did not succeed on-chain");
+      }
 
       const updated = await ctx.db.bounty.update({
         where: { id: input.bountyId },
@@ -173,8 +164,6 @@ export const BountyRoute = createTRPCRouter({
         include: { user: { select: { name: true } } },
       });
 
-      // Fire-and-forget: notify the Telegram channel if the admin has configured one.
-      // Errors are swallowed so a Telegram outage never fails bounty funding.
       void broadcastBounty({
         id: updated.id,
         title: updated.title,
@@ -191,11 +180,26 @@ export const BountyRoute = createTRPCRouter({
       return updated;
     }),
 
+  // ── OWNER: delete an unfunded bounty (payment failed or user abandoned) ──
+  deleteUnfundedBounty: protectedProcedure
+    .input(z.object({ bountyId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const bounty = await ctx.db.bounty.findUnique({
+        where: { id: input.bountyId },
+      });
+      if (!bounty) throw new Error("Bounty not found");
+      if (bounty.userId !== ctx.session.user.id)
+        throw new Error("Not authorized");
+      if (bounty.txHash) throw new Error("Cannot delete a funded bounty");
+      await ctx.db.bounty.delete({ where: { id: input.bountyId } });
+      return { deleted: true };
+    }),
+
   // ── OWNER: update bounty info ─────────────────────────────────────────────
   updateBounty: protectedProcedure
     .input(
       z.object({
-        bountyId: z.number(),
+        bountyId: z.string(),
         title: z.string().min(1).max(120).optional(),
         summary: z.string().max(600).optional(),
         description: z.string().max(6000).optional(),
@@ -225,7 +229,7 @@ export const BountyRoute = createTRPCRouter({
   updateBountyStatus: protectedProcedure
     .input(
       z.object({
-        bountyId: z.number(),
+        bountyId: z.string(),
         status: z.nativeEnum(BountyStatus),
       }),
     )
@@ -247,7 +251,7 @@ export const BountyRoute = createTRPCRouter({
   getMyBounties: protectedProcedure
     .input(
       z.object({
-        cursor: z.number().optional(),
+        cursor: z.string().optional(),
         limit: z.number().default(20),
         status: z.nativeEnum(BountyStatus).optional(),
         search: z.string().optional(),
@@ -273,7 +277,7 @@ export const BountyRoute = createTRPCRouter({
         },
       });
 
-      let nextCursor: number | undefined;
+      let nextCursor: string | undefined;
       if (items.length > input.limit) {
         nextCursor = items.pop()!.id;
       }
@@ -282,7 +286,7 @@ export const BountyRoute = createTRPCRouter({
 
   // ── OWNER: get single bounty with full details ────────────────────────────
   getBountyForOwner: protectedProcedure
-    .input(z.object({ bountyId: z.number() }))
+    .input(z.object({ bountyId: z.string() }))
     .query(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
@@ -306,7 +310,7 @@ export const BountyRoute = createTRPCRouter({
 
   // ── OWNER: get all submissions for a bounty ───────────────────────────────
   getBountySubmissions: protectedProcedure
-    .input(z.object({ bountyId: z.number() }))
+    .input(z.object({ bountyId: z.string() }))
     .query(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
@@ -341,7 +345,7 @@ export const BountyRoute = createTRPCRouter({
   getSelectWinnerXDR: protectedProcedure
     .input(
       z.object({
-        bountyId: z.number(),
+        bountyId: z.string(),
         winnerId: z.string(),
         prizeAmount: z.number().positive(),
         signWith: SignUser,
@@ -387,7 +391,7 @@ export const BountyRoute = createTRPCRouter({
   selectWinner: protectedProcedure
     .input(
       z.object({
-        bountyId: z.number(),
+        bountyId: z.string(),
         winnerId: z.string(),
         prizeAmount: z.number().positive(),
         txHash: z.string(),
@@ -430,7 +434,7 @@ export const BountyRoute = createTRPCRouter({
       const notifObj = await ctx.db.notificationObject.create({
         data: {
           entityType: NotificationType.BOUNTY_WINNER,
-          entityId: bounty.id,
+          entityStringId: bounty.id,
           actorId: ctx.session.user.id,
         },
       });
@@ -517,7 +521,7 @@ export const BountyRoute = createTRPCRouter({
   getPublicBounties: publicProcedure
     .input(
       z.object({
-        cursor: z.number().optional(),
+        cursor: z.string().optional(),
         limit: z.number().default(20),
         search: z.string().optional(),
         sortBy: z.enum(["newest", "prize"]).default("newest"),
@@ -531,7 +535,7 @@ export const BountyRoute = createTRPCRouter({
           : { createdAt: "desc" as const };
 
       const userId = ctx.session?.user?.id;
-      let joinedBountyIds: number[] = [];
+      let joinedBountyIds: string[] = [];
 
       if (userId && input.filter === "not_joined") {
         const joined = await ctx.db.bountyParticipant.findMany({
@@ -561,7 +565,7 @@ export const BountyRoute = createTRPCRouter({
         },
       });
 
-      let nextCursor: number | undefined;
+      let nextCursor: string | undefined;
       if (items.length > input.limit) {
         nextCursor = items.pop()!.id;
       }
@@ -570,7 +574,7 @@ export const BountyRoute = createTRPCRouter({
 
   // ── USER: single bounty public view ───────────────────────────────────────
   getBounty: publicProcedure
-    .input(z.object({ bountyId: z.number() }))
+    .input(z.object({ bountyId: z.string() }))
     .query(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
@@ -599,7 +603,7 @@ export const BountyRoute = createTRPCRouter({
 
   // ── USER: join bounty ──────────────────────────────────────────────────────
   joinBounty: protectedProcedure
-    .input(z.object({ bountyId: z.number() }))
+    .input(z.object({ bountyId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
@@ -629,7 +633,7 @@ export const BountyRoute = createTRPCRouter({
       const notifObj = await ctx.db.notificationObject.create({
         data: {
           entityType: NotificationType.BOUNTY_PARTICIPANT,
-          entityId: bounty.id,
+          entityStringId: bounty.id,
           actorId: ctx.session.user.id,
         },
       });
@@ -692,14 +696,14 @@ export const BountyRoute = createTRPCRouter({
       ]);
 
       type Row = {
-        bountyId: number;
+        bountyId: string;
         owned: boolean;
         joinedAt: Date;
         bounty: (typeof owned)[number];
       };
 
       // Owned takes precedence over joined when both exist (dedupe by bountyId).
-      const map = new Map<number, Row>();
+      const map = new Map<string, Row>();
       for (const j of joined) {
         map.set(j.bountyId, {
           bountyId: j.bountyId,
@@ -781,7 +785,7 @@ export const BountyRoute = createTRPCRouter({
   submitReport: protectedProcedure
     .input(
       z.object({
-        bountyId: z.number(),
+        bountyId: z.string(),
         content: z.string().min(1),
         media: z
           .array(
@@ -835,7 +839,7 @@ export const BountyRoute = createTRPCRouter({
       const notifObj = await ctx.db.notificationObject.create({
         data: {
           entityType: NotificationType.BOUNTY_SUBMISSION,
-          entityId: bounty.id,
+          entityStringId: bounty.id,
           actorId: ctx.session.user.id,
         },
       });
@@ -852,7 +856,7 @@ export const BountyRoute = createTRPCRouter({
 
   // ── USER: get my submissions for a bounty ────────────────────────────────
   getMySubmissions: protectedProcedure
-    .input(z.object({ bountyId: z.number() }))
+    .input(z.object({ bountyId: z.string() }))
     .query(async ({ ctx, input }) => {
       const submissions = await ctx.db.bountySubmission.findMany({
         where: { bountyId: input.bountyId, userId: ctx.session.user.id },
@@ -874,7 +878,7 @@ export const BountyRoute = createTRPCRouter({
 
   // ── USER: check participation ─────────────────────────────────────────────
   getMyParticipation: protectedProcedure
-    .input(z.object({ bountyId: z.number() }))
+    .input(z.object({ bountyId: z.string() }))
     .query(async ({ ctx, input }) => {
       const participant = await ctx.db.bountyParticipant.findUnique({
         where: {
@@ -899,7 +903,7 @@ export const BountyRoute = createTRPCRouter({
   getClaimRewardXDR: protectedProcedure
     .input(
       z.object({
-        bountyId: z.number(),
+        bountyId: z.string(),
         signWith: SignUser,
       }),
     )
@@ -929,7 +933,7 @@ export const BountyRoute = createTRPCRouter({
   claimReward: protectedProcedure
     .input(
       z.object({
-        bountyId: z.number(),
+        bountyId: z.string(),
         txHash: z.string(),
       }),
     )
@@ -1013,7 +1017,7 @@ export const BountyRoute = createTRPCRouter({
       type Activity = {
         id: string;
         type: "join" | "submit" | "win";
-        bountyId: number;
+        bountyId: string;
         bountyTitle: string;
         userName: string | null;
         userImage: string | null;
@@ -1105,7 +1109,7 @@ export const BountyRoute = createTRPCRouter({
       type Activity = {
         id: string;
         type: "join" | "submit" | "win";
-        bountyId: number;
+        bountyId: string;
         bountyTitle: string;
         userName: string | null;
         userImage: string | null;
@@ -1248,7 +1252,7 @@ Rules:
   submitCapture: protectedProcedure
     .input(
       z.object({
-        bountyId: z.number().int().positive(),
+        bountyId: z.string(),
         captures: z
           .array(
             z.object({
@@ -1610,7 +1614,7 @@ Rules:
 
   // ── ADMIN: read a specific bounty entry TTL ───────────────────────────────
   getAdminBountyTTL: adminProcedure
-    .input(z.object({ bountyId: z.number() }))
+    .input(z.object({ bountyId: z.string() }))
     .query(async ({ input }) => {
       return getBountyTTL(input.bountyId);
     }),
@@ -1619,7 +1623,7 @@ Rules:
   getAdminBountyList: adminProcedure
     .input(
       z.object({
-        cursor: z.number().optional(),
+        cursor: z.string().optional(),
         limit: z.number().default(20),
       }),
     )
@@ -1636,7 +1640,7 @@ Rules:
         },
       });
 
-      let nextCursor: number | undefined;
+      let nextCursor: string | undefined;
       if (items.length > input.limit) {
         nextCursor = items.pop()!.id;
       }
@@ -1645,7 +1649,7 @@ Rules:
 
   // ── ADMIN: build XDR to extend a bounty entry TTL ─────────────────────────
   getAdminExtendBountyTTLXDR: adminProcedure
-    .input(z.object({ bountyId: z.number() }))
+    .input(z.object({ bountyId: z.string() }))
     .mutation(async ({ input }) => {
       const adminPubKey = Keypair.fromSecret(env.MOTHER_SECRET).publicKey();
       const xdr = await buildAdminExtendBountyTTLXDR(input.bountyId, adminPubKey);
@@ -1655,7 +1659,7 @@ Rules:
 
   // ── ADMIN: build XDR to extend a winner award entry TTL ───────────────────
   getAdminExtendWinnerAwardTTLXDR: adminProcedure
-    .input(z.object({ bountyId: z.number(), winnerId: z.string() }))
+    .input(z.object({ bountyId: z.string(), winnerId: z.string() }))
     .mutation(async ({ input }) => {
       const adminPubKey = Keypair.fromSecret(env.MOTHER_SECRET).publicKey();
       const xdr = await buildAdminExtendWinnerAwardTTLXDR(

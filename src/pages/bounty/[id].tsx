@@ -63,7 +63,7 @@ import useNeedSign from "~/lib/hook";
 /* ── Types ───────────────────────────────────────────────────────────────────── */
 interface Submission {
   id: number; userId: string; content: string; status: string; createdAt: Date;
-  bountyId: number;
+  bountyId: string;
   user?: { id: string; name: string | null; image: string | null };
   media: { id: number; url: string; type: string; fileName: string | null }[];
   captures?: {
@@ -91,7 +91,7 @@ function accentGradient(amount: number) {
 export default function BountyDetailPage() {
   const router = useRouter();
   const { needSign } = useNeedSign();
-  const id = parseInt(router.query.id as string);
+  const id = router.query.id as string;
   const { data: session } = useSession();
   const openShareModal = useShareBountyModalStore((s) => s.open);
   const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore();

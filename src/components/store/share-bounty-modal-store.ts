@@ -1,7 +1,7 @@
 import { create } from "zustand"
 
 interface ShareBountyData {
-  id: number
+  id: string
   title: string
   prizeAmount: number
   participantCount?: number

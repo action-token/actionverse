@@ -165,31 +165,39 @@ export default function CreateBountyPage() {
   // needed; otherwise the owner signs with their own wallet via clientsign.
   const getXDRMutation = api.bounty.Bounty.getCreateBountyXDR.useMutation({
     onSuccess: async ({ xdr, fullySignedByServer }, variables) => {
-      let submitted = false;
-      let txHash: string | undefined;
-      if (fullySignedByServer) {
-        const result = await submitSignedXDRToServer4User(xdr);
-        submitted = !!result;
-        txHash = extractTxHash(result);
-      } else {
-        const clientResponse = await clientsign({
-          presignedxdr: xdr,
-          walletType: session?.user.walletType,
-          pubkey: session?.user.id,
-          test: clientSelect(),
-        });
-        submitted = !!clientResponse;
-        txHash = extractTxHash(clientResponse);
-      }
+      try {
+        let submitted = false;
+        let txHash: string | undefined;
+        if (fullySignedByServer) {
+          const result = await submitSignedXDRToServer4User(xdr);
+          submitted = !!result;
+          txHash = extractTxHash(result);
+        } else {
+          const clientResponse = await clientsign({
+            presignedxdr: xdr,
+            walletType: session?.user.walletType,
+            pubkey: session?.user.id,
+            test: clientSelect(),
+          });
+          submitted = !!clientResponse;
+          txHash = extractTxHash(clientResponse);
+        }
 
-      if (!submitted || !txHash) {
-        console.error("Funding transaction could not be confirmed", { submitted, txHash });
+        if (!submitted || !txHash) {
+          console.error("Funding transaction could not be confirmed", { submitted, txHash });
+          toast.error("Funding transaction could not be confirmed.");
+          await deleteBountyMutation.mutateAsync({ bountyId: variables.bountyId });
+          setStep("form");
+          return;
+        }
+
+        await confirmMutation.mutateAsync({ bountyId: variables.bountyId, txHash });
+      } catch (e) {
+        console.error("Funding transaction failed", e);
         toast.error("Funding transaction could not be confirmed.");
+        deleteBountyMutation.mutateAsync({ bountyId: variables.bountyId }).catch(() => {});
         setStep("form");
-        return;
       }
-
-      await confirmMutation.mutateAsync({ bountyId: variables.bountyId, txHash });
     },
     onError: (e) => {
       toast.error(e.message);
@@ -199,10 +207,14 @@ export default function CreateBountyPage() {
 
   const createMutation = api.bounty.Bounty.createBounty.useMutation({
     onSuccess: async (bounty) => {
-      await getXDRMutation.mutateAsync({
-        bountyId: bounty.id,
-        signWith: needSign(),
-      });
+      try {
+        await getXDRMutation.mutateAsync({
+          bountyId: bounty.id,
+          signWith: needSign(),
+        });
+      } catch {
+        await deleteBountyMutation.mutateAsync({ bountyId: bounty.id }).catch(() => {});
+      }
     },
     onError: (e) => {
       toast.error(e.message);
@@ -221,6 +233,8 @@ export default function CreateBountyPage() {
       setStep("form");
     },
   });
+
+  const deleteBountyMutation = api.bounty.Bounty.deleteUnfundedBounty.useMutation();
 
   const draftMutation = api.bounty.Bounty.draftBounty.useMutation({
     onSuccess: (draft) => {

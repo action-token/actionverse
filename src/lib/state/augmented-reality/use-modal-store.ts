@@ -105,7 +105,7 @@ export interface ModalData {
   locationConsumer?: LocationConsumer;
   postUrl?: string | null;
   image?: string;
-  bountyId?: number;
+  bountyId?: string;
   attachment?: SubmissionAttachment[];
   submissionId?: number;
   transaction?: Transaction;

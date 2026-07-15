@@ -10,7 +10,7 @@ export const swapTask = task({
     maxTimeoutInMs: 30_000,
   },
 
-  run: async (payload: { xdr: string; bountyId: number }) => {
+  run: async (payload: { xdr: string; bountyId: string }) => {
     const { xdr } = payload;
     const res = await submitSignedXDRToServer4User(xdr);
     logger.log("Log message", { res });
@@ -19,7 +19,7 @@ export const swapTask = task({
       throw new Error("Swap failed");
     }
   },
-  onSuccess: async (payload: { xdr: string; bountyId: number }) => {
+  onSuccess: async (payload: { xdr: string; bountyId: string }) => {
     console.log(
       "Swap success Swap success Swap success Swap success Swap success",
     );

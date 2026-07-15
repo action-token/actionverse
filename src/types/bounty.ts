@@ -62,7 +62,7 @@ export interface BountySubmissionCaptureInfo {
 
 export interface BountySubmissionInfo {
   id: number;
-  bountyId: number;
+  bountyId: string;
   userId: string;
   content: string;
   status: BountySubmissionStatus;
@@ -74,7 +74,7 @@ export interface BountySubmissionInfo {
 }
 
 export interface BountyWithMeta {
-  id: number;
+  id: string;
   title: string;
   summary: string;
   description: string;
@@ -103,7 +103,7 @@ export interface BountyActivity {
   | "winner_selected"
   | "reward_claimed"
   | "status_change";
-  bountyId: number;
+  bountyId: string;
   bountyTitle: string;
   userId?: string;
   userName?: string;

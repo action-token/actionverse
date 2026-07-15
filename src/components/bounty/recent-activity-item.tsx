@@ -9,7 +9,7 @@ export type RecentActivityType = "win" | "submit" | "join";
 export interface RecentActivity {
   id: string;
   type: RecentActivityType;
-  bountyId: number;
+  bountyId: string | number;
   bountyTitle: string;
   userName: string | null;
   userId: string;

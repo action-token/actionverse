@@ -3,7 +3,7 @@
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype,
     token::{StellarAssetClient, TokenClient},
-    Address, Env,
+    Address, Env, String,
 };
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -15,8 +15,8 @@ const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
 pub enum DataKey {
     Admin,
     NativeToken,
-    Bounty(u64),
-    WinnerAward(u64, Address),
+    Bounty(String),
+    WinnerAward(String, Address),
 }
 
 #[contracttype]
@@ -67,7 +67,7 @@ pub enum Error {
 #[contractevent]
 pub struct BountyCreated {
     #[topic]
-    pub bounty_id: u64,
+    pub bounty_id: String,
     #[topic]
     pub creator: Address,
     pub token: Address,
@@ -78,7 +78,7 @@ pub struct BountyCreated {
 #[contractevent]
 pub struct WinnerSelected {
     #[topic]
-    pub bounty_id: u64,
+    pub bounty_id: String,
     #[topic]
     pub winner: Address,
     pub amount: i128,
@@ -87,7 +87,7 @@ pub struct WinnerSelected {
 #[contractevent]
 pub struct RewardClaimed {
     #[topic]
-    pub bounty_id: u64,
+    pub bounty_id: String,
     #[topic]
     pub winner: Address,
     pub amount: i128,
@@ -96,7 +96,7 @@ pub struct RewardClaimed {
 #[contractevent]
 pub struct BountyCancelled {
     #[topic]
-    pub bounty_id: u64,
+    pub bounty_id: String,
     pub refunded_amount: i128,
 }
 
@@ -105,10 +105,6 @@ pub struct BountyManager;
 
 #[contractimpl]
 impl BountyManager {
-    /// Runs once at deploy time. `admin` is the platform account that must
-    /// co-sign every `create_bounty` call (prevents external ID squatting).
-    /// `native_token` is the native XLM SAC address so `claim_reward` can
-    /// skip the redundant `trust()` call for XLM bounties.
     pub fn __constructor(env: Env, admin: Address, native_token: Address) {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
@@ -117,18 +113,17 @@ impl BountyManager {
         env.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
     }
 
-    /// Creator deposits `amount` of `token` into escrow for `bounty_id`.
-    /// Requires admin co-authorization so only the platform can assign IDs.
+    /// Creator deposits `amount` of `token` into escrow.
+    /// The `bounty_id` is the DB-generated UUID passed from off-chain.
+    /// Only the creator needs to authorize this call.
     pub fn create_bounty(
         env: Env,
-        bounty_id: u64,
+        bounty_id: String,
         creator: Address,
         token: Address,
         amount: i128,
         max_winners: u32,
     ) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
         creator.require_auth();
 
         if amount <= 0 {
@@ -138,12 +133,16 @@ impl BountyManager {
             return Err(Error::InvalidMaxWinners);
         }
 
-        let key = DataKey::Bounty(bounty_id);
+        let key = DataKey::Bounty(bounty_id.clone());
         if env.storage().persistent().has(&key) {
             return Err(Error::BountyAlreadyExists);
         }
 
-        TokenClient::new(&env, &token).transfer(&creator, &env.current_contract_address(), &amount);
+        TokenClient::new(&env, &token).transfer(
+            &creator,
+            &env.current_contract_address(),
+            &amount,
+        );
 
         let bounty = Bounty {
             creator: creator.clone(),
@@ -170,18 +169,17 @@ impl BountyManager {
         Ok(())
     }
 
-    /// Creator commits `amount` of the remaining escrow to `winner`. The
-    /// award is claimable by `winner` via `claim_reward`, but not paid out yet.
+    /// Creator commits `amount` of the remaining escrow to `winner`.
     pub fn select_winner(
         env: Env,
         caller: Address,
-        bounty_id: u64,
+        bounty_id: String,
         winner: Address,
         amount: i128,
     ) -> Result<(), Error> {
         caller.require_auth();
 
-        let key = DataKey::Bounty(bounty_id);
+        let key = DataKey::Bounty(bounty_id.clone());
         let mut bounty: Bounty = env
             .storage()
             .persistent()
@@ -207,7 +205,7 @@ impl BountyManager {
             return Err(Error::InsufficientRemainingBalance);
         }
 
-        let award_key = DataKey::WinnerAward(bounty_id, winner.clone());
+        let award_key = DataKey::WinnerAward(bounty_id.clone(), winner.clone());
         if env.storage().persistent().has(&award_key) {
             return Err(Error::WinnerAlreadySelected);
         }
@@ -234,17 +232,17 @@ impl BountyManager {
     }
 
     /// Winner pulls their committed award.
-    pub fn claim_reward(env: Env, bounty_id: u64, winner: Address) -> Result<(), Error> {
+    pub fn claim_reward(env: Env, bounty_id: String, winner: Address) -> Result<(), Error> {
         winner.require_auth();
 
-        let bounty_key = DataKey::Bounty(bounty_id);
+        let bounty_key = DataKey::Bounty(bounty_id.clone());
         let bounty: Bounty = env
             .storage()
             .persistent()
             .get(&bounty_key)
             .ok_or(Error::BountyNotFound)?;
 
-        let award_key = DataKey::WinnerAward(bounty_id, winner.clone());
+        let award_key = DataKey::WinnerAward(bounty_id.clone(), winner.clone());
         let mut award: WinnerAward = env
             .storage()
             .persistent()
@@ -287,11 +285,10 @@ impl BountyManager {
     }
 
     /// Creator cancels the bounty, reclaiming any unassigned escrow.
-    /// Awards already selected (claimed or not) are unaffected.
-    pub fn cancel_bounty(env: Env, caller: Address, bounty_id: u64) -> Result<(), Error> {
+    pub fn cancel_bounty(env: Env, caller: Address, bounty_id: String) -> Result<(), Error> {
         caller.require_auth();
 
-        let key = DataKey::Bounty(bounty_id);
+        let key = DataKey::Bounty(bounty_id.clone());
         let mut bounty: Bounty = env
             .storage()
             .persistent()
@@ -328,22 +325,20 @@ impl BountyManager {
         Ok(())
     }
 
-    pub fn get_bounty(env: Env, bounty_id: u64) -> Result<Bounty, Error> {
+    pub fn get_bounty(env: Env, bounty_id: String) -> Result<Bounty, Error> {
         env.storage()
             .persistent()
             .get(&DataKey::Bounty(bounty_id))
             .ok_or(Error::BountyNotFound)
     }
 
-    pub fn get_winner_award(env: Env, bounty_id: u64, winner: Address) -> Option<WinnerAward> {
+    pub fn get_winner_award(env: Env, bounty_id: String, winner: Address) -> Option<WinnerAward> {
         env.storage()
             .persistent()
             .get(&DataKey::WinnerAward(bounty_id, winner))
     }
 
-    /// Admin-only: extend the TTL of a bounty entry. Callable at any time to
-    /// keep inactive bounties alive. Requires the platform admin signature.
-    pub fn admin_extend_bounty_ttl(env: Env, bounty_id: u64) -> Result<(), Error> {
+    pub fn admin_extend_bounty_ttl(env: Env, bounty_id: String) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
@@ -359,10 +354,9 @@ impl BountyManager {
         Ok(())
     }
 
-    /// Admin-only: extend the TTL of a winner award entry.
     pub fn admin_extend_winner_award_ttl(
         env: Env,
-        bounty_id: u64,
+        bounty_id: String,
         winner: Address,
     ) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
@@ -380,8 +374,6 @@ impl BountyManager {
         Ok(())
     }
 
-    /// Admin-only: extend the TTL of the contract instance (admin, native_token,
-    /// and the contract code). This keeps the whole contract callable.
     pub fn admin_extend_instance_ttl(env: Env) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();

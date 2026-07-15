@@ -24,7 +24,7 @@ import { z } from "zod";
  */
 
 export const captureMetadataSchema = z.object({
-  bountyId: z.number().int().positive(),
+  bountyId: z.string().min(1),
   userId: z.string().min(1),
   captureType: z.enum(["PHOTO", "VIDEO", "AUDIO"]),
   // sha256 of the raw media bytes as captured by the native camera/mic (before any overlay).

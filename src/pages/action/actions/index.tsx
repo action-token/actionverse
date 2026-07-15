@@ -277,9 +277,9 @@ function FloatingRail({
   filter: "all" | "not_joined" | "joined";
   setFilter: (v: "all" | "not_joined" | "joined") => void;
   session: boolean;
-  topBounties?: { id: number; title: string; prizeAmount: number; prizeAssetCode: string }[];
+  topBounties?: { id: string; title: string; prizeAmount: number; prizeAssetCode: string }[];
   activities?: Parameters<typeof RecentActivityItem>[0]["activity"][];
-  joinedItems?: { id: number; bounty: { id: number; title: string; prizeAmount: number; prizeAssetCode: string } }[];
+  joinedItems?: { id: number; bounty: { id: string; title: string; prizeAmount: number; prizeAssetCode: string } }[];
   joinedLoading?: boolean;
   router: ReturnType<typeof useRouter>;
 }) {
