@@ -2,25 +2,35 @@ import { z } from "zod";
 import { BountyStatus, MediaType, NotificationType } from "@prisma/client";
 import OpenAI from "openai";
 import {
+  adminProcedure,
   createTRPCRouter,
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
 import {
-  SendBountyBalanceGenericToMother,
-  claimRewardForUser,
-} from "~/lib/stellar/bounty/bounty";
-import { SignUser } from "~/lib/stellar/utils";
-import { PLATFORM_ASSET, PLATFORM_FEE } from "~/lib/stellar/constant";
+  buildCreateBountyXDR,
+  buildSelectWinnerXDR,
+  buildClaimXDR,
+  verifyContractTransaction,
+  buildAdminExtendBountyTTLXDR,
+  buildAdminExtendInstanceTTLXDR,
+  buildAdminExtendWinnerAwardTTLXDR,
+  getContractInstanceTTL,
+  getBountyTTL,
+  getEscrowCreatorIdentity,
+  signEscrowXdr,
+} from "~/lib/stellar/bounty/escrow";
+import { SignUser, WithSing } from "~/lib/stellar/utils";
+import { signXdrTransaction } from "~/lib/stellar/fan/signXDR";
+
+import { BOUNTY_ESCROW_CONTRACT_ID } from "~/lib/common";
 import { env } from "~/env";
+import { Keypair } from "@stellar/stellar-sdk";
+
 import { getplatformAssetNumberForXLM } from "~/lib/stellar/fan/get_token_price";
-import {
-  broadcastBounty,
-  invalidateTelegramConfig,
-} from "~/lib/telegram/broadcast-bounty";
-import { deriveValidation } from "~/lib/action-cam/derive-validation";
+import { broadcastBounty } from "~/lib/telegram/broadcast-bounty";
+import { deriveValidation, type CaptureValidation } from "~/lib/action-cam/derive-validation";
 import { captureMetadataSchema, signCapture, verifyCapture } from "~/lib/action-cam/seal";
-import { createHash } from "crypto";
 import { HeadObjectCommand } from "@aws-sdk/client-s3";
 import { s3Client } from "~/server/s3";
 import { TRPCError } from "@trpc/server";
@@ -29,46 +39,42 @@ import { TRPCError } from "@trpc/server";
 // Returns `name`, `image`, and `id` of the user (not the legacy creator profile).
 const ownerSelect = { id: true, name: true, image: true } as const;
 
+function deriveSubmissionValidation(
+  captures: {
+    captureType: string | null;
+    captureOriginalHash: string | null;
+    captureSealedHash: string | null;
+    captureSignature: string | null;
+    captureCapturedAt: Date | null;
+    captureSealedAt: Date | null;
+  }[],
+): CaptureValidation | null {
+  if (captures.length === 0) return null;
+  const validations = captures
+    .map(deriveValidation)
+    .filter((v): v is CaptureValidation => v !== null);
+  if (validations.length !== captures.length) return null;
+
+  return {
+    live: true,
+    stamped: validations.every((v) => v.stamped),
+    sealed: validations.every((v) => v.sealed),
+    sealedAt: validations.every((v) => v.sealed)
+      ? validations.reduce<Date | null>((earliest, v) => {
+          if (!v.sealedAt) return earliest;
+          return !earliest || v.sealedAt < earliest ? v.sealedAt : earliest;
+        }, null)
+      : null,
+  };
+}
+
 export const BountyRoute = createTRPCRouter({
-  // ── ANY AUTHORIZED USER: get XDR to pay into mother wallet ───────────────
-  getCreateBountyXDR: protectedProcedure
-    .input(
-      z.object({
-        prize: z.number().positive(),
-        signWith: SignUser,
-        assetCode: z.string().default(""),
-        assetIssuer: z.string().nullable().default(null),
-        fromCreatorWallet: z.boolean().default(false),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      if (input.fromCreatorWallet) {
-        const creator = await ctx.db.creator.findUniqueOrThrow({
-          where: { id: ctx.session.user.id },
-          select: { storageSecret: true },
-        });
-        return await SendBountyBalanceGenericToMother({
-          prize: input.prize,
-          signWith: input.signWith,
-          userPubKey: ctx.session.user.id,
-          assetCode: input.assetCode,
-          assetIssuer: input.assetIssuer,
-          fromCreatorStorage: true,
-          storageSecret: creator.storageSecret ?? undefined,
-        });
-      }
-
-      return await SendBountyBalanceGenericToMother({
-        prize: input.prize,
-        signWith: input.signWith,
-        userPubKey: ctx.session.user.id,
-        assetCode: input.assetCode,
-        assetIssuer: input.assetIssuer,
-      });
-
-    }),
-
-  // ── ANY AUTHORIZED USER: create bounty after payment confirmed ────────────
+  // ── ANY AUTHORIZED USER: create bounty row (unfunded until payment confirms) ──
+  // Contract-backed and legacy bounties both go through create -> pay -> confirm
+  // now, so the on-chain bounty_id (== this row's id) always exists before the
+  // escrow contract's create_bounty call needs it. For legacy (no escrow
+  // contract configured) bounties this is a harmless reordering — the classic
+  // payment doesn't depend on when the DB row was created.
   createBounty: protectedProcedure
     .input(
       z.object({
@@ -84,6 +90,9 @@ export const BountyRoute = createTRPCRouter({
         // Action Cam: when true, submissions must use the live capture + seal flow.
         // Owner can toggle off later via `updateBounty`.
         requiresActionCam: z.boolean().default(false),
+        // Fund escrow from the owner's Creator storage account (custodial,
+        // server holds the secret) instead of their own wallet/session identity.
+        fromCreatorWallet: z.boolean().default(false),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -100,26 +109,86 @@ export const BountyRoute = createTRPCRouter({
           prizeAssetCode: input.prizeAssetCode,
           prizeAssetIssuer: input.prizeAssetIssuer,
           requiresActionCam: input.requiresActionCam,
+          fundedFromCreatorStorage: input.fromCreatorWallet,
+          escrowContractId: BOUNTY_ESCROW_CONTRACT_ID,
         },
+      });
+
+      return bounty;
+    }),
+
+  // ── OWNER: get XDR to fund the bounty's on-chain escrow ───────────────────
+  getCreateBountyXDR: protectedProcedure
+    .input(z.object({ bountyId: z.number(), signWith: SignUser }))
+    .mutation(async ({ ctx, input }) => {
+      const bounty = await ctx.db.bounty.findUnique({
+        where: { id: input.bountyId },
+      });
+      if (!bounty) throw new Error("Bounty not found");
+      if (bounty.userId !== ctx.session.user.id)
+        throw new Error("Not authorized");
+      if (bounty.txHash) throw new Error("Bounty is already funded");
+
+      const { pubKey: creatorPubKey, storageSecret } = await getEscrowCreatorIdentity(
+        ctx.db,
+        bounty,
+      );
+      const xdr = await buildCreateBountyXDR({
+        bountyId: bounty.id,
+        creatorPubKey,
+        assetCode: bounty.prizeAssetCode,
+        assetIssuer: bounty.prizeAssetIssuer,
+        amount: bounty.prizeAmount,
+        maxWinners: bounty.maxWinners,
+      });
+      const { xdr: signedXdr, fullySignedByServer } = await signEscrowXdr({
+        xdr,
+        storageSecret,
+        signWith: input.signWith,
+      });
+      return { xdr: signedXdr, pubKey: creatorPubKey, fullySignedByServer };
+    }),
+
+  // ── OWNER: confirm funding succeeded on-chain, activate the bounty ───────
+  // Verifies the invoke transaction actually succeeded before recording it —
+  // the client's report of "submitted" alone is never trusted.
+  confirmBountyFunded: protectedProcedure
+    .input(z.object({ bountyId: z.number(), txHash: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const bounty = await ctx.db.bounty.findUnique({
+        where: { id: input.bountyId },
+        include: { user: { select: { name: true } } },
+      });
+      if (!bounty) throw new Error("Bounty not found");
+      if (bounty.userId !== ctx.session.user.id)
+        throw new Error("Not authorized");
+      if (bounty.txHash) return bounty; // already confirmed — idempotent
+
+      const ok = await verifyContractTransaction(input.txHash);
+      if (!ok) throw new Error("Funding transaction did not succeed on-chain");
+
+      const updated = await ctx.db.bounty.update({
+        where: { id: input.bountyId },
+        data: { txHash: input.txHash },
         include: { user: { select: { name: true } } },
       });
 
       // Fire-and-forget: notify the Telegram channel if the admin has configured one.
-      // Errors are swallowed so a Telegram outage never fails bounty creation.
+      // Errors are swallowed so a Telegram outage never fails bounty funding.
       void broadcastBounty({
-        id: bounty.id,
-        title: bounty.title,
-        summary: bounty.summary,
-        prizeAmount: bounty.prizeAmount,
-        prizeAssetCode: bounty.prizeAssetCode,
-        maxWinners: bounty.maxWinners,
-        creatorName: bounty.user.name ?? "Unknown",
-        requiresActionCam: bounty.requiresActionCam,
+        id: updated.id,
+        title: updated.title,
+        summary: updated.summary,
+        prizeAmount: updated.prizeAmount,
+        prizeAssetCode: updated.prizeAssetCode,
+        maxWinners: updated.maxWinners,
+        creatorName: updated.user.name ?? "Unknown",
+        requiresActionCam: updated.requiresActionCam,
       }).catch((err) =>
         console.error("[telegram] bounty broadcast failed:", err),
       );
 
-      return bounty;
+      return updated;
     }),
 
   // ── OWNER: update bounty info ─────────────────────────────────────────────
@@ -260,18 +329,68 @@ export const BountyRoute = createTRPCRouter({
       });
       return submissions.map((s) => ({
         ...s,
-        validation: deriveValidation(s),
+        validation: deriveSubmissionValidation(s.captures),
         captures: s.captures.map((c) => ({ ...c, validation: deriveValidation(c) })),
       }));
     }),
 
-  // ── OWNER: select winner ──────────────────────────────────────────────────
+  // ── OWNER: get XDR to commit a winner award on-chain (escrow-backed bounties only) ──
+  // Legacy bounties have no on-chain step at selection time (payment happens
+  // later, when the winner claims) — returns `xdr: null` so the client can
+  // skip straight to `selectWinner` below, exactly like before.
+  getSelectWinnerXDR: protectedProcedure
+    .input(
+      z.object({
+        bountyId: z.number(),
+        winnerId: z.string(),
+        prizeAmount: z.number().positive(),
+        signWith: SignUser,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const bounty = await ctx.db.bounty.findUnique({
+        where: { id: input.bountyId },
+        include: { _count: { select: { winners: true } } },
+      });
+      if (!bounty) throw new Error("Bounty not found");
+      if (bounty.userId !== ctx.session.user.id)
+        throw new Error("Not authorized");
+      if (bounty._count.winners >= bounty.maxWinners)
+        throw new Error("Maximum winners already selected");
+
+      const existing = await ctx.db.bountyWinner.findUnique({
+        where: {
+          bountyId_userId: { bountyId: input.bountyId, userId: input.winnerId },
+        },
+      });
+      if (existing) throw new Error("User is already a winner");
+
+      const { pubKey: creatorPubKey, storageSecret } = await getEscrowCreatorIdentity(
+        ctx.db,
+        bounty,
+      );
+      const xdr = await buildSelectWinnerXDR({
+        bountyId: bounty.id,
+        creatorPubKey,
+        winnerPubKey: input.winnerId,
+        amount: input.prizeAmount,
+      });
+      const { xdr: signedXdr, fullySignedByServer } = await signEscrowXdr({
+        xdr,
+        storageSecret,
+        signWith: input.signWith,
+      });
+      return { xdr: signedXdr, needsUserSign: !fullySignedByServer };
+    }),
+
+  // ── OWNER: select winner (confirms on-chain commitment) ───────────────────
   selectWinner: protectedProcedure
     .input(
       z.object({
         bountyId: z.number(),
         winnerId: z.string(),
         prizeAmount: z.number().positive(),
+        txHash: z.string(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -295,11 +414,15 @@ export const BountyRoute = createTRPCRouter({
       });
       if (existing) throw new Error("User is already a winner");
 
+      const ok = await verifyContractTransaction(input.txHash);
+      if (!ok) throw new Error("Selection transaction did not succeed on-chain");
+
       const winner = await ctx.db.bountyWinner.create({
         data: {
           bountyId: input.bountyId,
           userId: input.winnerId,
           prizeAmount: input.prizeAmount,
+          txHash: input.txHash,
         },
       });
 
@@ -744,7 +867,7 @@ export const BountyRoute = createTRPCRouter({
       });
       return submissions.map((s) => ({
         ...s,
-        validation: deriveValidation(s),
+        validation: deriveSubmissionValidation(s.captures),
         captures: s.captures.map((c) => ({ ...c, validation: deriveValidation(c) })),
       }));
     }),
@@ -781,7 +904,6 @@ export const BountyRoute = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      console.log("getClaimRewardXDR called with", input);
       const winner = await ctx.db.bountyWinner.findUnique({
         where: {
           bountyId_userId: {
@@ -789,32 +911,26 @@ export const BountyRoute = createTRPCRouter({
             userId: ctx.session.user.id,
           },
         },
-        include: {
-          bounty: {
-            select: { prizeAssetCode: true, prizeAssetIssuer: true },
-          },
-        },
       });
       if (!winner) throw new Error("You are not a winner");
       if (winner.claimedAt) throw new Error("Reward already claimed");
 
-      const assetCode = winner.bounty.prizeAssetCode;
-      const assetIssuer = winner.bounty.prizeAssetIssuer;
-
-      const result = await claimRewardForUser({
-        pubKey: ctx.session.user.id,
-        rewardAmount: winner.prizeAmount,
-        assetCode,
-        assetIssuer,
-        signWith: input.signWith,
+      // The contract's `claim` establishes the winner's trustline itself
+      // (SAC.trust, no-op if already trusted) before transferring, so there's
+      // no separate classic changeTrust step needed here.
+      const xdr = await buildClaimXDR({
+        bountyId: input.bountyId,
+        winnerPubKey: ctx.session.user.id,
       });
-      return result;
+      const signedXdr = await WithSing({ xdr, signWith: input.signWith });
+      return { xdr: signedXdr, needsUserSign: signedXdr === xdr };
     }),
 
   claimReward: protectedProcedure
     .input(
       z.object({
         bountyId: z.number(),
+        txHash: z.string(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -829,6 +945,9 @@ export const BountyRoute = createTRPCRouter({
       if (!winner) throw new Error("You are not a winner");
       if (winner.claimedAt) throw new Error("Reward already claimed");
 
+      const ok = await verifyContractTransaction(input.txHash);
+      if (!ok) throw new Error("Claim transaction did not succeed on-chain");
+
       await ctx.db.bountyWinner.update({
         where: {
           bountyId_userId: {
@@ -836,7 +955,7 @@ export const BountyRoute = createTRPCRouter({
             userId: ctx.session.user.id,
           },
         },
-        data: { claimedAt: new Date() },
+        data: { claimedAt: new Date(), txHash: input.txHash },
       });
 
       return { success: true };
@@ -1201,7 +1320,7 @@ Rules:
         }
         if (!limits.allowed.has(cap.mediaContentType)) {
           throw new TRPCError({
-            code: "UNSUPPORTED_MEDIA_TYPE",
+            code: "BAD_REQUEST",
             message: `Capture ${idx + 1}: unsupported ${cap.captureType} MIME type: ${cap.mediaContentType}`,
           });
         }
@@ -1306,8 +1425,7 @@ Rules:
         }
       }
 
-      for (let i = 0; i < prepared.length; i++) {
-        const { cap } = prepared[i]!;
+      for (const [i, { cap }] of prepared.entries()) {
         await Promise.all([
           headCheck(cap.storageKey, cap.storageSize, `Capture ${i + 1} original`),
           ...(cap.previewKey && cap.previewSize !== undefined
@@ -1318,8 +1436,7 @@ Rules:
 
       // ── 5. Compute HMAC signature per capture (only when required) ───────
       if (bounty.requiresActionCam) {
-        for (let i = 0; i < prepared.length; i++) {
-          const { cap, truncatedWallet } = prepared[i]!;
+        for (const { cap, truncatedWallet } of prepared) {
           const canonical = captureMetadataSchema.parse({
             bountyId: input.bountyId,
             userId,
@@ -1337,9 +1454,7 @@ Rules:
         }
       } else {
         // Plain upload — no signature, no per-capture Action Cam metadata.
-        for (let i = 0; i < prepared.length; i++) {
-          signaturesByIndex.push(null);
-        }
+        signaturesByIndex.push(...Array.from({ length: prepared.length }, () => null));
       }
 
       // ── 6. Persist: one parent submission + N child captures ───────────
@@ -1475,16 +1590,89 @@ Rules:
         signatureValid,
         validation,
         metadata: {
-          bountyId: submission.bountyId,
-          captureType: submission.captureType,
-          originalHash: submission.captureOriginalHash,
-          sealedHash: submission.captureSealedHash,
-          capturedAt: submission.captureCapturedAt,
-          sealedAt: submission.captureSealedAt,
-          lat: submission.captureLat,
-          lon: submission.captureLon,
-          wallet: submission.captureWallet,
+          bountyId: capture.submission.bountyId,
+          captureType: capture.captureType,
+          originalHash: capture.captureOriginalHash,
+          sealedHash: capture.captureSealedHash,
+          capturedAt: capture.captureCapturedAt,
+          sealedAt: capture.captureSealedAt,
+          lat: capture.captureLat,
+          lon: capture.captureLon,
+          wallet: capture.captureWallet,
         },
       };
+    }),
+
+  // ── ADMIN: read contract instance TTL ─────────────────────────────────────
+  getAdminContractInstanceTTL: adminProcedure.query(async () => {
+    return getContractInstanceTTL();
+  }),
+
+  // ── ADMIN: read a specific bounty entry TTL ───────────────────────────────
+  getAdminBountyTTL: adminProcedure
+    .input(z.object({ bountyId: z.number() }))
+    .query(async ({ input }) => {
+      return getBountyTTL(input.bountyId);
+    }),
+
+  // ── ADMIN: list all bounties for TTL management ───────────────────────────
+  getAdminBountyList: adminProcedure
+    .input(
+      z.object({
+        cursor: z.number().optional(),
+        limit: z.number().default(20),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const items = await ctx.db.bounty.findMany({
+        take: input.limit + 1,
+        cursor: input.cursor ? { id: input.cursor } : undefined,
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: { select: { id: true, name: true, image: true } },
+          winners: {
+            select: { userId: true, prizeAmount: true },
+          },
+        },
+      });
+
+      let nextCursor: number | undefined;
+      if (items.length > input.limit) {
+        nextCursor = items.pop()!.id;
+      }
+      return { items, nextCursor };
+    }),
+
+  // ── ADMIN: build XDR to extend a bounty entry TTL ─────────────────────────
+  getAdminExtendBountyTTLXDR: adminProcedure
+    .input(z.object({ bountyId: z.number() }))
+    .mutation(async ({ input }) => {
+      const adminPubKey = Keypair.fromSecret(env.MOTHER_SECRET).publicKey();
+      const xdr = await buildAdminExtendBountyTTLXDR(input.bountyId, adminPubKey);
+      const signedXdr = signXdrTransaction(xdr, env.MOTHER_SECRET);
+      return { xdr: signedXdr };
+    }),
+
+  // ── ADMIN: build XDR to extend a winner award entry TTL ───────────────────
+  getAdminExtendWinnerAwardTTLXDR: adminProcedure
+    .input(z.object({ bountyId: z.number(), winnerId: z.string() }))
+    .mutation(async ({ input }) => {
+      const adminPubKey = Keypair.fromSecret(env.MOTHER_SECRET).publicKey();
+      const xdr = await buildAdminExtendWinnerAwardTTLXDR(
+        input.bountyId,
+        input.winnerId,
+        adminPubKey,
+      );
+      const signedXdr = signXdrTransaction(xdr, env.MOTHER_SECRET);
+      return { xdr: signedXdr };
+    }),
+
+  // ── ADMIN: build XDR to extend the contract instance TTL ──────────────────
+  getAdminExtendInstanceTTLXDR: adminProcedure
+    .mutation(async () => {
+      const adminPubKey = Keypair.fromSecret(env.MOTHER_SECRET).publicKey();
+      const xdr = await buildAdminExtendInstanceTTLXDR(adminPubKey);
+      const signedXdr = signXdrTransaction(xdr, env.MOTHER_SECRET);
+      return { xdr: signedXdr };
     }),
 });

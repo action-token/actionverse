@@ -61,6 +61,7 @@ export default function AdminLayout({
         { href: "/admin/users", icon: "users", label: "USERS", color: "bg-blue-500" },
         { href: "/admin/pins", icon: "pins", label: "PINS", color: "bg-pink-500" },
         { href: "/admin/map", icon: "map", label: "MAP", color: "bg-pink-500" },
+        { href: "/admin/bounty", icon: "bounty", label: "BOUNTY", color: "bg-amber-500" },
         { href: "/admin/telegram", icon: "telegram", label: "TELEGRAM", color: "bg-sky-500" },
     ]
 

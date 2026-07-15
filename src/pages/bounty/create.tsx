@@ -43,7 +43,7 @@ import { api } from "~/utils/api";
 import { PLATFORM_ASSET, PLATFORM_FEE, stellarExpertUrl } from "~/lib/stellar/constant";
 import { cn } from "~/lib/utils";
 import useNeedSign from "~/lib/hook";
-import { clientsign } from "package/connect_wallet";
+import { clientsign, extractTxHash } from "package/connect_wallet";
 import { clientSelect } from "~/lib/stellar/fan/utils";
 import { MarkdownEditor } from "~/components/bounty/markdown-editor";
 import { useUserStellarAcc, useCreatorStorageAcc, AccBalanceType } from "~/lib/state/wallete/stellar-balances";
@@ -68,6 +68,11 @@ function isCreditBalance(b: AccBalanceType): b is Extract<AccBalanceType, { asse
   return b.asset_type === "credit_alphanum4" || b.asset_type === "credit_alphanum12";
 }
 
+// The escrow contract's `create_bounty`/`select_winner`/`cancel_bounty` calls
+// authorize against whichever pubkey funded the bounty — either the user's
+// own wallet, or (source: "creator") the Creator's custodial storage account,
+// in which case the server signs every subsequent on-chain call for this
+// bounty with the stored secret (see getEscrowCreatorIdentity server-side).
 function balancesToOptions(
   balances: AccBalanceType[] | undefined,
   source: "user" | "creator",
@@ -153,14 +158,19 @@ export default function CreateBountyPage() {
     if (status === "unauthenticated") void router.push("/");
   }, [status, router]);
 
+  // Flow: create the (unfunded) bounty row -> build the escrow-contract funding
+  // XDR against its id -> sign & submit -> confirm on-chain success. If the
+  // bounty is funded from the creator's storage account, the server signs the
+  // funding call fully itself (fullySignedByServer) and no wallet popup is
+  // needed; otherwise the owner signs with their own wallet via clientsign.
   const getXDRMutation = api.bounty.Bounty.getCreateBountyXDR.useMutation({
     onSuccess: async ({ xdr, fullySignedByServer }, variables) => {
-      if (!xdr) return;
-
       let submitted = false;
+      let txHash: string | undefined;
       if (fullySignedByServer) {
-        await submitSignedXDRToServer4User(xdr);
-        submitted = true;
+        const result = await submitSignedXDRToServer4User(xdr);
+        submitted = !!result;
+        txHash = extractTxHash(result);
       } else {
         const clientResponse = await clientsign({
           presignedxdr: xdr,
@@ -169,22 +179,17 @@ export default function CreateBountyPage() {
           test: clientSelect(),
         });
         submitted = !!clientResponse;
+        txHash = extractTxHash(clientResponse);
       }
 
-      if (submitted && selectedAsset) {
-        await createMutation.mutateAsync({
-          title: title.trim(),
-          summary: summary.trim(),
-          description: description.trim(),
-          prizeAmount: variables.prize,
-          rewardNote: rewardNote.trim() || undefined,
-          maxWinners: parseInt(maxWinners),
-          instructions,
-          prizeAssetCode: selectedAsset.code,
-          prizeAssetIssuer: selectedAsset.issuer,
-          requiresActionCam,
-        });
+      if (!submitted || !txHash) {
+        console.error("Funding transaction could not be confirmed", { submitted, txHash });
+        toast.error("Funding transaction could not be confirmed.");
+        setStep("form");
+        return;
       }
+
+      await confirmMutation.mutateAsync({ bountyId: variables.bountyId, txHash });
     },
     onError: (e) => {
       toast.error(e.message);
@@ -193,6 +198,19 @@ export default function CreateBountyPage() {
   });
 
   const createMutation = api.bounty.Bounty.createBounty.useMutation({
+    onSuccess: async (bounty) => {
+      await getXDRMutation.mutateAsync({
+        bountyId: bounty.id,
+        signWith: needSign(),
+      });
+    },
+    onError: (e) => {
+      toast.error(e.message);
+      setStep("form");
+    },
+  });
+
+  const confirmMutation = api.bounty.Bounty.confirmBountyFunded.useMutation({
     onSuccess: (bounty) => {
       setStep("done");
       toast.success("Bounty created!");
@@ -254,11 +272,17 @@ export default function CreateBountyPage() {
 
     setStep("paying");
     try {
-      await getXDRMutation.mutateAsync({
-        prize: parseFloat(prizeAmount),
-        signWith: needSign(),
-        assetCode: selectedAsset.code === "XLM" ? "" : selectedAsset.code,
-        assetIssuer: selectedAsset.issuer,
+      await createMutation.mutateAsync({
+        title: title.trim(),
+        summary: summary.trim(),
+        description: description.trim(),
+        prizeAmount: parseFloat(prizeAmount),
+        rewardNote: rewardNote.trim() || undefined,
+        maxWinners: parseInt(maxWinners),
+        instructions,
+        prizeAssetCode: selectedAsset.code,
+        prizeAssetIssuer: selectedAsset.issuer,
+        requiresActionCam,
         fromCreatorWallet: selectedAsset.source === "creator",
       });
     } catch (e: unknown) {

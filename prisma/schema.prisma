@@ -1174,6 +1174,18 @@ model Bounty {
     prizeAssetCode   String
     prizeAssetIssuer String?
 
+    // Soroban bounty_escrow contract this bounty's prize is held in — every
+    // bounty is on-chain escrow now (see src/lib/stellar/bounty/escrow.ts).
+    // Stamped in at creation time so a future contract redeploy/upgrade never
+    // breaks an already-funded bounty's selection/claim flow.
+    escrowContractId String
+
+    // True when the on-chain "creator" address (the one that funded the
+    // escrow and authorizes select_winner/cancel_bounty) is the Creator's
+    // custodial storage account (Creator.storagePub/storageSecret) rather
+    // than the bounty owner's own wallet/session identity.
+    fundedFromCreatorStorage Boolean @default(false)
+
     // When true, participants must submit proof via Action Cam (live capture,
     // server-stamped + cryptographically sealed). Owner can toggle off at any time.
     requiresActionCam Boolean @default(false)

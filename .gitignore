@@ -55,3 +55,7 @@ package-lock.json
 .trigger
 
 .vscode
+
+# Rust / Soroban contracts (contracts/bounty_escrow WASM builds are not committed;
+# the built .wasm + Cargo.lock are regenerated via `pnpm run contracts:build`)
+contracts/target/

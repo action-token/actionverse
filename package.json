@@ -13,7 +13,10 @@
     "lint": "next lint",
     "start": "next start",
     "test": "vitest",
-    "run-script": "tsx ./script.ts"
+    "run-script": "tsx ./script.ts",
+    "contracts:test": "cd contracts/bounty_escrow && cargo test",
+    "contracts:build": "cd contracts/bounty_escrow && stellar contract build",
+    "contracts:bindings": "stellar contract bindings typescript --wasm contracts/target/wasm32v1-none/release/bounty_escrow.wasm --output-dir contracts/bounty_escrow/bindings --overwrite"
   },
   "dependencies": {
     "@albedo-link/intent": "^0.12.0",

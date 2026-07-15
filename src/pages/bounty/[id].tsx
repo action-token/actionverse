@@ -54,7 +54,7 @@ import toast from "react-hot-toast";
 import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_ASSET, stellarExpertUrl } from "~/lib/stellar/constant";
 import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g";
-import { clientsign } from "package/connect_wallet";
+import { clientsign, extractTxHash } from "package/connect_wallet";
 import { clientSelect } from "~/lib/stellar/fan/utils";
 import { cn } from "~/lib/utils";
 import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-store";
@@ -150,6 +150,7 @@ export default function BountyDetailPage() {
   /* mutations */
   const joinM = api.bounty.Bounty.joinBounty.useMutation({ onSuccess: () => { toast.success("Joined!"); void myParticipation.refetch(); void bountyQ.refetch(); }, onError: (e) => toast.error(e.message) });
   const statusM = api.bounty.Bounty.updateBountyStatus.useMutation({ onSuccess: () => { toast.success("Status updated"); void bountyQ.refetch(); void ownerQ.refetch(); }, onError: (e) => toast.error(e.message) });
+  const selectWinnerXdrM = api.bounty.Bounty.getSelectWinnerXDR.useMutation({ onError: (e) => toast.error(e.message) });
   const winnerM = api.bounty.Bounty.selectWinner.useMutation({ onSuccess: () => { toast.success("Winner selected!"); void submissionsQ.refetch(); void bountyQ.refetch(); }, onError: (e) => toast.error(e.message) });
   const claimXdrM = api.bounty.Bounty.getClaimRewardXDR.useMutation({ onError: (e) => toast.error(e.message) });
   const claimM = api.bounty.Bounty.claimReward.useMutation({ onSuccess: () => { toast.success("Reward claimed!"); void myParticipation.refetch(); }, onError: (e) => toast.error(e.message) });
@@ -158,8 +159,9 @@ export default function BountyDetailPage() {
     if (!session?.user) return;
     try {
       const result = await claimXdrM.mutateAsync({ bountyId: id, signWith: needSign() });
+      let txHash: string | undefined;
       if (result.needsUserSign) {
-        // User must sign changeTrust op; clientsign signs + submits the tx
+        // User must sign changeTrust op / escrow claim; clientsign signs + submits the tx
         const submitted = await clientsign({
           presignedxdr: result.xdr,
           walletType: session.user.walletType,
@@ -167,12 +169,48 @@ export default function BountyDetailPage() {
           test: clientSelect(),
         });
         if (!submitted) throw new Error("Transaction signing was cancelled.");
+        txHash = extractTxHash(submitted);
       } else {
-        await submitSignedXDRToServer4User(result.xdr);
+        const submitted = await submitSignedXDRToServer4User(result.xdr);
+        txHash = extractTxHash(submitted);
       }
-      await claimM.mutateAsync({ bountyId: id });
+      if (!txHash) throw new Error("Claim transaction could not be confirmed.");
+      await claimM.mutateAsync({ bountyId: id, txHash });
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to claim reward");
+    }
+  };
+
+  // Commits the winner's award on-chain first (creator-signed — auto-signed
+  // server-side if this bounty was funded from the creator's storage account),
+  // then records the winner row once that transaction is confirmed.
+  const handleSelectWinner = async (winnerId: string, prizeAmount: number) => {
+    if (!session?.user) return;
+    try {
+      const result = await selectWinnerXdrM.mutateAsync({
+        bountyId: id,
+        winnerId,
+        prizeAmount,
+        signWith: needSign(),
+      });
+      let txHash: string | undefined;
+      if (result.needsUserSign) {
+        const submitted = await clientsign({
+          presignedxdr: result.xdr,
+          walletType: session.user.walletType,
+          pubkey: session.user.id,
+          test: clientSelect(),
+        });
+        if (!submitted) throw new Error("Transaction signing was cancelled.");
+        txHash = extractTxHash(submitted);
+      } else {
+        const submitted = await submitSignedXDRToServer4User(result.xdr);
+        txHash = extractTxHash(submitted);
+      }
+      if (!txHash) throw new Error("Selection transaction could not be confirmed.");
+      await winnerM.mutateAsync({ bountyId: id, winnerId, prizeAmount, txHash });
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to select winner");
     }
   };
 
@@ -616,8 +654,8 @@ export default function BountyDetailPage() {
                     loading={submissionsQ.isLoading}
                     maxWinners={bounty.maxWinners}
                     currentWinners={bounty._count.winners}
-                    onSelectWinner={(uid) => winnerM.mutate({ bountyId: id, winnerId: uid, prizeAmount: perWinner })}
-                    selecting={winnerM.isLoading}
+                    onSelectWinner={(uid) => void handleSelectWinner(uid, perWinner)}
+                    selecting={selectWinnerXdrM.isLoading || winnerM.isLoading}
                     winnerIds={bounty.winners.map((w) => w.userId)}
                     requiresActionCam={bounty.requiresActionCam}
                     onOpenMedia={setLightboxItem}
