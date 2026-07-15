@@ -322,7 +322,7 @@ export default function AdminBountyTTL() {
                           <TableCell className="font-medium">{bounty.id}</TableCell>
                           <TableCell className="max-w-xs truncate">{bounty.title}</TableCell>
                           <TableCell className="text-muted-foreground">
-                            {bounty.user.name || bounty.user.id.slice(0, 8)}
+                            {bounty.user.name ?? bounty.user.id.slice(0, 8)}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{bounty.status}</Badge>
