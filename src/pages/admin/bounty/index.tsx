@@ -80,13 +80,28 @@ export default function AdminBountyTTL() {
   const extendInstanceXdr = api.bounty.Bounty.getAdminExtendInstanceTTLXDR.useMutation()
 
   async function signAndSubmit(xdr: string) {
-    const signed = await clientsign({
+    const result = await clientsign({
       presignedxdr: xdr,
       pubkey: "admin",
       walletType: WalletType.isAdmin,
     })
-    if (!signed || typeof signed !== "string") throw new Error("Signing failed")
-    return submitSignedXDRToServer4User(signed)
+
+    // clientsign returns `false` when walletType/pubkey is missing or the
+    // wallet refused to sign, and `undefined` for some wallet signing errors.
+    if (!result) throw new Error("Signing failed")
+
+    // For WalletType.isAdmin (and custodial/google/facebook/email flows),
+    // clientsign already submits the XDR via submitSignedXDRToServer4User
+    // and returns an object: { success: true, message: string, hash: string }.
+    if (
+      typeof result === "object" &&
+      "success" in result &&
+      result.success === true
+    ) {
+      return result as { success: true; message: string; hash: string }
+    }
+
+    throw new Error("Unexpected signing result")
   }
 
   async function handleExtendBounty(bountyId: number) {
