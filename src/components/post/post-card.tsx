@@ -269,7 +269,7 @@ export default function PostCard({ post, creator, likeCount, commentCount, locke
                     transition={{ duration: 0.3 }}
                     className="px-4 pb-4"
                 >
-                    <CommentSection postId={post.id} initialCommentCount={commentCount} />
+                    <CommentSection postGroupId={post.id} initialCommentCount={commentCount} />
                 </motion.div>
             )}
 

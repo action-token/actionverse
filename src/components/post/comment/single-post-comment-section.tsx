@@ -162,7 +162,7 @@ function CommentView({ comment, childrenComments }: CommentViewProps) {
                             >
                                 <AddReplyComment
                                     parentId={comment.id}
-                                    postId={comment.postId}
+                                    postGroupId={comment.postGroupId}
                                 />
                             </motion.div>
                         )}

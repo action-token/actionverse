@@ -13,10 +13,10 @@ import { CommentSchema } from "../comment/add-post-comment"
 
 export function AddReplyComment({
     parentId,
-    postId,
+    postGroupId,
 }: {
     parentId: number
-    postId: number
+    postGroupId: number
 }) {
     const commentMutation = api.fan.post.createComment.useMutation({
         onSuccess: () => {
@@ -32,7 +32,7 @@ export function AddReplyComment({
         formState: { errors },
     } = useForm<z.infer<typeof CommentSchema>>({
         resolver: zodResolver(CommentSchema),
-        defaultValues: { parentId, postId, content: "" },
+        defaultValues: { parentId, postGroupId, content: "" },
     })
 
     const contentValue = watch("content")
