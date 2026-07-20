@@ -3,7 +3,7 @@
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype,
     token::{StellarAssetClient, TokenClient},
-    Address, Env, String,
+    Address, BytesN, Env, String,
 };
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -381,6 +381,20 @@ impl BountyManager {
         env.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
 
         Ok(())
+    }
+
+    /// Upgrade the contract to a new WASM version.
+    /// Only admin can call this. The contract keeps the same address and all data.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+    }
+
+    /// Returns the current contract version.
+    pub fn version(_env: Env) -> u32 {
+        1
     }
 }
 
