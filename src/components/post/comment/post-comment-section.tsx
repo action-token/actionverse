@@ -18,15 +18,15 @@ import ContextMenu from "~/components/common/context-menu"
 import { Arrow } from "@radix-ui/react-select"
 
 interface CommentSectionProps {
-    postId: number
+    postGroupId: number
     initialCommentCount: number
 }
 
-export function CommentSection({ postId, initialCommentCount }: CommentSectionProps) {
+export function CommentSection({ postGroupId, initialCommentCount }: CommentSectionProps) {
     const [isCommentsVisible, setIsCommentsVisible] = useState(true)
 
     const comments = api.fan.post.getComments.useQuery({
-        postGroupId: postId,
+        postGroupId: postGroupId,
         limit: 5,
     }, {
         enabled: isCommentsVisible
@@ -47,7 +47,7 @@ export function CommentSection({ postId, initialCommentCount }: CommentSectionPr
                 <MessageCircle className="h-4 w-4" />
                 {isCommentsVisible ? "Hide comments" : `View comments (${initialCommentCount})`}
             </Button>
-            <Link href={`/organization/post/${postId}`}>
+            <Link href={`/organization/post/${postGroupId}`}>
                 <Button
                     variant="ghost"
                     size="sm"
@@ -88,7 +88,7 @@ export function CommentSection({ postId, initialCommentCount }: CommentSectionPr
                         )}
 
                         <div className="mt-4 p-2">
-                            <AddPostComment postId={postId} />
+                            <AddPostComment postGroupId={postGroupId} />
                         </div>
                     </motion.div>
                 )}
@@ -189,7 +189,7 @@ function CommentView({ comment, childrenComments }: CommentViewProps) {
                             >
                                 <AddReplyComment
                                     parentId={comment.id}
-                                    postId={comment.postId}
+                                    postGroupId={comment.postGroupId}
                                 />
                             </motion.div>
                         )}

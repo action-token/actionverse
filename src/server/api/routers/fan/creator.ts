@@ -223,7 +223,7 @@ export const creatorRouter = createTRPCRouter({
             select: {
               followers: true,
               assets: true,
-              posts: true,
+              postGroups: true,
             }
           }
         },
@@ -268,7 +268,7 @@ export const creatorRouter = createTRPCRouter({
           select: {
             followers: true,
             assets: true,
-            posts: true,
+            postGroups: true,
           }
         },
         pageAsset: {

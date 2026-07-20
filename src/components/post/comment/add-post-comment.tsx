@@ -16,11 +16,11 @@ import CustomAvatar from "~/components/common/custom-avatar"
 
 export const CommentSchema = z.object({
     content: z.string().min(1, "Comment cannot be empty").max(1000, "Comment is too long"),
-    postId: z.number(),
+    postGroupId: z.number(),
     parentId: z.number().optional(),
 })
 
-export function AddPostComment({ postId }: { postId: number }) {
+export function AddPostComment({ postGroupId }: { postGroupId: number }) {
     const { data: session } = useSession()
     const [isFocused, setIsFocused] = useState(false)
 
@@ -39,7 +39,7 @@ export function AddPostComment({ postId }: { postId: number }) {
         formState: { errors },
     } = useForm<z.infer<typeof CommentSchema>>({
         resolver: zodResolver(CommentSchema),
-        defaultValues: { postId, content: "" },
+        defaultValues: { postGroupId, content: "" },
     })
 
     const contentValue = watch("content")
