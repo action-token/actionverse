@@ -2,7 +2,13 @@ import { Asset, Horizon, Keypair, Operation, StrKey, TransactionBuilder, xdr } f
 import { rpc } from "@stellar/stellar-sdk";
 import { Client as BountyManagerClient } from "contracts/bounty_escrow/bindings/src";
 import { BOUNTY_ESCROW_CONTRACT_ID } from "~/lib/common";
-import { networkPassphrase, SOROBAN_RPC_URL, STELLAR_URL, TrxBaseFee } from "../constant";
+import {
+  networkPassphrase,
+  SOROBAN_INCLUSION_FEE,
+  SOROBAN_RPC_URL,
+  STELLAR_URL,
+  TrxBaseFee,
+} from "../constant";
 import { MOTHER_SECRET } from "../marketplace/SECRET";
 import { signXdrTransaction } from "../fan/signXDR";
 import { WithSing, type SignUserType } from "../utils";
@@ -138,13 +144,16 @@ export async function buildCreateBountyXDR({
   await ensureSacDeployed(assetCode, assetIssuer);
   const client = getClient(creatorPubKey);
   const token = resolveTokenAddress(assetCode, assetIssuer);
-  const tx = await client.create_bounty({
-    bounty_id: bountyId,
-    creator: creatorPubKey,
-    token,
-    amount: toContractAmount(amount),
-    max_winners: maxWinners,
-  });
+  const tx = await client.create_bounty(
+    {
+      bounty_id: bountyId,
+      creator: creatorPubKey,
+      token,
+      amount: toContractAmount(amount),
+      max_winners: maxWinners,
+    },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
   return tx.toXDR();
 }
 
@@ -161,12 +170,15 @@ export async function buildSelectWinnerXDR({
   amount: number;
 }): Promise<string> {
   const client = getClient(creatorPubKey);
-  const tx = await client.select_winner({
-    caller: creatorPubKey,
-    bounty_id: bountyId,
-    winner: winnerPubKey,
-    amount: toContractAmount(amount),
-  });
+  const tx = await client.select_winner(
+    {
+      caller: creatorPubKey,
+      bounty_id: bountyId,
+      winner: winnerPubKey,
+      amount: toContractAmount(amount),
+    },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
   return tx.toXDR();
 }
 
@@ -179,10 +191,13 @@ export async function buildClaimXDR({
   winnerPubKey: string;
 }): Promise<string> {
   const client = getClient(winnerPubKey);
-  const tx = await client.claim_reward({
-    bounty_id: bountyId,
-    winner: winnerPubKey,
-  });
+  const tx = await client.claim_reward(
+    {
+      bounty_id: bountyId,
+      winner: winnerPubKey,
+    },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
   return tx.toXDR();
 }
 
@@ -195,10 +210,13 @@ export async function buildCancelBountyXDR({
   creatorPubKey: string;
 }): Promise<string> {
   const client = getClient(creatorPubKey);
-  const tx = await client.cancel_bounty({
-    caller: creatorPubKey,
-    bounty_id: bountyId,
-  });
+  const tx = await client.cancel_bounty(
+    {
+      caller: creatorPubKey,
+      bounty_id: bountyId,
+    },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
   return tx.toXDR();
 }
 
@@ -233,9 +251,10 @@ export async function buildAdminExtendBountyTTLXDR(
   adminPubKey: string,
 ): Promise<string> {
   const client = getClient(adminPubKey);
-  const tx = await client.admin_extend_bounty_ttl({
-    bounty_id: bountyId,
-  });
+  const tx = await client.admin_extend_bounty_ttl(
+    { bounty_id: bountyId },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
   return tx.toXDR();
 }
 
@@ -246,17 +265,17 @@ export async function buildAdminExtendWinnerAwardTTLXDR(
   adminPubKey: string,
 ): Promise<string> {
   const client = getClient(adminPubKey);
-  const tx = await client.admin_extend_winner_award_ttl({
-    bounty_id: bountyId,
-    winner: winnerPubKey,
-  });
+  const tx = await client.admin_extend_winner_award_ttl(
+    { bounty_id: bountyId, winner: winnerPubKey },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
   return tx.toXDR();
 }
 
 /** Build XDR for the admin-only contract-instance TTL extension. */
 export async function buildAdminExtendInstanceTTLXDR(adminPubKey: string): Promise<string> {
   const client = getClient(adminPubKey);
-  const tx = await client.admin_extend_instance_ttl();
+  const tx = await client.admin_extend_instance_ttl({ fee: SOROBAN_INCLUSION_FEE });
   return tx.toXDR();
 }
 
