@@ -46,9 +46,9 @@ export async function sendGift({
     throw new Error("Not enough balance");
   }
 
-  const extraCost = await getplatformAssetNumberForXLM(0.51);
+  const extraCost = await getplatformAssetNumberForXLM(1);
 
-  const transactionFee =  2000;
+  const transactionFee = 2000;
 
   const Tx1 = new TransactionBuilder(transactionInializer, {
     fee: TrxBaseFee,
