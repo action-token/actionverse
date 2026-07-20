@@ -99,47 +99,40 @@ model Subscription {
     price         Float // here price is the copy of creator page asset
     creatorId     String
     creator       Creator         @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    posts         Post[]
     assets        Asset[]
     LocationGroup LocationGroup[]
-    postGroups    PostGroup[]
+    postGroup     PostGroup[]
 
     @@unique([name, creatorId])
 }
 
 model Like {
-    id        Int      @id @default(autoincrement())
-    postId    Int
-    post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-    userId    String
-    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    createdAt DateTime @default(now())
+    id          Int       @id @default(autoincrement())
+    userId      String
+    user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt   DateTime  @default(now())
+    postGroupId Int
+    postGroup   PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+    status      Boolean   @default(true)
 
-    status      Boolean    @default(true)
-    postGroup   PostGroup? @relation(fields: [postGroupId], references: [id])
-    postGroupId Int?
-
-    @@unique([postId, userId])
+    @@unique([postGroupId, userId])
 }
 
 model Comment {
-    id              Int    @id @default(autoincrement())
+    id              Int       @id @default(autoincrement())
     parentCommentID Int? // Optional field to reference parent comment (for nested comments)
-    postId          Int // Foreign key referencing Post model
-    post            Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
     userId          String // Foreign key referencing User model
-    user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+    user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
     content         String // Content of the comment
-
+    postGroupId     Int
+    postGroup       PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
     // Optional relationship: a comment can have a parent comment
-    parentComment Comment? @relation("ChildComments", fields: [parentCommentID], references: [id], onDelete: Cascade)
+    parentComment   Comment?  @relation("ChildComments", fields: [parentCommentID], references: [id], onDelete: Cascade)
 
     createdAt DateTime @default(now()) // Timestamp when the comment was created
 
     // Optional field: allows for a comment to have child comments (replies)
-    childComments Comment[]  @relation("ChildComments") // Collection of child comments (replies)
-    postGroup     PostGroup? @relation(fields: [postGroupId], references: [id])
-    postGroupId   Int?
+    childComments Comment[] @relation("ChildComments") // Collection of child comments (replies)
 }
 
 model User_Asset {
@@ -240,7 +233,6 @@ model Creator {
     instagram                 String?
 
     user               User                @relation(fields: [id], references: [id], onDelete: Cascade)
-    posts              Post[]
     subscriptions      Subscription[]
     assets             Asset[]
     marketAssets       MarketAsset[]
@@ -332,19 +324,13 @@ model PostGroup {
 }
 
 model Post {
-    id             Int             @id @default(autoincrement())
-    isCollected    Boolean         @default(false)
-    createdAt      DateTime        @default(now())
-    updatedAt      DateTime        @updatedAt
-    postGroupId    Int
-    postGroup      PostGroup       @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
-    collection     PostCollection?
-    subscription   Subscription?   @relation(fields: [subscriptionId], references: [id])
-    subscriptionId Int?
-    likes          Like[]
-    comments       Comment[]
-    creator        Creator?        @relation(fields: [creatorId], references: [id])
-    creatorId      String?
+    id          Int             @id @default(autoincrement())
+    isCollected Boolean         @default(false)
+    createdAt   DateTime        @default(now())
+    updatedAt   DateTime        @updatedAt
+    postGroupId Int
+    postGroup   PostGroup       @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+    collection  PostCollection?
 
     @@index([postGroupId])
     @@index([isCollected])
