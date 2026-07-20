@@ -284,3 +284,17 @@ fn admin_can_extend_instance_ttl() {
     let bounty = client.get_bounty(&bounty_id);
     assert_eq!(bounty.total_amount, 1_000);
 }
+
+#[test]
+fn version_reports_current_contract_version() {
+    let (_env, client, _token, _token_sac) = setup();
+    assert_eq!(client.version(), CONTRACT_VERSION);
+}
+
+#[test]
+#[should_panic]
+fn upgrade_to_unknown_wasm_hash_panics() {
+    let (env, client, _token, _token_sac) = setup();
+    let bogus_hash = BytesN::from_array(&env, &[0u8; 32]);
+    client.upgrade(&bogus_hash);
+}

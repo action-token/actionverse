@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/fyronalias/Documents/Projects/actionverse log --oneline -5)",
+      "Bash(git -C /Users/fyronalias/Documents/Projects/actionverse show --stat HEAD)",
+      "Bash(cargo test *)",
+      "Bash(stellar --version)",
+      "Bash(stellar network *)",
+      "Bash(stellar keys *)",
+      "Bash(stellar contract *)",
+      "WebSearch",
+      "WebFetch(domain:developers.stellar.org)",
+      "Bash(python3 *)",
+      "Bash(curl -s \"https://horizon.stellar.org/accounts/GCMTJCWDCE6AVBJMFCYIIPSLISCOTG3W62MMYKQOWBC2M4SJ65DEMUYK\")",
+      "Bash(stellar xdr *)",
+      "Bash(curl -s \"https://horizon.stellar.org/transactions/04b71798b32f4dac4f9331ab83a105d1bd9efc4ddcd4b1ed79f0d03f9a65383c\")"
+    ]
+  }
+}

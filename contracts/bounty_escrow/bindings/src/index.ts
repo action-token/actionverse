@@ -76,6 +76,19 @@ export type BountyStatus = { tag: "Funded", values: void } | { tag: "Cancelled",
 
 export interface Client {
   /**
+   * Construct and simulate a upgrade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Upgrade the contract to a new WASM version.
+   * Only admin can call this. The contract keeps the same address and all data.
+   */
+  upgrade: ({ new_wasm_hash }: { new_wasm_hash: Buffer }, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a version transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Returns the current contract version.
+   */
+  version: (options?: MethodOptions) => Promise<AssembledTransaction<u32>>
+
+  /**
    * Construct and simulate a get_bounty transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   get_bounty: ({ bounty_id }: { bounty_id: string }, options?: MethodOptions) => Promise<AssembledTransaction<Result<Bounty>>>
@@ -151,6 +164,8 @@ export class Client extends ContractClient {
         "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAABAAAAAAAAAAAAAAABUFkbWluAAAAAAAAAAAAAAAAAAALTmF0aXZlVG9rZW4AAAAAAQAAAAAAAAAGQm91bnR5AAAAAAABAAAAEAAAAAEAAAAAAAAAC1dpbm5lckF3YXJkAAAAAAIAAAAQAAAAEw==",
         "AAAAAQAAAAAAAAAAAAAAC1dpbm5lckF3YXJkAAAAAAIAAAAAAAAABmFtb3VudAAAAAAACwAAAAAAAAAHY2xhaW1lZAAAAAAB",
         "AAAAAgAAAAAAAAAAAAAADEJvdW50eVN0YXR1cwAAAAIAAAAAAAAAAAAAAAZGdW5kZWQAAAAAAAAAAAAAAAAACUNhbmNlbGxlZAAAAA==",
+        "AAAAAAAAAHdVcGdyYWRlIHRoZSBjb250cmFjdCB0byBhIG5ldyBXQVNNIHZlcnNpb24uCk9ubHkgYWRtaW4gY2FuIGNhbGwgdGhpcy4gVGhlIGNvbnRyYWN0IGtlZXBzIHRoZSBzYW1lIGFkZHJlc3MgYW5kIGFsbCBkYXRhLgAAAAAHdXBncmFkZQAAAAABAAAAAAAAAA1uZXdfd2FzbV9oYXNoAAAAAAAD7gAAACAAAAAA",
+        "AAAAAAAAACVSZXR1cm5zIHRoZSBjdXJyZW50IGNvbnRyYWN0IHZlcnNpb24uAAAAAAAAB3ZlcnNpb24AAAAAAAAAAAEAAAAE",
         "AAAAAAAAAAAAAAAKZ2V0X2JvdW50eQAAAAAAAQAAAAAAAAAJYm91bnR5X2lkAAAAAAAAEAAAAAEAAAPpAAAH0AAAAAZCb3VudHkAAAAAAAM=",
         "AAAAAAAAACNXaW5uZXIgcHVsbHMgdGhlaXIgY29tbWl0dGVkIGF3YXJkLgAAAAAMY2xhaW1fcmV3YXJkAAAAAgAAAAAAAAAJYm91bnR5X2lkAAAAAAAAEAAAAAAAAAAGd2lubmVyAAAAAAATAAAAAQAAA+kAAAACAAAAAw==",
         "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAIAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAMbmF0aXZlX3Rva2VuAAAAEwAAAAA=",
@@ -165,6 +180,8 @@ export class Client extends ContractClient {
     )
   }
   public readonly fromJSON = {
+    upgrade: this.txFromJSON<null>,
+    version: this.txFromJSON<u32>,
     get_bounty: this.txFromJSON<Result<Bounty>>,
     claim_reward: this.txFromJSON<Result<void>>,
     cancel_bounty: this.txFromJSON<Result<void>>,

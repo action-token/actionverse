@@ -10,6 +10,10 @@ const DAY_IN_LEDGERS: u32 = 17280;
 const BUMP_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
 
+/// Bump this before building/deploying each new wasm so `version()` reflects
+/// what's actually running on-chain.
+const CONTRACT_VERSION: u32 = 1;
+
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
@@ -394,7 +398,7 @@ impl BountyManager {
 
     /// Returns the current contract version.
     pub fn version(_env: Env) -> u32 {
-        1
+        CONTRACT_VERSION
     }
 }
 
