@@ -23,7 +23,9 @@
       "Bash(npm view *)",
       "Bash(node -e ' *)",
       "Bash(npx tsx -e ' *)",
-      "Bash(npx tsx *)"
+      "Bash(npx tsx *)",
+      "Bash(git fetch *)",
+      "Bash(grep -nEi 'secret|api[_-]?key|private[_-]?key|password|token|BEGIN \\(RSA|EC|OPENSSH|PRIVATE\\)|postgres://|mongodb\\(\\\\+srv\\)?://|AKIA[0-9A-Z]{16}|sk-[a-zA-Z0-9]{20,}|-----BEGIN')"
     ]
   }
 }
