@@ -424,6 +424,8 @@ model User {
     BountyWinner                     BountyWinner[]
     gallerySlotLikes                 GallerySlotLike[]
     postCollections                  PostCollection[]
+    createdNfts                      Nft[]
+    nftOwnerships                    NftOwnership[]
 }
 
 model VerificationToken {
@@ -1350,4 +1352,51 @@ model MuseumRoom {
 
     @@unique([creatorId, roomIndex])
     @@index([creatorId])
+}
+
+// ------------------------NFT MARKETPLACE SCHEMA-------------------------
+// SEP-50 compliant NFT marketplace
+
+enum NftStatus {
+    PENDING
+    LISTED
+    UNLISTED
+    SOLD
+}
+
+model Nft {
+    id              String         @id @default(uuid())
+    name            String
+    description     String
+    thumbnail       String
+    contentUrl      String
+    mediaType       String
+    copies          Int
+    availableCopies Int?
+    price           Float
+    creatorId       String
+    creator         User           @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    onChainTokenId  String?
+    txHash          String?
+    status          NftStatus      @default(PENDING)
+    ownerships      NftOwnership[]
+    createdAt       DateTime       @default(now())
+    updatedAt       DateTime       @updatedAt
+
+    @@index([creatorId])
+    @@index([status])
+}
+
+model NftOwnership {
+    id        String   @id @default(uuid())
+    nftId     String
+    nft       Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
+    ownerId   String
+    owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+    quantity  Int      @default(1)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([nftId, ownerId])
+    @@index([ownerId])
 }
