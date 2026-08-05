@@ -25,6 +25,10 @@ interface AssetViewProps {
     priceInUSD?: number | null
     onBuy?: () => void // Added onBuy prop for purchase functionality
     onView?: () => void // Added onView prop for view functionality
+    /** Hide the "Buy Now" button even when `price` is set — for contexts
+     *  like My Collection where every card is already yours, so buying it
+     *  never makes sense regardless of price. */
+    hideBuyButton?: boolean
 }
 
 export default function AssetView({
@@ -40,6 +44,7 @@ export default function AssetView({
     priceInUSD,
     onBuy, // Added onBuy prop
     onView, // Added onView prop
+    hideBuyButton = false,
 }: AssetViewProps) {
     const [isVisible, setIsVisible] = useState(false)
     const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -211,7 +216,7 @@ export default function AssetView({
                                     )}
                                 </div>
                             </div>
-                            {price && (
+                            {price && !hideBuyButton && (
                                 <div className="pt-1 ">
                                     <Button onClick={onBuy} size="sm" className="w-full transition-colors shadow-sm shadow-black/30">
                                         <ShoppingCart className="w-4 h-4 mr-2" />

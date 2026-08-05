@@ -424,6 +424,12 @@ model User {
     BountyWinner                     BountyWinner[]
     gallerySlotLikes                 GallerySlotLike[]
     postCollections                  PostCollection[]
+    createdNfts                      Nft[]
+    nftOwnerships                    NftOwnership[]
+    nftListings                      NftListing[]
+    nftLikes                         NftLike[]
+    collectionLikes                  CollectionLike[]
+    nftCollections                   Collection[]
 }
 
 model VerificationToken {
@@ -1350,4 +1356,126 @@ model MuseumRoom {
 
     @@unique([creatorId, roomIndex])
     @@index([creatorId])
+}
+
+// ------------------------NFT MARKETPLACE SCHEMA-------------------------
+// SEP-50 compliant NFT marketplace
+
+enum NftStatus {
+    PENDING
+    MINTED
+}
+
+model Nft {
+    id             String         @id @default(uuid())
+    name           String
+    description    String
+    thumbnail      String
+    contentUrl     String
+    mediaType      String
+    copies         Int
+    creatorId      String
+    creator        User           @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    collectionId   String?
+    collection     Collection?    @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+    onChainTokenId String?
+    txHash         String?
+    status         NftStatus      @default(PENDING)
+    ownerships     NftOwnership[]
+    listings       NftListing[]
+    likes          NftLike[]
+    createdAt      DateTime       @default(now())
+    updatedAt      DateTime       @updatedAt
+
+    // Denormalized from `listings` (recomputed on every listing change) so
+    // browse/sort/card views don't need a live aggregate query per NFT —
+    // same cached-counter pattern as e.g. Post.viewCount.
+    lowestActivePrice  Float?
+    activeListingCount Int    @default(0)
+
+    @@index([creatorId])
+    @@index([collectionId])
+    @@index([status])
+}
+
+// One row per (nft, seller) — mirrors the contract's per-seller `Listing`,
+// letting every copy-holder independently list and resell their own share
+// instead of there being a single listing/price per NFT.
+model NftListing {
+    id              String   @id @default(uuid())
+    nftId           String
+    nft             Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
+    sellerId        String
+    seller          User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+    price           Float
+    availableCopies Int
+    totalCopies     Int
+    isActive        Boolean  @default(true)
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
+
+    @@unique([nftId, sellerId])
+    @@index([nftId, isActive])
+}
+
+// A named grouping of smart-contract NFTs owned by a creator. Optional — an
+// NFT can be minted standalone (collectionId null) or attached to one of the
+// creator's collections. Distinct from the classic-Stellar `Creator`/`Asset`
+// model entirely — this only groups the new on-chain NFTs.
+model Collection {
+    id          String           @id @default(uuid())
+    name        String
+    description String?
+    coverImage  String?
+    creatorId   String
+    creator     User             @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+    nfts        Nft[]
+    likes       CollectionLike[]
+    createdAt   DateTime         @default(now())
+    updatedAt   DateTime         @updatedAt
+
+    @@unique([creatorId, name])
+    @@index([creatorId])
+}
+
+model NftOwnership {
+    id        String   @id @default(uuid())
+    nftId     String
+    nft       Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
+    ownerId   String
+    owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+    quantity  Int      @default(1)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([nftId, ownerId])
+    @@index([ownerId])
+}
+
+// Separate from the generic `Like` model (which is hard-coupled to
+// PostGroup) since NFT favorites are keyed on a different entity.
+model NftLike {
+    id        String   @id @default(uuid())
+    nftId     String
+    nft       Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
+    userId    String
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt DateTime @default(now())
+
+    @@unique([nftId, userId])
+    @@index([userId])
+}
+
+// Same pattern as `NftLike`, for favoriting a Collection as a whole rather
+// than an individual NFT within it.
+model CollectionLike {
+    id           String     @id @default(uuid())
+    collectionId String
+    collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+    userId       String
+    user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt    DateTime   @default(now())
+
+    @@unique([collectionId, userId])
+    @@index([userId])
 }

@@ -20,6 +20,7 @@ import { cn } from "~/lib/utils";
 import Asset from "~/components/common/admin-asset";
 import MarketAssetComponent from "~/components/common/market-asset";
 import PageAssetComponent from "~/components/common/page-asset";
+import { NftCard } from "~/components/nft/nft-card";
 import { MoreAssetsSkeleton } from "~/components/common/grid-loading";
 import { useBuyModalStore } from "~/components/store/buy-modal-store";
 import { useSession } from "next-auth/react";
@@ -430,24 +431,34 @@ const FilterTabs = () => {
         { getNextPageParam: (lastPage) => lastPage.nextCursor, },
     );
 
+    // Smart-contract NFTs — a separate on-chain marketplace, merged into the
+    // same ALL-tab grid as the classic sources above rather than its own tab,
+    // per the unified-feed decision.
+    const scNfts = api.nft.list.useInfiniteQuery(
+        { limit: 10 },
+        { getNextPageParam: (lastPage) => lastPage.nextCursor },
+    );
 
     const isLoading =
 
         adminAssets.isLoading ??
         fanAssets.isLoading ??
-        artistAssets.isLoading
+        artistAssets.isLoading ??
+        scNfts.isLoading
 
     const hasNextPage =
 
         adminAssets.hasNextPage ??
         fanAssets.hasNextPage ??
-        artistAssets.hasNextPage
+        artistAssets.hasNextPage ??
+        scNfts.hasNextPage
 
     const isFetchingNextPage =
 
         adminAssets.isFetchingNextPage ??
         fanAssets.isFetchingNextPage ??
-        artistAssets.isFetchingNextPage
+        artistAssets.isFetchingNextPage ??
+        scNfts.isFetchingNextPage
 
 
     const fetchNextPage = () => {
@@ -455,6 +466,7 @@ const FilterTabs = () => {
         if (adminAssets.hasNextPage) adminAssets.fetchNextPage();
         if (fanAssets.hasNextPage) fanAssets.fetchNextPage();
         if (artistAssets.hasNextPage) artistAssets.fetchNextPage();
+        if (scNfts.hasNextPage) scNfts.fetchNextPage();
 
     };
     console.log("artist", artistAssets.data);
@@ -487,6 +499,7 @@ const FilterTabs = () => {
                                 adminAssets={adminAssets}
                                 fanAssets={fanAssets}
                                 artistAssets={artistAssets}
+                                scNfts={scNfts}
 
                                 isLoading={isLoading}
                                 hasNextPage={hasNextPage ?? false}
@@ -553,6 +566,7 @@ interface AllAssetsTypes {
     artistAssets: ReturnType<
         typeof api.marketplace.market.getPageAssets.useInfiniteQuery
     >;
+    scNfts: ReturnType<typeof api.nft.list.useInfiniteQuery>;
 
 
 
@@ -567,6 +581,7 @@ const AllAssets = ({
     adminAssets,
     fanAssets,
     artistAssets,
+    scNfts,
 
     isLoading,
     hasNextPage,
@@ -603,6 +618,11 @@ const AllAssets = ({
                             key={`artist-${pageIndex}-${index}`}
                             item={item}
                         />
+                    )),
+                )}
+                {scNfts.data?.pages.map((page, pageIndex) =>
+                    page.items.map((item, index) => (
+                        <NftCard key={`sc-${pageIndex}-${index}`} nft={item} index={index} />
                     )),
                 )}
 
