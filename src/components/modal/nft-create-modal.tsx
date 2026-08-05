@@ -22,7 +22,8 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
-import { clientsign } from "package/connect_wallet";
+import { clientsign, extractTxHash } from "package/connect_wallet";
+import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g";
 import { WalletType } from "package/connect_wallet/src/lib/enums";
 import { type ChangeEvent, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -144,13 +145,110 @@ export const NftFormSchema = z.object({
 });
 
 export default function NftCreateModal() {
+    const { isOpen: isNFTModalOpen, setIsOpen: setNFTModalOpen } =
+        useNFTCreateModalStore();
+    const [method, setMethod] = useState<"choice" | "classic" | "smart-contract">(
+        "choice",
+    );
+
+    function handleClose() {
+        setNFTModalOpen(false);
+        setMethod("choice");
+    }
+
+    return (
+        <Dialog open={isNFTModalOpen} onOpenChange={handleClose}>
+            <DialogContent
+                onInteractOutside={(e) => e.preventDefault()}
+                className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-0"
+            >
+                {method === "choice" && (
+                    <MintMethodChoice onSelect={setMethod} onClose={handleClose} />
+                )}
+                {method === "classic" && (
+                    <ClassicNftForm
+                        onBack={() => setMethod("choice")}
+                        onClose={handleClose}
+                    />
+                )}
+                {method === "smart-contract" && (
+                    <SmartContractNftForm
+                        onBack={() => setMethod("choice")}
+                        onClose={handleClose}
+                    />
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function MintMethodChoice({
+    onSelect,
+    onClose,
+}: {
+    onSelect: (method: "classic" | "smart-contract") => void;
+    onClose: () => void;
+}) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.3 }}
+        >
+            <DialogHeader className="px-6 py-4">
+                <DialogTitle className="text-xl">Mint New Item</DialogTitle>
+                <DialogDescription>
+                    Choose how you want to create this item.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-1 gap-4 px-6 py-6 sm:grid-cols-2">
+                <button
+                    type="button"
+                    onClick={() => onSelect("classic")}
+                    className="flex flex-col items-start gap-2 rounded-xl border p-5 text-left transition-colors hover:border-primary hover:bg-muted"
+                >
+                    <Coins className="h-6 w-6 text-primary" />
+                    <span className="font-semibold">Classic NFT</span>
+                    <span className="text-sm text-muted-foreground">
+                        Mint as a classic Stellar asset, distributed through your
+                        storage account — the existing, battle-tested way.
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onSelect("smart-contract")}
+                    className="flex flex-col items-start gap-2 rounded-xl border p-5 text-left transition-colors hover:border-primary hover:bg-muted"
+                >
+                    <Cube className="h-6 w-6 text-primary" />
+                    <span className="font-semibold">Smart Contract NFT</span>
+                    <span className="text-sm text-muted-foreground">
+                        Mint on the NFT marketplace smart contract — on-chain
+                        ownership, royalties, and resale built in.
+                    </span>
+                </button>
+            </div>
+            <DialogFooter className="border-t px-6 py-4">
+                <Button type="button" variant="outline" onClick={onClose}>
+                    Cancel
+                </Button>
+            </DialogFooter>
+        </motion.div>
+    );
+}
+
+function ClassicNftForm({
+    onBack,
+    onClose,
+}: {
+    onBack: () => void;
+    onClose: () => void;
+}) {
     // cost in xlm
     const requiredXlm = 2;
     const feeInXLM = SIMPLIFIED_FEE_IN_XLM; //Number(trxBaseFeeInXLM) + Number(PLATFORM_FEE_IN_XLM);
     const totalXlmCost = requiredXlm + feeInXLM;
 
-    const { isOpen: isNFTModalOpen, setIsOpen: setNFTModalOpen } =
-        useNFTCreateModalStore();
     const requiredToken = api.fan.trx.getRequiredPlatformAsset.useQuery({
         xlm: requiredXlm,
     });
@@ -332,8 +430,8 @@ export default function NftCreateModal() {
             if (files.length > 0) {
                 const file = files[0];
                 if (file) {
-                    if (file.size > 1024 * 1024) {
-                        toast.error("File size should be less than 1MB");
+                    if (file.size > 2 * 1024 * 1024) {
+                        toast.error("File size should be less than 2MB");
                         return;
                     }
                     setFile(file);
@@ -376,11 +474,13 @@ export default function NftCreateModal() {
 
     const prevStep = () => {
         const currentIndex = FORM_STEPS.indexOf(activeStep);
-        if (currentIndex > 0) {
-            const previousStep = FORM_STEPS[currentIndex - 1];
-            if (previousStep) {
-                setActiveStep(previousStep);
-            }
+        if (currentIndex <= 0) {
+            onBack();
+            return;
+        }
+        const previousStep = FORM_STEPS[currentIndex - 1];
+        if (previousStep) {
+            setActiveStep(previousStep);
         }
     };
 
@@ -392,30 +492,23 @@ export default function NftCreateModal() {
 
     const handleClose = () => {
         setActiveStep("details");
-        setNFTModalOpen(false);
         setMediaUploadSuccess(false);
         setMediaUrl(undefined);
         setCover(undefined);
         reset();
+        onClose();
     };
 
     return (
-        <Dialog open={isNFTModalOpen} onOpenChange={handleClose}>
-            <DialogContent
-                onInteractOutside={(e) => {
-                    e.preventDefault();
-                }}
-                className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-xl p-0"
-            >
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 20 }}
-                    transition={{ duration: 0.3 }}
-                    className="flex h-full flex-col"
-                >
-                    <DialogHeader className=" px-6 py-4">
-                        <DialogTitle className="flex items-center gap-2 text-xl">
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.3 }}
+            className="flex h-full flex-col"
+        >
+            <DialogHeader className=" px-6 py-4">
+                <DialogTitle className="flex items-center gap-2 text-xl">
                             Create Store Item
                         </DialogTitle>
                         <DialogDescription>
@@ -815,7 +908,6 @@ export default function NftCreateModal() {
                                 type="button"
                                 variant="outline"
                                 onClick={prevStep}
-                                disabled={activeStep === "media"}
                                 className="flex items-center gap-1"
                             >
                                 Previous
@@ -886,9 +978,448 @@ export default function NftCreateModal() {
                             )}
                         </div>
                     </DialogFooter>
-                </motion.div>
-            </DialogContent>
-        </Dialog>
+        </motion.div>
+    );
+}
+
+const SC_FORM_STEPS = ["details", "media"];
+
+function SmartContractNftForm({
+    onBack,
+    onClose,
+}: {
+    onBack: () => void;
+    onClose: () => void;
+}) {
+    const session = useSession();
+    const walletType = session.data?.user.walletType ?? WalletType.none;
+    const { needSign } = useNeedSign();
+    const utils = api.useContext();
+
+    const [activeStep, setActiveStep] = useState<string>("details");
+    const [formProgress, setFormProgress] = useState(100 / SC_FORM_STEPS.length);
+    const [submitLoading, setSubmitLoading] = useState(false);
+
+    const [name, setName] = useState("");
+    const [description, setDescription] = useState("");
+    const [copies, setCopies] = useState(1);
+    const [royaltyPercent, setRoyaltyPercent] = useState(0);
+    const [price, setPrice] = useState(1);
+
+    const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE);
+    const [contentMimeType, setContentMimeType] = useState<string>();
+    const [thumbnailUrl, setThumbnailUrl] = useState<string>();
+    const [contentUrl, setContentUrl] = useState<string>();
+    const [thumbnailUploading, setThumbnailUploading] = useState(false);
+
+    const createNft = api.nft.create.useMutation();
+    const deletePendingNft = api.nft.deletePendingNft.useMutation();
+    const getMintXDR = api.nft.getMintXDR.useMutation();
+    const confirmMint = api.nft.confirmMint.useMutation();
+
+    function getEndpoint(type: MediaType) {
+        switch (type) {
+            case MediaType.IMAGE:
+                return "imageUploader";
+            case MediaType.MUSIC:
+                return "musicUploader";
+            case MediaType.VIDEO:
+                return "videoUploader";
+            case MediaType.THREE_D:
+                return "modelUploader";
+            default:
+                return "imageUploader";
+        }
+    }
+
+    function getMediaIcon(type: MediaType) {
+        switch (type) {
+            case MediaType.IMAGE:
+                return <ImageIcon className="h-4 w-4" />;
+            case MediaType.MUSIC:
+                return <Music className="h-4 w-4" />;
+            case MediaType.VIDEO:
+                return <Video className="h-4 w-4" />;
+            case MediaType.THREE_D:
+                return <Cube className="h-4 w-4" />;
+            default:
+                return <ImageIcon className="h-4 w-4" />;
+        }
+    }
+
+    async function uploadThumbnail(file: File) {
+        try {
+            setThumbnailUploading(true);
+            const formData = new FormData();
+            formData.append("file", file, file.name);
+            const res = await fetch("/api/file", { method: "POST", body: formData });
+            const ipfsHash = await res.text();
+            setThumbnailUrl(ipfsHashToPinataGatewayUrl(ipfsHash));
+            toast.success("Thumbnail uploaded successfully");
+        } catch {
+            toast.error("Failed to upload file");
+        } finally {
+            setThumbnailUploading(false);
+        }
+    }
+
+    function handleThumbnailChange(e: ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+            toast.error("File size should be less than 2MB");
+            return;
+        }
+        void uploadThumbnail(file);
+    }
+
+    function nextStep() {
+        const i = SC_FORM_STEPS.indexOf(activeStep);
+        const next = SC_FORM_STEPS[i + 1];
+        if (next) {
+            setActiveStep(next);
+            setFormProgress(((i + 2) / SC_FORM_STEPS.length) * 100);
+        }
+    }
+
+    function prevStep() {
+        const i = SC_FORM_STEPS.indexOf(activeStep);
+        if (i <= 0) {
+            onBack();
+            return;
+        }
+        const prev = SC_FORM_STEPS[i - 1];
+        if (prev) {
+            setActiveStep(prev);
+            setFormProgress(((i) / SC_FORM_STEPS.length) * 100);
+        }
+    }
+
+    const canSubmit =
+        name.trim().length > 0 &&
+        !!thumbnailUrl &&
+        !!contentUrl &&
+        !!contentMimeType &&
+        copies >= 1 &&
+        price > 0;
+
+    // Same build-XDR -> sign (server-side or via clientsign) -> confirm shape
+    // as the bounty escrow flow (see src/pages/bounty/create.tsx) — no
+    // wallet-specific Soroban signing code, no SDK signAndSend/RPC decoding.
+    async function handleMint() {
+        if (!session.data?.user || !thumbnailUrl || !contentUrl || !contentMimeType) return;
+        setSubmitLoading(true);
+        let nftId: string | undefined;
+        try {
+            const nft = await createNft.mutateAsync({
+                name: name.trim(),
+                description: description.trim(),
+                thumbnail: thumbnailUrl,
+                contentUrl,
+                mediaType: contentMimeType,
+                copies,
+            });
+            nftId = nft.id;
+
+            const royaltyBps = Math.round(royaltyPercent * 100);
+            const { xdr, tokenId, fullySignedByServer } = await getMintXDR.mutateAsync({
+                nftId: nft.id,
+                price,
+                royaltyBps,
+                signWith: needSign(),
+            });
+
+            let txHash: string | undefined;
+            if (fullySignedByServer) {
+                const result = await submitSignedXDRToServer4User(xdr);
+                txHash = extractTxHash(result);
+            } else {
+                const clientResponse = await clientsign({
+                    presignedxdr: xdr,
+                    walletType,
+                    pubkey: session.data.user.id,
+                    test: clientSelect(),
+                });
+                txHash = extractTxHash(clientResponse);
+            }
+            if (!txHash) {
+                // Wallet dialog was closed/cancelled, or the transaction
+                // didn't land — don't leave a fake "minted" row behind.
+                toast.error("Minting transaction could not be confirmed.");
+                await deletePendingNft.mutateAsync({ nftId: nft.id });
+                return;
+            }
+
+            await confirmMint.mutateAsync({ nftId: nft.id, tokenId, txHash });
+            await Promise.all([
+                utils.nft.myOwned.invalidate(),
+                utils.nft.myCreated.invalidate(),
+            ]);
+
+            toast.success("NFT minted!");
+            onClose();
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Minting failed");
+            if (nftId) {
+                await deletePendingNft.mutateAsync({ nftId }).catch(() => undefined);
+            }
+        } finally {
+            setSubmitLoading(false);
+        }
+    }
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.3 }}
+            className="flex h-full flex-col"
+        >
+            <DialogHeader className="px-6 py-4">
+                <DialogTitle className="flex items-center gap-2 text-xl">
+                    Mint Smart Contract NFT
+                </DialogTitle>
+                <DialogDescription>
+                    Minted directly on the NFT marketplace smart contract — on-chain
+                    ownership, royalties, and resale built in.
+                </DialogDescription>
+                <Progress value={formProgress} className="mt-2 h-2" />
+            </DialogHeader>
+
+            <div className="overflow-y-auto px-6 py-4">
+                {activeStep === "details" && (
+                    <Card>
+                        <CardContent className="space-y-4 pt-6">
+                            <div className="space-y-2">
+                                <Label htmlFor="sc-name">Item name</Label>
+                                <Input
+                                    id="sc-name"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="Enter a name for your item"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="sc-description">Description</Label>
+                                <Textarea
+                                    id="sc-description"
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    placeholder="Describe your NFT"
+                                    className="min-h-24 resize-none"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="sc-copies">Editions</Label>
+                                <Input
+                                    id="sc-copies"
+                                    type="number"
+                                    min={1}
+                                    value={copies}
+                                    onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    How many copies of this item can exist
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="sc-royalty">Creator royalty (%)</Label>
+                                <Input
+                                    id="sc-royalty"
+                                    type="number"
+                                    min={0}
+                                    max={50}
+                                    step="0.1"
+                                    value={royaltyPercent}
+                                    onChange={(e) => setRoyaltyPercent(Number(e.target.value) || 0)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    You earn this percentage on every resale
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="sc-price" className="flex items-center gap-2">
+                                    <Coins className="h-4 w-4 text-muted-foreground" />
+                                    Price (XLM)
+                                </Label>
+                                <Input
+                                    id="sc-price"
+                                    type="number"
+                                    min={0.0000001}
+                                    step="any"
+                                    value={price}
+                                    onChange={(e) => setPrice(Number(e.target.value) || 0)}
+                                    placeholder="Enter price in XLM"
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {activeStep === "media" && (
+                    <Card>
+                        <CardContent className="space-y-4 pt-6">
+                            <div>
+                                <Label className="mb-2 block text-sm font-medium">Media Type</Label>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {Object.values(MediaType).map((media, i) => (
+                                        <Button
+                                            key={i}
+                                            type="button"
+                                            variant={media === mediaType ? "destructive" : "muted"}
+                                            onClick={() => {
+                                                setMediaType(media);
+                                                setContentUrl(undefined);
+                                                setContentMimeType(undefined);
+                                            }}
+                                            className={`flex items-center gap-2 ${media === mediaType ? "shadow-sm shadow-foreground" : ""}`}
+                                        >
+                                            {getMediaIcon(media)}
+                                            <span>{media === MediaType.THREE_D ? "3D" : media}</span>
+                                        </Button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium">Thumbnail Image</Label>
+                                <AnimatePresence>
+                                    {!thumbnailUrl ? (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => document.getElementById("sc-coverImg")?.click()}
+                                            className="relative flex h-36 w-full flex-col items-center justify-center gap-2 border-dashed"
+                                        >
+                                            <Upload className="h-6 w-6 text-muted-foreground" />
+                                            <span className="text-sm text-muted-foreground">
+                                                Upload Thumbnail
+                                            </span>
+                                            {thumbnailUploading && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+                                                    <Loader2 className="h-6 w-6 animate-spin" />
+                                                </div>
+                                            )}
+                                        </Button>
+                                    ) : (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            className="relative h-36 overflow-hidden rounded-md"
+                                        >
+                                            <Image
+                                                fill
+                                                alt="preview image"
+                                                src={thumbnailUrl}
+                                                className="object-cover"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="destructive"
+                                                size="icon"
+                                                className="absolute right-1 top-1 h-6 w-6"
+                                                onClick={() => setThumbnailUrl(undefined)}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                            <div className="absolute bottom-0 left-0 right-0 bg-background/80 px-2 py-1">
+                                                <Badge variant="outline" className="bg-green-100 text-green-800">
+                                                    <Check className="mr-1 h-3 w-3" /> Uploaded
+                                                </Badge>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                                <Input
+                                    id="sc-coverImg"
+                                    type="file"
+                                    accept=".jpg, .png"
+                                    onChange={handleThumbnailChange}
+                                    className="hidden"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium">Content</Label>
+                                <UploadS3Button
+                                    endpoint={getEndpoint(mediaType)}
+                                    variant="button"
+                                    label={`UPLOAD ${mediaType !== "THREE_D" ? mediaType : "3D"} CONTENT`}
+                                    className="w-full"
+                                    onBeforeUploadBegin={(file) => {
+                                        setContentMimeType(file.type);
+                                        return file;
+                                    }}
+                                    onClientUploadComplete={(res) => {
+                                        if (res?.url) {
+                                            setContentUrl(res.url);
+                                            toast.success("Content uploaded successfully");
+                                        }
+                                    }}
+                                    onUploadError={(error: Error) => {
+                                        toast.error(`ERROR! ${error.message}`);
+                                    }}
+                                />
+                                {contentUrl && (
+                                    <Badge variant="outline" className="bg-green-100 text-green-800">
+                                        <Check className="mr-1 h-3 w-3" /> Content uploaded
+                                    </Badge>
+                                )}
+                            </div>
+
+                            <Alert>
+                                <AlertDescription>
+                                    Minting calls the smart contract directly from your
+                                    connected wallet — no storage account needed.
+                                </AlertDescription>
+                            </Alert>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
+
+            <DialogFooter className="border-t px-6 py-4">
+                <div className="flex w-full items-center justify-between">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={prevStep}
+                    >
+                        Previous
+                    </Button>
+
+                    {activeStep !== "media" ? (
+                        <Button
+                            type="button"
+                            onClick={nextStep}
+                            className="flex items-center gap-1 shadow-sm shadow-foreground"
+                            disabled={activeStep === "media" && (!thumbnailUrl || !contentUrl)}
+                        >
+                            Next
+                            <ArrowRight className="ml-1 h-4 w-4" />
+                        </Button>
+                    ) : (
+                        <Button
+                            type="button"
+                            onClick={() => void handleMint()}
+                            disabled={!canSubmit || submitLoading}
+                            className="flex items-center gap-1 shadow-sm shadow-foreground"
+                        >
+                            {submitLoading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Minting...
+                                </>
+                            ) : (
+                                "Mint NFT"
+                            )}
+                        </Button>
+                    )}
+                </div>
+            </DialogFooter>
+        </motion.div>
     );
 }
 

@@ -19,7 +19,8 @@ import { agentRouter } from "./routers/agent";
 import { beamRouter } from "./routers/beam";
 import { communityRouters } from "./routers/community/root";
 import { tagRouter } from "./routers/tags";
-import { NftRouters } from "./routers/nft/root";
+import { nftRouter } from "./routers/nft";
+import { collectionRouter } from "./routers/collection";
 
 /**
  * This is the primary router for your server.
@@ -46,7 +47,8 @@ export const appRouter = createTRPCRouter({
   beam: beamRouter,
   community: communityRouters,
   tag: tagRouter,
-  nft: NftRouters,
+  nft: nftRouter,
+  collection: collectionRouter,
 });
 
 // export type definition of API

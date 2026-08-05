@@ -28,6 +28,28 @@
     [],
     [
       [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN",
+              "function_name": "mint",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                },
+                {
+                  "i128": "10000"
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
         {
           "function": {
@@ -39,10 +61,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "string": "My First NFT"
+                  "string": "NFT"
                 },
                 {
-                  "string": "A beautiful digital artwork"
+                  "string": "Description"
                 },
                 {
                   "string": "https://s3.../thumb.png"
@@ -54,7 +76,7 @@
                   "string": "image/png"
                 },
                 {
-                  "u32": 10
+                  "u32": 5
                 },
                 {
                   "i128": "1000"
@@ -69,10 +91,6 @@
         }
       ]
     ],
-    [],
-    [],
-    [],
-    [],
     [],
     [],
     []
@@ -135,6 +153,26 @@
             "contract_data": {
               "ext": "v0",
               "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "ledger_key_nonce": {
+                  "nonce": "1033654523790656264"
+                }
+              },
+              "durability": "temporary",
+              "val": "void"
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
               "key": {
                 "ledger_key_nonce": {
                   "nonce": "5541220902715666415"
@@ -203,7 +241,7 @@
                       "symbol": "available_copies"
                     },
                     "val": {
-                      "u32": 10
+                      "u32": 5
                     }
                   },
                   {
@@ -243,7 +281,7 @@
                       "symbol": "total_copies"
                     },
                     "val": {
-                      "u32": 10
+                      "u32": 5
                     }
                   }
                 ]
@@ -307,7 +345,7 @@
               },
               "durability": "persistent",
               "val": {
-                "u32": 10
+                "u32": 5
               }
             }
           },
@@ -356,7 +394,7 @@
                       "symbol": "description"
                     },
                     "val": {
-                      "string": "A beautiful digital artwork"
+                      "string": "Description"
                     }
                   },
                   {
@@ -372,7 +410,7 @@
                       "symbol": "name"
                     },
                     "val": {
-                      "string": "My First NFT"
+                      "string": "NFT"
                     }
                   },
                   {
@@ -572,6 +610,58 @@
           "ext": "v0"
         },
         "live_until": 2073600
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "Balance"
+                  },
+                  {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "amount"
+                    },
+                    "val": {
+                      "i128": "10000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "authorized"
+                    },
+                    "val": {
+                      "bool": true
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "clawback"
+                    },
+                    "val": {
+                      "bool": false
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 518400
       },
       {
         "entry": {

@@ -2,14 +2,24 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype,
-    token::TokenClient, Address, BytesN, Env, String,
+    token::TokenClient, Address, BytesN, Env, String, Vec,
 };
 
 const DAY_IN_LEDGERS: u32 = 17280;
 const BUMP_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
 
-const CONTRACT_VERSION: u32 = 2;
+const CONTRACT_VERSION: u32 = 4;
+
+// Basis-points denominator for platform fee / creator royalty math (10_000 = 100%).
+const BPS_DENOM: i128 = 10_000;
+const MAX_PLATFORM_FEE_BPS: u32 = 1_000; // 10% cap
+const MAX_ROYALTY_BPS: u32 = 5_000; // 50% cap
+
+// Bounded string lengths so a single mint can't bloat ledger storage unboundedly.
+const MAX_NAME_LEN: u32 = 128;
+const MAX_DESCRIPTION_LEN: u32 = 2_000;
+const MAX_URI_LEN: u32 = 500;
 
 // =============================================================================
 // Data Keys
@@ -29,8 +39,19 @@ pub enum DataKey {
     TokenApproval(u128),
     OperatorApproval(Address, Address),
     Balance(Address),
-    Listing(u128),
+    // Per-holder copy count for an edition token — the source of truth for
+    // who can list/resell how many copies (see `Listing` below).
+    TokenBalance(u128, Address),
+    // Keyed by (token_id, seller) so multiple holders can each run their own
+    // independent listing for the same token_id.
+    Listing(u128, Address),
+    // Index of every address that has ever listed a given token_id, since
+    // Soroban storage has no prefix scan to enumerate `Listing` keys.
+    ListingSellers(u128),
     TokenMetadata(u128),
+    Paused,
+    PlatformFeeBps,
+    Treasury,
 }
 
 // =============================================================================
@@ -46,6 +67,7 @@ pub struct TokenMetadata {
     pub content_url: String,
     pub media_type: String,
     pub creator: Address,
+    pub royalty_bps: u32,
 }
 
 #[contracttype]
@@ -88,8 +110,13 @@ pub enum Error {
     InsufficientPayment = 12,
     Unauthorized = 13,
     ApprovalExpired = 14,
+    Paused = 15,
     InvalidTokenUri = 16,
     InvalidName = 17,
+    InvalidDescription = 18,
+    InvalidFee = 19,
+    InsufficientBalance = 20,
+    SelfPurchase = 21,
 }
 
 // =============================================================================
@@ -148,6 +175,8 @@ pub struct Purchased {
     pub buyer: Address,
     pub seller: Address,
     pub price: i128,
+    pub royalty_paid: i128,
+    pub platform_fee_paid: i128,
 }
 
 #[contractevent]
@@ -156,6 +185,11 @@ pub struct ListingCancelled {
     pub token_id: u128,
     #[topic]
     pub seller: Address,
+}
+
+#[contractevent]
+pub struct PauseUpdated {
+    pub paused: bool,
 }
 
 // =============================================================================
@@ -185,6 +219,11 @@ impl NftMarketplace {
         env.storage().instance().set(&DataKey::Name, &name);
         env.storage().instance().set(&DataKey::Symbol, &symbol);
         env.storage().instance().set(&DataKey::NextTokenId, &1u128);
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformFeeBps, &0u32);
+        env.storage().instance().set(&DataKey::Treasury, &admin);
         env.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
     }
 
@@ -350,6 +389,8 @@ impl NftMarketplace {
 
     // =========================================================================
     // Minting (No Collections - Direct Mint)
+    // Any authenticated address may call this as its own `creator` — there is
+    // no admin/allowlist gate. `creator.require_auth()` is the only guard.
     // =========================================================================
 
     pub fn mint(
@@ -362,20 +403,33 @@ impl NftMarketplace {
         media_type: String,
         copies: u32,
         price: i128,
+        royalty_bps: u32,
     ) -> Result<u128, Error> {
         creator.require_auth();
 
+        if Self::is_paused(env.clone()) {
+            return Err(Error::Paused);
+        }
         if copies == 0 {
             return Err(Error::InvalidCopies);
         }
         if price <= 0 {
             return Err(Error::InvalidAmount);
         }
-        if thumbnail.len() == 0 || content_url.len() == 0 {
+        if thumbnail.len() == 0 || thumbnail.len() > MAX_URI_LEN {
             return Err(Error::InvalidTokenUri);
         }
-        if name.len() == 0 {
+        if content_url.len() == 0 || content_url.len() > MAX_URI_LEN {
+            return Err(Error::InvalidTokenUri);
+        }
+        if name.len() == 0 || name.len() > MAX_NAME_LEN {
             return Err(Error::InvalidName);
+        }
+        if description.len() > MAX_DESCRIPTION_LEN {
+            return Err(Error::InvalidDescription);
+        }
+        if royalty_bps > MAX_ROYALTY_BPS {
+            return Err(Error::InvalidFee);
         }
 
         let token_id: u128 = env
@@ -391,6 +445,7 @@ impl NftMarketplace {
             content_url,
             media_type,
             creator: creator.clone(),
+            royalty_bps,
         };
 
         let owner_key = DataKey::TokenOwner(token_id);
@@ -426,6 +481,12 @@ impl NftMarketplace {
             .persistent()
             .extend_ttl(&balance_key, BUMP_THRESHOLD, BUMP_TO);
 
+        let token_balance_key = DataKey::TokenBalance(token_id, creator.clone());
+        env.storage().persistent().set(&token_balance_key, &copies);
+        env.storage()
+            .persistent()
+            .extend_ttl(&token_balance_key, BUMP_THRESHOLD, BUMP_TO);
+
         env.storage()
             .instance()
             .set(&DataKey::NextTokenId, &(token_id + 1));
@@ -445,11 +506,12 @@ impl NftMarketplace {
             total_copies: copies,
             is_active: true,
         };
-        let listing_key = DataKey::Listing(token_id);
+        let listing_key = DataKey::Listing(token_id, creator.clone());
         env.storage().persistent().set(&listing_key, &listing);
         env.storage()
             .persistent()
             .extend_ttl(&listing_key, BUMP_THRESHOLD, BUMP_TO);
+        Self::register_seller(&env, token_id, &creator);
 
         Mint {
             to: creator.clone(),
@@ -481,6 +543,9 @@ impl NftMarketplace {
     ) -> Result<(), Error> {
         seller.require_auth();
 
+        if Self::is_paused(env.clone()) {
+            return Err(Error::Paused);
+        }
         if price <= 0 {
             return Err(Error::InvalidAmount);
         }
@@ -488,9 +553,13 @@ impl NftMarketplace {
             return Err(Error::InvalidCopies);
         }
 
-        let owner = Self::owner_of(env.clone(), token_id)?;
-        if owner != seller {
-            return Err(Error::NotOwner);
+        // `owner_of` here only confirms the token was actually minted — for
+        // an edition token there's no single "owner", so eligibility to list
+        // is decided by `TokenBalance` below, not this call's return value.
+        Self::owner_of(env.clone(), token_id)?;
+        let held = Self::token_balance_of(env.clone(), token_id, seller.clone());
+        if held < copies {
+            return Err(Error::InsufficientBalance);
         }
 
         let payment_token: Address = env
@@ -508,9 +577,10 @@ impl NftMarketplace {
             is_active: true,
         };
 
-        let key = DataKey::Listing(token_id);
+        let key = DataKey::Listing(token_id, seller.clone());
         env.storage().persistent().set(&key, &listing);
         env.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
+        Self::register_seller(&env, token_id, &seller);
 
         Listed {
             token_id,
@@ -523,14 +593,30 @@ impl NftMarketplace {
         Ok(())
     }
 
-    pub fn buy(env: Env, buyer: Address, token_id: u128, quantity: u32) -> Result<(), Error> {
+    /// Buys `quantity` copies of `token_id`. Storage is fully updated
+    /// (checks-effects) before any external token transfer (interactions),
+    /// so a non-standard/malicious `payment_token` contract can't reenter
+    /// this call and observe or exploit stale listing/balance state.
+    pub fn buy(
+        env: Env,
+        buyer: Address,
+        seller: Address,
+        token_id: u128,
+        quantity: u32,
+    ) -> Result<(), Error> {
         buyer.require_auth();
 
+        if buyer == seller {
+            return Err(Error::SelfPurchase);
+        }
+        if Self::is_paused(env.clone()) {
+            return Err(Error::Paused);
+        }
         if quantity == 0 {
             return Err(Error::InvalidCopies);
         }
 
-        let listing_key = DataKey::Listing(token_id);
+        let listing_key = DataKey::Listing(token_id, seller.clone());
         let mut listing: Listing = env
             .storage()
             .persistent()
@@ -544,14 +630,26 @@ impl NftMarketplace {
             return Err(Error::NoCopiesAvailable);
         }
 
+        let metadata: TokenMetadata = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TokenMetadata(token_id))
+            .ok_or(Error::TokenNotFound)?;
+
         let total_price = listing.price * (quantity as i128);
+        let platform_fee_bps = Self::get_platform_fee(env.clone()) as i128;
+        let platform_fee = total_price * platform_fee_bps / BPS_DENOM;
 
-        TokenClient::new(&env, &listing.payment_token).transfer(
-            &buyer,
-            &listing.seller,
-            &total_price,
-        );
+        // Royalty only applies on secondary sales (seller isn't the original
+        // creator); on a primary sale the creator *is* the seller already.
+        let royalty = if listing.seller != metadata.creator {
+            total_price * (metadata.royalty_bps as i128) / BPS_DENOM
+        } else {
+            0
+        };
+        let seller_amount = total_price - platform_fee - royalty;
 
+        // --- effects: mutate all contract state before any token transfer ---
         listing.available_copies -= quantity;
         if listing.available_copies == 0 {
             listing.is_active = false;
@@ -574,11 +672,73 @@ impl NftMarketplace {
             .persistent()
             .extend_ttl(&buyer_balance_key, BUMP_THRESHOLD, BUMP_TO);
 
+        // Seller's aggregate Balance must shrink too — they no longer hold
+        // the copies they just sold.
+        let seller_balance_key = DataKey::Balance(seller.clone());
+        let seller_balance: u128 = env
+            .storage()
+            .persistent()
+            .get(&seller_balance_key)
+            .unwrap_or(0u128);
+        env.storage().persistent().set(
+            &seller_balance_key,
+            &seller_balance.saturating_sub(quantity as u128),
+        );
+        env.storage()
+            .persistent()
+            .extend_ttl(&seller_balance_key, BUMP_THRESHOLD, BUMP_TO);
+
+        // Per-token holdings move from seller to buyer, so the buyer can
+        // list_for_sale their own copies afterward.
+        let seller_token_balance_key = DataKey::TokenBalance(token_id, seller.clone());
+        let seller_token_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&seller_token_balance_key)
+            .unwrap_or(0u32);
+        env.storage().persistent().set(
+            &seller_token_balance_key,
+            &seller_token_balance.saturating_sub(quantity),
+        );
+        env.storage()
+            .persistent()
+            .extend_ttl(&seller_token_balance_key, BUMP_THRESHOLD, BUMP_TO);
+
+        let buyer_token_balance_key = DataKey::TokenBalance(token_id, buyer.clone());
+        let buyer_token_balance: u32 = env
+            .storage()
+            .persistent()
+            .get(&buyer_token_balance_key)
+            .unwrap_or(0u32);
+        env.storage()
+            .persistent()
+            .set(&buyer_token_balance_key, &(buyer_token_balance + quantity));
+        env.storage()
+            .persistent()
+            .extend_ttl(&buyer_token_balance_key, BUMP_THRESHOLD, BUMP_TO);
+
+        // --- interactions: external token transfers happen last ---
+        let token_client = TokenClient::new(&env, &listing.payment_token);
+        if platform_fee > 0 {
+            let treasury: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Treasury)
+                .unwrap();
+            token_client.transfer(&buyer, &treasury, &platform_fee);
+        }
+        if royalty > 0 {
+            token_client.transfer(&buyer, &metadata.creator, &royalty);
+        }
+        token_client.transfer(&buyer, &listing.seller, &seller_amount);
+
         Purchased {
             token_id,
             buyer: buyer.clone(),
             seller: listing.seller,
             price: total_price,
+            royalty_paid: royalty,
+            platform_fee_paid: platform_fee,
         }
         .publish(&env);
 
@@ -588,16 +748,12 @@ impl NftMarketplace {
     pub fn cancel_listing(env: Env, seller: Address, token_id: u128) -> Result<(), Error> {
         seller.require_auth();
 
-        let listing_key = DataKey::Listing(token_id);
+        let listing_key = DataKey::Listing(token_id, seller.clone());
         let mut listing: Listing = env
             .storage()
             .persistent()
             .get(&listing_key)
             .ok_or(Error::ListingNotFound)?;
-
-        if listing.seller != seller {
-            return Err(Error::Unauthorized);
-        }
 
         listing.is_active = false;
         env.storage().persistent().set(&listing_key, &listing);
@@ -610,11 +766,43 @@ impl NftMarketplace {
         Ok(())
     }
 
-    pub fn get_listing(env: Env, token_id: u128) -> Result<Listing, Error> {
+    pub fn get_listing(env: Env, token_id: u128, seller: Address) -> Result<Listing, Error> {
         env.storage()
             .persistent()
-            .get(&DataKey::Listing(token_id))
+            .get(&DataKey::Listing(token_id, seller))
             .ok_or(Error::ListingNotFound)
+    }
+
+    /// Every active listing for a token_id, one per seller who currently has
+    /// copies up for sale. This is what buyers browse to pick who to buy from.
+    pub fn get_listings(env: Env, token_id: u128) -> Vec<Listing> {
+        let sellers: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ListingSellers(token_id))
+            .unwrap_or(Vec::new(&env));
+
+        let mut out = Vec::new(&env);
+        for seller in sellers.iter() {
+            let listing: Option<Listing> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Listing(token_id, seller));
+            if let Some(listing) = listing {
+                if listing.is_active {
+                    out.push_back(listing);
+                }
+            }
+        }
+        out
+    }
+
+    /// How many copies of `token_id` a specific address currently holds.
+    pub fn token_balance_of(env: Env, token_id: u128, owner: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::TokenBalance(token_id, owner))
+            .unwrap_or(0u32)
     }
 
     pub fn get_token_metadata(env: Env, token_id: u128) -> Result<TokenMetadata, Error> {
@@ -644,6 +832,89 @@ impl NftMarketplace {
         Ok(())
     }
 
+    /// Emergency circuit breaker: blocks `mint`, `list_for_sale`, and `buy`
+    /// while paused. Ownership transfer/approval and listing cancellation
+    /// stay available so users can still self-serve out of an incident.
+    pub fn pause(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+        env.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        PauseUpdated { paused: true }.publish(&env);
+        Ok(())
+    }
+
+    pub fn unpause(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        PauseUpdated { paused: false }.publish(&env);
+        Ok(())
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    pub fn set_platform_fee(env: Env, fee_bps: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        if fee_bps > MAX_PLATFORM_FEE_BPS {
+            return Err(Error::InvalidFee);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PlatformFeeBps, &fee_bps);
+        env.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        Ok(())
+    }
+
+    pub fn get_platform_fee(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::PlatformFeeBps)
+            .unwrap_or(0u32)
+    }
+
+    pub fn set_treasury(env: Env, new_treasury: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Treasury, &new_treasury);
+        env.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        Ok(())
+    }
+
+    pub fn get_treasury(env: Env) -> Address {
+        env.storage().instance().get(&DataKey::Treasury).unwrap()
+    }
+
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
@@ -668,6 +939,19 @@ impl NftMarketplace {
     // =========================================================================
     // Internal Helpers
     // =========================================================================
+
+    /// Adds `seller` to the token's seller index (if not already present) so
+    /// `get_listings` can enumerate every address with an active listing —
+    /// Soroban storage has no way to scan for keys by prefix.
+    fn register_seller(env: &Env, token_id: u128, seller: &Address) {
+        let key = DataKey::ListingSellers(token_id);
+        let mut sellers: Vec<Address> = env.storage().persistent().get(&key).unwrap_or(Vec::new(env));
+        if !sellers.contains(seller) {
+            sellers.push_back(seller.clone());
+            env.storage().persistent().set(&key, &sellers);
+            env.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
+        }
+    }
 
     fn execute_transfer(env: &Env, from: &Address, to: &Address, token_id: u128) {
         let owner_key = DataKey::TokenOwner(token_id);

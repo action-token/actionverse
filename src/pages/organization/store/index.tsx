@@ -135,7 +135,7 @@ export default function StoredItemsView() {
         fetchNextPage: fetchNextStoredItems,
         hasNextPage: hasNextStoredItems,
         isFetchingNextPage: isFetchingNextStoredItems,
-        isLoading: isStoredItemsLoading,
+        isLoading: isClassicStoredLoading,
     } = api.marketplace.market.getACreatorNfts.useInfiniteQuery(
         {
             limit: 10,
@@ -146,21 +146,60 @@ export default function StoredItemsView() {
         },
     )
 
+    const scCreated = api.nft.myCreated.useQuery(undefined, {
+        enabled: activeTab === "STORED" && !!session?.user?.id,
+    })
 
+    const isStoredItemsLoading = isClassicStoredLoading || scCreated.isLoading
 
-    const getFilteredStoredItems = (): MarketAssetType[] => {
-        if (!storedItemsData?.pages) return []
+    type ExtendedStoredItem = MarketAssetType & { isScNft?: boolean; scNftId?: string }
 
-        let items = storedItemsData.pages.flatMap((page) =>
-            page.nfts.map((item) => ({
-                ...item,
-                id: item.id,
-                title: item.asset.name ?? "Untitled",
-                image: item.asset.thumbnail ?? "/placeholder.svg",
-                mediaType: item.asset.mediaType as MediaType,
-                price: item.price,
-            })),
-        )
+    const getFilteredStoredItems = (): ExtendedStoredItem[] => {
+        let items: ExtendedStoredItem[] = []
+
+        if (storedItemsData?.pages) {
+            items = storedItemsData.pages.flatMap((page) =>
+                page.nfts.map((item) => ({
+                    ...item,
+                    id: item.id,
+                    title: item.asset.name ?? "Untitled",
+                    image: item.asset.thumbnail ?? "/placeholder.svg",
+                    mediaType: item.asset.mediaType as MediaType,
+                    price: item.price,
+                    isScNft: false,
+                })),
+            )
+        }
+
+        if (scCreated.data && scCreated.data.length > 0) {
+            const scItems: ExtendedStoredItem[] = scCreated.data.map((item) => ({
+                id: item.id as unknown as number,
+                title: item.name ?? "Untitled",
+                image: item.thumbnail ?? "/placeholder.svg",
+                mediaType: item.mediaType as MediaType,
+                price: item.myListing?.price ?? item.lowestActivePrice ?? undefined,
+                priceUSD: undefined,
+                placerId: item.creatorId,
+                type: "NFT",
+                placedAt: new Date(),
+                assetId: item.id,
+                asset: {
+                    id: item.id,
+                    code: item.name,
+                    issuer: "",
+                    name: item.name,
+                    thumbnail: item.thumbnail,
+                    mediaType: item.mediaType as MediaType,
+                    creatorId: item.creatorId,
+                    description: null,
+                    limit: 0,
+                    customPageAssetCodeIssuer: null,
+                },
+                isScNft: true,
+                scNftId: item.id,
+            }))
+            items = [...items, ...scItems]
+        }
 
         // Filter by media type
         if (storedMediaType !== "ALL") {
@@ -399,8 +438,12 @@ export default function StoredItemsView() {
                                                         <div
                                                             className=""
                                                             onClick={() => {
-                                                                setIsOpenStoredModal(true)
-                                                                setStoredModalData(item)
+                                                                if (item.isScNft && item.scNftId) {
+                                                                    void router.push(`/nft/manage/${item.scNftId}`)
+                                                                } else {
+                                                                    setIsOpenStoredModal(true)
+                                                                    setStoredModalData(item)
+                                                                }
                                                             }}
                                                         >
                                                             <AssetView code={item.asset.name} thumbnail={item.asset.thumbnail}
@@ -408,11 +451,21 @@ export default function StoredItemsView() {
                                                                 price={item.price}
                                                                 priceInUSD={item.priceUSD}
                                                                 mediaType={item.asset.mediaType}
-
+                                                                onView={() => {
+                                                                    if (item.isScNft && item.scNftId) {
+                                                                        void router.push(`/nft/manage/${item.scNftId}`)
+                                                                    }
+                                                                }}
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <Card className="overflow-hidden cursor-pointer" onClick={() => handleStoredItemClick(item)}>
+                                                        <Card className="overflow-hidden cursor-pointer" onClick={() => {
+                                                            if (item.isScNft && item.scNftId) {
+                                                                void router.push(`/nft/manage/${item.scNftId}`)
+                                                            } else {
+                                                                handleStoredItemClick(item)
+                                                            }
+                                                        }}>
                                                             <div className="flex">
                                                                 <div className="relative w-24 h-24">
                                                                     <Image

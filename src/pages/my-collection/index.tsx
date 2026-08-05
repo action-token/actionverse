@@ -19,9 +19,69 @@ import {
     MyCollectionMenu,
     useMyCollectionTabs,
 } from "~/components/store/tabs/mycollection-tabs";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { CreateStorage } from "~/components/creator/create-creator";
 import { AssetType } from "~/types/market/market-asset-type";
+
+// Smart-contract NFTs store their raw upload MIME type (e.g. "image/png",
+// "video/quicktime"), unlike classic assets' MediaType enum — normalize to
+// the same short, uppercase label AssetView already shows for those.
+function mimeTypeToLabel(mediaType?: string): string | undefined {
+    if (!mediaType) return undefined;
+    if (mediaType.startsWith("image/")) return "IMAGE";
+    if (mediaType.startsWith("video/")) return "VIDEO";
+    if (mediaType.startsWith("audio/")) return "MUSIC";
+    return "3D";
+}
+
+// Smart-contract NFTs don't need a storage account for anything — minting,
+// listing, and buying all transact directly against the contract from the
+// holder's own wallet — so these render unconditionally alongside the
+// classic (storage-account-gated) items rather than behind that gate.
+function ScNftCard({
+    thumbnail,
+    name,
+    subtitle,
+    nftId,
+    creatorId,
+    mediaType,
+    price,
+}: {
+    thumbnail: string;
+    name: string;
+    subtitle: string;
+    nftId: string;
+    creatorId?: string;
+    mediaType?: string;
+    price?: number;
+}) {
+    const router = useRouter();
+    return (
+        <div
+            className="cursor-pointer"
+            onClick={() => {
+                void router.push(`/nft/manage/${nftId}`);
+            }}
+        >
+            <AssetView
+                code={name}
+                thumbnail={thumbnail}
+                isNFT={true}
+                creatorId={creatorId}
+                mediaType={mimeTypeToLabel(mediaType)}
+                price={price}
+                hideBuyButton
+                onView={() => {
+                    void router.push(`/nft/manage/${nftId}`);
+                }}
+                onBuy={() => {
+                    void router.push(`/nft/manage/${nftId}`);
+                }}
+            />
+        </div>
+    );
+}
 
 const MyCollecton = () => {
     const { selectedMenu, setSelectedMenu } = useMyCollectionTabs();
@@ -67,6 +127,7 @@ export default MyCollecton;
 
 const MyCollection = () => {
     const acc = api.wallate.acc.getAccountInfo.useQuery();
+    const scOwned = api.nft.myOwned.useQuery();
     const { setData, setIsOpen } = useAssestInfoModalStore();
     const { setData: setPinModalData, setIsOpen: setPinModalIsOpen } =
         useCollectedPinInfoModalStore();
@@ -99,11 +160,12 @@ const MyCollection = () => {
         );
     }
 
-    if (acc.data ?? data) {
+    if (acc.data ?? data ?? scOwned.data) {
         return (
             <div className="flex h-[calc(100vh-20vh)] flex-col gap-4 overflow-y-auto rounded-md bg-white/40 p-4 shadow-md">
                 {acc.data?.dbAssets.length === 0 &&
-                    data?.pages[0]?.items.length === 0 && (
+                    data?.pages[0]?.items.length === 0 &&
+                    (scOwned.data?.length ?? 0) === 0 && (
                         <div className="flex h-full items-center justify-center">
                             <h1 className="text-lg font-bold ">No Assets Found</h1>
                         </div>
@@ -150,6 +212,20 @@ const MyCollection = () => {
                             </React.Fragment>
                         ))}
                     </>
+                    <>
+                        {scOwned.data?.map((ownership) => (
+                            <ScNftCard
+                                key={ownership.id}
+                                nftId={ownership.nft.id}
+                                thumbnail={ownership.nft.thumbnail}
+                                name={ownership.nft.name}
+                                creatorId={ownership.nft.creator?.id ?? ownership.nft.creatorId}
+                                mediaType={ownership.nft.mediaType}
+                                price={ownership.nft.myListing?.price}
+                                subtitle={`${ownership.quantity} cop${ownership.quantity === 1 ? "y" : "ies"} · Smart Contract`}
+                            />
+                        ))}
+                    </>
                 </div>
                 {hasNextPage && (
                     <Button
@@ -167,6 +243,11 @@ const MyCollection = () => {
 
 const SecondaryStorage = () => {
     const acc = api.wallate.acc.getCreatorStorageInfo.useQuery();
+    // Smart-contract listings (resale or original) don't need a storage
+    // account at all, so they're fetched and shown regardless of whether the
+    // classic `acc` query below has one.
+    const scOwned = api.nft.myOwned.useQuery();
+    const scListed = scOwned.data?.filter((o) => o.nft.myListing?.isActive) ?? [];
     const { setData, setIsOpen } = useAssestInfoModalStore();
     const router = useRouter();
     const handleViewAsset = (asset: AssetType) => {
@@ -178,7 +259,7 @@ const SecondaryStorage = () => {
             {acc.isLoading && (
                 <MoreAssetsSkeleton className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-4  xl:grid-cols-5" />
             )}
-            {acc.data === undefined && !acc.isLoading && (
+            {acc.data === undefined && !acc.isLoading && scListed.length === 0 && (
                 <div className="flex h-[calc(100vh-20vh)]  flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">
                     <div className="flex h-full flex-col items-center justify-center gap-2">
                         <h1 className="text-lg font-bold ">
@@ -193,7 +274,7 @@ const SecondaryStorage = () => {
                     </div>
                 </div>
             )}
-            {acc.data?.dbAssets.length === 0 && (
+            {acc.data?.dbAssets.length === 0 && scListed.length === 0 && (
                 <div className="flex h-full items-center justify-center">
                     <h1 className="text-lg font-bold ">No Assets Found</h1>
                 </div>
@@ -217,6 +298,18 @@ const SecondaryStorage = () => {
                         </div>
                     );
                 })}
+                {scListed.map((ownership) => (
+                    <ScNftCard
+                        key={ownership.id}
+                        nftId={ownership.nft.id}
+                        thumbnail={ownership.nft.thumbnail}
+                        name={ownership.nft.name}
+                        creatorId={ownership.nft.creator?.id ?? ownership.nft.creatorId}
+                        mediaType={ownership.nft.mediaType}
+                        price={ownership.nft.myListing?.price}
+                        subtitle={`Listed at ${ownership.nft.myListing?.price} XLM · Smart Contract`}
+                    />
+                ))}
             </div>
         </div>
     );
