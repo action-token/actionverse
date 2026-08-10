@@ -139,7 +139,7 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
       }
 
-      const tokenId = BigInt(input.tokenId);
+      const tokenId = Number(input.tokenId);
       const metadata = await getOnChainTokenMetadata(tokenId);
       if (!metadata || metadata.creator !== ctx.session.user.id) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Mint not found on-chain" });
@@ -184,7 +184,7 @@ export const nftRouter = createTRPCRouter({
       const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
       if (!nft?.onChainTokenId) throw new TRPCError({ code: "NOT_FOUND" });
 
-      const tokenId = BigInt(nft.onChainTokenId);
+      const tokenId = Number(nft.onChainTokenId);
       const heldCopies = await getOnChainTokenBalance(tokenId, ctx.session.user.id);
       if (heldCopies <= 0) {
         throw new TRPCError({ code: "FORBIDDEN", message: "You don't hold any copies of this NFT" });
@@ -214,10 +214,9 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
       }
 
-      const tokenId = BigInt(nft.onChainTokenId);
+      const tokenId = Number(nft.onChainTokenId);
       const listing = await getOnChainListing(tokenId, ctx.session.user.id);
       if (!listing) throw new TRPCError({ code: "BAD_REQUEST", message: "Listing not found on-chain" });
-
       return ctx.db.$transaction(async (tx) => {
         await upsertNftListingFromChain(tx, nft.id, ctx.session.user.id, listing);
         await recomputeListingSummary(tx, nft.id);
@@ -233,7 +232,7 @@ export const nftRouter = createTRPCRouter({
 
       const xdr = await buildCancelListingXDR({
         sellerPubKey: ctx.session.user.id,
-        tokenId: BigInt(nft.onChainTokenId),
+        tokenId: Number(nft.onChainTokenId),
       });
       const { xdr: signedXdr, fullySignedByServer } = await signNftXdr({
         xdr,
@@ -253,7 +252,7 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
       }
 
-      const tokenId = BigInt(nft.onChainTokenId);
+      const tokenId = Number(nft.onChainTokenId);
       const listing = await getOnChainListing(tokenId, ctx.session.user.id);
 
       return ctx.db.$transaction(async (tx) => {
@@ -285,7 +284,7 @@ export const nftRouter = createTRPCRouter({
       const xdr = await buildBuyXDR({
         buyerPubKey: ctx.session.user.id,
         sellerPubKey: input.sellerId,
-        tokenId: BigInt(nft.onChainTokenId),
+        tokenId: Number(nft.onChainTokenId),
         quantity: input.quantity,
       });
       const { xdr: signedXdr, fullySignedByServer } = await signNftXdr({
@@ -313,7 +312,7 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
       }
 
-      const tokenId = BigInt(nft.onChainTokenId);
+      const tokenId = Number(nft.onChainTokenId);
       const listing = await getOnChainListing(tokenId, input.sellerId);
       if (!listing) throw new TRPCError({ code: "BAD_REQUEST", message: "Listing not found on-chain" });
       // Bounds the client-claimed quantity against this specific listing's
@@ -474,7 +473,7 @@ export const nftRouter = createTRPCRouter({
         return { ...base, minted: false as const };
       }
 
-      const tokenId = BigInt(nft.onChainTokenId);
+      const tokenId = Number(nft.onChainTokenId);
       const [metadata, listings] = await Promise.all([
         getOnChainTokenMetadata(tokenId).catch(() => null),
         getOnChainListings(tokenId).catch(() => [] as Listing[]),

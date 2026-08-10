@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype,
-    token::TokenClient, Address, BytesN, Env, String, Vec,
+    token::TokenClient, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -34,21 +34,21 @@ pub enum DataKey {
     Name,
     Symbol,
     NextTokenId,
-    TokenOwner(u128),
-    TokenUri(u128),
-    TokenApproval(u128),
+    TokenOwner(u32),
+    TokenUri(u32),
+    TokenApproval(u32),
     OperatorApproval(Address, Address),
     Balance(Address),
     // Per-holder copy count for an edition token — the source of truth for
     // who can list/resell how many copies (see `Listing` below).
-    TokenBalance(u128, Address),
+    TokenBalance(u32, Address),
     // Keyed by (token_id, seller) so multiple holders can each run their own
     // independent listing for the same token_id.
-    Listing(u128, Address),
+    Listing(u32, Address),
     // Index of every address that has ever listed a given token_id, since
     // Soroban storage has no prefix scan to enumerate `Listing` keys.
-    ListingSellers(u128),
-    TokenMetadata(u128),
+    ListingSellers(u32),
+    TokenMetadata(u32),
     Paused,
     PlatformFeeBps,
     Treasury,
@@ -96,27 +96,37 @@ pub struct Approval {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Error {
-    NotInitialized = 1,
-    AlreadyInitialized = 2,
-    InvalidAmount = 3,
-    InvalidCopies = 4,
-    TokenNotFound = 5,
-    NotOwner = 6,
-    NotApproved = 7,
-    SelfTransfer = 8,
-    ListingNotFound = 9,
-    ListingNotActive = 10,
-    NoCopiesAvailable = 11,
-    InsufficientPayment = 12,
-    Unauthorized = 13,
-    ApprovalExpired = 14,
-    Paused = 15,
-    InvalidTokenUri = 16,
-    InvalidName = 17,
-    InvalidDescription = 18,
-    InvalidFee = 19,
-    InsufficientBalance = 20,
-    SelfPurchase = 21,
+    // --- SEP-50 / OpenZeppelin standard errors (2XX band) ---
+    NonExistentToken = 200,
+    IncorrectOwner = 201,
+    InsufficientApproval = 202,
+    InvalidApprover = 203,
+    InvalidLiveUntilLedger = 204,
+    MathOverflow = 205,
+    TokenIDsAreDepleted = 206,
+    InvalidAmount = 207,
+    TokenNotFoundInOwnerList = 208,
+    TokenNotFoundInGlobalList = 209,
+    UnsetMetadata = 210,
+    BaseUriMaxLenExceeded = 211,
+    InvalidRoyaltyAmount = 212,
+    NameMaxLenExceeded = 213,
+    SymbolMaxLenExceeded = 214,
+    // --- Marketplace-specific errors (3XX band) ---
+    NotInitialized = 300,
+    AlreadyInitialized = 301,
+    InvalidCopies = 302,
+    SelfTransfer = 303,
+    ListingNotFound = 304,
+    ListingNotActive = 305,
+    NoCopiesAvailable = 306,
+    InsufficientPayment = 307,
+    Paused = 308,
+    InvalidTokenUri = 309,
+    InvalidDescription = 310,
+    InvalidFee = 311,
+    InsufficientBalance = 312,
+    SelfPurchase = 313,
 }
 
 // =============================================================================
@@ -126,24 +136,30 @@ pub enum Error {
 #[contractevent]
 pub struct Transfer {
     #[topic]
+    pub sym: Symbol,
+    #[topic]
     pub from: Address,
     #[topic]
     pub to: Address,
-    pub token_id: u128,
+    pub token_id: u32,
 }
 
 #[contractevent]
 pub struct Approve {
     #[topic]
+    pub sym: Symbol,
+    #[topic]
     pub owner: Address,
     #[topic]
-    pub token_id: u128,
+    pub token_id: u32,
     pub approved: Address,
     pub expiration: u32,
 }
 
 #[contractevent]
 pub struct ApproveForAll {
+    #[topic]
+    pub sym: Symbol,
     #[topic]
     pub owner: Address,
     pub operator: Address,
@@ -153,14 +169,16 @@ pub struct ApproveForAll {
 #[contractevent]
 pub struct Mint {
     #[topic]
+    pub sym: Symbol,
+    #[topic]
     pub to: Address,
-    pub token_id: u128,
+    pub token_id: u32,
 }
 
 #[contractevent]
 pub struct Listed {
     #[topic]
-    pub token_id: u128,
+    pub token_id: u32,
     #[topic]
     pub seller: Address,
     pub price: i128,
@@ -170,7 +188,7 @@ pub struct Listed {
 #[contractevent]
 pub struct Purchased {
     #[topic]
-    pub token_id: u128,
+    pub token_id: u32,
     #[topic]
     pub buyer: Address,
     pub seller: Address,
@@ -182,7 +200,7 @@ pub struct Purchased {
 #[contractevent]
 pub struct ListingCancelled {
     #[topic]
-    pub token_id: u128,
+    pub token_id: u32,
     #[topic]
     pub seller: Address,
 }
@@ -218,7 +236,7 @@ impl NftMarketplace {
             .set(&DataKey::PaymentToken, &payment_token);
         env.storage().instance().set(&DataKey::Name, &name);
         env.storage().instance().set(&DataKey::Symbol, &symbol);
-        env.storage().instance().set(&DataKey::NextTokenId, &1u128);
+        env.storage().instance().set(&DataKey::NextTokenId, &1u32);
         env.storage().instance().set(&DataKey::Paused, &false);
         env.storage()
             .instance()
@@ -245,28 +263,28 @@ impl NftMarketplace {
             .unwrap_or(String::from_str(&env, "NFT"))
     }
 
-    pub fn balance(env: Env, owner: Address) -> u128 {
+    pub fn balance(env: Env, owner: Address) -> u32 {
         env.storage()
             .persistent()
             .get(&DataKey::Balance(owner))
-            .unwrap_or(0u128)
+            .unwrap_or(0u32)
     }
 
-    pub fn owner_of(env: Env, token_id: u128) -> Result<Address, Error> {
+    pub fn owner_of(env: Env, token_id: u32) -> Result<Address, Error> {
         env.storage()
             .persistent()
             .get(&DataKey::TokenOwner(token_id))
-            .ok_or(Error::TokenNotFound)
+            .ok_or(Error::NonExistentToken)
     }
 
-    pub fn token_uri(env: Env, token_id: u128) -> Result<String, Error> {
+    pub fn token_uri(env: Env, token_id: u32) -> Result<String, Error> {
         env.storage()
             .persistent()
             .get(&DataKey::TokenUri(token_id))
-            .ok_or(Error::TokenNotFound)
+            .ok_or(Error::NonExistentToken)
     }
 
-    pub fn transfer(env: Env, from: Address, to: Address, token_id: u128) -> Result<(), Error> {
+    pub fn transfer(env: Env, from: Address, to: Address, token_id: u32) -> Result<(), Error> {
         from.require_auth();
 
         if from == to {
@@ -275,7 +293,7 @@ impl NftMarketplace {
 
         let owner = Self::owner_of(env.clone(), token_id)?;
         if owner != from {
-            return Err(Error::NotOwner);
+            return Err(Error::IncorrectOwner);
         }
 
         Self::execute_transfer(&env, &from, &to, token_id);
@@ -287,7 +305,7 @@ impl NftMarketplace {
         spender: Address,
         from: Address,
         to: Address,
-        token_id: u128,
+        token_id: u32,
     ) -> Result<(), Error> {
         spender.require_auth();
 
@@ -297,11 +315,11 @@ impl NftMarketplace {
 
         let owner = Self::owner_of(env.clone(), token_id)?;
         if owner != from {
-            return Err(Error::NotOwner);
+            return Err(Error::IncorrectOwner);
         }
 
         if !Self::is_approved_or_owner(&env, &spender, &from, token_id) {
-            return Err(Error::NotApproved);
+            return Err(Error::InsufficientApproval);
         }
 
         Self::execute_transfer(&env, &from, &to, token_id);
@@ -312,14 +330,15 @@ impl NftMarketplace {
         env: Env,
         approver: Address,
         approved: Address,
-        token_id: u128,
+        token_id: u32,
         live_until_ledger: u32,
     ) -> Result<(), Error> {
         approver.require_auth();
 
         let owner = Self::owner_of(env.clone(), token_id)?;
-        if owner != approver && !Self::is_approved_for_all(env.clone(), owner.clone(), approver.clone()) {
-            return Err(Error::Unauthorized);
+        if owner != approver && !Self::is_approved_for_all(env.clone(), owner.clone(), approver.clone())
+        {
+            return Err(Error::InvalidApprover);
         }
 
         let approval = Approval {
@@ -331,6 +350,7 @@ impl NftMarketplace {
         env.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
 
         Approve {
+            sym: Symbol::new(&env, "approve"),
             owner,
             token_id,
             approved,
@@ -354,6 +374,7 @@ impl NftMarketplace {
         env.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
 
         ApproveForAll {
+            sym: Symbol::new(&env, "approve_for_all"),
             owner,
             operator,
             expiration: live_until_ledger,
@@ -363,7 +384,7 @@ impl NftMarketplace {
         Ok(())
     }
 
-    pub fn get_approved(env: Env, token_id: u128) -> Option<Address> {
+    pub fn get_approved(env: Env, token_id: u32) -> Option<Address> {
         let approval: Option<Approval> = env
             .storage()
             .persistent()
@@ -404,7 +425,7 @@ impl NftMarketplace {
         copies: u32,
         price: i128,
         royalty_bps: u32,
-    ) -> Result<u128, Error> {
+    ) -> Result<u32, Error> {
         creator.require_auth();
 
         if Self::is_paused(env.clone()) {
@@ -423,20 +444,20 @@ impl NftMarketplace {
             return Err(Error::InvalidTokenUri);
         }
         if name.len() == 0 || name.len() > MAX_NAME_LEN {
-            return Err(Error::InvalidName);
+            return Err(Error::NameMaxLenExceeded);
         }
         if description.len() > MAX_DESCRIPTION_LEN {
             return Err(Error::InvalidDescription);
         }
         if royalty_bps > MAX_ROYALTY_BPS {
-            return Err(Error::InvalidFee);
+            return Err(Error::InvalidRoyaltyAmount);
         }
 
-        let token_id: u128 = env
+        let token_id: u32 = env
             .storage()
             .instance()
             .get(&DataKey::NextTokenId)
-            .unwrap_or(1u128);
+            .unwrap_or(1u32);
 
         let metadata = TokenMetadata {
             name,
@@ -456,8 +477,12 @@ impl NftMarketplace {
             .persistent()
             .extend_ttl(&owner_key, BUMP_THRESHOLD, BUMP_TO);
 
+        // SEP-50: token_uri points to a JSON document conforming to the
+        // "Non-Fungible Metadata JSON Schema", so wallets/explorers can
+        // render the NFT from on-chain data alone.
+        let uri = Self::build_token_uri_json(&env, &metadata);
         let uri_key = DataKey::TokenUri(token_id);
-        env.storage().persistent().set(&uri_key, &thumbnail);
+        env.storage().persistent().set(&uri_key, &uri);
         env.storage()
             .persistent()
             .extend_ttl(&uri_key, BUMP_THRESHOLD, BUMP_TO);
@@ -468,15 +493,17 @@ impl NftMarketplace {
             .persistent()
             .extend_ttl(&metadata_key, BUMP_THRESHOLD, BUMP_TO);
 
+        // SEP-50 `balance(owner)` counts every copy the owner holds across
+        // all editions, so minting an edition must add `copies`, not 1.
         let balance_key = DataKey::Balance(creator.clone());
-        let current_balance: u128 = env
+        let current_balance: u32 = env
             .storage()
             .persistent()
             .get(&balance_key)
-            .unwrap_or(0u128);
+            .unwrap_or(0u32);
         env.storage()
             .persistent()
-            .set(&balance_key, &(current_balance + 1));
+            .set(&balance_key, &(current_balance + copies));
         env.storage()
             .persistent()
             .extend_ttl(&balance_key, BUMP_THRESHOLD, BUMP_TO);
@@ -514,6 +541,7 @@ impl NftMarketplace {
         Self::register_seller(&env, token_id, &creator);
 
         Mint {
+            sym: Symbol::new(&env, "mint"),
             to: creator.clone(),
             token_id,
         }
@@ -537,7 +565,7 @@ impl NftMarketplace {
     pub fn list_for_sale(
         env: Env,
         seller: Address,
-        token_id: u128,
+        token_id: u32,
         price: i128,
         copies: u32,
     ) -> Result<(), Error> {
@@ -601,7 +629,7 @@ impl NftMarketplace {
         env: Env,
         buyer: Address,
         seller: Address,
-        token_id: u128,
+        token_id: u32,
         quantity: u32,
     ) -> Result<(), Error> {
         buyer.require_auth();
@@ -634,7 +662,7 @@ impl NftMarketplace {
             .storage()
             .persistent()
             .get(&DataKey::TokenMetadata(token_id))
-            .ok_or(Error::TokenNotFound)?;
+            .ok_or(Error::NonExistentToken)?;
 
         let total_price = listing.price * (quantity as i128);
         let platform_fee_bps = Self::get_platform_fee(env.clone()) as i128;
@@ -660,14 +688,14 @@ impl NftMarketplace {
             .extend_ttl(&listing_key, BUMP_THRESHOLD, BUMP_TO);
 
         let buyer_balance_key = DataKey::Balance(buyer.clone());
-        let buyer_balance: u128 = env
+        let buyer_balance: u32 = env
             .storage()
             .persistent()
             .get(&buyer_balance_key)
-            .unwrap_or(0u128);
+            .unwrap_or(0u32);
         env.storage()
             .persistent()
-            .set(&buyer_balance_key, &(buyer_balance + quantity as u128));
+            .set(&buyer_balance_key, &(buyer_balance + quantity));
         env.storage()
             .persistent()
             .extend_ttl(&buyer_balance_key, BUMP_THRESHOLD, BUMP_TO);
@@ -675,14 +703,14 @@ impl NftMarketplace {
         // Seller's aggregate Balance must shrink too — they no longer hold
         // the copies they just sold.
         let seller_balance_key = DataKey::Balance(seller.clone());
-        let seller_balance: u128 = env
+        let seller_balance: u32 = env
             .storage()
             .persistent()
             .get(&seller_balance_key)
-            .unwrap_or(0u128);
+            .unwrap_or(0u32);
         env.storage().persistent().set(
             &seller_balance_key,
-            &seller_balance.saturating_sub(quantity as u128),
+            &seller_balance.saturating_sub(quantity),
         );
         env.storage()
             .persistent()
@@ -745,7 +773,7 @@ impl NftMarketplace {
         Ok(())
     }
 
-    pub fn cancel_listing(env: Env, seller: Address, token_id: u128) -> Result<(), Error> {
+    pub fn cancel_listing(env: Env, seller: Address, token_id: u32) -> Result<(), Error> {
         seller.require_auth();
 
         let listing_key = DataKey::Listing(token_id, seller.clone());
@@ -766,7 +794,7 @@ impl NftMarketplace {
         Ok(())
     }
 
-    pub fn get_listing(env: Env, token_id: u128, seller: Address) -> Result<Listing, Error> {
+    pub fn get_listing(env: Env, token_id: u32, seller: Address) -> Result<Listing, Error> {
         env.storage()
             .persistent()
             .get(&DataKey::Listing(token_id, seller))
@@ -775,7 +803,7 @@ impl NftMarketplace {
 
     /// Every active listing for a token_id, one per seller who currently has
     /// copies up for sale. This is what buyers browse to pick who to buy from.
-    pub fn get_listings(env: Env, token_id: u128) -> Vec<Listing> {
+    pub fn get_listings(env: Env, token_id: u32) -> Vec<Listing> {
         let sellers: Vec<Address> = env
             .storage()
             .persistent()
@@ -798,18 +826,18 @@ impl NftMarketplace {
     }
 
     /// How many copies of `token_id` a specific address currently holds.
-    pub fn token_balance_of(env: Env, token_id: u128, owner: Address) -> u32 {
+    pub fn token_balance_of(env: Env, token_id: u32, owner: Address) -> u32 {
         env.storage()
             .persistent()
             .get(&DataKey::TokenBalance(token_id, owner))
             .unwrap_or(0u32)
     }
 
-    pub fn get_token_metadata(env: Env, token_id: u128) -> Result<TokenMetadata, Error> {
+    pub fn get_token_metadata(env: Env, token_id: u32) -> Result<TokenMetadata, Error> {
         env.storage()
             .persistent()
             .get(&DataKey::TokenMetadata(token_id))
-            .ok_or(Error::TokenNotFound)
+            .ok_or(Error::NonExistentToken)
     }
 
     // =========================================================================
@@ -940,10 +968,85 @@ impl NftMarketplace {
     // Internal Helpers
     // =========================================================================
 
+    /// Builds the SEP-50 "Non-Fungible Metadata JSON Schema" document for a
+    /// token, returned by `token_uri`. Kept on-chain so wallets/explorers can
+    /// render the NFT without an off-chain metadata service.
+    fn build_token_uri_json(env: &Env, metadata: &TokenMetadata) -> String {
+        let mut json = Bytes::new(env);
+
+        // {"name":"...","description":"...","image":"...","external_url":"...","attributes":[{"trait_type":"media_type","value":"..."},{"trait_type":"royalty_bps","value":N},{"trait_type":"creator","value":"..."}]}
+        json.append(&Bytes::from_slice(env, b"{"));
+        Self::append_json_string(env, &mut json, &"name", &metadata.name);
+        json.append(&Bytes::from_slice(env, b","));
+        Self::append_json_string(env, &mut json, &"description", &metadata.description);
+        json.append(&Bytes::from_slice(env, b","));
+        Self::append_json_string(env, &mut json, &"image", &metadata.thumbnail);
+        json.append(&Bytes::from_slice(env, b","));
+        Self::append_json_string(env, &mut json, &"external_url", &metadata.content_url);
+        json.append(&Bytes::from_slice(env, b",\"attributes\":["));
+        Self::append_json_attr(env, &mut json, &"media_type", &metadata.media_type);
+        json.append(&Bytes::from_slice(env, b",{\"trait_type\":\"royalty_bps\",\"value\":"));
+        let royalty = Self::u32_to_string(env, metadata.royalty_bps);
+        json.append(&royalty.to_bytes());
+        json.append(&Bytes::from_slice(env, b"},{\"trait_type\":\"creator\",\"value\":\""));
+        json.append(&metadata.creator.to_string().to_bytes());
+        json.append(&Bytes::from_slice(env, b"\"}]}"));
+
+        json.into()
+    }
+
+    fn append_json_attr(env: &Env, out: &mut Bytes, key: &str, value: &String) {
+        out.append(&Bytes::from_slice(env, b"{\"trait_type\":\""));
+        out.append(&Bytes::from_slice(env, key.as_bytes()));
+        out.append(&Bytes::from_slice(env, b"\",\"value\":\""));
+        for b in value.to_bytes().iter() {
+            match b {
+                b'"' => out.append(&Bytes::from_slice(env, b"\\\"")),
+                b'\\' => out.append(&Bytes::from_slice(env, b"\\\\")),
+                b'\n' => out.append(&Bytes::from_slice(env, b"\\n")),
+                b'\r' => out.append(&Bytes::from_slice(env, b"\\r")),
+                b'\t' => out.append(&Bytes::from_slice(env, b"\\t")),
+                _ => out.append(&Bytes::from_slice(env, &[b])),
+            }
+        }
+        out.append(&Bytes::from_slice(env, b"\"}"));
+    }
+
+    fn u32_to_string(env: &Env, mut n: u32) -> String {
+        if n == 0 {
+            return String::from_str(env, "0");
+        }
+        let mut buf = [0u8; 10];
+        let mut i = 10;
+        while n > 0 {
+            i -= 1;
+            buf[i] = (n % 10) as u8 + b'0';
+            n /= 10;
+        }
+        String::from_str(env, core::str::from_utf8(&buf[i..]).unwrap())
+    }
+
+    fn append_json_string(env: &Env, out: &mut Bytes, key: &str, value: &String) {
+        out.append(&Bytes::from_slice(env, b"\""));
+        out.append(&Bytes::from_slice(env, key.as_bytes()));
+        out.append(&Bytes::from_slice(env, b"\":\""));
+        for b in value.to_bytes().iter() {
+            match b {
+                b'"' => out.append(&Bytes::from_slice(env, b"\\\"")),
+                b'\\' => out.append(&Bytes::from_slice(env, b"\\\\")),
+                b'\n' => out.append(&Bytes::from_slice(env, b"\\n")),
+                b'\r' => out.append(&Bytes::from_slice(env, b"\\r")),
+                b'\t' => out.append(&Bytes::from_slice(env, b"\\t")),
+                _ => out.append(&Bytes::from_slice(env, &[b])),
+            }
+        }
+        out.append(&Bytes::from_slice(env, b"\""));
+    }
+
     /// Adds `seller` to the token's seller index (if not already present) so
     /// `get_listings` can enumerate every address with an active listing —
     /// Soroban storage has no way to scan for keys by prefix.
-    fn register_seller(env: &Env, token_id: u128, seller: &Address) {
+    fn register_seller(env: &Env, token_id: u32, seller: &Address) {
         let key = DataKey::ListingSellers(token_id);
         let mut sellers: Vec<Address> = env.storage().persistent().get(&key).unwrap_or(Vec::new(env));
         if !sellers.contains(seller) {
@@ -953,7 +1056,10 @@ impl NftMarketplace {
         }
     }
 
-    fn execute_transfer(env: &Env, from: &Address, to: &Address, token_id: u128) {
+    /// Moves a single copy of `token_id` from `from` to `to`. Keeps the
+    /// per-holder `TokenBalance` and the aggregate `Balance` in sync so a
+    /// transferred copy can be listed for sale by the recipient afterward.
+    fn execute_transfer(env: &Env, from: &Address, to: &Address, token_id: u32) {
         let owner_key = DataKey::TokenOwner(token_id);
         env.storage().persistent().set(&owner_key, to);
         env.storage()
@@ -965,11 +1071,11 @@ impl NftMarketplace {
             .remove(&DataKey::TokenApproval(token_id));
 
         let from_balance_key = DataKey::Balance(from.clone());
-        let from_balance: u128 = env
+        let from_balance: u32 = env
             .storage()
             .persistent()
             .get(&from_balance_key)
-            .unwrap_or(0u128);
+            .unwrap_or(0u32);
         if from_balance > 0 {
             env.storage()
                 .persistent()
@@ -980,11 +1086,11 @@ impl NftMarketplace {
         }
 
         let to_balance_key = DataKey::Balance(to.clone());
-        let to_balance: u128 = env
+        let to_balance: u32 = env
             .storage()
             .persistent()
             .get(&to_balance_key)
-            .unwrap_or(0u128);
+            .unwrap_or(0u32);
         env.storage()
             .persistent()
             .set(&to_balance_key, &(to_balance + 1));
@@ -992,7 +1098,33 @@ impl NftMarketplace {
             .persistent()
             .extend_ttl(&to_balance_key, BUMP_THRESHOLD, BUMP_TO);
 
+        let from_token_key = DataKey::TokenBalance(token_id, from.clone());
+        let from_token: u32 = env
+            .storage()
+            .persistent()
+            .get(&from_token_key)
+            .unwrap_or(0u32);
+        env.storage().persistent().set(
+            &from_token_key,
+            &from_token.saturating_sub(1),
+        );
+        env.storage()
+            .persistent()
+            .extend_ttl(&from_token_key, BUMP_THRESHOLD, BUMP_TO);
+
+        let to_token_key = DataKey::TokenBalance(token_id, to.clone());
+        let to_token: u32 = env
+            .storage()
+            .persistent()
+            .get(&to_token_key)
+            .unwrap_or(0u32);
+        env.storage().persistent().set(&to_token_key, &(to_token + 1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&to_token_key, BUMP_THRESHOLD, BUMP_TO);
+
         Transfer {
+            sym: Symbol::new(env, "transfer"),
             from: from.clone(),
             to: to.clone(),
             token_id,
@@ -1000,7 +1132,7 @@ impl NftMarketplace {
         .publish(env);
     }
 
-    fn is_approved_or_owner(env: &Env, spender: &Address, owner: &Address, token_id: u128) -> bool {
+    fn is_approved_or_owner(env: &Env, spender: &Address, owner: &Address, token_id: u32) -> bool {
         if spender == owner {
             return true;
         }

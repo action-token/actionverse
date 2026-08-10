@@ -167,7 +167,7 @@
               },
               "durability": "persistent",
               "val": {
-                "u128": "1"
+                "u32": 10
               }
             }
           },
@@ -188,7 +188,7 @@
                     "symbol": "Listing"
                   },
                   {
-                    "u128": "1"
+                    "u32": 1
                   },
                   {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
@@ -267,7 +267,7 @@
                     "symbol": "ListingSellers"
                   },
                   {
-                    "u128": "1"
+                    "u32": 1
                   }
                 ]
               },
@@ -298,7 +298,7 @@
                     "symbol": "TokenBalance"
                   },
                   {
-                    "u128": "1"
+                    "u32": 1
                   },
                   {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
@@ -328,7 +328,7 @@
                     "symbol": "TokenMetadata"
                   },
                   {
-                    "u128": "1"
+                    "u32": 1
                   }
                 ]
               },
@@ -412,7 +412,7 @@
                     "symbol": "TokenOwner"
                   },
                   {
-                    "u128": "1"
+                    "u32": 1
                   }
                 ]
               },
@@ -439,13 +439,13 @@
                     "symbol": "TokenUri"
                   },
                   {
-                    "u128": "1"
+                    "u32": 1
                   }
                 ]
               },
               "durability": "persistent",
               "val": {
-                "string": "https://s3.../thumb.png"
+                "string": "{\"name\":\"My First NFT\",\"description\":\"A beautiful digital artwork\",\"image\":\"https://s3.../thumb.png\",\"external_url\":\"https://s3.../content.png\",\"attributes\":[{\"trait_type\":\"media_type\",\"value\":\"image/png\"},{\"trait_type\":\"royalty_bps\",\"value\":0},{\"trait_type\":\"creator\",\"value\":\"CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM\"}]}"
               }
             }
           },
@@ -501,7 +501,7 @@
                         ]
                       },
                       "val": {
-                        "u128": "2"
+                        "u32": 2
                       }
                     },
                     {

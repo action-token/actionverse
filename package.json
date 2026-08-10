@@ -15,8 +15,11 @@
     "test": "vitest",
     "run-script": "tsx ./script.ts",
     "contracts:test": "cd contracts/bounty_escrow && cargo test",
+    "contracts:test:nft": "cd contracts/nft_marketplace && cargo test",
     "contracts:build": "cd contracts/bounty_escrow && stellar contract build",
-    "contracts:bindings": "stellar contract bindings typescript --wasm contracts/target/wasm32v1-none/release/bounty_escrow.wasm --output-dir contracts/bounty_escrow/bindings --overwrite"
+    "contracts:build:nft": "cd contracts/nft_marketplace && stellar contract build",
+    "contracts:bindings": "stellar contract bindings typescript --wasm contracts/target/wasm32v1-none/release/bounty_escrow.wasm --output-dir contracts/bounty_escrow/bindings --overwrite",
+    "contracts:bindings:nft": "stellar contract bindings typescript --wasm contracts/target/wasm32v1-none/release/nft_marketplace.wasm --output-dir contracts/nft_marketplace/bindings --overwrite"
   },
   "dependencies": {
     "@albedo-link/intent": "^0.12.0",

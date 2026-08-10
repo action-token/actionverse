@@ -97,7 +97,7 @@ export async function buildMintXDR({
   copies: number;
   price: bigint;
   royaltyBps: number;
-}): Promise<{ xdr: string; tokenId: bigint }> {
+}): Promise<{ xdr: string; tokenId: number }> {
   const client = getClient(creatorPubKey);
   const tx = await client.mint(
     {
@@ -124,7 +124,7 @@ export async function buildListForSaleXDR({
   copies,
 }: {
   sellerPubKey: string;
-  tokenId: bigint;
+  tokenId: number;
   price: bigint;
   copies: number;
 }): Promise<string> {
@@ -141,7 +141,7 @@ export async function buildCancelListingXDR({
   tokenId,
 }: {
   sellerPubKey: string;
-  tokenId: bigint;
+  tokenId: number;
 }): Promise<string> {
   const client = getClient(sellerPubKey);
   const tx = await client.cancel_listing(
@@ -159,7 +159,7 @@ export async function buildBuyXDR({
 }: {
   buyerPubKey: string;
   sellerPubKey: string;
-  tokenId: bigint;
+  tokenId: number;
   quantity: number;
 }): Promise<string> {
   const client = getClient(buyerPubKey);
@@ -181,29 +181,29 @@ export async function buildBuyXDR({
  * address is even eligible to list/resell in the first place.
  */
 export async function getOnChainListing(
-  tokenId: bigint,
+  tokenId: number,
   seller: string,
 ): Promise<Listing | null> {
   const { result } = await getClient().get_listing({ token_id: tokenId, seller });
   return result.isOk() ? result.unwrap() : null;
 }
 
-export async function getOnChainListings(tokenId: bigint): Promise<Listing[]> {
+export async function getOnChainListings(tokenId: number): Promise<Listing[]> {
   const { result } = await getClient().get_listings({ token_id: tokenId });
   return result;
 }
 
-export async function getOnChainTokenMetadata(tokenId: bigint): Promise<TokenMetadata | null> {
+export async function getOnChainTokenMetadata(tokenId: number): Promise<TokenMetadata | null> {
   const { result } = await getClient().get_token_metadata({ token_id: tokenId });
   return result.isOk() ? result.unwrap() : null;
 }
 
-export async function getOnChainOwner(tokenId: bigint): Promise<string | null> {
+export async function getOnChainOwner(tokenId: number): Promise<string | null> {
   const { result } = await getClient().owner_of({ token_id: tokenId });
   return result.isOk() ? result.unwrap() : null;
 }
 
-export async function getOnChainTokenBalance(tokenId: bigint, owner: string): Promise<number> {
+export async function getOnChainTokenBalance(tokenId: number, owner: string): Promise<number> {
   const { result } = await getClient().token_balance_of({ token_id: tokenId, owner });
   return result;
 }

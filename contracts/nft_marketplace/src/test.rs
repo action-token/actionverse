@@ -73,8 +73,16 @@ fn test_mint_and_list() {
 
     assert_eq!(token_id, 1);
     assert_eq!(client.owner_of(&token_id), creator);
-    assert_eq!(client.balance(&creator), 1);
-    assert_eq!(client.token_uri(&token_id), String::from_str(&env, "https://s3.../thumb.png"));
+    assert_eq!(client.balance(&creator), 10);
+    let mut expected = soroban_sdk::Bytes::new(&env);
+    expected.append(&soroban_sdk::Bytes::from_slice(
+        &env,
+        b"{\"name\":\"My First NFT\",\"description\":\"A beautiful digital artwork\",\"image\":\"https://s3.../thumb.png\",\"external_url\":\"https://s3.../content.png\",\"attributes\":[{\"trait_type\":\"media_type\",\"value\":\"image/png\"},{\"trait_type\":\"royalty_bps\",\"value\":0},{\"trait_type\":\"creator\",\"value\":\"",
+    ));
+    expected.append(&creator.to_string().to_bytes());
+    expected.append(&soroban_sdk::Bytes::from_slice(&env, b"\"}]}"));
+    let expected_uri: String = expected.into();
+    assert_eq!(client.token_uri(&token_id), expected_uri);
 
     let listing = client.get_listing(&token_id, &creator);
     assert_eq!(listing.seller, creator);
@@ -110,7 +118,7 @@ fn test_mint_rejects_invalid_input() {
         &1000,
         &5001,
     );
-    assert_eq!(res, Err(Ok(Error::InvalidFee)));
+    assert_eq!(res, Err(Ok(Error::InvalidRoyaltyAmount)));
 
     // empty name
     let res = client.try_mint(
@@ -124,7 +132,7 @@ fn test_mint_rejects_invalid_input() {
         &1000,
         &0,
     );
-    assert_eq!(res, Err(Ok(Error::InvalidName)));
+    assert_eq!(res, Err(Ok(Error::NameMaxLenExceeded)));
 
     // zero copies
     let res = client.try_mint(
