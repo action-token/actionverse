@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/shadcn/ui/select";
+import { Badge } from "~/components/shadcn/ui/badge";
+import { LastFmIcon, SpotifyIcon } from "~/components/layout/Left-sidebar/icons";
 import {
   Plus,
   X,
@@ -38,6 +40,18 @@ import {
   Building2,
   Users,
   Camera,
+  Music,
+  Radio,
+  Search,
+  Play,
+  CheckCircle2,
+  Headphones,
+  Disc3,
+  Youtube,
+  SlidersHorizontal,
+  Trash2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { api } from "~/utils/api";
 import { PLATFORM_ASSET, PLATFORM_FEE, stellarExpertUrl } from "~/lib/stellar/constant";
@@ -46,8 +60,11 @@ import useNeedSign from "~/lib/hook";
 import { clientsign, extractTxHash } from "package/connect_wallet";
 import { clientSelect } from "~/lib/stellar/fan/utils";
 import { MarkdownEditor } from "~/components/bounty/markdown-editor";
+import { BountyCard } from "~/components/bounty/bounty-card";
 import { useUserStellarAcc, useCreatorStorageAcc, AccBalanceType } from "~/lib/state/wallete/stellar-balances";
 import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g";
+import { useBountyCreateStore } from "~/lib/state/bounty-create-store";
+import { useDebounce } from "~/hooks/use-debounce";
 
 const MAX_TITLE = 120;
 const MAX_SUMMARY = 600;
@@ -116,6 +133,76 @@ function balancesToOptions(
   return opts;
 }
 
+interface SampleTrack {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  albumArtUrl: string;
+  durationSec: number;
+  lastFmUrl: string;
+  defaultSpotifyUrl: string;
+  defaultYoutubeUrl: string;
+}
+
+const SAMPLE_LASTFM_TRACKS: SampleTrack[] = [
+  {
+    id: "lfm-1",
+    title: "Blinding Lights",
+    artist: "The Weeknd",
+    album: "After Hours",
+    albumArtUrl: "/images/logo.png",
+    durationSec: 200,
+    lastFmUrl: "https://www.last.fm/music/The+Weeknd/_/Blinding+Lights",
+    defaultSpotifyUrl: "https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b",
+    defaultYoutubeUrl: "https://www.youtube.com/watch?v=4NRXx6U8ABQ",
+  },
+  {
+    id: "lfm-2",
+    title: "Starboy",
+    artist: "The Weeknd ft. Daft Punk",
+    album: "Starboy",
+    albumArtUrl: "/images/logo.png",
+    durationSec: 230,
+    lastFmUrl: "https://www.last.fm/music/The+Weeknd/_/Starboy",
+    defaultSpotifyUrl: "https://open.spotify.com/track/7MXVkk9YMctZqd1Srtv4MB",
+    defaultYoutubeUrl: "https://www.youtube.com/watch?v=34Na4j8AVgA",
+  },
+  {
+    id: "lfm-3",
+    title: "As It Was",
+    artist: "Harry Styles",
+    album: "Harry's House",
+    albumArtUrl: "/images/logo.png",
+    durationSec: 167,
+    lastFmUrl: "https://www.last.fm/music/Harry+Styles/_/As+It+Was",
+    defaultSpotifyUrl: "https://open.spotify.com/track/4DvkF65LpprmT1wF2Awe8t",
+    defaultYoutubeUrl: "https://www.youtube.com/watch?v=H5v3kku4y6Q",
+  },
+  {
+    id: "lfm-4",
+    title: "Levitating",
+    artist: "Dua Lipa",
+    album: "Future Nostalgia",
+    albumArtUrl: "/images/logo.png",
+    durationSec: 203,
+    lastFmUrl: "https://www.last.fm/music/Dua+Lipa/_/Levitating",
+    defaultSpotifyUrl: "https://open.spotify.com/track/5nNmjkXiZ1DHBIJUZv3LgW",
+    defaultYoutubeUrl: "https://www.youtube.com/watch?v=TUVcZfQe-Kw",
+  },
+  {
+    id: "lfm-5",
+    title: "Midnight City",
+    artist: "M83",
+    album: "Hurry Up, We're Dreaming",
+    albumArtUrl: "/images/logo.png",
+    durationSec: 243,
+    lastFmUrl: "https://www.last.fm/music/M83/_/Midnight+City",
+    defaultSpotifyUrl: "https://open.spotify.com/track/6GyFP1yDBEGF9xsAY0plOx",
+    defaultYoutubeUrl: "https://www.youtube.com/watch?v=dX3k_QDnzHE",
+  },
+];
+
 export default function CreateBountyPage() {
   const { needSign } = useNeedSign();
   const router = useRouter();
@@ -128,25 +215,173 @@ export default function CreateBountyPage() {
   const creatorOptions = useMemo(() => balancesToOptions(creatorBalances, "creator"), [creatorBalances]);
   const allOptions = useMemo(() => [...userOptions, ...creatorOptions], [userOptions, creatorOptions]);
 
-  // form state
-  const [title, setTitle] = useState("");
-  const [summary, setSummary] = useState("");
-  const [description, setDescription] = useState("");
-  const [prizeAmount, setPrizeAmount] = useState("");
-  const [rewardNote, setRewardNote] = useState("");
-  const [maxWinners, setMaxWinners] = useState("1");
-  const [instructions, setInstructions] = useState<string[]>([]);
+  // Form State from Zustand Store (Persisted in memory across OAuth redirect)
+  const store = useBountyCreateStore();
+  const {
+    title,
+    summary,
+    description,
+    prizeAmount,
+    rewardNote,
+    maxWinners,
+    instructions,
+    selectedAssetKey,
+    requiresActionCam,
+    enableMusic,
+    musicMode,
+    ruleType,
+    customRequiredTracks,
+    customTotalPlays,
+    selectedTracks,
+    setField,
+    resetForm,
+  } = store;
+
+  const setTitle = (val: string) => setField("title", val);
+  const setSummary = (val: string) => setField("summary", val);
+  const setDescription = (val: string) => setField("description", val);
+  const setPrizeAmount = (val: string) => setField("prizeAmount", val);
+  const setRewardNote = (val: string) => setField("rewardNote", val);
+  const setMaxWinners = (val: string) => setField("maxWinners", val);
+  const setInstructions = (val: string[] | ((prev: string[]) => string[])) => {
+    if (typeof val === "function") {
+      setField("instructions", val(instructions));
+    } else {
+      setField("instructions", val);
+    }
+  };
+  const setSelectedAssetKey = (val: string) => setField("selectedAssetKey", val);
+  const setRequiresActionCam = (val: boolean) => setField("requiresActionCam", val);
+  const setEnableMusic = (val: boolean) => setField("enableMusic", val);
+  const setMusicMode = (val: "MUSIC_ONLY" | "HYBRID") => setField("musicMode", val);
+  const setRuleType = (val: "ALL" | "ANY_N" | "TOTAL_PLAYS") => setField("ruleType", val);
+  const setCustomRequiredTracks = (val: number) => setField("customRequiredTracks", val);
+  const setCustomTotalPlays = (val: number) => setField("customTotalPlays", val);
+  const setSelectedTracks = (val: typeof selectedTracks | ((prev: typeof selectedTracks) => typeof selectedTracks)) => {
+    if (typeof val === "function") {
+      setField("selectedTracks", val(selectedTracks));
+    } else {
+      setField("selectedTracks", val);
+    }
+  };
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 400);
+  const [showCardPreview, setShowCardPreview] = useState(false);
+
+  // Fetch real top 5 tracks for Three Years Hollow via Last.fm API
+  const { data: realTopTracksData } =
+    api.bounty.Bounty.getArtistTopTracks.useQuery(
+      { artist: "Three Years Hollow" },
+      { staleTime: 1000 * 60 * 30 }
+    );
+
+  const sampleTracks = useMemo(() => {
+    if (realTopTracksData && realTopTracksData.length > 0) {
+      return realTopTracksData.map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        albumArtUrl: t.albumArtUrl,
+        durationSec: t.durationSec,
+        lastFmUrl: t.lastFmUrl,
+        defaultSpotifyUrl: "",
+        defaultYoutubeUrl: "",
+      }));
+    }
+    return SAMPLE_LASTFM_TRACKS;
+  }, [realTopTracksData]);
+
+  // Fetch real Last.fm track search results (debounced 400ms)
+  const { data: realSearchResults, isLoading: isSearchingTracks } =
+    api.bounty.Bounty.searchLastFmTracks.useQuery(
+      { query: debouncedSearchQuery },
+      { enabled: debouncedSearchQuery.trim().length > 1 }
+    );
+
+  const searchResults = useMemo(() => {
+    if (!debouncedSearchQuery.trim()) return [];
+    if (realSearchResults) {
+      return realSearchResults.map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        albumArtUrl: t.albumArtUrl,
+        durationSec: t.durationSec,
+        lastFmUrl: t.lastFmUrl,
+        defaultSpotifyUrl: "",
+        defaultYoutubeUrl: "",
+      }));
+    }
+    return [];
+  }, [debouncedSearchQuery, realSearchResults]);
+
+  const addTrack = (track: SampleTrack) => {
+    if (selectedTracks.some((t) => t.id === track.id)) {
+      toast.error("Track already added to requirement list");
+      return;
+    }
+    const newTrack = {
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      albumArtUrl: track.albumArtUrl,
+      targetPlayCount: 3,
+      targetDurationSec: track.durationSec,
+      lastFmUrl: track.lastFmUrl,
+      spotifyUrl: track.defaultSpotifyUrl,
+      youtubeUrl: track.defaultYoutubeUrl,
+    };
+    setSelectedTracks((prev) => [...prev, newTrack]);
+    setSearchQuery("");
+    toast.success(`Added "${track.title}" to target rules`);
+  };
+
+  const removeTrack = (trackId: string) => {
+    setSelectedTracks((prev) => prev.filter((t) => t.id !== trackId));
+    toast.success("Track removed");
+  };
+
+  const updateTrackConfig = (
+    trackId: string,
+    field: keyof typeof selectedTracks[0],
+    val: unknown
+  ) => {
+    setSelectedTracks((prev) =>
+      prev.map((t) => (t.id === trackId ? { ...t, [field]: val } : t))
+    );
+  };
+
   const [instructionInput, setInstructionInput] = useState("");
   const [draftAi, setDraftAi] = useState("");
   const [step, setStep] = useState<"form" | "paying" | "creating" | "done">("form");
-  const [selectedAssetKey, setSelectedAssetKey] = useState<string>("");
-  const [requiresActionCam, setRequiresActionCam] = useState(false);
+
+  const lastFmAccountQ = api.bounty.Bounty.getMyLastFmAccount.useQuery(undefined, { enabled: Boolean(session) });
+  const lastFmAccount = lastFmAccountQ.data;
 
 
   const selectedAsset = useMemo(
     () => allOptions.find((o) => o.key === selectedAssetKey) ?? null,
     [allOptions, selectedAssetKey],
   );
+
+  // Auto-generated rule summary text shown under music rule strategy
+  const computedRuleSummary = useMemo(() => {
+    const count = selectedTracks.length;
+    if (count === 0) return "Add tracks above to configure listening rules.";
+    if (ruleType === "ALL")
+      return `Participants must listen to ALL ${count} selected track${count > 1 ? "s" : ""} for their required target play counts.`;
+    if (ruleType === "ANY_N") {
+      const n = Math.min(customRequiredTracks, count);
+      return `Participants must listen to any ${n} out of ${count} selected track${count > 1 ? "s" : ""} for their required target play counts.`;
+    }
+    if (ruleType === "TOTAL_PLAYS")
+      return `Participants must accumulate at least ${customTotalPlays} total scrobbles across any of the ${count} selected tracks.`;
+    return "Rule strategy configured.";
+  }, [ruleType, customRequiredTracks, customTotalPlays, selectedTracks]);
 
   const prize = parseFloat(prizeAmount) || 0;
   const winners = Math.max(parseInt(maxWinners) || 1, 1);
@@ -157,6 +392,42 @@ export default function CreateBountyPage() {
   useEffect(() => {
     if (status === "unauthenticated") void router.push("/");
   }, [status, router]);
+
+  // Decode & restore draft form state from URL query state token if returning from OAuth
+  useEffect(() => {
+    if (router.query.draft && typeof router.query.draft === "string") {
+      try {
+        const decoded = JSON.parse(atob(decodeURIComponent(router.query.draft)));
+        if (decoded.title) setTitle(decoded.title);
+        if (decoded.summary) setSummary(decoded.summary);
+        if (decoded.description) setDescription(decoded.description);
+        if (decoded.prizeAmount) setPrizeAmount(decoded.prizeAmount);
+        if (decoded.rewardNote) setRewardNote(decoded.rewardNote);
+        if (decoded.maxWinners) setMaxWinners(decoded.maxWinners);
+        if (Array.isArray(decoded.instructions)) setInstructions(decoded.instructions);
+        if (decoded.selectedAssetKey) setSelectedAssetKey(decoded.selectedAssetKey);
+        if (typeof decoded.requiresActionCam === "boolean") setRequiresActionCam(decoded.requiresActionCam);
+        if (typeof decoded.enableMusic === "boolean") setEnableMusic(decoded.enableMusic);
+        if (decoded.musicMode) setMusicMode(decoded.musicMode);
+        if (decoded.ruleType) setRuleType(decoded.ruleType);
+        if (decoded.customRequiredTracks) setCustomRequiredTracks(decoded.customRequiredTracks);
+        if (decoded.customTotalPlays) setCustomTotalPlays(decoded.customTotalPlays);
+        if (Array.isArray(decoded.selectedTracks)) setSelectedTracks(decoded.selectedTracks);
+      } catch (e) {
+        console.error("Error decoding draft from URL query:", e);
+      }
+    }
+  }, [router.query.draft]);
+
+  useEffect(() => {
+    if (router.query.error === "api_key_missing") {
+      toast.error("NEXT_PUBLIC_LASTFM_API_KEY is missing in your .env file!");
+    } else if (router.query.error === "api_secret_missing" || router.query.error === "api_keys_missing") {
+      toast.error("LASTFM_API_SECRET is missing in your .env file!");
+    } else if (router.query.lastfm === "connected") {
+      toast.success("Last.fm account connected successfully!");
+    }
+  }, [router.query]);
 
   // Flow: create the (unfunded) bounty row -> build the escrow-contract funding
   // XDR against its id -> sign & submit -> confirm on-chain success. If the
@@ -224,6 +495,7 @@ export default function CreateBountyPage() {
 
   const confirmMutation = api.bounty.Bounty.confirmBountyFunded.useMutation({
     onSuccess: (bounty) => {
+      resetForm();
       setStep("done");
       toast.success("Bounty created!");
       void router.push(`/bounty/${bounty.id}`);
@@ -235,6 +507,14 @@ export default function CreateBountyPage() {
   });
 
   const deleteBountyMutation = api.bounty.Bounty.deleteUnfundedBounty.useMutation();
+
+  const disconnectLastFmM = api.bounty.Bounty.disconnectLastFmAccount.useMutation({
+    onSuccess: () => {
+      toast.success("Last.fm account disconnected");
+      void lastFmAccountQ.refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const draftMutation = api.bounty.Bounty.draftBounty.useMutation({
     onSuccess: (draft) => {
@@ -273,7 +553,8 @@ export default function CreateBountyPage() {
     if (!prizeAmount || isNaN(p) || p <= 0) return "Prize must be greater than 0";
     const w = parseInt(maxWinners);
     if (!maxWinners || isNaN(w) || w < 1) return "At least 1 winner required";
-    if (!instructions.length) return "Add at least one submission instruction";
+    if (enableMusic && selectedTracks.length === 0) return "Add at least one track for the music challenge";
+    if ((!enableMusic || musicMode === "HYBRID") && !instructions.length) return "Add at least one submission instruction";
     if (!selectedAsset) return "Select a reward asset";
     if (isInsufficient) return `Insufficient ${selectedAsset.code} balance`;
     return null;
@@ -293,11 +574,29 @@ export default function CreateBountyPage() {
         prizeAmount: parseFloat(prizeAmount),
         rewardNote: rewardNote.trim() || undefined,
         maxWinners: parseInt(maxWinners),
-        instructions,
+        instructions: (!enableMusic || musicMode === "HYBRID") ? instructions : [],
         prizeAssetCode: selectedAsset.code,
         prizeAssetIssuer: selectedAsset.issuer,
         requiresActionCam,
         fromCreatorWallet: selectedAsset.source === "creator",
+        enableMusic,
+        musicConfig: enableMusic ? {
+          musicMode,
+          ruleType,
+          customRequiredTracks: ruleType === "ANY_N" ? customRequiredTracks : undefined,
+          customTotalPlays: ruleType === "TOTAL_PLAYS" ? customTotalPlays : undefined,
+          tracks: selectedTracks.map((t) => ({
+            title: t.title,
+            artist: t.artist,
+            album: t.album,
+            albumArtUrl: t.albumArtUrl,
+            durationSec: t.targetDurationSec,
+            targetPlayCount: t.targetPlayCount,
+            lastFmUrl: t.lastFmUrl,
+            spotifyUrl: t.spotifyUrl,
+            youtubeUrl: t.youtubeUrl,
+          })),
+        } : undefined,
       });
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Something went wrong");
@@ -490,81 +789,503 @@ export default function CreateBountyPage() {
               </CardContent>
             </Card>
 
-            {/* Submission Requirements */}
+            {/* 🎵 Music & Streaming Challenge Card */}
             <Card className="border-border">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ListChecks className="h-4 w-4 text-muted-foreground" />
-                  Submission Requirements
-                  <span className="ml-auto text-xs font-normal text-muted-foreground">
-                    {instructions.length}/10
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  Add instructions one by one. These will appear on the bounty cover page.
-                </p>
-                <div className="flex gap-2 items-end">
-                  <Textarea
-                    value={instructionInput}
-                    onChange={(e) => {
-                      if (e.target.value.length <= MAX_INSTRUCTION) setInstructionInput(e.target.value);
-                    }}
-                    placeholder="e.g. Submit a GitHub repo link with working demo"
-                    className="min-h-[60px] flex-1 resize-none bg-secondary border-border"
-                    disabled={isDisabled}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        addInstruction();
-                      }
-                    }}
-                  />
-                  <Button
-                    variant="default"
-                    size="default"
-                    className="h-10 shrink-0 px-4"
-                    onClick={addInstruction}
-                    disabled={isDisabled || !instructionInput.trim()}
-                  >
-                    <Plus className="h-4 w-4 mr-1.5" />
-                    Add
-                  </Button>
+              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                <div className="space-y-0.5">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Music className="h-4 w-4 text-purple-400" />
+                    Add Music &amp; Streaming Challenge
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically verify participant listening scrobbles via Last.fm API
+                  </p>
                 </div>
-                {instructions.length > 0 && (
-                  <ul className="space-y-2">
-                    {instructions.map((inst, i) => (
-                      <li
-                        key={i}
-                        className="group flex items-start gap-3 rounded-lg border border-border bg-secondary px-3 py-2.5 hover:border-primary/40 transition-colors"
+                <Switch
+                  checked={enableMusic}
+                  onCheckedChange={setEnableMusic}
+                  disabled={isDisabled}
+                />
+              </CardHeader>
+
+              {enableMusic && (
+                <CardContent className="space-y-5 pt-3 border-t border-border/60">
+                  {/* Last.fm Account Status */}
+                  {!lastFmAccount ? (
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-red-400">
+                        <Radio className="h-4 w-4 animate-pulse text-red-500" />
+                        Connect your Last.fm Creator Account
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        To create music bounties, connect your Last.fm account via OAuth so scrobbles can be verified.
+                      </p>
+                      <Button
+                        size="sm"
+                        className="font-bold text-xs bg-red-600 hover:bg-red-700 text-white gap-1.5"
+                        onClick={() => {
+                          window.location.href = `/api/lastfm/auth?redirect=${encodeURIComponent(router.asPath)}`;
+                        }}
                       >
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-semibold tabular-nums">
-                          {i + 1}
-                        </span>
-                        <p className="flex-1 text-sm leading-relaxed break-words min-w-0">{inst}</p>
-                        <button
-                          onClick={() => removeInstruction(i)}
-                          className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 -m-1"
-                          disabled={isDisabled}
-                          aria-label="Remove requirement"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {instructions.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-border bg-secondary/50 px-4 py-6 text-center">
-                    <ListChecks className="h-7 w-7 mx-auto mb-2 text-muted-foreground/50" />
-                    <p className="text-xs text-muted-foreground">
-                      No requirements yet. Add at least one to continue.
-                    </p>
+                        <Radio className="h-3.5 w-3.5 text-white" />
+                        Connect Last.fm Account
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                        <span>Connected as <strong className="font-mono text-foreground">@{lastFmAccount.username}</strong></span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => disconnectLastFmM.mutate()}
+                        disabled={disconnectLastFmM.isLoading}
+                        className="text-[10px] font-bold text-red-400 hover:text-red-300 uppercase tracking-wide transition-colors disabled:opacity-50"
+                      >
+                        {disconnectLastFmM.isLoading ? "Disconnecting…" : "Disconnect"}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Strategy Mode Selector */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Requirement Strategy Mode</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMusicMode("HYBRID")}
+                        className={cn(
+                          "p-3 rounded-xl border text-left transition-all space-y-1",
+                          musicMode === "HYBRID"
+                            ? "border-primary bg-primary/5 text-foreground"
+                            : "border-border bg-card/40 text-muted-foreground hover:border-primary/40",
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Music className="h-3.5 w-3.5 text-purple-400" />
+                          <span className="text-xs font-bold text-foreground">Hybrid Strategy</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-tight">
+                          Require both Last.fm track scrobbles + standard submission reports.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMusicMode("MUSIC_ONLY")}
+                        className={cn(
+                          "p-3 rounded-xl border text-left transition-all space-y-1",
+                          musicMode === "MUSIC_ONLY"
+                            ? "border-primary bg-primary/5 text-foreground"
+                            : "border-border bg-card/40 text-muted-foreground hover:border-primary/40",
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Radio className="h-3.5 w-3.5 text-purple-400" />
+                          <span className="text-xs font-bold text-foreground">Pure Music Only</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-tight">
+                          Verification is 100% automated via Last.fm scrobble listening data.
+                        </p>
+                      </button>
+                    </div>
                   </div>
-                )}
-              </CardContent>
+
+                  {/* Song Search & Picker */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold flex items-center gap-1.5">
+                        <Search className="h-3.5 w-3.5 text-primary" />
+                        Search &amp; Add Songs from Last.fm
+                      </Label>
+                      <span className="text-[11px] text-muted-foreground">
+                        {selectedTracks.length} / 5 tracks added
+                      </span>
+                    </div>
+
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search any song title or artist name on Last.fm..."
+                        className="pl-9 pr-9 text-xs h-9 bg-secondary border-border"
+                      />
+                      {isSearchingTracks && (
+                        <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-purple-400" />
+                      )}
+
+                      {searchQuery.trim().length > 1 && (
+                        <div className="absolute top-10 left-0 right-0 z-20 bg-card border border-border rounded-xl shadow-xl overflow-hidden py-1 divide-y divide-border/40 max-h-72 overflow-y-auto">
+                          {isSearchingTracks ? (
+                            <div className="px-4 py-3 flex items-center gap-2 text-xs text-muted-foreground">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />
+                              <span>Searching Last.fm live music database…</span>
+                            </div>
+                          ) : searchResults.length > 0 ? (
+                            searchResults.map((track) => (
+                              <div
+                                key={track.id}
+                                onClick={() => addTrack(track)}
+                                className="px-3 py-2 hover:bg-muted/60 flex items-center justify-between cursor-pointer transition-colors"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <img
+                                    src={track.albumArtUrl || "/images/logo.png"}
+                                    alt={track.title}
+                                    onError={(e) => { e.currentTarget.src = "/images/logo.png"; }}
+                                    className="h-8 w-8 rounded object-cover shrink-0 border border-border"
+                                  />
+                                  <div className="truncate">
+                                    <p className="text-xs font-bold text-foreground truncate">{track.title}</p>
+                                    <p className="text-[11px] text-muted-foreground truncate">{track.artist} · {track.album}</p>
+                                  </div>
+                                </div>
+                                <Button size="sm" variant="ghost" className="h-7 text-xs shrink-0 text-primary">
+                                  + Add
+                                </Button>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="px-4 py-3 text-xs text-muted-foreground text-center">
+                              No tracks found for &quot;{searchQuery}&quot; on Last.fm
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      <span className="text-[11px] font-semibold text-purple-400 mr-1 flex items-center gap-1">
+                        <Sparkles className="h-3 w-3" /> Three Years Hollow Top 5 (Last.fm):
+                      </span>
+                      {sampleTracks.map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => addTrack(t)}
+                          className="text-[11px] px-2.5 py-1 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-500/60 hover:bg-purple-500/20 transition-all font-medium"
+                        >
+                          + {t.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Selected Song Cards & Target Rules */}
+                  <div className="space-y-3 pt-2">
+                    <Label className="text-xs font-semibold flex items-center gap-1.5">
+                      <Headphones className="h-3.5 w-3.5 text-primary" />
+                      Configure Track Listening Rules
+                    </Label>
+
+                    {selectedTracks.length === 0 ? (
+                      <div className="p-6 text-center border border-dashed border-border rounded-xl text-muted-foreground text-xs">
+                        No tracks added yet. Search or quick-add songs above.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {selectedTracks.map((track, idx) => (
+                          <div
+                            key={track.id}
+                            className="p-3.5 rounded-xl border border-border bg-card/60 space-y-3 hover:border-primary/30 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="text-xs font-bold text-muted-foreground w-4 text-center">
+                                  #{idx + 1}
+                                </span>
+                                <img
+                                  src={track.albumArtUrl || "/images/logo.png"}
+                                  alt={track.title}
+                                  onError={(e) => { e.currentTarget.src = "/images/logo.png"; }}
+                                  className="h-10 w-10 rounded-lg object-cover shrink-0 border border-border"
+                                />
+                                <div className="truncate">
+                                  <h4 className="text-xs font-bold text-foreground truncate">{track.title}</h4>
+                                  <p className="text-[11px] text-muted-foreground truncate">{track.artist}</p>
+                                </div>
+                              </div>
+
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => removeTrack(track.id)}
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+
+                            <Separator className="bg-border/50" />
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[11px] text-muted-foreground">
+                                    Target Play Count (Scrobbles)
+                                  </Label>
+                                  {ruleType === "TOTAL_PLAYS" && (
+                                    <span className="text-[9px] text-amber-400/90 font-medium">Sum Mode</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    max="50"
+                                    value={track.targetPlayCount}
+                                    onChange={(e) => updateTrackConfig(track.id, "targetPlayCount", parseInt(e.target.value) || 1)}
+                                    className={cn("h-8 text-xs font-mono", ruleType === "TOTAL_PLAYS" && "opacity-60 bg-muted")}
+                                    disabled={ruleType === "TOTAL_PLAYS"}
+                                  />
+                                  <span className="text-[11px] text-muted-foreground shrink-0">plays</span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <Label className="text-[11px] text-muted-foreground">Target Duration (Sec)</Label>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    min="30"
+                                    max="3600"
+                                    value={track.targetDurationSec}
+                                    onChange={(e) => updateTrackConfig(track.id, "targetDurationSec", parseInt(e.target.value) || 30)}
+                                    className="h-8 text-xs font-mono"
+                                  />
+                                  <span className="text-[11px] text-muted-foreground shrink-0">sec</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2.5 pt-1">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                  <LastFmIcon className="h-3 w-3 text-red-500" />
+                                  Last.fm URL
+                                </Label>
+                                <Input
+                                  value={track.lastFmUrl}
+                                  onChange={(e) => updateTrackConfig(track.id, "lastFmUrl", e.target.value)}
+                                  placeholder="https://www.last.fm/music/..."
+                                  className="h-7 text-[11px]"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                  <SpotifyIcon className="h-3 w-3 text-emerald-500" />
+                                  Spotify URL
+                                </Label>
+                                <Input
+                                  value={track.spotifyUrl ?? ""}
+                                  onChange={(e) => updateTrackConfig(track.id, "spotifyUrl", e.target.value)}
+                                  placeholder="https://open.spotify.com/track/..."
+                                  className="h-7 text-[11px]"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                  <Youtube className="h-3 w-3 text-red-500" />
+                                  YouTube URL
+                                </Label>
+                                <Input
+                                  value={track.youtubeUrl ?? ""}
+                                  onChange={(e) => updateTrackConfig(track.id, "youtubeUrl", e.target.value)}
+                                  placeholder="https://youtube.com/watch?v=..."
+                                  className="h-7 text-[11px]"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Customizable Global Rule Completion Strategy */}
+                  <div className="space-y-3 pt-3 border-t border-border/60">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold flex items-center gap-1.5">
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
+                        Customizable Global Listening Strategy
+                      </Label>
+                      <Badge variant="outline" className="text-[10px] bg-primary/5 border-primary/20 text-primary">
+                        Customizable
+                      </Badge>
+                    </div>
+
+                    <Select value={ruleType} onValueChange={(v: unknown) => setRuleType(v as "ALL" | "ANY_N" | "TOTAL_PLAYS")}>
+                      <SelectTrigger className="text-xs h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL" className="text-xs">
+                          Must listen to ALL ({selectedTracks.length}) listed tracks
+                        </SelectItem>
+                        <SelectItem value="ANY_N" className="text-xs">
+                          Must listen to ANY N tracks (Custom track count)
+                        </SelectItem>
+                        <SelectItem value="TOTAL_PLAYS" className="text-xs">
+                          Accumulate N total plays across any tracks
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {ruleType === "ANY_N" && (
+                      <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground font-medium">
+                          Required Number of Songs to Complete
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="1"
+                            max={Math.max(1, selectedTracks.length)}
+                            value={customRequiredTracks}
+                            onChange={(e) => setCustomRequiredTracks(parseInt(e.target.value) || 1)}
+                            className="h-8 text-xs font-mono w-24"
+                          />
+                          <span className="text-[11px] text-muted-foreground">
+                            out of {selectedTracks.length} tracks
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {ruleType === "TOTAL_PLAYS" && (
+                      <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground font-medium">
+                          Required Total Play Count Across All Songs
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={customTotalPlays}
+                            onChange={(e) => setCustomTotalPlays(parseInt(e.target.value) || 1)}
+                            className="h-8 text-xs font-mono w-24"
+                          />
+                          <span className="text-[11px] text-muted-foreground">total plays</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Applied Rule Summary Banner */}
+                    <div className="p-3 rounded-xl border border-primary/25 bg-primary/5 flex items-start gap-2.5 text-xs pt-2.5">
+                      <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-foreground">Applied Rule: </span>
+                        <span className="text-muted-foreground leading-relaxed">
+                          {computedRuleSummary}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              )}
             </Card>
+
+            {/* Submission Requirements — hidden in Music Only mode */}
+            {(!enableMusic || musicMode === "HYBRID") ? (
+              <Card className="border-border">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ListChecks className="h-4 w-4 text-muted-foreground" />
+                    Submission Requirements
+                    {enableMusic && musicMode === "HYBRID" && (
+                      <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20">
+                        Hybrid Mode
+                      </Badge>
+                    )}
+                    <span className="ml-auto text-xs font-normal text-muted-foreground">
+                      {instructions.length}/10
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    {enableMusic
+                      ? "Participants must submit standard proof AND complete music listening goals."
+                      : "Add instructions one by one. These will appear on the bounty cover page."}
+                  </p>
+                  <div className="flex gap-2 items-end">
+                    <Textarea
+                      value={instructionInput}
+                      onChange={(e) => {
+                        if (e.target.value.length <= MAX_INSTRUCTION) setInstructionInput(e.target.value);
+                      }}
+                      placeholder="e.g. Submit a GitHub repo link with working demo"
+                      className="min-h-[60px] flex-1 resize-none bg-secondary border-border"
+                      disabled={isDisabled}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          addInstruction();
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="default"
+                      size="default"
+                      className="h-10 shrink-0 px-4"
+                      onClick={addInstruction}
+                      disabled={isDisabled || !instructionInput.trim()}
+                    >
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add
+                    </Button>
+                  </div>
+                  {instructions.length > 0 && (
+                    <ul className="space-y-2">
+                      {instructions.map((inst, i) => (
+                        <li
+                          key={i}
+                          className="group flex items-start gap-3 rounded-lg border border-border bg-secondary px-3 py-2.5 hover:border-primary/40 transition-colors"
+                        >
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-semibold tabular-nums">
+                            {i + 1}
+                          </span>
+                          <p className="flex-1 text-sm leading-relaxed break-words min-w-0">{inst}</p>
+                          <button
+                            onClick={() => removeInstruction(i)}
+                            className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 -m-1"
+                            disabled={isDisabled}
+                            aria-label="Remove requirement"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {instructions.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-border bg-secondary/50 px-4 py-6 text-center">
+                      <ListChecks className="h-7 w-7 mx-auto mb-2 text-muted-foreground/50" />
+                      <p className="text-xs text-muted-foreground">
+                        No requirements yet. Add at least one to continue.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-purple-500/20 bg-purple-500/5">
+                <CardContent className="pt-4 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-purple-200 text-sm">
+                    <Music className="h-4 w-4 text-purple-400" />
+                    Music Only Mode Active
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Participants do not need to submit manual proof reports or text. Qualification is automated strictly via Last.fm scrobble verification.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Right: Prizing + settings */}
@@ -794,44 +1515,52 @@ export default function CreateBountyPage() {
 
                   <Separator className="bg-border" />
 
-                  {/* Action Cam verification toggle */}
-                  <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Camera className="h-4 w-4 text-primary" />
-                          <Label htmlFor="requiresActionCam" className="text-sm font-semibold">
-                            Require Action Cam proof
-                          </Label>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                <p>
-                                  When on, participants must submit proof using Action Cam — a live
-                                  camera capture stamped with time, location, and wallet, then
-                                  cryptographically sealed by our server. You can turn this off at
-                                  any time from the bounty settings.
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                  {/* Action Cam verification toggle — hidden in Music Only mode */}
+                  {(!enableMusic || musicMode === "HYBRID") && (
+                    <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Camera className="h-4 w-4 text-primary" />
+                            <Label htmlFor="requiresActionCam" className="text-sm font-semibold">
+                              Require Action Cam proof
+                            </Label>
+                            {enableMusic && musicMode === "HYBRID" && (
+                              <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20">
+                                Hybrid Mode
+                              </Badge>
+                            )}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <p>
+                                    When on, participants must submit proof using Action Cam — a live
+                                    camera capture stamped with time, location, and wallet, then
+                                    cryptographically sealed by our server. You can turn this off at
+                                    any time from the bounty settings.
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            {enableMusic
+                              ? "Submissions must include cryptographically sealed live proof along with music listening goals."
+                              : "Submitters open the in-app camera, capture live (no uploads), and the server signs the photo so edits are detectable. Off by default."}
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          Submitters open the in-app camera, capture live (no uploads), and the server
-                          signs the photo so edits are detectable. Off by default.
-                        </p>
+                        <Switch
+                          id="requiresActionCam"
+                          checked={requiresActionCam}
+                          onCheckedChange={setRequiresActionCam}
+                          disabled={isDisabled}
+                        />
                       </div>
-                      <Switch
-                        id="requiresActionCam"
-                        checked={requiresActionCam}
-                        onCheckedChange={setRequiresActionCam}
-                        disabled={isDisabled}
-                      />
                     </div>
-                  </div>
+                  )}
 
                   <Separator className="bg-border" />
 
@@ -853,6 +1582,53 @@ export default function CreateBountyPage() {
                       disabled={isDisabled}
                     />
                   </div>
+
+                  {/* Default-hidden Live Card Preview toggle when music is enabled */}
+                  {enableMusic && (
+                    <div className="pt-1 space-y-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowCardPreview(!showCardPreview)}
+                        className="w-full text-xs font-semibold gap-2 border-purple-500/30 text-purple-400 hover:bg-purple-500/10 hover:text-purple-300"
+                      >
+                        {showCardPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        {showCardPreview ? "Hide Live Card Preview" : "Show Live Card Preview"}
+                      </Button>
+
+                      {showCardPreview && (
+                        <div className="p-3 rounded-xl border border-purple-500/30 bg-card space-y-2">
+                          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                            Live Card Preview (Feed View)
+                          </p>
+                          <BountyCard
+                            bounty={{
+                              id: 0,
+                              title: title || "Sample Music Bounty Title",
+                              summary: summary || "Listen to target tracks on Last.fm to satisfy requirements and win rewards.",
+                              prizeAmount: parseFloat(prizeAmount) || 100,
+                              prizeAssetCode: selectedAsset?.code ?? "XLM",
+                              maxWinners: parseInt(maxWinners) || 1,
+                              enableMusic: true,
+                              musicConfig: {
+                                musicMode,
+                                ruleType,
+                                tracks: selectedTracks.map((t) => ({
+                                  title: t.title,
+                                  artist: t.artist,
+                                  album: t.album,
+                                  albumArtUrl: t.albumArtUrl,
+                                })),
+                              },
+                              _count: { participants: 0, winners: 0 },
+                              createdAt: new Date(),
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <Separator className="bg-border" />
 

@@ -3,8 +3,11 @@
 export const BASE_URL = process.env.NODE_ENV === "production" ? "https://app.action-tokens.com/" : "https://funnier-jeni-qualmishly.ngrok-free.dev/";
 export const EXPRESS_SERVER_URL = "https://portal.actn.xyz/actionverse/api/"
 
-// Bounty escrow Soroban contract ID (mainnet).
-export const BOUNTY_ESCROW_CONTRACT_ID = "CBTALUV2T6FRODHLQIT5MRD6SVXOQ5NTURYY5EFS5NWTCZ6ZLKJCJGXW";
+// Bounty escrow Soroban contract ID — testnet for dev, mainnet for prod.
+export const BOUNTY_ESCROW_CONTRACT_ID =
+  process.env.NEXT_PUBLIC_STELLAR_PUBNET === "true"
+    ? "CBTALUV2T6FRODHLQIT5MRD6SVXOQ5NTURYY5EFS5NWTCZ6ZLKJCJGXW"
+    : "CDVOU7U6H5CPUHW457T2TG22RQVHAAW5F4EQAPQ57ZUETGLVCUMRRYJS";
 
 // NFT marketplace Soroban contract ID (testnet) - v4 (media_type support,
 // pause, platform fee, royalty, per-seller listings). Same deployed instance

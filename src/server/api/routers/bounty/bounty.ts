@@ -34,6 +34,12 @@ import { captureMetadataSchema, signCapture, verifyCapture } from "~/lib/action-
 import { HeadObjectCommand } from "@aws-sdk/client-s3";
 import { s3Client } from "~/server/s3";
 import { TRPCError } from "@trpc/server";
+import {
+  fetchUserRecentTracks,
+  matchScrobblesToTrack,
+  searchLastFmTracks,
+  getArtistTopTracks,
+} from "~/server/services/lastfm";
 
 // Helper: include shape used by bounty queries that surface the owner.
 const ownerSelect = { id: true, name: true, image: true } as const;
@@ -68,6 +74,18 @@ function deriveSubmissionValidation(
 }
 
 export const BountyRoute = createTRPCRouter({
+  searchLastFmTracks: publicProcedure
+    .input(z.object({ query: z.string() }))
+    .query(async ({ input }) => {
+      return searchLastFmTracks(input.query);
+    }),
+
+  getArtistTopTracks: publicProcedure
+    .input(z.object({ artist: z.string().optional() }))
+    .query(async ({ input }) => {
+      return getArtistTopTracks(input.artist || "Three Years Hollow");
+    }),
+
   // ── Create bounty row (DB generates UUID via @default(uuid())) ──
   createBounty: protectedProcedure
     .input(
@@ -78,11 +96,49 @@ export const BountyRoute = createTRPCRouter({
         prizeAmount: z.number().positive(),
         rewardNote: z.string().max(600).optional(),
         maxWinners: z.number().int().positive(),
-        instructions: z.array(z.string()).min(1),
+        instructions: z.array(z.string()),
         prizeAssetCode: z.string(),
         prizeAssetIssuer: z.string().nullable().default(null),
         requiresActionCam: z.boolean().default(false),
         fromCreatorWallet: z.boolean().default(false),
+        enableMusic: z.boolean().default(false),
+        musicConfig: z
+          .object({
+            musicMode: z.enum(["MUSIC_ONLY", "HYBRID"]).default("HYBRID"),
+            ruleType: z.enum(["ALL", "ANY_N", "TOTAL_PLAYS"]).default("ANY_N"),
+            customRequiredTracks: z.number().int().optional(),
+            customTotalPlays: z.number().int().optional(),
+            tracks: z
+              .array(
+                z.object({
+                  title: z.string(),
+                  artist: z.string(),
+                  album: z.string().optional(),
+                  albumArtUrl: z.string().optional(),
+                  durationSec: z.number().int().default(180),
+                  targetPlayCount: z.number().int().default(1),
+                  lastFmUrl: z.string(),
+                  spotifyUrl: z.string().optional(),
+                  youtubeUrl: z.string().optional(),
+                }),
+              )
+              .min(1),
+          })
+          .optional(),
+      })
+      .superRefine((data, ctx) => {
+        const isMusicOnly = data.enableMusic && data.musicConfig?.musicMode === "MUSIC_ONLY";
+        if (!isMusicOnly && data.instructions.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.too_small,
+            minimum: 1,
+            type: "array",
+            inclusive: true,
+            exact: false,
+            message: "Add at least one submission instruction",
+            path: ["instructions"],
+          });
+        }
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -101,6 +157,32 @@ export const BountyRoute = createTRPCRouter({
           requiresActionCam: input.requiresActionCam,
           fundedFromCreatorStorage: input.fromCreatorWallet,
           escrowContractId: BOUNTY_ESCROW_CONTRACT_ID,
+          enableMusic: input.enableMusic,
+          ...(input.enableMusic && input.musicConfig
+            ? {
+                musicConfig: {
+                  create: {
+                    musicMode: input.musicConfig.musicMode,
+                    ruleType: input.musicConfig.ruleType,
+                    customRequiredTracks: input.musicConfig.customRequiredTracks,
+                    customTotalPlays: input.musicConfig.customTotalPlays,
+                    tracks: {
+                      create: input.musicConfig.tracks.map((t) => ({
+                        title: t.title,
+                        artist: t.artist,
+                        album: t.album,
+                        albumArtUrl: t.albumArtUrl,
+                        durationSec: t.durationSec,
+                        targetPlayCount: t.targetPlayCount,
+                        lastFmUrl: t.lastFmUrl,
+                        spotifyUrl: t.spotifyUrl,
+                        youtubeUrl: t.youtubeUrl,
+                      })),
+                    },
+                  },
+                },
+              }
+            : {}),
         },
       });
 
@@ -204,25 +286,109 @@ export const BountyRoute = createTRPCRouter({
         summary: z.string().max(600).optional(),
         description: z.string().max(6000).optional(),
         rewardNote: z.string().max(600).optional(),
-        maxWinners: z.number().int().positive().optional(),
         instructions: z.array(z.string()).optional(),
-        // Owner can flip the Action Cam requirement on or off at any time.
         requiresActionCam: z.boolean().optional(),
+        enableMusic: z.boolean().optional(),
+        musicConfig: z
+          .object({
+            musicMode: z.enum(["MUSIC_ONLY", "HYBRID"]),
+            ruleType: z.enum(["ALL", "ANY_N", "TOTAL_PLAYS"]),
+            customRequiredTracks: z.number().int().optional(),
+            customTotalPlays: z.number().int().optional(),
+            tracks: z
+              .array(
+                z.object({
+                  title: z.string(),
+                  artist: z.string(),
+                  album: z.string().optional(),
+                  albumArtUrl: z.string().optional(),
+                  durationSec: z.number().int().default(180),
+                  targetPlayCount: z.number().int().default(1),
+                  lastFmUrl: z.string(),
+                  spotifyUrl: z.string().optional(),
+                  youtubeUrl: z.string().optional(),
+                }),
+              )
+              .min(1),
+          })
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const bounty = await ctx.db.bounty.findUnique({
         where: { id: input.bountyId },
+        include: { musicConfig: true },
       });
       if (!bounty) throw new Error("Bounty not found");
       if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
 
-      const { bountyId, ...data } = input;
-      return ctx.db.bounty.update({
+      const { bountyId, musicConfig, enableMusic, ...data } = input;
+
+      // Update bounty base fields
+      await ctx.db.bounty.update({
         where: { id: bountyId },
-        data,
+        data: { ...data, enableMusic: enableMusic ?? bounty.enableMusic },
       });
+
+      // Update music config if provided
+      if (musicConfig && bounty.musicConfig) {
+        // Delete existing tracks and re-create
+        await ctx.db.bountyParticipantTrackProgress.deleteMany({
+          where: { participant: { bountyId } },
+        });
+        await ctx.db.bountyTrack.deleteMany({
+          where: { musicConfigId: bounty.musicConfig.id },
+        });
+        await ctx.db.bountyMusicConfig.update({
+          where: { id: bounty.musicConfig.id },
+          data: {
+            musicMode: musicConfig.musicMode,
+            ruleType: musicConfig.ruleType,
+            customRequiredTracks: musicConfig.customRequiredTracks,
+            customTotalPlays: musicConfig.customTotalPlays,
+            tracks: {
+              create: musicConfig.tracks.map((t) => ({
+                title: t.title,
+                artist: t.artist,
+                album: t.album,
+                albumArtUrl: t.albumArtUrl,
+                durationSec: t.durationSec,
+                targetPlayCount: t.targetPlayCount,
+                lastFmUrl: t.lastFmUrl,
+                spotifyUrl: t.spotifyUrl,
+                youtubeUrl: t.youtubeUrl,
+              })),
+            },
+          },
+        });
+      } else if (musicConfig && !bounty.musicConfig && enableMusic) {
+        // Create music config if bounty didn't have one but now enables music
+        await ctx.db.bountyMusicConfig.create({
+          data: {
+            bountyId,
+            musicMode: musicConfig.musicMode,
+            ruleType: musicConfig.ruleType,
+            customRequiredTracks: musicConfig.customRequiredTracks,
+            customTotalPlays: musicConfig.customTotalPlays,
+            tracks: {
+              create: musicConfig.tracks.map((t) => ({
+                title: t.title,
+                artist: t.artist,
+                album: t.album,
+                albumArtUrl: t.albumArtUrl,
+                durationSec: t.durationSec,
+                targetPlayCount: t.targetPlayCount,
+                lastFmUrl: t.lastFmUrl,
+                spotifyUrl: t.spotifyUrl,
+                youtubeUrl: t.youtubeUrl,
+              })),
+            },
+          },
+        });
+      }
+
+      return ctx.db.bounty.findUnique({ where: { id: bountyId } });
     }),
 
   // ── OWNER: change bounty status ───────────────────────────────────────────
@@ -292,6 +458,9 @@ export const BountyRoute = createTRPCRouter({
         where: { id: input.bountyId },
         include: {
           user: { select: ownerSelect },
+          musicConfig: {
+            include: { tracks: true },
+          },
           _count: {
             select: { participants: true, submissions: true, winners: true },
           },
@@ -306,6 +475,42 @@ export const BountyRoute = createTRPCRouter({
       if (bounty.userId !== ctx.session.user.id)
         throw new Error("Not authorized");
       return bounty;
+    }),
+
+  // ── OWNER: get all participants with scrobble progress ────────────────────
+  getBountyParticipants: protectedProcedure
+    .input(z.object({ bountyId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const bounty = await ctx.db.bounty.findUnique({
+        where: { id: input.bountyId },
+        include: { musicConfig: { include: { tracks: true } } },
+      });
+      if (!bounty) throw new Error("Bounty not found");
+
+      const participants = await ctx.db.bountyParticipant.findMany({
+        where: { bountyId: input.bountyId },
+        include: {
+          user: { select: ownerSelect },
+          trackProgress: true,
+        },
+        orderBy: { joinedAt: "desc" },
+      });
+
+      const totalTracks = bounty.musicConfig?.tracks.length ?? 0;
+
+      return participants.map((p) => {
+        let satisfiedCount = 0;
+        if (p.trackProgress.length > 0) {
+          satisfiedCount = p.trackProgress.filter((tp) => tp.isSatisfied).length;
+        }
+        const progressPct = totalTracks > 0 ? Math.round((satisfiedCount / totalTracks) * 100) : 0;
+        return {
+          ...p,
+          progressPct,
+          satisfiedCount,
+          totalTracks,
+        };
+      });
     }),
 
   // ── OWNER: get all submissions for a bounty ───────────────────────────────
@@ -559,6 +764,9 @@ export const BountyRoute = createTRPCRouter({
         orderBy,
         include: {
           user: { select: ownerSelect },
+          musicConfig: {
+            include: { tracks: true },
+          },
           _count: {
             select: { participants: true, submissions: true, winners: true },
           },
@@ -580,6 +788,9 @@ export const BountyRoute = createTRPCRouter({
         where: { id: input.bountyId },
         include: {
           user: { select: ownerSelect },
+          musicConfig: {
+            include: { tracks: true },
+          },
           _count: {
             select: { participants: true, submissions: true, winners: true },
           },
@@ -591,8 +802,9 @@ export const BountyRoute = createTRPCRouter({
           participants: {
             include: {
               user: { select: ownerSelect },
+              trackProgress: true,
             },
-            take: 20,
+            take: 50,
             orderBy: { joinedAt: "desc" },
           },
         },
@@ -897,6 +1109,69 @@ export const BountyRoute = createTRPCRouter({
         },
       });
       return { joined: !!participant, winner };
+    }),
+
+  // ── USER: get my per-track music progress ──────────────────────────────────
+  getMyMusicProgress: protectedProcedure
+    .input(z.object({ bountyId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+
+      const participant = await ctx.db.bountyParticipant.findUnique({
+        where: { bountyId_userId: { bountyId: input.bountyId, userId } },
+        include: {
+          trackProgress: true,
+          bounty: {
+            include: {
+              musicConfig: { include: { tracks: true } },
+            },
+          },
+        },
+      });
+
+      if (!participant) return null;
+
+      const tracks = participant.bounty.musicConfig?.tracks ?? [];
+      const progressMap = new Map(
+        participant.trackProgress.map((tp) => [tp.trackId, tp])
+      );
+
+      const trackDetails = tracks.map((track) => {
+        const progress = progressMap.get(track.id);
+        const current = progress?.currentPlayCount ?? 0;
+        const target = track.targetPlayCount;
+        return {
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          albumArtUrl: track.albumArtUrl ?? null,
+          lastFmUrl: track.lastFmUrl,
+          spotifyUrl: track.spotifyUrl ?? null,
+          youtubeUrl: track.youtubeUrl ?? null,
+          targetPlayCount: target,
+          currentPlayCount: current,
+          isSatisfied: progress?.isSatisfied ?? false,
+          pct: target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0,
+        };
+      });
+
+      const satisfiedCount = trackDetails.filter((t) => t.isSatisfied).length;
+      const totalPct =
+        trackDetails.length > 0
+          ? Math.round(
+              trackDetails.reduce((acc, t) => acc + t.pct, 0) / trackDetails.length
+            )
+          : 0;
+
+      return {
+        tracks: trackDetails,
+        satisfiedCount,
+        totalTracks: tracks.length,
+        totalPct,
+        musicMode: participant.bounty.musicConfig?.musicMode ?? "MUSIC_ONLY",
+        ruleType: participant.bounty.musicConfig?.ruleType ?? "ALL",
+        customRequiredTracks: participant.bounty.musicConfig?.customRequiredTracks ?? 1,
+      };
     }),
 
   // ── USER: claim reward ─────────────────────────────────────────────────────
@@ -1678,5 +1953,142 @@ Rules:
       const xdr = await buildAdminExtendInstanceTTLXDR(adminPubKey);
       const signedXdr = signXdrTransaction(xdr, env.MOTHER_SECRET);
       return { xdr: signedXdr };
+    }),
+
+  // ── USER: get my connected Last.fm account status ──────────────────────────
+  getMyLastFmAccount: protectedProcedure
+    .query(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
+      const account = await ctx.db.lastFMAccount.findUnique({
+        where: { userId },
+      });
+      return account && account.isConnected ? account : null;
+    }),
+
+  // ── LAST.FM & MUSIC BOUNTY PROCEDURES ─────────────────────────────────────
+  connectLastFmAccount: protectedProcedure
+    .input(z.object({ username: z.string().min(1), sessionKey: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      const cleanUsername = input.username
+        .trim()
+        .replace(/^https?:\/\/(www\.)?last\.fm\/user\//i, "")
+        .replace(/\/$/, "")
+        .trim();
+
+      const account = await ctx.db.lastFMAccount.upsert({
+        where: { userId },
+        create: {
+          userId,
+          username: cleanUsername,
+          sessionKey: input.sessionKey ?? `sess_${Date.now()}`,
+          profileUrl: `https://www.last.fm/user/${encodeURIComponent(cleanUsername)}`,
+          isConnected: true,
+        },
+        update: {
+          username: cleanUsername,
+          sessionKey: input.sessionKey ?? `sess_${Date.now()}`,
+          profileUrl: `https://www.last.fm/user/${encodeURIComponent(cleanUsername)}`,
+          isConnected: true,
+        },
+      });
+      return account;
+    }),
+
+  disconnectLastFmAccount: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
+      const account = await ctx.db.lastFMAccount.update({
+        where: { userId },
+        data: {
+          isConnected: false,
+          sessionKey: null,
+        },
+      });
+      return account;
+    }),
+
+  syncParticipantProgress: protectedProcedure
+    .input(z.object({ bountyId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
+      const participant = await ctx.db.bountyParticipant.findUnique({
+        where: { bountyId_userId: { bountyId: input.bountyId, userId } },
+        include: {
+          user: { include: { lastFmAccount: true } },
+          bounty: { include: { musicConfig: { include: { tracks: true } } } },
+        },
+      });
+
+      if (!participant || !participant.user.lastFmAccount || !participant.user.lastFmAccount.isConnected) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Please connect your Last.fm account before syncing progress.",
+        });
+      }
+
+      const rawUsername = participant.user.lastFmAccount.username;
+      const username = (rawUsername || "")
+        .trim()
+        .replace(/^https?:\/\/(www\.)?last\.fm\/user\//i, "")
+        .replace(/\/$/, "")
+        .trim();
+
+      const joinedAtUnix = Math.floor(participant.joinedAt.getTime() / 1000);
+      const bountyCreatedAtUnix = Math.floor(participant.bounty.createdAt.getTime() / 1000);
+      // Use 1-hour safety buffer before the earlier of join or bounty creation time
+      const startTimeUnix = Math.min(joinedAtUnix, bountyCreatedAtUnix) - 3600;
+
+      // 1. Fetch scrobbles played since start time
+      let recentScrobbles = await fetchUserRecentTracks(username, startTimeUnix);
+
+      // 2. Fallback: if 0 scrobbles returned by &from=, fetch recent tracks without strict &from parameter
+      if (recentScrobbles.length === 0) {
+        recentScrobbles = await fetchUserRecentTracks(username);
+      }
+
+      const tracks = participant.bounty.musicConfig?.tracks ?? [];
+
+      let satisfiedCount = 0;
+      let totalScrobbles = 0;
+
+      for (const track of tracks) {
+        const matches = matchScrobblesToTrack(
+          recentScrobbles,
+          track.lastFmUrl,
+          track.title,
+          track.artist
+        );
+        const count = matches.length;
+        totalScrobbles += count;
+        const isSatisfied = count >= track.targetPlayCount;
+        if (isSatisfied) satisfiedCount++;
+
+        await ctx.db.bountyParticipantTrackProgress.upsert({
+          where: {
+            participantId_trackId: {
+              participantId: participant.id,
+              trackId: track.id,
+            },
+          },
+          update: {
+            currentPlayCount: Math.min(count, track.targetPlayCount),
+            isSatisfied,
+          },
+          create: {
+            participantId: participant.id,
+            trackId: track.id,
+            currentPlayCount: Math.min(count, track.targetPlayCount),
+            targetPlayCount: track.targetPlayCount,
+            isSatisfied,
+          },
+        });
+      }
+
+      return {
+        totalScrobbles,
+        satisfiedTracks: satisfiedCount,
+        totalTracks: tracks.length,
+      };
     }),
 });

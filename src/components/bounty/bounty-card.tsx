@@ -23,6 +23,10 @@ type BountyCardData = {
   maxWinners?: number;
   prizeAssetCode?: string | null;
   prizeAssetIssuer?: string | null;
+  enableMusic?: boolean;
+  musicConfig?: {
+    tracks?: { id: string; title: string; albumArtUrl?: string | null }[];
+  } | null;
 };
 
 interface BountyCardProps {
@@ -96,107 +100,134 @@ export function BountyCard({
     });
   };
 
+  const hasMusic = Boolean(bounty.enableMusic && bounty.musicConfig?.tracks && bounty.musicConfig.tracks.length > 0);
+
   return (
     <div
       className={cn(
-        "group relative flex flex-col bg-card border border-border rounded-xl px-[22px] py-5 cursor-pointer",
+        "group relative flex flex-col bg-card border border-border rounded-xl px-[22px] py-5 cursor-pointer overflow-hidden shadow-sm",
         "transition-all duration-200 hover:border-primary/30 hover:shadow-[0_8px_32px_hsl(var(--background)/0.6)]",
       )}
       onClick={() => void router.push(`/bounty/${bounty.id}`)}
     >
-      {/* Top row: prize + slots */}
-      <div className="flex items-start justify-between gap-3 mb-[14px]">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <CheckCircle2 className="h-[18px] w-[18px] text-primary shrink-0" />
-          <span className="text-primary font-bold text-[15px] tracking-[0.01em] leading-none">
-            {bounty.prizeAmount.toLocaleString()}
-          </span>
-          <a
-            href={prizeExpertUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-0.5 text-primary/80 hover:text-primary transition-colors text-[13px] font-semibold leading-none"
-            title={`View ${prizeAssetCode} on Stellar Expert`}
-          >
-            {prizeAssetCode}
-            <ExternalLink className="h-2.5 w-2.5 ml-0.5" />
-          </a>
-          <span className="text-muted-foreground text-[13px] font-normal leading-none">
-            / {maxW > 1 ? `${maxW} winners` : "winner"}
-          </span>
+      {/* 🎨 DYNAMIC BANNER-STYLE BACKGROUND ALBUM ARTWORK STRIPS */}
+      {hasMusic && bounty.musicConfig?.tracks && (
+        <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none z-0">
+          <div className="flex flex-row h-full w-full opacity-75 group-hover:opacity-90 transition-opacity duration-300">
+            {bounty.musicConfig.tracks.slice(0, 3).map((track, i) => (
+              <div
+                key={i}
+                className="flex-1 h-full relative border-r border-background/30 last:border-r-0 overflow-hidden"
+              >
+                {track.albumArtUrl && (
+                  <img
+                    src={track.albumArtUrl}
+                    alt={track.title}
+                    className="w-full h-full object-cover scale-105 group-hover:scale-115 transition-transform duration-700 ease-out"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-b from-card/85 via-card/70 to-card/95" />
         </div>
-        <div className="bg-secondary border border-border rounded-full px-3 py-[3px] text-muted-foreground text-[11px] font-medium whitespace-nowrap shrink-0">
-          {slotLabel}
-        </div>
-      </div>
+      )}
 
-      {/* Title */}
-      <h3 className="text-foreground text-[16px] font-bold mb-2 leading-[1.3] line-clamp-2 group-hover:text-primary transition-colors duration-150">
-        {bounty.title}
-      </h3>
-
-      {/* Description — summary first, fall back to description, fixed min-height if empty */}
-      <div className="mb-[18px] min-h-[3.5rem]">
-        {displayText && (
-          <p className="text-muted-foreground text-[13.5px] leading-[1.6]">
-            {displayText}
-          </p>
-        )}
-      </div>
-
-      {/* Footer: owner | View → | Joined | Join | Share */}
-      <div className="flex items-center justify-between mt-auto">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Avatar className="h-5 w-5 shrink-0">
-            <AvatarImage src={bounty.user.image ?? ""} />
-            <AvatarFallback className="text-[9px] font-bold bg-secondary text-muted-foreground">
-              {(bounty.user.name ?? "?").charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <span className="text-muted-foreground text-[12px] truncate">
-            By {bounty.user.name ?? "Unknown"}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0">
-          {/* View — for creator or already joined */}
-          {(isCreator || isJoined) && (
-            <button
-              onClick={(e) => { e.stopPropagation(); void router.push(`/bounty/${bounty.id}`); }}
-              className="flex items-center gap-1 text-primary hover:text-primary/80 text-[13.5px] font-semibold transition-colors duration-150"
+      <div className="relative z-10 flex flex-col flex-1">
+        {/* Top row: prize + slots */}
+        <div className="flex items-start justify-between gap-3 mb-[14px]">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <CheckCircle2 className="h-[18px] w-[18px] text-primary shrink-0" />
+            <span className="text-primary font-bold text-[15px] tracking-[0.01em] leading-none">
+              {bounty.prizeAmount.toLocaleString()}
+            </span>
+            <a
+              href={prizeExpertUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-0.5 text-primary/80 hover:text-primary transition-colors text-[13px] font-semibold leading-none"
+              title={`View ${prizeAssetCode} on Stellar Expert`}
             >
-              <Eye className="h-[13px] w-[13px]" />
-              View
-            </button>
-          )}
+              {prizeAssetCode}
+              <ExternalLink className="h-2.5 w-2.5 ml-0.5" />
+            </a>
+            <span className="text-muted-foreground text-[13px] font-normal leading-none">
+              / {maxW > 1 ? `${maxW} winners` : "winner"}
+            </span>
+          </div>
+          <div className="bg-secondary border border-border rounded-full px-3 py-[3px] text-muted-foreground text-[11px] font-medium whitespace-nowrap shrink-0">
+            {slotLabel}
+          </div>
+        </div>
 
-          {/* Join — for non-creator, not yet joined */}
-          {!isCreator && !isJoined && showJoinBtn && (
+        {/* Title */}
+        <h3 className="text-foreground text-[16px] font-bold mb-2 leading-[1.3] line-clamp-2 group-hover:text-primary transition-colors duration-150">
+          {bounty.title}
+        </h3>
+
+        {/* Description */}
+        <div className="mb-[18px] min-h-[3.5rem]">
+          {displayText && (
+            <p className="text-muted-foreground text-[13.5px] leading-[1.6]">
+              {displayText}
+            </p>
+          )}
+        </div>
+
+        {/* Footer: owner | View | Join | Share */}
+        <div className="flex items-center justify-between mt-auto pt-[18px]">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Avatar className="h-5 w-5 shrink-0">
+              <AvatarImage src={bounty.user?.image ?? ""} />
+              <AvatarFallback className="text-[9px] font-bold bg-secondary text-muted-foreground">
+                {(bounty.user?.name ?? "?").charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-muted-foreground text-[12px] truncate">
+              By {bounty.user?.name ?? "Unknown"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            {/* View — for creator or already joined */}
+            {(isCreator || isJoined) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); void router.push(`/bounty/${bounty.id}`); }}
+                className="flex items-center gap-1 text-primary hover:text-primary/80 text-[13.5px] font-semibold transition-colors duration-150"
+              >
+                <Eye className="h-[13px] w-[13px]" />
+                View
+              </button>
+            )}
+
+            {/* Join — for non-creator, not yet joined */}
+            {!isCreator && !isJoined && showJoinBtn && (
+              <button
+                onClick={handleJoin}
+                disabled={joining}
+                className="flex items-center gap-1 text-primary hover:text-primary/80 text-[13.5px] font-semibold transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {joining ? (
+                  <Loader2 className="h-[13px] w-[13px] animate-spin" />
+                ) : (
+                  <Users className="h-[13px] w-[13px]" />
+                )}
+                {joining ? "Joining…" : "Join"}
+              </button>
+            )}
+
+            {/* Share */}
+            <span className="text-border">|</span>
             <button
-              onClick={handleJoin}
-              disabled={joining}
-              className="flex items-center gap-1 text-primary hover:text-primary/80 text-[13.5px] font-semibold transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={handleShare}
+              title="Share to community"
+              className="flex items-center gap-1 text-muted-foreground hover:text-primary text-[13.5px] font-semibold transition-colors duration-150"
             >
-              {joining ? (
-                <Loader2 className="h-[13px] w-[13px] animate-spin" />
-              ) : (
-                <Users className="h-[13px] w-[13px]" />
-              )}
-              {joining ? "Joining…" : "Join"}
+              <Share2 className="h-[13px] w-[13px]" />
+              Share
             </button>
-          )}
-
-          {/* Share */}
-          <span className="text-border">|</span>
-          <button
-            onClick={handleShare}
-            title="Share to community"
-            className="flex items-center gap-1 text-muted-foreground hover:text-primary text-[13.5px] font-semibold transition-colors duration-150"
-          >
-            <Share2 className="h-[13px] w-[13px]" />
-            Share
-          </button>
+          </div>
         </div>
       </div>
     </div>

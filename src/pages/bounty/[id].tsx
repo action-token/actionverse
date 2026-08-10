@@ -23,6 +23,7 @@ import {
 import { SubmitReportDialog } from "~/components/bounty/submit-report-dialog";
 import { ActionCamCaptureModal } from "~/components/action-cam/capture-modal";
 import { ActionCamGuideCard } from "~/components/action-cam/guide-card";
+import { LastFmIcon, SpotifyIcon } from "~/components/layout/Left-sidebar/icons";
 import { CaptureValidationBadge } from "~/components/action-cam/validation-badge";
 import { Markdown } from "~/components/bounty/markdown";
 import { BountyStatus } from "@prisma/client";
@@ -49,6 +50,13 @@ import {
   Camera,
   Video,
   Download,
+  Radio,
+  Music,
+  RefreshCw,
+  Disc3,
+  Play,
+  Headphones,
+  Youtube,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -60,6 +68,17 @@ import { cn } from "~/lib/utils";
 import { useShareBountyModalStore } from "~/components/store/share-bounty-modal-store";
 import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store";
 import useNeedSign from "~/lib/hook";
+
+function safeFormatDistanceToNow(dateValue: unknown): string {
+  if (!dateValue) return "recently";
+  try {
+    const d = new Date(dateValue as string | number | Date);
+    if (isNaN(d.getTime())) return "recently";
+    return formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return "recently";
+  }
+}
 /* ── Types ───────────────────────────────────────────────────────────────────── */
 interface Submission {
   id: number; userId: string; content: string; status: string; createdAt: Date;
@@ -144,11 +163,35 @@ export default function BountyDetailPage() {
 
   const ownerQ = api.bounty.Bounty.getBountyForOwner.useQuery({ bountyId: id }, { enabled: !!id && isOwner });
   const submissionsQ = api.bounty.Bounty.getBountySubmissions.useQuery({ bountyId: id }, { enabled: !!id && isOwner });
+  const participantsQ = api.bounty.Bounty.getBountyParticipants.useQuery({ bountyId: id }, { enabled: !!id && isOwner });
   const myParticipation = api.bounty.Bounty.getMyParticipation.useQuery({ bountyId: id }, { enabled: !!id && !!session && !isOwner });
   const mySubmissions = api.bounty.Bounty.getMySubmissions.useQuery({ bountyId: id }, { enabled: !!id && !!session && !isOwner });
+  const lastFmAccountQ = api.bounty.Bounty.getMyLastFmAccount.useQuery(undefined, { enabled: !!session });
+  const lastFmAccount = lastFmAccountQ.data;
+
+  const myMusicProgressQ = api.bounty.Bounty.getMyMusicProgress.useQuery(
+    { bountyId: id },
+    { enabled: !!id && !!session && !isOwner },
+  );
 
   /* mutations */
-  const joinM = api.bounty.Bounty.joinBounty.useMutation({ onSuccess: () => { toast.success("Joined!"); void myParticipation.refetch(); void bountyQ.refetch(); }, onError: (e) => toast.error(e.message) });
+  const joinM = api.bounty.Bounty.joinBounty.useMutation({ onSuccess: () => { toast.success("Joined!"); void myParticipation.refetch(); void bountyQ.refetch(); void myMusicProgressQ.refetch(); }, onError: (e) => toast.error(e.message) });
+  const syncScrobblesM = api.bounty.Bounty.syncParticipantProgress.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Scrobbles synced! (${data.totalScrobbles} total scrobbles found)`);
+      void bountyQ.refetch();
+      void myParticipation.refetch();
+      void myMusicProgressQ.refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const disconnectLastFmM = api.bounty.Bounty.disconnectLastFmAccount.useMutation({
+    onSuccess: () => {
+      toast.success("Last.fm account disconnected");
+      void lastFmAccountQ.refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const statusM = api.bounty.Bounty.updateBountyStatus.useMutation({ onSuccess: () => { toast.success("Status updated"); void bountyQ.refetch(); void ownerQ.refetch(); }, onError: (e) => toast.error(e.message) });
   const selectWinnerXdrM = api.bounty.Bounty.getSelectWinnerXDR.useMutation({ onError: (e) => toast.error(e.message) });
   const winnerM = api.bounty.Bounty.selectWinner.useMutation({ onSuccess: () => { toast.success("Winner selected!"); void submissionsQ.refetch(); void bountyQ.refetch(); }, onError: (e) => toast.error(e.message) });
@@ -243,10 +286,11 @@ export default function BountyDetailPage() {
   const prizeExpertUrl = stellarExpertUrl(prizeAssetCode, prizeAssetIssuer);
   const isJoined = myParticipation.data?.joined ?? false;
   const winner = myParticipation.data?.winner;
-  const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isOwner;
+  const isMusicOnly = bounty.enableMusic && bounty.musicConfig?.musicMode === "MUSIC_ONLY";
+  const canSubmit = isJoined && bounty.status === BountyStatus.RUNNING && !isOwner && !isMusicOnly;
   const perWinner = bounty.prizeAmount / bounty.maxWinners;
-  const visibleReqs = bounty.instructions.slice(0, 4);
-  const extraReqs = bounty.instructions.slice(4);
+  const visibleReqs = bounty.instructions.slice(0, 3);
+  const extraReqs = bounty.instructions.slice(3);
 
   return (
     <div className="min-h-screen bg-background">
@@ -396,60 +440,91 @@ export default function BountyDetailPage() {
             </div>
 
             {/* ── Right: glass requirements card ────────────────────────── */}
-            <div className="hidden lg:block rounded-2xl backdrop-blur-xl border border-border/40 p-5 space-y-4 shadow-md">
+            <div className="hidden lg:block rounded-2xl backdrop-blur-xl border border-border/40 p-5 shadow-md">
 
               {/* Status line */}
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Requirements</span>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {isMusicOnly ? "Listening Challenge" : "Requirements"}
+                </span>
                 <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold", sc.pill)}>
                   <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", sc.dot)} />
                   {sc.label}
                 </span>
               </div>
 
-              {/* Requirements list */}
-              {bounty.instructions.length > 0 ? (
-                <div className="space-y-2.5">
+              {/* Music tracks */}
+              {bounty.enableMusic && bounty.musicConfig?.tracks && bounty.musicConfig.tracks.length > 0 && (
+                <div className={cn("pb-3", !isMusicOnly && bounty.instructions.length > 0 && "border-b border-border/40 mb-3")}>
+                  <div className="space-y-2">
+                    {bounty.musicConfig.tracks.slice(0, 3).map((track) => (
+                      <div key={track.id} className="flex items-center gap-3">
+                        {track.albumArtUrl ? (
+                          <img src={track.albumArtUrl} alt="" className="h-9 w-9 rounded-lg object-cover border border-border shrink-0" />
+                        ) : (
+                          <div className="h-9 w-9 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0">
+                            <Music className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[12px] font-semibold truncate leading-tight">{track.title}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{track.artist}</p>
+                        </div>
+                        <span className="text-[10px] font-mono text-primary font-semibold shrink-0">{track.targetPlayCount}x</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-border/30">
+                    <p className="text-[10px] text-muted-foreground">
+                      {bounty.musicConfig.ruleType === "ALL"
+                        ? `All ${bounty.musicConfig.tracks.length} tracks required`
+                        : bounty.musicConfig.ruleType === "ANY_N"
+                          ? `${Math.min(bounty.musicConfig.customRequiredTracks ?? 1, bounty.musicConfig.tracks.length)} of ${bounty.musicConfig.tracks.length} tracks`
+                          : "Total plays across all tracks"}
+                    </p>
+                    {bounty.musicConfig.tracks.length > 3 && (
+                      <span className="text-[10px] text-muted-foreground">+{bounty.musicConfig.tracks.length - 3} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Submission instructions */}
+              {!isMusicOnly && bounty.instructions.length > 0 && (
+                <div className="space-y-2">
                   {visibleReqs.map((inst, i) => (
-                    <div key={i} className="flex items-start gap-2.5 text-sm">
+                    <div key={i} className="flex items-start gap-2.5">
                       <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                      <span className="text-muted-foreground leading-snug">{inst}</span>
+                      <span className="text-[12px] text-muted-foreground leading-snug">{inst}</span>
                     </div>
                   ))}
 
-                  {/* More requirements sticky popup */}
                   {extraReqs.length > 0 && (
                     <div className="relative">
                       <button
                         ref={moreReqsTriggerRef}
                         onClick={() => setShowMoreReqs((v) => !v)}
-                        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-semibold transition-colors"
+                        className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 font-semibold transition-colors"
                       >
-                        {showMoreReqs ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        {showMoreReqs ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         {showMoreReqs ? "Show less" : `+${extraReqs.length} more`}
                       </button>
 
                       {showMoreReqs && mounted && moreReqsPos &&
                         createPortal(
                           <>
-                            <div
-                              className="fixed inset-0 z-[100]"
-                              onClick={() => setShowMoreReqs(false)}
-                            />
+                            <div className="fixed inset-0 z-[100]" onClick={() => setShowMoreReqs(false)} />
                             <div
                               className="fixed z-[101] w-72 max-h-[60vh] overflow-y-auto bg-card border border-border rounded-2xl p-4 shadow-2xl space-y-2.5"
                               style={{ top: moreReqsPos.top, left: moreReqsPos.left }}
                             >
-                              <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground pb-1 border-b border-border">
-                                All requirements
-                              </p>
+                              <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground pb-1 border-b border-border">All requirements</p>
                               {bounty.instructions.map((inst, i) => (
                                 <div key={i} className="flex items-start gap-2 text-sm">
                                   <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                                   <span className="text-muted-foreground leading-snug">{inst}</span>
                                 </div>
                               ))}
-                              {/* Arrow tip pointing up to the trigger button */}
                               <div className="absolute -top-[7px] left-6 h-3 w-3 rotate-45 bg-card border-l border-t border-border" />
                             </div>
                           </>,
@@ -458,8 +533,10 @@ export default function BountyDetailPage() {
                     </div>
                   )}
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground italic">No specific requirements listed.</p>
+              )}
+
+              {!isMusicOnly && bounty.instructions.length === 0 && !(bounty.enableMusic && bounty.musicConfig?.tracks?.length) && (
+                <p className="text-[12px] text-muted-foreground italic">No specific requirements listed.</p>
               )}
 
 
@@ -591,7 +668,7 @@ export default function BountyDetailPage() {
               <TabsList className="h-12 bg-secondary/50 rounded-2xl p-1.5 gap-1 w-full justify-start border border-border/40">
                 {[
                   { value: "description", label: "Description" },
-                  { value: "requirements", label: "Requirements", className: "lg:hidden" },
+                  { value: "requirements", label: isMusicOnly ? "Tracks" : "Requirements", className: "lg:hidden" },
                   { value: "participants", label: "Participants", className: "hidden lg:inline-flex" },
                   { value: "reports", label: isOwner ? "Submissions" : "My Reports" },
                 ].map((t) => (
@@ -625,14 +702,57 @@ export default function BountyDetailPage() {
 
               {/* Requirements tab (md/sm only — replaces Participants on small screens) */}
               <TabsContent value="requirements" className="mt-6">
-                <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Requirements</span>
-                    <span className="text-xs text-muted-foreground">
-                      {bounty.instructions.length} item{bounty.instructions.length === 1 ? "" : "s"}
+                <div className="rounded-2xl border border-border bg-card p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                      {isMusicOnly ? "Listening Challenge" : "Requirements"}
                     </span>
                   </div>
-                  <RequirementsList instructions={bounty.instructions} />
+
+                  {/* Music tracks — show ALL */}
+                  {bounty.enableMusic && bounty.musicConfig?.tracks && bounty.musicConfig.tracks.length > 0 && (
+                    <div className={cn("pb-3", !isMusicOnly && bounty.instructions.length > 0 && "border-b border-border/40 mb-3")}>
+                      <div className="space-y-2">
+                        {bounty.musicConfig.tracks.map((track) => (
+                          <div key={track.id} className="flex items-center gap-3">
+                            {track.albumArtUrl ? (
+                              <img src={track.albumArtUrl} alt="" className="h-9 w-9 rounded-lg object-cover border border-border shrink-0" />
+                            ) : (
+                              <div className="h-9 w-9 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0">
+                                <Music className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[12px] font-semibold truncate leading-tight">{track.title}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">{track.artist}</p>
+                            </div>
+                            <span className="text-[10px] font-mono text-primary font-semibold shrink-0">{track.targetPlayCount}x</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2.5 pt-2 border-t border-border/30">
+                        <p className="text-[10px] text-muted-foreground">
+                          {bounty.musicConfig.ruleType === "ALL"
+                            ? `All ${bounty.musicConfig.tracks.length} tracks required`
+                            : bounty.musicConfig.ruleType === "ANY_N"
+                              ? `${Math.min(bounty.musicConfig.customRequiredTracks ?? 1, bounty.musicConfig.tracks.length)} of ${bounty.musicConfig.tracks.length} tracks`
+                              : "Total plays across all tracks"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Submission instructions — show ALL */}
+                  {!isMusicOnly && bounty.instructions.length > 0 && (
+                    <div className="space-y-2">
+                      {bounty.instructions.map((inst, i) => (
+                        <div key={i} className="flex items-start gap-2.5">
+                          <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                          <span className="text-[12px] text-muted-foreground leading-snug">{inst}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
@@ -651,6 +771,9 @@ export default function BountyDetailPage() {
                 {isOwner ? (
                   <CreatorReportsTab
                     submissions={submissionsQ.data ?? []}
+                    participants={participantsQ.data ?? bounty.participants}
+                    enableMusic={bounty.enableMusic}
+                    musicConfig={bounty.musicConfig}
                     loading={submissionsQ.isLoading}
                     maxWinners={bounty.maxWinners}
                     currentWinners={bounty._count.winners}
@@ -661,22 +784,42 @@ export default function BountyDetailPage() {
                     onOpenMedia={setLightboxItem}
                   />
                 ) : (
-                  <>
-                    {bounty.requiresActionCam &&
-                      canSubmit &&
-                      !mySubmissions.isLoading &&
-                      (mySubmissions.data?.length ?? 0) === 0 && (
-                        <ActionCamGuideCard
-                          onOpenCapture={() => setActionCamOpen(true)}
+                  <div className="space-y-6">
+                    {/* Music progress panel — shown for joined non-owner music bounties */}
+                    {bounty.enableMusic && isJoined && (
+                      <UserMusicProgressTab
+                        progress={myMusicProgressQ.data ?? null}
+                        loading={myMusicProgressQ.isLoading}
+                        lastFmConnected={!!lastFmAccount}
+                        onSync={() => syncScrobblesM.mutate({ bountyId: id })}
+                        syncing={syncScrobblesM.isLoading}
+                        onConnectLastFm={() => {
+                          window.location.href = `/api/lastfm/auth?redirect=${encodeURIComponent(router.asPath)}`;
+                        }}
+                        onDisconnectLastFm={() => disconnectLastFmM.mutate()}
+                        disconnectingLastFm={disconnectLastFmM.isLoading}
+                      />
+                    )}
+                    {/* Standard submission reports — shown for non-music or hybrid bounties */}
+                    {(!bounty.enableMusic || bounty.musicConfig?.musicMode === "HYBRID") && (
+                      <>
+                        {bounty.requiresActionCam &&
+                          canSubmit &&
+                          !mySubmissions.isLoading &&
+                          (mySubmissions.data?.length ?? 0) === 0 && (
+                            <ActionCamGuideCard
+                              onOpenCapture={() => setActionCamOpen(true)}
+                            />
+                          )}
+                        <UserReportsTab
+                          submissions={(mySubmissions.data ?? []) as unknown as Submission[]}
+                          loading={mySubmissions.isLoading}
+                          requiresActionCam={bounty.requiresActionCam}
+                          onOpenMedia={setLightboxItem}
                         />
-                      )}
-                    <UserReportsTab
-                      submissions={(mySubmissions.data ?? []) as unknown as Submission[]}
-                      loading={mySubmissions.isLoading}
-                      requiresActionCam={bounty.requiresActionCam}
-                      onOpenMedia={setLightboxItem}
-                    />
-                  </>
+                      </>
+                    )}
+                  </div>
                 )}
               </TabsContent>
             </Tabs>
@@ -1100,16 +1243,31 @@ function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 /* ── Creator reports tab ─────────────────────────────────────────────────────── */
 function CreatorReportsTab({
-  submissions, loading, maxWinners, currentWinners,
+  submissions, participants = [], enableMusic = false, musicConfig, loading, maxWinners, currentWinners,
   onSelectWinner, selecting, winnerIds, requiresActionCam, onOpenMedia,
 }: {
-  submissions: Submission[]; loading: boolean; maxWinners: number; currentWinners: number;
+  submissions: Submission[];
+  participants?: Array<{
+    id: number; userId: string; joinedAt: Date;
+    user: { id: string; name: string | null; image: string | null };
+    progressPct?: number; satisfiedCount?: number; totalTracks?: number;
+    trackProgress?: Array<{ trackId: string; currentPlayCount: number; targetPlayCount: number; isSatisfied: boolean }>;
+  }>;
+  enableMusic?: boolean;
+  musicConfig?: {
+    musicMode: string; ruleType: string;
+    customRequiredTracks?: number | null; customTotalPlays?: number | null;
+    tracks?: Array<{ id: string; title: string; artist: string; albumArtUrl?: string | null; durationSec: number; targetPlayCount: number; lastFmUrl: string }>;
+  } | null;
+  loading: boolean; maxWinners: number; currentWinners: number;
   onSelectWinner: (uid: string) => void; selecting: boolean; winnerIds: string[];
   requiresActionCam: boolean;
   onOpenMedia: (item: { url: string; type: string }) => void;
 }) {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const toggleExpand = (id: number) => setExpandedIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const [expandedMusicIds, setExpandedMusicIds] = useState<Set<string>>(new Set());
+  const toggleMusicExpand = (key: string) => setExpandedMusicIds((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   if (loading) return (
     <div className="space-y-3">
@@ -1127,7 +1285,23 @@ function CreatorReportsTab({
       ))}
     </div>
   );
-  if (!submissions.length) return <EmptyState icon={<FileText className="h-8 w-8" />} text="No submissions yet" />;
+
+  const submittedUserIds = new Set(submissions.map((s) => s.userId));
+  const participantByUserId = new Map(participants.map((p) => [p.userId, p]));
+  const nonSubmittingParticipants = participants.filter((p) => !submittedUserIds.has(p.userId));
+
+  const isMusicRuleSatisfied = (p: { satisfiedCount?: number; totalTracks?: number; progressPct?: number }) => {
+    if (!enableMusic || !musicConfig) return true;
+    const satisfied = p.satisfiedCount ?? 0;
+    const total = p.totalTracks ?? 0;
+    if (musicConfig.ruleType === "ALL") return satisfied >= total;
+    if (musicConfig.ruleType === "ANY_N") return satisfied >= Math.min(musicConfig.customRequiredTracks ?? 1, total);
+    return (p.progressPct ?? 0) >= 100;
+  };
+
+  if (!submissions.length && !nonSubmittingParticipants.length) {
+    return <EmptyState icon={<FileText className="h-8 w-8" />} text="No submissions or participants yet" />;
+  }
 
   const slotsLeft = maxWinners - currentWinners;
 
@@ -1181,7 +1355,7 @@ function CreatorReportsTab({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {formatDistanceToNow(new Date(sub.createdAt), { addSuffix: true })}
+                    {safeFormatDistanceToNow(sub.createdAt)}
                   </p>
                 </div>
               </div>
@@ -1283,6 +1457,408 @@ function CreatorReportsTab({
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Music progress (collapsed/expandable, when music enabled) */}
+            {enableMusic && (() => {
+              const participant = participantByUserId.get(sub.userId);
+              if (!participant || !musicConfig?.tracks?.length) return null;
+              const tracks = musicConfig.tracks;
+              const trackProgressMap = new Map((participant.trackProgress ?? []).map((tp) => [tp.trackId, tp]));
+              const ruleMet = isMusicRuleSatisfied(participant);
+              const musicKey = `sub-${sub.userId}`;
+              const musicExpanded = expandedMusicIds.has(musicKey);
+
+              return (
+                <div className="px-4 pb-4">
+                  {/* Overall progress banner — clickable to expand */}
+                  <button
+                    onClick={() => toggleMusicExpand(musicKey)}
+                    className={cn(
+                      "w-full rounded-2xl border p-4 relative overflow-hidden transition-all duration-300 min-h-[4.5rem] text-left",
+                      ruleMet ? "border-primary ring-1 ring-primary/40" : "border-border"
+                    )}
+                  >
+                    {/* Background: collage of track album art */}
+                    <div className="absolute inset-0 grid grid-flow-col auto-cols-fr w-full h-full overflow-hidden pointer-events-none z-0">
+                      {tracks.map((t, idx) => (
+                        t.albumArtUrl ? (
+                          <img
+                            key={t.id || idx}
+                            src={t.albumArtUrl}
+                            alt=""
+                            aria-hidden
+                            className="w-full h-full object-cover scale-125 opacity-70"
+                            style={{ filter: "blur(4px) brightness(0.5) saturate(1.4)" }}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        ) : (
+                          <div key={t.id || idx} className="w-full h-full bg-secondary/60" />
+                        )
+                      ))}
+                    </div>
+                    {/* Dark gradient overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-background/55 to-background/25 pointer-events-none z-0" />
+                    {/* Progress fill */}
+                    {(participant.progressPct ?? 0) > 0 && (
+                      <div
+                        className={cn(
+                          "absolute inset-y-0 left-0 transition-all duration-1000 ease-out z-10 pointer-events-none",
+                          ruleMet ? "bg-primary/40" : "bg-primary/25"
+                        )}
+                        style={{ width: `${participant.progressPct ?? 0}%` }}
+                      />
+                    )}
+                    {/* Content */}
+                    <div className="relative z-20 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Listening Progress</p>
+                        <p className={cn("text-sm font-extrabold tabular-nums", ruleMet ? "text-primary" : "text-foreground")}>
+                          {participant.satisfiedCount ?? 0} of {participant.totalTracks ?? 0} tracks completed
+                        </p>
+                        {ruleMet && (
+                          <p className="text-xs font-bold text-primary flex items-center gap-1 mt-0.5">
+                            <CheckCircle2 className="h-3 w-3" /> Challenge complete
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={cn(
+                          "text-xl font-extrabold tabular-nums",
+                          ruleMet ? "text-primary" : "text-primary/90"
+                        )}>
+                          {participant.progressPct ?? 0}%
+                        </span>
+                        <ChevronDown className={cn(
+                          "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                          musicExpanded && "rotate-180"
+                        )} />
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Expanded per-track list */}
+                  {musicExpanded && (
+                    <div className="mt-2 space-y-2">
+                      {tracks.map((track, idx) => {
+                        const tp = trackProgressMap.get(track.id);
+                        const plays = tp?.currentPlayCount ?? 0;
+                        const target = tp?.targetPlayCount ?? track.targetPlayCount;
+                        const satisfied = tp?.isSatisfied ?? false;
+                        const pct = target > 0 ? Math.min(Math.round((plays / target) * 100), 100) : 0;
+
+                        return (
+                          <div
+                            key={track.id}
+                            className={cn(
+                              "relative rounded-2xl overflow-hidden min-h-[4.5rem] py-3 transition-all duration-200 border bg-card",
+                              satisfied
+                                ? "ring-1 ring-primary border-primary/50"
+                                : "border-border"
+                            )}
+                          >
+                            {/* Blurred album art background */}
+                            {track.albumArtUrl ? (
+                              <img
+                                src={track.albumArtUrl}
+                                alt=""
+                                aria-hidden
+                                className="absolute inset-0 w-full h-full object-cover scale-110"
+                                style={{ filter: "blur(5px) brightness(0.45) saturate(1.4)" }}
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
+                            ) : (
+                              <div className="absolute inset-0 bg-secondary/60" />
+                            )}
+                            {/* Dark gradient */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-background/30 pointer-events-none z-0" />
+                            {/* Progress fill */}
+                            {pct > 0 && (
+                              <div
+                                className={cn(
+                                  "absolute inset-y-0 left-0 transition-all duration-1000 ease-out z-10 pointer-events-none",
+                                  satisfied ? "bg-primary/40" : "bg-primary/25"
+                                )}
+                                style={{ width: `${pct}%` }}
+                              />
+                            )}
+                            {/* Content */}
+                            <div className="relative z-20 flex items-center h-full px-3 gap-3">
+                              {track.albumArtUrl ? (
+                                <img
+                                  src={track.albumArtUrl}
+                                  alt=""
+                                  className="h-10 w-10 rounded-xl object-cover border border-border shadow-md shrink-0"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                />
+                              ) : (
+                                <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
+                                  <Music className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[9px] font-mono text-muted-foreground shrink-0">#{idx + 1}</span>
+                                  <p className="text-xs font-bold text-foreground truncate">{track.title}</p>
+                                  {satisfied && (
+                                    <div className="shrink-0 h-3.5 w-3.5 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                                      <CheckCircle2 className="h-2 w-2" />
+                                    </div>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-muted-foreground truncate">{track.artist}</p>
+                              </div>
+                              <div className={cn(
+                                "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono tabular-nums border shrink-0",
+                                satisfied
+                                  ? "bg-primary border font-bold"
+                                  : "bg-secondary/40 border-border/40 text-muted-foreground"
+                              )}>
+                                {plays}/{target} <span className="opacity-70">({pct}%)</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })}
+
+      {/* Render joined participants (for MUSIC_ONLY or participants without manual text submission) */}
+      {nonSubmittingParticipants.map((p) => {
+        const isWinner = winnerIds.includes(p.userId);
+        const ruleMet = isMusicRuleSatisfied(p);
+        const canSel = slotsLeft > 0 && !isWinner && ruleMet;
+        const tracks = musicConfig?.tracks ?? [];
+        const trackProgressMap = new Map((p.trackProgress ?? []).map((tp) => [tp.trackId, tp]));
+        const musicExpanded = expandedMusicIds.has(`p-${p.userId}`);
+
+        return (
+          <div
+            key={p.id}
+            className={cn(
+              "rounded-2xl border overflow-hidden transition-all duration-200",
+              isWinner
+                ? "border-gold/30 bg-gradient-to-br from-gold/[0.04] via-card to-card"
+                : "border-border bg-card",
+            )}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 p-4 pb-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative shrink-0">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={p.user?.image ?? ""} />
+                    <AvatarFallback className="text-xs bg-secondary font-semibold">{(p.user?.name ?? "U").charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  {isWinner && (
+                    <span className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-gold flex items-center justify-center ring-2 ring-card">
+                      <Crown className="h-2.5 w-2.5 text-gold-foreground" />
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold truncate">{p.user?.name ?? "Anonymous"}</p>
+                    {isWinner ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gold bg-gold/10 border border-gold/20 px-2 py-0.5 rounded-full shrink-0">
+                        Winner
+                      </span>
+                    ) : enableMusic ? (
+                      <span className={cn(
+                        "inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 border",
+                        ruleMet
+                          ? "text-primary bg-primary/10 border-primary/20"
+                          : "text-muted-foreground bg-secondary border-border"
+                      )}>
+                        <Music className="h-2.5 w-2.5" />
+                        {ruleMet ? "Challenge Complete" : `${p.satisfiedCount ?? 0}/${p.totalTracks ?? 0} tracks`}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-secondary px-2 py-0.5 rounded-full shrink-0 border border-border">
+                        Joined Participant
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Joined {safeFormatDistanceToNow(p.joinedAt)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {canSel && (
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs bg-gold/10 text-gold border border-gold/25 hover:bg-gold/20 gap-1.5"
+                    onClick={() => onSelectWinner(p.userId)}
+                    disabled={selecting}
+                  >
+                    {selecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Crown className="h-3 w-3" />}
+                    <span className="hidden sm:inline">Select Winner</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Music progress (collapsed/expandable) */}
+            {enableMusic && tracks.length > 0 && (
+              <div className="px-4 pb-4">
+                {/* Overall progress banner — always visible, clickable to expand */}
+                <button
+                  onClick={() => toggleMusicExpand(`p-${p.userId}`)}
+                  className={cn(
+                    "w-full rounded-2xl border p-4 relative overflow-hidden transition-all duration-300 min-h-[4.5rem] text-left",
+                    ruleMet ? "border-primary ring-1 ring-primary/40" : "border-border"
+                  )}
+                >
+                  {/* Background: collage of track album art */}
+                  <div className="absolute inset-0 grid grid-flow-col auto-cols-fr w-full h-full overflow-hidden pointer-events-none z-0">
+                    {tracks.map((t, idx) => (
+                      t.albumArtUrl ? (
+                        <img
+                          key={t.id || idx}
+                          src={t.albumArtUrl}
+                          alt=""
+                          aria-hidden
+                          className="w-full h-full object-cover scale-125 opacity-70"
+                          style={{ filter: "blur(4px) brightness(0.5) saturate(1.4)" }}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <div key={t.id || idx} className="w-full h-full bg-secondary/60" />
+                      )
+                    ))}
+                  </div>
+                  {/* Dark gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-background/55 to-background/25 pointer-events-none z-0" />
+                  {/* Progress fill */}
+                  {(p.progressPct ?? 0) > 0 && (
+                    <div
+                      className={cn(
+                        "absolute inset-y-0 left-0 transition-all duration-1000 ease-out z-10 pointer-events-none",
+                        ruleMet ? "bg-primary/40" : "bg-primary/25"
+                      )}
+                      style={{ width: `${p.progressPct ?? 0}%` }}
+                    />
+                  )}
+                  {/* Content */}
+                  <div className="relative z-20 flex items-center justify-between gap-3">
+                    <div>
+                      <p className={cn("text-sm font-extrabold tabular-nums", ruleMet ? "text-primary" : "text-foreground")}>
+                        {p.satisfiedCount ?? 0} of {p.totalTracks ?? 0} tracks completed
+                      </p>
+                      {ruleMet && (
+                        <p className="text-xs font-bold text-primary flex items-center gap-1 mt-0.5">
+                          <CheckCircle2 className="h-3 w-3" /> Challenge complete
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={cn(
+                        "text-xl font-extrabold tabular-nums",
+                        ruleMet ? "text-primary" : "text-primary/90"
+                      )}>
+                        {p.progressPct ?? 0}%
+                      </span>
+                      <ChevronDown className={cn(
+                        "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                        musicExpanded && "rotate-180"
+                      )} />
+                    </div>
+                  </div>
+                </button>
+
+                {/* Expanded per-track list */}
+                {musicExpanded && (
+                  <div className="mt-2 space-y-2">
+                    {tracks.map((track, idx) => {
+                      const tp = trackProgressMap.get(track.id);
+                      const plays = tp?.currentPlayCount ?? 0;
+                      const target = tp?.targetPlayCount ?? track.targetPlayCount;
+                      const satisfied = tp?.isSatisfied ?? false;
+                      const pct = target > 0 ? Math.min(Math.round((plays / target) * 100), 100) : 0;
+
+                      return (
+                        <div
+                          key={track.id}
+                          className={cn(
+                            "relative rounded-2xl overflow-hidden min-h-[4.5rem] py-3 transition-all duration-200 border bg-card",
+                            satisfied
+                              ? "ring-1 ring-primary border-primary/50"
+                              : "border-border"
+                          )}
+                        >
+                          {/* Blurred album art background */}
+                          {track.albumArtUrl ? (
+                            <img
+                              src={track.albumArtUrl}
+                              alt=""
+                              aria-hidden
+                              className="absolute inset-0 w-full h-full object-cover scale-110"
+                              style={{ filter: "blur(5px) brightness(0.45) saturate(1.4)" }}
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <div className="absolute inset-0 bg-secondary/60" />
+                          )}
+                          {/* Dark gradient */}
+                          <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-background/30 pointer-events-none z-0" />
+                          {/* Progress fill */}
+                          {pct > 0 && (
+                            <div
+                              className={cn(
+                                "absolute inset-y-0 left-0 transition-all duration-1000 ease-out z-10 pointer-events-none",
+                                satisfied ? "bg-primary/40" : "bg-primary/25"
+                              )}
+                              style={{ width: `${pct}%` }}
+                            />
+                          )}
+                          {/* Content */}
+                          <div className="relative z-20 flex items-center h-full px-3 gap-3">
+                            {track.albumArtUrl ? (
+                              <img
+                                src={track.albumArtUrl}
+                                alt=""
+                                className="h-10 w-10 rounded-xl object-cover border border-border shadow-md shrink-0"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center border border-border shrink-0">
+                                <Music className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-mono text-muted-foreground shrink-0">#{idx + 1}</span>
+                                <p className="text-xs font-bold text-foreground truncate">{track.title}</p>
+                                {satisfied && (
+                                  <div className="shrink-0 h-3.5 w-3.5 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                                    <CheckCircle2 className="h-2 w-2" />
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground truncate">{track.artist}</p>
+                            </div>
+                            <div className={cn(
+                              "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono tabular-nums border shrink-0",
+                              satisfied
+                                ? "bg-primary border font-bold"
+                                : "bg-secondary/40 border-border/40 text-muted-foreground"
+                            )}>
+                              {plays}/{target} <span className="opacity-70">({pct}%)</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1613,3 +2189,372 @@ function UserReportsTab({ submissions, loading, requiresActionCam, onOpenMedia }
   );
 }
 
+
+/* ── UserMusicProgressTab ────────────────────────────────────────────────────── */
+type MusicProgressData = {
+  tracks: {
+    id: string;
+    title: string;
+    artist: string;
+    albumArtUrl: string | null;
+    lastFmUrl: string;
+    spotifyUrl: string | null;
+    youtubeUrl: string | null;
+    targetPlayCount: number;
+    currentPlayCount: number;
+    isSatisfied: boolean;
+    pct: number;
+  }[];
+  satisfiedCount: number;
+  totalTracks: number;
+  totalPct: number;
+  musicMode: string;
+  ruleType: string;
+  customRequiredTracks: number;
+} | null;
+
+function UserMusicProgressTab({
+  progress,
+  loading,
+  lastFmConnected,
+  onSync,
+  syncing,
+  onConnectLastFm,
+  onDisconnectLastFm,
+  disconnectingLastFm,
+}: {
+  progress: MusicProgressData;
+  loading: boolean;
+  lastFmConnected: boolean;
+  onSync: () => void;
+  syncing: boolean;
+  onConnectLastFm: () => void;
+  onDisconnectLastFm?: () => void;
+  disconnectingLastFm?: boolean;
+}) {
+  // ── Loading skeleton
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-border bg-card p-5 animate-pulse space-y-3">
+          <div className="h-4 w-40 rounded bg-secondary" />
+          <div className="h-3 w-56 rounded bg-secondary" />
+          <div className="h-3 w-full rounded-full bg-secondary mt-1" />
+        </div>
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-2xl border border-border bg-card p-4 animate-pulse">
+            <div className="flex items-center gap-3">
+              <div className="h-14 w-14 rounded-xl bg-secondary shrink-0" />
+              <div className="flex-1 space-y-2 min-w-0">
+                <div className="h-3.5 w-3/4 rounded bg-secondary" />
+                <div className="h-3 w-1/2 rounded bg-secondary" />
+                <div className="h-2 w-full rounded-full bg-secondary mt-2" />
+              </div>
+              <div className="h-10 w-14 rounded-lg bg-secondary shrink-0" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Not connected to Last.fm
+  if (!lastFmConnected) {
+    return (
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-center space-y-4">
+        <div className="flex justify-center">
+          <div className="h-16 w-16 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+            <Disc3 className="h-8 w-8 text-destructive animate-spin" style={{ animationDuration: "8s" }} />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-sm font-bold text-foreground">Connect Last.fm to track your progress</p>
+          <p className="text-xs text-muted-foreground max-w-xs mx-auto leading-relaxed">
+            Your listening progress is synced from Last.fm scrobbles. Connect your account to see how far you&apos;ve come.
+          </p>
+        </div>
+        <button
+          onClick={onConnectLastFm}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground text-sm font-bold transition-all shadow-md"
+        >
+          <Radio className="h-4 w-4" />
+          Connect Last.fm Account
+        </button>
+      </div>
+    );
+  }
+
+  // ── No tracks
+  if (!progress || progress.tracks.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-secondary/30 p-10 text-center space-y-2">
+        <Headphones className="h-10 w-10 mx-auto text-muted-foreground/30" />
+        <p className="text-sm font-semibold text-foreground">No tracks configured yet</p>
+        <p className="text-xs text-muted-foreground">The bounty creator hasn&apos;t added any tracks yet.</p>
+      </div>
+    );
+  }
+
+  const requiredCount =
+    progress.ruleType === "ALL"
+      ? progress.totalTracks
+      : progress.ruleType === "ANY_N"
+        ? Math.min(progress.customRequiredTracks, progress.totalTracks)
+        : null;
+
+  const ruleLabel =
+    progress.ruleType === "ALL"
+      ? `Complete all ${progress.totalTracks} tracks`
+      : progress.ruleType === "ANY_N"
+        ? `Complete any ${requiredCount ?? "—"} of ${progress.totalTracks} tracks`
+        : "Accumulate total plays across all tracks";
+
+  const overallComplete =
+    progress.ruleType === "ALL"
+      ? progress.satisfiedCount >= progress.totalTracks
+      : progress.ruleType === "ANY_N"
+        ? progress.satisfiedCount >= (requiredCount ?? progress.totalTracks)
+        : progress.totalPct >= 100;
+
+  return (
+    <div className="space-y-3">
+      {/* ── Header row */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+          <Headphones className="h-4 w-4 text-primary" />
+          My Listening Progress
+        </h3>
+        <div className="flex items-center gap-2">
+          {onDisconnectLastFm && (
+            <button
+              onClick={onDisconnectLastFm}
+              disabled={disconnectingLastFm}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-destructive/10 text-xs font-semibold text-muted-foreground hover:text-destructive transition-all disabled:opacity-50"
+              title="Disconnect Last.fm account"
+            >
+              {disconnectingLastFm ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Radio className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">{disconnectingLastFm ? "Disconnecting…" : "Disconnect"}</span>
+            </button>
+          )}
+          <button
+            onClick={onSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-xs font-semibold text-muted-foreground hover:text-foreground transition-all disabled:opacity-50"
+          >
+            {syncing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {syncing ? "Syncing…" : "Sync"}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Overall progress banner */}
+      <div className={cn(
+        "rounded-2xl border p-5  relative overflow-hidden bg-card transition-all duration-300 min-h-[5.5rem] flex flex-col justify-center",
+        overallComplete
+          ? "border-primary ring-1 ring-primary/40"
+          : "border-border"
+      )}>
+        {/* Background: collage of all track album art images */}
+        <div className="absolute inset-0 grid grid-flow-col auto-cols-fr w-full h-full overflow-hidden pointer-events-none z-0">
+          {progress.tracks.map((t, idx) => (
+            t.albumArtUrl ? (
+              <img
+                key={t.id || idx}
+                src={t.albumArtUrl}
+                alt=""
+                aria-hidden
+                className="w-full h-full object-cover scale-125 opacity-70"
+                style={{ filter: "blur(4px) brightness(0.5) saturate(1.4)" }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            ) : (
+              <div key={t.id || idx} className="w-full h-full bg-secondary/60" />
+            )
+          ))}
+        </div>
+
+        {/* Dark gradient overlay using design system background tokens */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-background/55 to-background/25 pointer-events-none z-0" />
+
+        {/* Full Height Progress Overlay — rounded with theme primary token */}
+        {progress.totalPct > 0 && (
+          <div
+            className={cn(
+              "absolute inset-y-0 left-0 transition-all duration-1000 ease-out z-10 pointer-events-none ",
+              overallComplete ? "bg-primary/40" : "bg-primary/25"
+            )}
+            style={{ width: `${progress.totalPct}%` }}
+          />
+        )}
+
+        {/* Banner Content */}
+        <div className="relative z-20 flex items-center justify-between gap-3">
+          <div>
+            <p className={cn("text-xl font-extrabold tabular-nums", overallComplete ? "text-primary" : "text-foreground")}>
+              {progress.satisfiedCount} of {progress.totalTracks} tracks completed
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{ruleLabel}</p>
+            {overallComplete && (
+              <p className="text-xs font-bold text-primary flex items-center gap-1 mt-1">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Challenge complete — you qualify!
+              </p>
+            )}
+          </div>
+          <div className={cn(
+            "text-3xl font-extrabold tabular-nums shrink-0",
+            overallComplete ? "text-primary" : "text-primary/90"
+          )}>
+            {progress.totalPct}%
+          </div>
+        </div>
+      </div>
+
+      {/* ── Track breakdown label */}
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground pt-1 px-0.5">
+        Track Breakdown
+      </p>
+
+      {/* ── Per-track cards */}
+      <div className="space-y-2.5">
+        {progress.tracks.map((track, idx) => (
+          <div
+            key={track.id}
+            className={cn(
+              "relative rounded-2xl overflow-hidden min-h-[5rem] py-3 transition-all duration-200 cursor-default border border-border bg-card",
+              track.isSatisfied
+                ? "ring-1 ring-primary border-primary/50"
+                : "hover:border-primary/40"
+            )}
+          >
+            {/* Background: blurred album art */}
+            {track.albumArtUrl ? (
+              <img
+                src={track.albumArtUrl}
+                alt=""
+                aria-hidden
+                className="absolute inset-0 w-full h-full object-cover scale-110"
+                style={{ filter: "blur(5px) brightness(0.45) saturate(1.4)" }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            ) : (
+              <div className="absolute inset-0 bg-secondary/60" />
+            )}
+
+            {/* Dark gradient overlay using background design tokens */}
+            <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-background/30 pointer-events-none z-0" />
+
+            {/* Full Height Progress Overlay — uses theme primary token */}
+            {track.pct > 0 && (
+              <div
+                className={cn(
+                  "absolute inset-y-0 left-0 transition-all duration-1000 ease-out z-10 pointer-events-none",
+                  track.isSatisfied ? "bg-primary/40" : "bg-primary/25"
+                )}
+                style={{ width: `${track.pct}%` }}
+              />
+            )}
+
+            {/* Content */}
+            <div className="relative z-20 flex items-center h-full px-4 gap-3">
+              {/* Album Art Thumbnail */}
+              <div className="relative shrink-0">
+                {track.albumArtUrl ? (
+                  <img
+                    src={track.albumArtUrl}
+                    alt={track.title}
+                    className="h-12 w-12 rounded-xl object-cover border border-border shadow-md"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center border border-border">
+                    <Music className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+
+              {/* Track number + info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="text-[9px] font-mono text-muted-foreground shrink-0">#{idx + 1}</span>
+                  <p className="text-sm font-bold text-foreground truncate leading-tight">{track.title}</p>
+                  {track.isSatisfied && (
+                    <div className="shrink-0 h-4 w-4 rounded-full bg-primary text-primary-foreground flex items-center justify-center ml-1">
+                      <CheckCircle2 className="h-2.5 w-2.5" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground truncate">{track.artist}</p>
+              </div>
+
+              {/* Glass Progress Pill + Platform play buttons using theme tokens */}
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                {/* Progress Badge (Informational tag) */}
+                <div
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono tabular-nums border transition-all pointer-events-none",
+                    track.isSatisfied
+                      ? "bg-primary border  font-bold"
+                      : "bg-secondary/40 border-border/40 text-muted-foreground"
+                  )}
+                >
+                  <span>{track.currentPlayCount}/{track.targetPlayCount} plays</span>
+                  <span className="text-[10px] opacity-70">({track.pct}%)</span>
+                </div>
+
+                {/* Platform buttons using design system tokens */}
+                {track.lastFmUrl && (
+                  <a
+                    href={track.lastFmUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title="Play on Last.fm"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/90 hover:bg-secondary text-foreground text-[11px] font-bold tracking-wide transition-all border border-border hover:border-primary/50"
+                  >
+                    <LastFmIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span>Play</span>
+                  </a>
+                )}
+                {track.spotifyUrl && (
+                  <a
+                    href={track.spotifyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title="Play on Spotify"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/90 hover:bg-secondary text-foreground text-[11px] font-bold tracking-wide transition-all border border-border hover:border-primary/50"
+                  >
+                    <SpotifyIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span>Play</span>
+                  </a>
+                )}
+                {track.youtubeUrl && (
+                  <a
+                    href={track.youtubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title="Play on YouTube"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/90 hover:bg-secondary text-foreground text-[11px] font-bold tracking-wide transition-all border border-border hover:border-primary/50"
+                  >
+                    <Youtube className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span>Play</span>
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

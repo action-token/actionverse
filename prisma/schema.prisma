@@ -422,6 +422,7 @@ model User {
     BountyParticipant                BountyParticipant[]
     BountySubmission                 BountySubmission[]
     BountyWinner                     BountyWinner[]
+    lastFmAccount                    LastFMAccount?
     gallerySlotLikes                 GallerySlotLike[]
     postCollections                  PostCollection[]
     createdNfts                      Nft[]
@@ -1185,6 +1186,10 @@ model Bounty {
     // server-stamped + cryptographically sealed). Owner can toggle off at any time.
     requiresActionCam Boolean @default(false)
 
+    // 🎵 Music & Last.fm Integration
+    enableMusic Boolean            @default(false)
+    musicConfig BountyMusicConfig?
+
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
@@ -1206,9 +1211,96 @@ model BountyParticipant {
 
     joinedAt DateTime @default(now())
 
+    trackProgress BountyParticipantTrackProgress[]
+
     @@unique([bountyId, userId])
     @@index([bountyId])
     @@index([userId])
+}
+
+// ------------------------- Last.fm & Music Models ----------------------------
+
+model LastFMAccount {
+    id          String   @id @default(cuid())
+    username    String
+    realName    String?
+    country     String?
+    sessionKey  String?  @unique
+    profileUrl  String
+    image       String?
+    playCount   Int      @default(0)
+
+    userId      String   @unique
+    user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    isConnected Boolean  @default(true)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@index([username])
+}
+
+enum BountyMusicMode {
+    MUSIC_ONLY
+    HYBRID
+}
+
+enum BountyRuleType {
+    ALL
+    ANY_N
+    TOTAL_PLAYS
+}
+
+model BountyMusicConfig {
+    id                   String          @id @default(uuid())
+    bountyId             String          @unique
+    bounty               Bounty          @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+
+    musicMode            BountyMusicMode @default(HYBRID)
+    ruleType             BountyRuleType  @default(ANY_N)
+    customRequiredTracks Int?
+    customTotalPlays     Int?
+
+    tracks               BountyTrack[]
+
+    createdAt            DateTime        @default(now())
+    updatedAt            DateTime        @updatedAt
+}
+
+model BountyTrack {
+    id              String            @id @default(uuid())
+    musicConfigId   String
+    musicConfig     BountyMusicConfig @relation(fields: [musicConfigId], references: [id], onDelete: Cascade)
+
+    title           String
+    artist          String
+    album           String?
+    albumArtUrl     String?
+    durationSec     Int               @default(180)
+    targetPlayCount Int               @default(1)
+
+    lastFmUrl       String
+    spotifyUrl      String?
+    youtubeUrl      String?
+
+    createdAt       DateTime          @default(now())
+
+    @@index([musicConfigId])
+}
+
+model BountyParticipantTrackProgress {
+    id               String            @id @default(uuid())
+    participantId    Int
+    participant      BountyParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+    trackId          String
+    currentPlayCount Int               @default(0)
+    targetPlayCount  Int               @default(1)
+    isSatisfied      Boolean           @default(false)
+
+    updatedAt        DateTime          @updatedAt
+
+    @@unique([participantId, trackId])
 }
 
 model BountySubmission {
