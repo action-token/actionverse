@@ -69,7 +69,9 @@
       "Bash(git config *)",
       "Bash(git check-ignore *)",
       "Bash(git add *)",
-      "Bash(git -C /Users/fyronalias/Projects/actionverse/package/connect_wallet diff --stat -- src/lib/stellar/constant.ts)"
+      "Bash(git -C /Users/fyronalias/Projects/actionverse/package/connect_wallet diff --stat -- src/lib/stellar/constant.ts)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
