@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
-import { type Prisma } from "@prisma/client";
-import type { Listing } from "contracts/nft_marketplace/bindings/src/index";
+import { NftKind, type Prisma } from "@prisma/client";
 import { z } from "zod";
+
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -10,27 +10,129 @@ import {
 import {
   buildBuyXDR,
   buildCancelListingXDR,
-  buildListForSaleXDR,
-  buildMintXDR,
+  buildListXDR,
+  buildMintAndListXDR,
+  getOnChainArtMeta,
+  getOnChainBalance,
   getOnChainListing,
-  getOnChainListings,
-  getOnChainTokenBalance,
-  getOnChainTokenMetadata,
-  signNftXdr,
+  getOnChainOwner,
+  getSaleBreakdown,
+  getTokenIdByRef,
+  pollUntilVisible,
+  signArtXdr,
   verifyContractTransaction,
-} from "~/lib/stellar/nft/marketplace";
-import { humanPriceToRaw, NFT_MARKETPLACE_CONTRACT_ID, rawPriceToHuman } from "~/lib/common";
+} from "~/lib/stellar/oz/nft";
+import {
+  buildBuyEditionXDR,
+  buildCancelEditionListingXDR,
+  buildDeployEditionXDR,
+  buildListEditionXDR,
+  getEditionBalance,
+  getEditionBalanceForListing,
+  getEditionListing,
+  getEditionListings,
+  getEditionMeta,
+  getEditionSaleBreakdown,
+  getEditionSupply,
+} from "~/lib/stellar/oz/ft";
+import { ART_NFT_CONTRACT_ID, PLATFORM_TREASURY_ADDRESS } from "~/lib/common";
+import {
+  DEFAULT_PLATFORM_FEE_BPS,
+  MAX_ROYALTY_BPS,
+  humanPriceToRaw,
+  rawPriceToHuman,
+  requireContractConstant,
+} from "~/lib/stellar/constant";
 import { STELLAR_NETWORK_LABEL } from "~/lib/stellar/explorer";
 import { SignUser } from "~/lib/stellar/utils";
-
-const tokenIdInput = z.string().regex(/^\d+$/, "token id must be numeric");
 
 // User ids are Stellar public keys (56-char strkeys) — never a valid match,
 // used so the `likes` include can stay an unconditional array shape for
 // logged-out requests instead of branching the query's return type.
 const NO_SUCH_USER = "__anonymous__";
 
+/**
+ * `lowestActivePrice`/`activeListingCount` are read by the marketplace grid,
+ * collection cards and stats. They're a cache of `listings`, so every mutation
+ * that touches a listing has to recompute them or the UI silently reports
+ * zeroes forever.
+ */
+async function refreshListingAggregates(
+  tx: Prisma.TransactionClient,
+  nftId: string,
+) {
+  const active = await tx.nftListing.findMany({
+    where: { nftId, isActive: true },
+    select: { price: true },
+  });
+  await tx.nft.update({
+    where: { id: nftId },
+    data: {
+      activeListingCount: active.length,
+      lowestActivePrice: active.length
+        ? Math.min(...active.map((l) => l.price))
+        : null,
+    },
+  });
+}
+
+/**
+ * A listing's seller is a Stellar public key read straight from the
+ * contract, which doubles as `User.id` in this app — so a small batch lookup
+ * is enough to attach display name/avatar to on-chain listing data without
+ * needing a cached `NftListing.seller` join for it.
+ */
+async function sellerInfoById(
+  db: Prisma.TransactionClient,
+  sellerIds: string[],
+): Promise<Map<string, { name: string | null; image: string | null }>> {
+  if (sellerIds.length === 0) return new Map();
+  const users = await db.user.findMany({
+    where: { id: { in: [...new Set(sellerIds)] } },
+    select: { id: true, name: true, image: true },
+  });
+  return new Map(users.map((u) => [u.id, { name: u.name, image: u.image }]));
+}
+
+/**
+ * How many units of `nft` `account` currently holds, read live. Used only for
+ * bounded, personal-scope views (`myCreated`, `myOwned`) — never for the
+ * public marketplace grid, where doing this per row would mean one RPC call
+ * per listing on every page load.
+ */
+async function liveHeldQuantity(
+  nft: { kind: NftKind; contractAddress: string | null; onChainTokenId: string | null },
+  account: string,
+): Promise<number> {
+  if (!nft.contractAddress) return 0;
+  if (nft.kind === NftKind.EDITION) {
+    return getEditionBalance(nft.contractAddress, account);
+  }
+  if (!nft.onChainTokenId) return 0;
+  const owner = await getOnChainOwner(Number(nft.onChainTokenId));
+  return owner === account ? 1 : 0;
+}
+
+/** Loads an NFT the caller owns a stake in, or throws. */
+async function requireMinted(
+  db: Prisma.TransactionClient,
+  nftId: string,
+) {
+  const nft = await db.nft.findUnique({ where: { id: nftId } });
+  if (!nft) throw new TRPCError({ code: "NOT_FOUND" });
+  if (nft.status !== "MINTED" || !nft.contractAddress) {
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "This artwork hasn't finished minting on-chain yet",
+    });
+  }
+  return nft;
+}
+
 export const nftRouter = createTRPCRouter({
+  // The row is created before anything touches the chain so the mint has a
+  // stable id to use as its on-chain `art_ref` — that reference is what lets
+  // `confirmMint` find the minted token afterwards.
   create: protectedProcedure
     .input(
       z.object({
@@ -39,26 +141,59 @@ export const nftRouter = createTRPCRouter({
         thumbnail: z.string().url(),
         contentUrl: z.string().url(),
         mediaType: z.string().min(1),
-        copies: z.number().int().min(1).max(1_000_000),
+        kind: z.nativeEnum(NftKind).default(NftKind.ONE_OF_ONE),
+        royaltyBps: z.number().int().min(0).max(MAX_ROYALTY_BPS).default(0),
+        // Ticker for an edition's own token contract; meaningless for a 1-of-1.
+        symbol: z
+          .string()
+          .trim()
+          .toUpperCase()
+          .regex(/^[A-Z0-9]{1,12}$/, "1-12 letters or digits")
+          .optional(),
+        collectionId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Price isn't stored here — the real, on-chain-confirmed price is read
-      // back from the contract's listing and written to `NftListing` in
-      // `confirmMint`, once the mint transaction actually lands.
+      const isEdition = input.kind === NftKind.EDITION;
+      if (isEdition && !input.symbol) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "An edition needs a symbol",
+        });
+      }
+      if (isEdition) {
+        const taken = await ctx.db.nft.findFirst({
+          where: { symbol: input.symbol },
+          select: { id: true },
+        });
+        if (taken) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Symbol "${input.symbol}" is already in use`,
+          });
+        }
+      }
+
       return ctx.db.nft.create({
         data: {
-          ...input,
+          name: input.name,
+          description: input.description,
+          thumbnail: input.thumbnail,
+          contentUrl: input.contentUrl,
+          mediaType: input.mediaType,
+          kind: input.kind,
+          royaltyBps: input.royaltyBps,
+          symbol: isEdition ? input.symbol : null,
+          collectionId: input.collectionId,
           creatorId: ctx.session.user.id,
           status: "PENDING",
         },
       });
     }),
 
-  // Cleans up the DB row `create` makes before minting is confirmed, for
-  // when the wallet dialog is closed/cancelled or the transaction fails —
-  // mirrors `bounty.Bounty.deleteUnfundedBounty`. Refuses to touch an
-  // already-confirmed mint so a client can't delete a real, live NFT.
+  // Cleans up the row `create` makes before minting is confirmed, for when the
+  // wallet dialog is closed/cancelled or the transaction fails. Refuses to
+  // touch an already-confirmed mint so a client can't delete a live artwork.
   deletePendingNft: protectedProcedure
     .input(z.object({ nftId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -68,25 +203,34 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "FORBIDDEN" });
       }
       if (nft.status !== "PENDING") {
-        throw new TRPCError({ code: "CONFLICT", message: "Cannot delete a minted NFT" });
+        throw new TRPCError({ code: "CONFLICT", message: "Cannot delete a minted artwork" });
       }
       await ctx.db.nft.delete({ where: { id: input.nftId } });
       return { deleted: true };
     }),
 
-  // Same two-step shape as the bounty escrow contract (see
-  // `~/lib/stellar/bounty/escrow.ts`/`bounty.ts` router): build + sign here,
-  // return the (possibly already fully-signed) XDR to the client, which
-  // either submits it as-is (custodial) or signs it with the connected
-  // wallet via `clientsign` — no wallet-specific signing code needed, and no
-  // reliance on the SDK's own `signAndSend`/RPC result-decoding, which this
-  // repo's pinned `@stellar/stellar-sdk` can't do reliably.
+  // Build + sign here, return the (possibly already fully-signed) XDR to the
+  // client, which either submits it as-is (custodial) or signs it with the
+  // connected wallet via `clientsign`. Same shape as the bounty escrow flow.
+  //
+  // One signature creates AND lists — the contract does both atomically (see
+  // `mint_and_list` / `ft_oz`'s constructor). There used to be a separate
+  // `list` transaction after minting, which needed to read the mint's effects
+  // back through the public Soroban RPC pool before it could be built; that
+  // pool doesn't always agree with itself in the first few seconds after a
+  // ledger closes, so that second transaction could be built from stale state
+  // and fail in ways that were confusing to debug and to hit. Folding listing
+  // into the mint removes the second transaction, and the race, entirely.
   getMintXDR: protectedProcedure
     .input(
       z.object({
         nftId: z.string(),
         price: z.number().positive(),
-        royaltyBps: z.number().int().min(0).max(5000),
+        // Edition size, needed only for EDITION kind. Not persisted anywhere
+        // — the contract's own `art_meta().edition_size` becomes the sole
+        // source of truth the instant this mint lands, so there is nothing
+        // to keep in sync with a cached copy afterward.
+        editionSize: z.number().int().min(1).max(10_000).optional(),
         signWith: SignUser,
       }),
     )
@@ -96,130 +240,235 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND" });
       }
       if (nft.status !== "PENDING") {
-        throw new TRPCError({ code: "CONFLICT", message: "NFT already confirmed" });
+        throw new TRPCError({ code: "CONFLICT", message: "Already minted" });
+      }
+      if (nft.kind === NftKind.EDITION && !input.editionSize) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "editionSize is required" });
       }
 
-      const { xdr, tokenId } = await buildMintXDR({
-        creatorPubKey: ctx.session.user.id,
-        name: nft.name,
-        description: nft.description,
-        thumbnail: nft.thumbnail,
-        contentUrl: nft.contentUrl,
-        mediaType: nft.mediaType,
-        copies: nft.copies,
-        price: humanPriceToRaw(input.price),
-        royaltyBps: input.royaltyBps,
+      const priceRaw = humanPriceToRaw(input.price);
+      let xdr: string;
+      let contractAddress: string;
+
+      if (nft.kind === NftKind.EDITION) {
+        // An edition gets its own contract, and its address is known at
+        // assembly time (derived from deployer + salt), so it's recorded now
+        // rather than recovered from the transaction result — which this
+        // repo's pinned stellar-sdk cannot decode.
+        const deployed = await buildDeployEditionXDR({
+          creatorPubKey: ctx.session.user.id,
+          treasury: requireContractConstant(
+            PLATFORM_TREASURY_ADDRESS,
+            "PLATFORM_TREASURY_ADDRESS",
+          ),
+          platformFeeBps: DEFAULT_PLATFORM_FEE_BPS,
+          artRef: nft.id,
+          editionSize: input.editionSize!,
+          name: nft.name,
+          symbol: nft.symbol!,
+          title: nft.name,
+          description: nft.description,
+          thumbnailUrl: nft.thumbnail,
+          mediaUrl: nft.contentUrl,
+          mediaType: nft.mediaType,
+          royaltyBps: nft.royaltyBps,
+          priceRaw,
+        });
+        xdr = deployed.xdr;
+        contractAddress = deployed.contractAddress;
+      } else {
+        xdr = await buildMintAndListXDR({
+          creatorPubKey: ctx.session.user.id,
+          artRef: nft.id,
+          title: nft.name,
+          description: nft.description,
+          thumbnailUrl: nft.thumbnail,
+          mediaUrl: nft.contentUrl,
+          mediaType: nft.mediaType,
+          royaltyBps: nft.royaltyBps,
+          priceRaw,
+        });
+        contractAddress = ART_NFT_CONTRACT_ID;
+      }
+
+      await ctx.db.nft.update({
+        where: { id: nft.id },
+        data: { contractAddress },
       });
-      const { xdr: signedXdr, fullySignedByServer } = await signNftXdr({
-        xdr,
-        signWith: input.signWith,
-      });
-      return { xdr: signedXdr, tokenId: tokenId.toString(), fullySignedByServer };
+
+      const signed = await signArtXdr({ xdr, signWith: input.signWith });
+      return { ...signed, contractAddress };
     }),
 
+  // Confirms against the chain rather than trusting the client: the token id
+  // and the listing it was created with are read back from the contract, so a
+  // client that lies about its txHash can't fabricate a minted, listed
+  // artwork. This is the only confirmation step for a new artwork — minting
+  // and listing landed in the same transaction, so there's nothing left for
+  // `confirmListing` to separately verify here (it's still used later, for
+  // price changes and re-listing from the manage page).
   confirmMint: protectedProcedure
-    .input(
-      z.object({
-        nftId: z.string(),
-        tokenId: tokenIdInput,
-        txHash: z.string().min(1),
-      }),
-    )
+    .input(z.object({ nftId: z.string(), txHash: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
-      if (!nft || nft.creatorId !== ctx.session.user.id) {
+      const nftRow = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
+      if (!nftRow || nftRow.creatorId !== ctx.session.user.id) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
-      if (nft.status !== "PENDING") {
-        throw new TRPCError({ code: "CONFLICT", message: "NFT already confirmed" });
+      if (nftRow.status !== "PENDING") {
+        throw new TRPCError({ code: "CONFLICT", message: "Already minted" });
       }
+      // Reassigned to a non-nullable binding so the closure below doesn't
+      // need to re-narrow `nftRow` across a nested async function boundary.
+      const nft = nftRow;
 
       const ok = await verifyContractTransaction(input.txHash);
       if (!ok) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Transaction did not succeed on-chain",
+        });
       }
 
-      const tokenId = Number(input.tokenId);
-      const metadata = await getOnChainTokenMetadata(tokenId);
-      if (!metadata || metadata.creator !== ctx.session.user.id) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Mint not found on-chain" });
+      // Quantity is deliberately not part of this result — the contract's
+      // `Listing` is the only source of truth for how many units are for
+      // sale, read live wherever it's displayed rather than cached here.
+      async function resolveMintedListing(): Promise<{
+        onChainTokenId: string | null;
+        price: number;
+        paymentToken: string;
+      }> {
+        if (nft.kind === NftKind.EDITION) {
+          if (!nft.contractAddress) throw new TRPCError({ code: "NOT_FOUND" });
+          const listing = await pollUntilVisible(() =>
+            getEditionListing(nft.contractAddress!, ctx.session.user.id),
+          );
+          if (!listing) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Edition was not found on-chain",
+            });
+          }
+          return {
+            onChainTokenId: null,
+            price: rawPriceToHuman(listing.price),
+            paymentToken: listing.payment_token,
+          };
+        }
+
+        const tokenId = await getTokenIdByRef(nft.id);
+        if (tokenId === null) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Mint did not register on-chain",
+          });
+        }
+        const listing = await pollUntilVisible(() => getOnChainListing(tokenId));
+        if (!listing) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Listing was not found on-chain",
+          });
+        }
+        return {
+          onChainTokenId: String(tokenId),
+          price: rawPriceToHuman(listing.price),
+          paymentToken: listing.payment_token,
+        };
       }
-      const listing = await getOnChainListing(tokenId, ctx.session.user.id);
-      if (!listing) throw new TRPCError({ code: "BAD_REQUEST", message: "Listing not found on-chain" });
+
+      const { onChainTokenId, price, paymentToken } = await resolveMintedListing();
 
       return ctx.db.$transaction(async (tx) => {
         const updated = await tx.nft.update({
           where: { id: nft.id },
-          data: {
-            onChainTokenId: input.tokenId,
-            txHash: input.txHash,
-            status: "MINTED",
-          },
+          data: { onChainTokenId, txHash: input.txHash, status: "MINTED" },
         });
         await tx.nftOwnership.upsert({
           where: { nftId_ownerId: { nftId: nft.id, ownerId: ctx.session.user.id } },
-          create: { nftId: nft.id, ownerId: ctx.session.user.id, quantity: nft.copies },
-          update: { quantity: nft.copies },
+          create: { nftId: nft.id, ownerId: ctx.session.user.id },
+          update: {},
         });
-        await upsertNftListingFromChain(tx, nft.id, ctx.session.user.id, listing);
-        await recomputeListingSummary(tx, nft.id);
+        await tx.nftListing.upsert({
+          where: { nftId_sellerId: { nftId: nft.id, sellerId: ctx.session.user.id } },
+          create: { nftId: nft.id, sellerId: ctx.session.user.id, price, paymentToken, isActive: true },
+          update: { price, paymentToken, isActive: true },
+        });
+        await refreshListingAggregates(tx, nft.id);
         return updated;
       });
     }),
 
-  // `copies` is deliberately NOT a client input — `list_for_sale` on the
-  // contract fully overwrites the listing's available/total copies with
-  // whatever number is passed, so this always re-reads the seller's live
-  // on-chain balance rather than trusting a client-cached `heldQuantity`
-  // that could be stale (e.g. right after buying more copies elsewhere).
-  getListForSaleXDR: protectedProcedure
+  getListXDR: protectedProcedure
     .input(
       z.object({
         nftId: z.string(),
         price: z.number().positive(),
+        quantity: z.number().int().min(1).default(1),
         signWith: SignUser,
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
-      if (!nft?.onChainTokenId) throw new TRPCError({ code: "NOT_FOUND" });
+      const nft = await requireMinted(ctx.db, input.nftId);
+      const priceRaw = humanPriceToRaw(input.price);
 
-      const tokenId = Number(nft.onChainTokenId);
-      const heldCopies = await getOnChainTokenBalance(tokenId, ctx.session.user.id);
-      if (heldCopies <= 0) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "You don't hold any copies of this NFT" });
-      }
+      // Quantity is re-derived from live on-chain holdings rather than trusted
+      // from the client, since `list` overwrites the seller's whole listing.
+      const xdr =
+        nft.kind === NftKind.EDITION
+          ? await buildListEditionXDR({
+              contractId: nft.contractAddress!,
+              sellerPubKey: ctx.session.user.id,
+              pricePerCopyRaw: priceRaw,
+              quantity: Math.min(
+                input.quantity,
+                await getEditionBalanceForListing(nft.contractAddress!, ctx.session.user.id),
+              ),
+            })
+          : await buildListXDR({
+              sellerPubKey: ctx.session.user.id,
+              tokenId: Number(nft.onChainTokenId),
+              priceRaw,
+            });
 
-      const xdr = await buildListForSaleXDR({
-        sellerPubKey: ctx.session.user.id,
-        tokenId,
-        price: humanPriceToRaw(input.price),
-        copies: heldCopies,
-      });
-      const { xdr: signedXdr, fullySignedByServer } = await signNftXdr({
-        xdr,
-        signWith: input.signWith,
-      });
-      return { xdr: signedXdr, fullySignedByServer };
+      return signArtXdr({ xdr, signWith: input.signWith });
     }),
 
+  // Mirrors the listing the contract actually recorded rather than echoing the
+  // client's numbers back into the database.
   confirmListing: protectedProcedure
     .input(z.object({ nftId: z.string(), txHash: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
-      if (!nft?.onChainTokenId) throw new TRPCError({ code: "NOT_FOUND" });
+      const nft = await requireMinted(ctx.db, input.nftId);
 
       const ok = await verifyContractTransaction(input.txHash);
       if (!ok) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
       }
 
-      const tokenId = Number(nft.onChainTokenId);
-      const listing = await getOnChainListing(tokenId, ctx.session.user.id);
-      if (!listing) throw new TRPCError({ code: "BAD_REQUEST", message: "Listing not found on-chain" });
+      const onChain =
+        nft.kind === NftKind.EDITION
+          ? await getEditionListing(nft.contractAddress!, ctx.session.user.id)
+          : await getOnChainListing(Number(nft.onChainTokenId));
+
+      if (!onChain) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No listing found on-chain" });
+      }
+
+      const price = rawPriceToHuman(onChain.price);
+
       return ctx.db.$transaction(async (tx) => {
-        await upsertNftListingFromChain(tx, nft.id, ctx.session.user.id, listing);
-        await recomputeListingSummary(tx, nft.id);
+        await tx.nftListing.upsert({
+          where: { nftId_sellerId: { nftId: nft.id, sellerId: ctx.session.user.id } },
+          create: {
+            nftId: nft.id,
+            sellerId: ctx.session.user.id,
+            price,
+            paymentToken: onChain.payment_token,
+            isActive: true,
+          },
+          update: { price, paymentToken: onChain.payment_token, isActive: true },
+        });
+        await refreshListingAggregates(tx, nft.id);
         return tx.nft.findUniqueOrThrow({ where: { id: nft.id } });
       });
     }),
@@ -227,50 +476,82 @@ export const nftRouter = createTRPCRouter({
   getCancelListingXDR: protectedProcedure
     .input(z.object({ nftId: z.string(), signWith: SignUser }))
     .mutation(async ({ ctx, input }) => {
-      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
-      if (!nft?.onChainTokenId) throw new TRPCError({ code: "NOT_FOUND" });
+      const nft = await requireMinted(ctx.db, input.nftId);
 
-      const xdr = await buildCancelListingXDR({
-        sellerPubKey: ctx.session.user.id,
-        tokenId: Number(nft.onChainTokenId),
-      });
-      const { xdr: signedXdr, fullySignedByServer } = await signNftXdr({
-        xdr,
-        signWith: input.signWith,
-      });
-      return { xdr: signedXdr, fullySignedByServer };
+      const xdr =
+        nft.kind === NftKind.EDITION
+          ? await buildCancelEditionListingXDR({
+              contractId: nft.contractAddress!,
+              sellerPubKey: ctx.session.user.id,
+            })
+          : await buildCancelListingXDR({
+              sellerPubKey: ctx.session.user.id,
+              tokenId: Number(nft.onChainTokenId),
+            });
+
+      return signArtXdr({ xdr, signWith: input.signWith });
     }),
 
   confirmCancelListing: protectedProcedure
     .input(z.object({ nftId: z.string(), txHash: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
-      if (!nft?.onChainTokenId) throw new TRPCError({ code: "NOT_FOUND" });
+      const nft = await requireMinted(ctx.db, input.nftId);
 
       const ok = await verifyContractTransaction(input.txHash);
       if (!ok) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
       }
 
-      const tokenId = Number(nft.onChainTokenId);
-      const listing = await getOnChainListing(tokenId, ctx.session.user.id);
-
       return ctx.db.$transaction(async (tx) => {
         await tx.nftListing.updateMany({
           where: { nftId: nft.id, sellerId: ctx.session.user.id },
-          data: { isActive: listing?.is_active ?? false },
+          data: { isActive: false },
         });
-        await recomputeListingSummary(tx, nft.id);
+        await refreshListingAggregates(tx, nft.id);
         return tx.nft.findUniqueOrThrow({ where: { id: nft.id } });
       });
     }),
 
+  /** What the buyer will actually pay, read from the contract. */
+  saleQuote: publicProcedure
+    .input(
+      z.object({
+        nftId: z.string(),
+        sellerId: z.string(),
+        quantity: z.number().int().min(1).default(1),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
+      if (!nft?.contractAddress) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const breakdown =
+        nft.kind === NftKind.EDITION
+          ? await getEditionSaleBreakdown({
+              contractId: nft.contractAddress,
+              seller: input.sellerId,
+              quantity: input.quantity,
+            })
+          : await getSaleBreakdown(Number(nft.onChainTokenId));
+
+      if (!breakdown) return null;
+      return {
+        total: rawPriceToHuman(breakdown.total),
+        platformFee: rawPriceToHuman(breakdown.platform_fee),
+        royalty: rawPriceToHuman(breakdown.royalty),
+        sellerAmount: rawPriceToHuman(breakdown.seller_amount),
+      };
+    }),
+
+  // A single contract call settles payment and delivery together, so there is
+  // no window where the buyer has paid but not received (or vice versa), and
+  // only the buyer signs.
   getBuyXDR: protectedProcedure
     .input(
       z.object({
         nftId: z.string(),
         sellerId: z.string(),
-        quantity: z.number().int().min(1),
+        quantity: z.number().int().min(1).default(1),
         signWith: SignUser,
       }),
     )
@@ -278,76 +559,74 @@ export const nftRouter = createTRPCRouter({
       if (input.sellerId === ctx.session.user.id) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "You can't buy your own listing" });
       }
-      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
-      if (!nft?.onChainTokenId) throw new TRPCError({ code: "NOT_FOUND" });
+      const nft = await requireMinted(ctx.db, input.nftId);
 
-      const xdr = await buildBuyXDR({
-        buyerPubKey: ctx.session.user.id,
-        sellerPubKey: input.sellerId,
-        tokenId: Number(nft.onChainTokenId),
-        quantity: input.quantity,
-      });
-      const { xdr: signedXdr, fullySignedByServer } = await signNftXdr({
-        xdr,
-        signWith: input.signWith,
-      });
-      return { xdr: signedXdr, fullySignedByServer };
+      const xdr =
+        nft.kind === NftKind.EDITION
+          ? await buildBuyEditionXDR({
+              contractId: nft.contractAddress!,
+              buyerPubKey: ctx.session.user.id,
+              sellerPubKey: input.sellerId,
+              quantity: input.quantity,
+            })
+          : await buildBuyXDR({
+              buyerPubKey: ctx.session.user.id,
+              tokenId: Number(nft.onChainTokenId),
+            });
+
+      return signArtXdr({ xdr, signWith: input.signWith });
     }),
 
+  // Reconciles the cache against what the contract now reports, instead of
+  // applying the client's claimed quantity blindly.
   confirmBuy: protectedProcedure
     .input(
       z.object({
         nftId: z.string(),
         sellerId: z.string(),
         txHash: z.string().min(1),
-        quantity: z.number().int().min(1),
+        quantity: z.number().int().min(1).default(1),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
-      if (!nft?.onChainTokenId) throw new TRPCError({ code: "NOT_FOUND" });
+      const nft = await requireMinted(ctx.db, input.nftId);
+      const buyerId = ctx.session.user.id;
 
       const ok = await verifyContractTransaction(input.txHash);
       if (!ok) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
       }
 
-      const tokenId = Number(nft.onChainTokenId);
-      const listing = await getOnChainListing(tokenId, input.sellerId);
-      if (!listing) throw new TRPCError({ code: "BAD_REQUEST", message: "Listing not found on-chain" });
-      // Bounds the client-claimed quantity against this specific listing's
-      // edition size — the on-chain read is ground truth, this just catches
-      // a caller lying about how many copies they claim to have bought.
-      if (input.quantity > listing.total_copies) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Quantity exceeds listing size" });
-      }
+      const isEdition = nft.kind === NftKind.EDITION;
+      const sellerListing = isEdition
+        ? await getEditionListing(nft.contractAddress!, input.sellerId)
+        : await getOnChainListing(Number(nft.onChainTokenId));
+
+      const remaining = sellerListing
+        ? "available" in sellerListing
+          ? Number(sellerListing.available)
+          : 1
+        : 0;
 
       return ctx.db.$transaction(async (tx) => {
+        await tx.nftOwnership.upsert({
+          where: { nftId_ownerId: { nftId: nft.id, ownerId: buyerId } },
+          create: { nftId: nft.id, ownerId: buyerId },
+          update: {},
+        });
         await tx.nftListing.updateMany({
           where: { nftId: nft.id, sellerId: input.sellerId },
-          data: {
-            availableCopies: listing.available_copies,
-            isActive: listing.is_active,
-          },
+          data: { isActive: remaining > 0 },
         });
-        await tx.nftOwnership.updateMany({
-          where: { nftId: nft.id, ownerId: input.sellerId },
-          data: { quantity: { decrement: input.quantity } },
-        });
-        await tx.nftOwnership.upsert({
-          where: { nftId_ownerId: { nftId: nft.id, ownerId: ctx.session.user.id } },
-          create: { nftId: nft.id, ownerId: ctx.session.user.id, quantity: input.quantity },
-          update: { quantity: { increment: input.quantity } },
-        });
-        await recomputeListingSummary(tx, nft.id);
+        await refreshListingAggregates(tx, nft.id);
         return tx.nft.findUniqueOrThrow({ where: { id: nft.id } });
       });
     }),
 
-  // Each active listing is its own browsable card — a reseller's listing of
-  // an already-minted NFT shows up as a distinct entry (marked "Resold by"),
-  // not merged into the original mint's card, so resales are actually
-  // discoverable as new inventory rather than hidden behind a seller picker.
+  // Each active listing is its own browsable card — a reseller's listing of an
+  // already-minted artwork shows up as a distinct entry (marked "Resold by"),
+  // not merged into the original mint's card, so resales are discoverable as
+  // new inventory rather than hidden behind a seller picker.
   list: publicProcedure
     .input(
       z.object({
@@ -355,6 +634,7 @@ export const nftRouter = createTRPCRouter({
         limit: z.number().int().min(1).max(50).default(24),
         search: z.string().trim().max(128).optional(),
         sort: z.enum(["newest", "price_asc", "price_desc"]).default("newest"),
+        kind: z.nativeEnum(NftKind).optional(),
         minPrice: z.number().nonnegative().optional(),
         maxPrice: z.number().positive().optional(),
       }),
@@ -364,7 +644,16 @@ export const nftRouter = createTRPCRouter({
       const listings = await ctx.db.nftListing.findMany({
         where: {
           isActive: true,
-          ...(input.search ? { nft: { name: { contains: input.search, mode: "insensitive" } } } : {}),
+          ...(input.search || input.kind
+            ? {
+                nft: {
+                  ...(input.search
+                    ? { name: { contains: input.search, mode: "insensitive" as const } }
+                    : {}),
+                  ...(input.kind ? { kind: input.kind } : {}),
+                },
+              }
+            : {}),
           ...(input.minPrice !== undefined || input.maxPrice !== undefined
             ? { price: { gte: input.minPrice, lte: input.maxPrice } }
             : {}),
@@ -401,7 +690,9 @@ export const nftRouter = createTRPCRouter({
           id: nft.id,
           name: nft.name,
           thumbnail: nft.thumbnail,
-          copies: nft.copies,
+          mediaType: nft.mediaType,
+          kind: nft.kind,
+          symbol: nft.symbol,
           status: nft.status,
           creator: nft.creator,
           lowestActivePrice: nft.lowestActivePrice,
@@ -429,6 +720,8 @@ export const nftRouter = createTRPCRouter({
         where: { id: input.id },
         include: {
           creator: { select: { id: true, name: true, image: true } },
+          // Existence rows only now — how much each holder has is read live
+          // from chain (see `onChainInsights`), not from this table.
           ownerships: {
             include: { owner: { select: { id: true, name: true, image: true } } },
           },
@@ -446,93 +739,125 @@ export const nftRouter = createTRPCRouter({
     }),
 
   // Ground-truth read straight from the contract, independent of the cached
-  // DB row — lets the manage page show real on-chain state (and flag it if
-  // the cache has drifted) rather than just re-displaying what confirm*
-  // already wrote.
+  // DB row — lets the manage page show real on-chain state (and flag it if the
+  // cache has drifted) rather than re-displaying what confirm* already wrote.
   onChainInsights: publicProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string(), account: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      const nft = await ctx.db.nft.findUnique({
-        where: { id: input.id },
-        select: {
-          onChainTokenId: true,
-          txHash: true,
-          activeListingCount: true,
-          lowestActivePrice: true,
-        },
-      });
+      const nft = await ctx.db.nft.findUnique({ where: { id: input.id } });
       if (!nft) throw new TRPCError({ code: "NOT_FOUND" });
 
+      const account = input.account ?? ctx.session?.user?.id;
       const base = {
-        contractId: NFT_MARKETPLACE_CONTRACT_ID,
+        contractId: nft.contractAddress,
+        kind: nft.kind,
         network: STELLAR_NETWORK_LABEL,
         mintTxHash: nft.txHash,
+        account: account ?? null,
       };
 
-      if (!nft.onChainTokenId) {
+      if (nft.status !== "MINTED" || !nft.contractAddress) {
         return { ...base, minted: false as const };
       }
 
+      if (nft.kind === NftKind.EDITION) {
+        const [meta, supply, holding, openListings] = await Promise.all([
+          getEditionMeta(nft.contractAddress),
+          getEditionSupply(nft.contractAddress),
+          account ? getEditionBalance(nft.contractAddress, account) : Promise.resolve(0),
+          getEditionListings(nft.contractAddress),
+        ]);
+        const sellers = await sellerInfoById(
+          ctx.db,
+          openListings.map((l) => l.seller),
+        );
+        const listings = openListings.map((l) => ({
+          sellerId: l.seller,
+          sellerName: sellers.get(l.seller)?.name ?? null,
+          sellerImage: sellers.get(l.seller)?.image ?? null,
+          pricePerCopy: rawPriceToHuman(l.price),
+          available: Number(l.available),
+        }));
+        return {
+          ...base,
+          minted: true as const,
+          tokenId: null,
+          owner: null,
+          title: meta?.title ?? null,
+          description: meta?.description ?? null,
+          royaltyBps: meta?.royalty_bps ?? null,
+          thumbnailUrl: meta?.thumbnail_url ?? null,
+          mediaUrl: meta?.media_url ?? null,
+          creator: meta?.creator ?? null,
+          editionSize: meta ? Number(meta.edition_size) : null,
+          circulatingSupply: supply,
+          userBalance: holding,
+          listings,
+          verified: meta !== null,
+        };
+      }
+
       const tokenId = Number(nft.onChainTokenId);
-      const [metadata, listings] = await Promise.all([
-        getOnChainTokenMetadata(tokenId).catch(() => null),
-        getOnChainListings(tokenId).catch(() => [] as Listing[]),
+      const [owner, meta, balance, listing] = await Promise.all([
+        getOnChainOwner(tokenId),
+        getOnChainArtMeta(tokenId),
+        account ? getOnChainBalance(account) : Promise.resolve(0),
+        getOnChainListing(tokenId),
       ]);
-
-      const onChainListings = listings.map((l) => ({
-        seller: l.seller,
-        price: rawPriceToHuman(l.price),
-        availableCopies: l.available_copies,
-        totalCopies: l.total_copies,
-      }));
-      const onChainLowestPrice =
-        onChainListings.length > 0
-          ? Math.min(...onChainListings.map((l) => l.price))
-          : null;
-
-      const verified =
-        onChainListings.length === nft.activeListingCount &&
-        onChainLowestPrice === nft.lowestActivePrice;
+      const sellerInfo = listing ? (await sellerInfoById(ctx.db, [listing.seller])).get(listing.seller) : null;
 
       return {
         ...base,
         minted: true as const,
         tokenId: nft.onChainTokenId,
-        creator: metadata?.creator ?? null,
-        royaltyBps: metadata?.royalty_bps ?? null,
-        listings: onChainListings,
-        lowestActivePrice: onChainLowestPrice,
-        verified,
+        owner,
+        title: meta?.title ?? null,
+        description: meta?.description ?? null,
+        royaltyBps: nft.royaltyBps,
+        thumbnailUrl: meta?.thumbnail_url ?? null,
+        mediaUrl: meta?.media_url ?? null,
+        creator: meta?.creator ?? null,
+        editionSize: 1,
+        circulatingSupply: 1,
+        userBalance: balance,
+        listings: listing
+          ? [
+              {
+                sellerId: listing.seller,
+                sellerName: sellerInfo?.name ?? null,
+                sellerImage: sellerInfo?.image ?? null,
+                pricePerCopy: rawPriceToHuman(listing.price),
+                available: 1,
+              },
+            ]
+          : [],
+        verified: meta !== null,
       };
     }),
 
-  myCreated: protectedProcedure.query(({ ctx }) =>
-    ctx.db.nft
-      .findMany({
-        where: { creatorId: ctx.session.user.id },
-        orderBy: { createdAt: "desc" },
-        include: {
-          listings: { where: { sellerId: ctx.session.user.id } },
-          ownerships: { where: { ownerId: ctx.session.user.id } },
-          _count: { select: { likes: true } },
-          likes: { where: { userId: ctx.session.user.id }, select: { id: true } },
-        },
-      })
-      .then((items) =>
-        items.map((nft) => {
-          const { listings, ownerships, ...rest } = shapeLikes(nft);
-          return {
-            ...rest,
-            myListing: listings[0] ?? null,
-            heldQuantity: ownerships[0]?.quantity ?? 0,
-          };
-        }),
-      ),
-  ),
+  myCreated: protectedProcedure.query(async ({ ctx }) => {
+    const items = await ctx.db.nft.findMany({
+      where: { creatorId: ctx.session.user.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        listings: { where: { sellerId: ctx.session.user.id } },
+        _count: { select: { likes: true } },
+        likes: { where: { userId: ctx.session.user.id }, select: { id: true } },
+      },
+    });
+    return Promise.all(
+      items.map(async (nft) => {
+        const { listings, ...rest } = shapeLikes(nft);
+        const heldQuantity =
+          nft.status === "MINTED" ? await liveHeldQuantity(nft, ctx.session.user.id) : 0;
+        return { ...rest, myListing: listings[0] ?? null, heldQuantity };
+      }),
+    );
+  }),
 
   myOwned: protectedProcedure.query(async ({ ctx }) => {
     const ownerships = await ctx.db.nftOwnership.findMany({
-      where: { ownerId: ctx.session.user.id, quantity: { gt: 0 } },
+      where: { ownerId: ctx.session.user.id },
       include: {
         nft: {
           include: {
@@ -545,10 +870,26 @@ export const nftRouter = createTRPCRouter({
       },
       orderBy: { createdAt: "desc" },
     });
-    return ownerships.map((o) => {
-      const { listings, ...rest } = shapeLikes(o.nft);
-      return { ...o, nft: { ...rest, myListing: listings[0] ?? null } };
-    });
+
+    // `NftOwnership` is only an existence index (see the schema) — filtering
+    // on "still holds more than zero" has to happen against a live balance,
+    // not a cached column, since the whole point of removing that column was
+    // to stop trusting a number that could be stale the moment someone buys,
+    // sells, or transfers outside this app's own confirm* calls.
+    const withQuantity = await Promise.all(
+      ownerships.map(async (o) => ({
+        ...o,
+        quantity:
+          o.nft.status === "MINTED" ? await liveHeldQuantity(o.nft, ctx.session.user.id) : 0,
+      })),
+    );
+
+    return withQuantity
+      .filter((o) => o.quantity > 0)
+      .map((o) => {
+        const { listings, ...rest } = shapeLikes(o.nft);
+        return { ...o, nft: { ...rest, myListing: listings[0] ?? null } };
+      });
   }),
 
   stats: publicProcedure.query(async ({ ctx }) => {
@@ -585,43 +926,4 @@ function shapeLikes<T extends { _count: { likes: number }; likes: { id: string }
 ): Omit<T, "likes" | "_count"> & { likeCount: number; isLiked: boolean } {
   const { likes, _count, ...rest } = nft;
   return { ...rest, likeCount: _count.likes, isLiked: likes.length > 0 };
-}
-
-// Mirrors an on-chain `Listing` into the (nftId, sellerId) row — same shape
-// needed after mint, list_for_sale, and re-listing, whether confirmed from a
-// client-signed tx or a custodial one.
-async function upsertNftListingFromChain(
-  tx: Prisma.TransactionClient,
-  nftId: string,
-  sellerId: string,
-  listing: Listing,
-) {
-  const data = {
-    price: rawPriceToHuman(listing.price),
-    availableCopies: listing.available_copies,
-    totalCopies: listing.total_copies,
-    isActive: listing.is_active,
-  };
-  await tx.nftListing.upsert({
-    where: { nftId_sellerId: { nftId, sellerId } },
-    create: { nftId, sellerId, ...data },
-    update: data,
-  });
-}
-
-// Denormalized onto `Nft` so browse/sort views don't need a live aggregate
-// per card — recomputed after every listing write (mint/list/cancel/buy).
-async function recomputeListingSummary(tx: Prisma.TransactionClient, nftId: string) {
-  const agg = await tx.nftListing.aggregate({
-    where: { nftId, isActive: true },
-    _min: { price: true },
-    _count: true,
-  });
-  await tx.nft.update({
-    where: { id: nftId },
-    data: {
-      lowestActivePrice: agg._min.price,
-      activeListingCount: agg._count,
-    },
-  });
 }

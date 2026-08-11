@@ -54,8 +54,10 @@ export default function NftBuyPage() {
       toast.error("Connect your wallet first");
       return;
     }
-    if (!nft?.onChainTokenId) {
-      toast.error("This NFT hasn't finished minting on-chain yet");
+    // Editions have no token id (they are their own contract), so the mint
+    // status is what gates buying, not `onChainTokenId`.
+    if (nft?.status !== "MINTED") {
+      toast.error("This artwork hasn't finished minting on-chain yet");
       return;
     }
     setIsBuying(true);
@@ -88,6 +90,9 @@ export default function NftBuyPage() {
       await confirmBuy.mutateAsync({ nftId: nft.id, sellerId, txHash, quantity });
       await Promise.all([
         utils.nft.byId.invalidate({ id: nft.id }),
+        // Both the buyer's new "You hold" balance and the seller's remaining
+        // available count come from this query.
+        utils.nft.onChainInsights.invalidate({ id: nft.id }),
         utils.nft.list.invalidate(),
         utils.nft.myOwned.invalidate(),
         utils.nft.myCreated.invalidate(),

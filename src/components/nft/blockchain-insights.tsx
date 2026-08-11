@@ -64,11 +64,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 export function BlockchainInsights({
   insights,
   isLoading,
-  editions,
 }: {
   insights: Insights | undefined;
   isLoading: boolean;
-  editions: number;
 }) {
   if (isLoading || !insights) {
     return (
@@ -113,20 +111,35 @@ export function BlockchainInsights({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            {/* Editions report open listings straight from their own contract;
+                a one-of-one has at most one, which the owner field covers. */}
             <Stat label="Active listings" value={String(insights.listings.length)} />
-            <Stat
-              label="Floor price"
-              value={insights.lowestActivePrice !== null ? `${insights.lowestActivePrice} XLM` : "—"}
-            />
+            <Stat label="You hold" value={String(insights.userBalance)} />
             <Stat
               label="Royalty"
               value={insights.royaltyBps !== null ? `${(insights.royaltyBps / 100).toFixed(2)}%` : "—"}
             />
-            <Stat label="Editions" value={String(editions)} />
+            {insights.kind === "EDITION" && (
+              <Stat
+                label="In circulation"
+                value={
+                  insights.editionSize !== null
+                    ? `${insights.circulatingSupply} / ${insights.editionSize}`
+                    : "—"
+                }
+              />
+            )}
           </div>
 
           <div className="rounded-2xl border bg-card px-4">
-            <CopyableRow label="Token ID" value={insights.tokenId} />
+            {insights.tokenId && <CopyableRow label="Token ID" value={insights.tokenId} />}
+            {insights.owner && (
+              <CopyableRow
+                label="Owner"
+                value={insights.owner}
+                href={stellarExpertAccountUrl(insights.owner)}
+              />
+            )}
             {insights.creator && (
               <CopyableRow
                 label="On-chain creator"
@@ -145,13 +158,15 @@ export function BlockchainInsights({
         </>
       )}
 
-      <div className="rounded-2xl border bg-card px-4">
-        <CopyableRow
-          label="Contract"
-          value={insights.contractId}
-          href={stellarExpertContractUrl(insights.contractId)}
-        />
-      </div>
+      {insights.contractId && (
+        <div className="rounded-2xl border bg-card px-4">
+          <CopyableRow
+            label="Contract"
+            value={insights.contractId}
+            href={stellarExpertContractUrl(insights.contractId)}
+          />
+        </div>
+      )}
     </div>
   );
 }

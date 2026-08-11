@@ -25,7 +25,7 @@ export default function ManageNftPage() {
   const { data: onChainInsights, isLoading: isLoadingOnChainInsights } =
     api.nft.onChainInsights.useQuery({ id: id ?? "" }, { enabled: !!id });
 
-  const getListForSaleXDR = api.nft.getListForSaleXDR.useMutation();
+  const getListXDR = api.nft.getListXDR.useMutation();
   const confirmListing = api.nft.confirmListing.useMutation();
   const getCancelListingXDR = api.nft.getCancelListingXDR.useMutation();
   const confirmCancelListing = api.nft.confirmCancelListing.useMutation();
@@ -41,8 +41,15 @@ export default function ManageNftPage() {
   }
 
   const viewerId = session?.user.id;
-  const myListing = nft?.listings.find((l) => l.sellerId === viewerId) ?? null;
-  const heldQuantity = nft?.ownerships.find((o) => o.owner.id === viewerId)?.quantity ?? 0;
+  // Both sourced live from the contract, not the database — a listing's real
+  // available count and a holder's real balance can change (a buy, a direct
+  // transfer) without this app ever seeing a confirm* call for it.
+  const onChainListing =
+    onChainInsights?.minted ? onChainInsights.listings.find((l) => l.sellerId === viewerId) : undefined;
+  const myListing = onChainListing
+    ? { price: onChainListing.pricePerCopy, available: onChainListing.available, isActive: true }
+    : null;
+  const heldQuantity = onChainInsights?.minted ? onChainInsights.userBalance : 0;
 
   function handleLike() {
     if (!session?.user) {
@@ -72,14 +79,24 @@ export default function ManageNftPage() {
     return extractTxHash(clientResponse);
   }
 
-  async function handleUpdatePrice(price: number) {
-    if (!session?.user || !nft?.onChainTokenId) return;
+  // `quantity` is the seller's own choice for an edition — how many of their
+  // held copies to put up for sale, bounded server-side by their live balance
+  // (`getListXDR` clamps it) since a stale client-side number can't be
+  // trusted either. Always 1 for a 1-of-1 (`NftDetailView` enforces this —
+  // there's no quantity control in its UI for that kind).
+  async function handleUpdatePrice(price: number, quantity: number) {
+    // An edition has no token id — it is identified by its own contract — so
+    // gate on the artwork being minted rather than on `onChainTokenId`.
+    if (!session?.user || nft?.status !== "MINTED") return;
     setIsSavingListing(true);
     try {
       const txHash = await signAndSubmit(() =>
-        getListForSaleXDR.mutateAsync({
+        getListXDR.mutateAsync({
           nftId: nft.id,
           price,
+          // The contract replaces the previous listing wholesale rather than
+          // adding to it, so this is always the seller's full intended offer.
+          quantity: Math.max(1, quantity),
           signWith: needSign(),
         }),
       );
@@ -90,6 +107,10 @@ export default function ManageNftPage() {
       await confirmListing.mutateAsync({ nftId: nft.id, txHash });
       await Promise.all([
         utils.nft.byId.invalidate({ id: nft.id }),
+        // "You hold" and the live listing/available count on this page both
+        // come from this query — without invalidating it, they'd keep
+        // serving the pre-mutation snapshot until a hard reload.
+        utils.nft.onChainInsights.invalidate({ id: nft.id }),
         utils.nft.myOwned.invalidate(),
         utils.nft.myCreated.invalidate(),
       ]);
@@ -102,7 +123,7 @@ export default function ManageNftPage() {
   }
 
   async function handleCancelListing() {
-    if (!session?.user || !nft?.onChainTokenId) return;
+    if (!session?.user || nft?.status !== "MINTED") return;
     setIsSavingListing(true);
     try {
       const txHash = await signAndSubmit(() =>
@@ -115,6 +136,7 @@ export default function ManageNftPage() {
       await confirmCancelListing.mutateAsync({ nftId: nft.id, txHash });
       await Promise.all([
         utils.nft.byId.invalidate({ id: nft.id }),
+        utils.nft.onChainInsights.invalidate({ id: nft.id }),
         utils.nft.myOwned.invalidate(),
         utils.nft.myCreated.invalidate(),
       ]);

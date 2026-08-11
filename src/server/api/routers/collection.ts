@@ -93,7 +93,6 @@ export const collectionRouter = createTRPCRouter({
         id: string;
         name: string;
         thumbnail: string;
-        copies: number;
         status: (typeof collection.nfts)[number]["status"];
         creator: (typeof collection.nfts)[number]["creator"];
         lowestActivePrice: number | null;
@@ -119,7 +118,6 @@ export const collectionRouter = createTRPCRouter({
           id: nft.id,
           name: nft.name,
           thumbnail: nft.thumbnail,
-          copies: nft.copies,
           status: nft.status,
           creator: nft.creator,
           lowestActivePrice: nft.lowestActivePrice,

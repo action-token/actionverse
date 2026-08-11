@@ -15,7 +15,9 @@ import {
 import { type RouterOutputs } from "~/utils/api";
 
 type ByIdNft = RouterOutputs["nft"]["byId"];
-type MyListing = { price: number; availableCopies: number; isActive: boolean } | null;
+type OnChainInsights = RouterOutputs["nft"]["onChainInsights"];
+type LiveListing = Extract<OnChainInsights, { minted: true }>["listings"][number];
+type MyListing = { price: number; available: number; isActive: boolean } | null;
 
 export function NftDetailView({
   nft,
@@ -38,7 +40,8 @@ export function NftDetailView({
   mode: "manage" | "buy";
   myListing?: MyListing;
   heldQuantity?: number;
-  onUpdatePrice?: (price: number) => void | Promise<void>;
+  /** `quantity` is only meaningful for an EDITION — a 1-of-1 always passes 1. */
+  onUpdatePrice?: (price: number, quantity: number) => void | Promise<void>;
   onCancelListing?: () => void | Promise<void>;
   isSavingListing?: boolean;
   /** Which seller's listing this buy dialog is for — each seller is its own
@@ -67,7 +70,7 @@ export function NftDetailView({
 
       {mode === "manage" ? (
         <ManagePriceCard
-          nftId={nft.id}
+          kind={nft.kind}
           myListing={myListing ?? null}
           heldQuantity={heldQuantity}
           onUpdatePrice={onUpdatePrice}
@@ -77,7 +80,8 @@ export function NftDetailView({
         />
       ) : (
         <BuyPriceCard
-          listings={nft.listings}
+          listings={onChainInsights?.minted ? onChainInsights.listings : []}
+          isLoadingListings={isLoadingOnChainInsights}
           status={nft.status}
           sellerId={sellerId}
           viewerId={viewerId}
@@ -120,9 +124,23 @@ export function NftDetailView({
               </dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">Editions</dt>
-              <dd className="font-semibold">{nft.copies}</dd>
+              <dt className="text-muted-foreground">
+                {nft.kind === "EDITION" ? "Edition size" : "Type"}
+              </dt>
+              <dd className="font-semibold">
+                {nft.kind === "EDITION"
+                  ? onChainInsights?.minted && onChainInsights.editionSize !== null
+                    ? `${onChainInsights.editionSize} copies`
+                    : "Edition"
+                  : "1 of 1"}
+              </dd>
             </div>
+            {nft.kind === "EDITION" && nft.symbol && (
+              <div>
+                <dt className="text-muted-foreground">Symbol</dt>
+                <dd className="font-mono font-semibold">{nft.symbol}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-muted-foreground">Media type</dt>
               <dd className="truncate font-semibold">{nft.mediaType}</dd>
@@ -159,6 +177,10 @@ export function NftDetailView({
           </TabsContent>
         ) : (
           <TabsContent value="owners" className="pt-4">
+            {/* Who has ever held a copy, not how many — that count is a live
+                chain read per holder, which doesn't scale to a potentially
+                long list here. The single figure that matters (how many you
+                hold) is already live, above. */}
             {nft.ownerships.length === 0 ? (
               <p className="text-sm text-muted-foreground">No one holds a copy yet.</p>
             ) : (
@@ -181,9 +203,6 @@ export function NftDetailView({
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                         {o.owner.name ?? "Unknown"}
                       </span>
-                      <span className="shrink-0 text-sm text-muted-foreground">
-                        {o.quantity} cop{o.quantity === 1 ? "y" : "ies"}
-                      </span>
                     </div>
                   </li>
                 ))}
@@ -193,11 +212,7 @@ export function NftDetailView({
         )}
 
         <TabsContent value="onchain" className="pt-4">
-          <BlockchainInsights
-            insights={onChainInsights}
-            isLoading={isLoadingOnChainInsights}
-            editions={nft.copies}
-          />
+          <BlockchainInsights insights={onChainInsights} isLoading={isLoadingOnChainInsights} />
         </TabsContent>
       </Tabs>
     </div>
@@ -205,6 +220,7 @@ export function NftDetailView({
 }
 
 function ManagePriceCard({
+  kind,
   myListing,
   heldQuantity,
   onUpdatePrice,
@@ -212,27 +228,38 @@ function ManagePriceCard({
   isSaving,
   network,
 }: {
-  nftId: string;
+  kind: "ONE_OF_ONE" | "EDITION";
   myListing: MyListing;
   heldQuantity: number;
-  onUpdatePrice?: (price: number) => void | Promise<void>;
+  onUpdatePrice?: (price: number, quantity: number) => void | Promise<void>;
   onCancelListing?: () => void | Promise<void>;
   isSaving: boolean;
   network?: string;
 }) {
+  const isEdition = kind === "EDITION";
   const [editing, setEditing] = useState(false);
   const [price, setPrice] = useState(myListing?.price ?? 1);
+  // Defaults to the seller's whole holding — adjustable down from there, so
+  // "list everything" stays a one-click default while a partial sale is a
+  // deliberate choice, not a hidden default.
+  const [quantity, setQuantity] = useState(Math.max(1, myListing?.available ?? heldQuantity));
   const isActive = myListing?.isActive ?? false;
 
   if (heldQuantity <= 0 && !isActive) {
     return (
       <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
-        You no longer hold a copy of this NFT.
+        You no longer hold a copy of this {isEdition ? "edition" : "NFT"}.
       </div>
     );
   }
 
   const label = isActive ? "Listed price" : "Not listed";
+
+  function startEditing() {
+    setPrice(myListing?.price ?? 1);
+    setQuantity(Math.max(1, Math.min(heldQuantity, myListing?.available ?? heldQuantity)));
+    setEditing(true);
+  }
 
   return (
     <div className="rounded-2xl border bg-card p-5">
@@ -257,18 +284,37 @@ function ManagePriceCard({
               onChange={(e) => setPrice(Number(e.target.value) || 0)}
               className="h-12 max-w-[10rem] text-2xl font-black tabular-nums"
             />
-            <span className="text-sm font-bold text-primary">XLM</span>
+            <span className="text-sm font-bold text-primary">
+              XLM{isEdition ? " each" : ""}
+            </span>
           </div>
+
+          {isEdition && (
+            <div className="mt-3">
+              <label htmlFor="list-quantity" className="text-xs text-muted-foreground">
+                How many of your {heldQuantity.toLocaleString()} to list
+              </label>
+              <Input
+                id="list-quantity"
+                type="number"
+                min={1}
+                max={heldQuantity}
+                step={1}
+                value={quantity}
+                onChange={(e) =>
+                  setQuantity(Math.min(heldQuantity, Math.max(1, Math.round(Number(e.target.value)) || 1)))
+                }
+                className="mt-1 h-10 max-w-[8rem] font-bold tabular-nums"
+              />
+            </div>
+          )}
 
           <div className="mt-4 flex gap-2">
             <Button
               variant="outline"
               className="flex-1 rounded-full"
               disabled={isSaving}
-              onClick={() => {
-                setPrice(myListing?.price ?? 1);
-                setEditing(false);
-              }}
+              onClick={() => setEditing(false)}
             >
               Cancel
             </Button>
@@ -276,7 +322,7 @@ function ManagePriceCard({
               className="flex-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
               disabled={isSaving}
               onClick={async () => {
-                await onUpdatePrice?.(price);
+                await onUpdatePrice?.(price, isEdition ? quantity : 1);
                 setEditing(false);
               }}
             >
@@ -291,16 +337,16 @@ function ManagePriceCard({
             <span className="text-sm font-bold text-primary">XLM</span>
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {myListing!.availableCopies.toLocaleString()} available to buy
-            {heldQuantity > myListing!.availableCopies &&
-              ` · ${(heldQuantity - myListing!.availableCopies).toLocaleString()} more you hold unlisted`}
+            {myListing!.available.toLocaleString()} available to buy
+            {heldQuantity > myListing!.available &&
+              ` · ${(heldQuantity - myListing!.available).toLocaleString()} more you hold unlisted`}
           </p>
 
           <div className="mt-4 flex gap-2">
             <Button
               variant="outline"
               className="flex-1 gap-1.5 rounded-full"
-              onClick={() => setEditing(true)}
+              onClick={startEditing}
             >
               <Pencil className="h-3.5 w-3.5" />
               Edit price
@@ -318,7 +364,7 @@ function ManagePriceCard({
       ) : (
         <Button
           className="mt-3 h-12 w-full gap-2 rounded-full bg-primary text-base font-bold text-primary-foreground hover:bg-primary/90"
-          onClick={() => setEditing(true)}
+          onClick={startEditing}
         >
           <Tag className="h-4 w-4" />
           List for sale
@@ -330,13 +376,17 @@ function ManagePriceCard({
 
 function BuyPriceCard({
   listings,
+  isLoadingListings,
   status,
   sellerId,
   viewerId,
   onBuy,
   isBuying,
 }: {
-  listings: ByIdNft["listings"];
+  /** Live from the contract (`onChainInsights.listings`) — price and
+   *  available count are never read from the database here. */
+  listings: LiveListing[];
+  isLoadingListings: boolean;
   status: ByIdNft["status"];
   sellerId?: string;
   viewerId?: string;
@@ -346,14 +396,18 @@ function BuyPriceCard({
   const [quantity, setQuantity] = useState(1);
 
   const selected = listings.find((l) => l.sellerId === sellerId) ?? listings[0] ?? null;
-  const available = selected?.availableCopies ?? 0;
+  const available = selected?.available ?? 0;
   const isOwnListing = !!selected && !!viewerId && selected.sellerId === viewerId;
   const canBuy = !!selected && available > 0 && !isOwnListing;
 
   if (!selected) {
     return (
       <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
-        {status === "PENDING" ? "Minting in progress…" : "Not currently for sale."}
+        {isLoadingListings
+          ? "Checking availability…"
+          : status === "PENDING"
+            ? "Minting in progress…"
+            : "Not currently for sale."}
       </div>
     );
   }
@@ -366,7 +420,7 @@ function BuyPriceCard({
             Price per copy
           </p>
           <p className="mt-1 flex items-baseline gap-1.5 text-3xl font-black tabular-nums">
-            {selected.price}
+            {selected.pricePerCopy}
             <span className="text-sm font-bold text-primary">XLM</span>
           </p>
         </div>
@@ -399,7 +453,7 @@ function BuyPriceCard({
       <span
         className="mt-2 inline-block text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline"
       >
-        Sold by {selected.seller.name ?? "Unknown seller"} · {selected.availableCopies} available
+        Sold by {selected.sellerName ?? "Unknown seller"} · {selected.available} available
       </span>
 
       {isOwnListing ? (
@@ -414,7 +468,7 @@ function BuyPriceCard({
             className="mt-4 h-12 w-full gap-2 rounded-full bg-primary text-base font-bold text-primary-foreground hover:bg-primary/90"
           >
             <ShoppingBag className="h-4 w-4" />
-            {isBuying ? "Confirm purchase…" : `Buy for ${(selected.price * quantity).toFixed(2)} XLM`}
+            {isBuying ? "Confirm purchase…" : `Buy for ${(selected.pricePerCopy * quantity).toFixed(2)} XLM`}
           </Button>
         )
       )}

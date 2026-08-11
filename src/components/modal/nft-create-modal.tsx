@@ -39,6 +39,7 @@ import {
     DialogDescription,
 } from "~/components/shadcn/ui/dialog";
 import useNeedSign from "~/lib/hook";
+import { useDebounce } from "~/hooks/useDebounce";
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 import {
     PLATFORM_ASSET,
@@ -1005,6 +1006,10 @@ function SmartContractNftForm({
     const [copies, setCopies] = useState(1);
     const [royaltyPercent, setRoyaltyPercent] = useState(0);
     const [price, setPrice] = useState(1);
+    // A one-of-one is a token in the shared collection contract; an edition
+    // deploys its own fungible token whose supply is the print run.
+    const [kind, setKind] = useState<"ONE_OF_ONE" | "EDITION">("ONE_OF_ONE");
+    const [symbol, setSymbol] = useState("");
 
     const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE);
     const [contentMimeType, setContentMimeType] = useState<string>();
@@ -1016,6 +1021,12 @@ function SmartContractNftForm({
     const deletePendingNft = api.nft.deletePendingNft.useMutation();
     const getMintXDR = api.nft.getMintXDR.useMutation();
     const confirmMint = api.nft.confirmMint.useMutation();
+
+    const debouncedSymbol = useDebounce(symbol, 400);
+    const symbolCheck = api.ft.checkSymbolAvailability.useQuery(
+        { symbol: debouncedSymbol },
+        { enabled: kind === "EDITION" && debouncedSymbol.length > 0 },
+    );
 
     function getEndpoint(type: MediaType) {
         switch (type) {
@@ -1101,15 +1112,40 @@ function SmartContractNftForm({
         !!contentUrl &&
         !!contentMimeType &&
         copies >= 1 &&
-        price > 0;
+        price > 0 &&
+        (kind === "ONE_OF_ONE" ||
+            (symbol.length > 0 && symbolCheck.data?.available === true));
 
     // Same build-XDR -> sign (server-side or via clientsign) -> confirm shape
     // as the bounty escrow flow (see src/pages/bounty/create.tsx) — no
     // wallet-specific Soroban signing code, no SDK signAndSend/RPC decoding.
+    async function signAndSubmit(xdr: string, fullySignedByServer: boolean) {
+        if (fullySignedByServer) {
+            return extractTxHash(await submitSignedXDRToServer4User(xdr));
+        }
+        const clientResponse = await clientsign({
+            presignedxdr: xdr,
+            walletType,
+            pubkey: session.data!.user.id,
+            test: clientSelect(),
+        });
+        return extractTxHash(clientResponse);
+    }
+
+    /**
+     * One signature: the contract mints and lists atomically (`mint_and_list`
+     * for a 1-of-1, or `ft_oz`'s constructor for an edition), so there's only
+     * ever one transaction to sign and one confirmation to wait for here.
+     */
     async function handleMint() {
         if (!session.data?.user || !thumbnailUrl || !contentUrl || !contentMimeType) return;
         setSubmitLoading(true);
         let nftId: string | undefined;
+        // Once a real transaction hash exists, the mint (and its listing) may
+        // already be on-chain — deleting the row past this point would orphan
+        // a real artwork with no DB record, so the row is only ever cleaned up
+        // before this is set.
+        let mintHash: string | undefined;
         try {
             const nft = await createNft.mutateAsync({
                 name: name.trim(),
@@ -1117,53 +1153,60 @@ function SmartContractNftForm({
                 thumbnail: thumbnailUrl,
                 contentUrl,
                 mediaType: contentMimeType,
-                copies,
+                kind,
+                royaltyBps: Math.round(royaltyPercent * 100),
+                symbol: kind === "EDITION" ? symbol : undefined,
             });
             nftId = nft.id;
 
-            const royaltyBps = Math.round(royaltyPercent * 100);
-            const { xdr, tokenId, fullySignedByServer } = await getMintXDR.mutateAsync({
+            // Edition size is never persisted — it's only needed here, to size
+            // the deploy transaction. The contract's own state becomes the
+            // sole source of truth for it the moment this mint lands.
+            const mintTx = await getMintXDR.mutateAsync({
                 nftId: nft.id,
                 price,
-                royaltyBps,
+                editionSize: kind === "EDITION" ? copies : undefined,
                 signWith: needSign(),
             });
-
-            let txHash: string | undefined;
-            if (fullySignedByServer) {
-                const result = await submitSignedXDRToServer4User(xdr);
-                txHash = extractTxHash(result);
-            } else {
-                const clientResponse = await clientsign({
-                    presignedxdr: xdr,
-                    walletType,
-                    pubkey: session.data.user.id,
-                    test: clientSelect(),
-                });
-                txHash = extractTxHash(clientResponse);
-            }
-            if (!txHash) {
-                // Wallet dialog was closed/cancelled, or the transaction
-                // didn't land — don't leave a fake "minted" row behind.
+            mintHash = await signAndSubmit(mintTx.xdr, mintTx.fullySignedByServer);
+            if (!mintHash) {
+                // Wallet dialog was closed/cancelled, or the transaction didn't
+                // land — don't leave a fake "minted" row behind.
                 toast.error("Minting transaction could not be confirmed.");
                 await deletePendingNft.mutateAsync({ nftId: nft.id });
                 return;
             }
 
-            await confirmMint.mutateAsync({ nftId: nft.id, tokenId, txHash });
+            await confirmMint.mutateAsync({ nftId: nft.id, txHash: mintHash });
+
+            toast.success(kind === "EDITION" ? "Edition minted and listed!" : "NFT minted and listed!");
+            onClose();
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Minting failed";
+            if (mintHash) {
+                // The transaction was submitted — it likely landed on-chain and
+                // only the confirmation step failed to catch up. Don't discard
+                // the row; leave it PENDING so it's retryable/inspectable
+                // rather than silently orphaning a real mint.
+                toast.error(
+                    `Your transaction was submitted, but confirming it timed out: ${message}. It likely still went through — check your collection in a moment before minting again.`,
+                );
+            } else {
+                toast.error(message);
+                if (nftId) {
+                    await deletePendingNft.mutateAsync({ nftId }).catch(() => undefined);
+                }
+            }
+        } finally {
             await Promise.all([
                 utils.nft.myOwned.invalidate(),
                 utils.nft.myCreated.invalidate(),
+                utils.nft.list.invalidate(),
+                // Covers the case where this item's manage/detail page was
+                // already open in another tab and had cached a pre-mint
+                // ("not minted yet") snapshot before this call landed.
+                ...(nftId ? [utils.nft.onChainInsights.invalidate({ id: nftId })] : []),
             ]);
-
-            toast.success("NFT minted!");
-            onClose();
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : "Minting failed");
-            if (nftId) {
-                await deletePendingNft.mutateAsync({ nftId }).catch(() => undefined);
-            }
-        } finally {
             setSubmitLoading(false);
         }
     }
@@ -1211,18 +1254,72 @@ function SmartContractNftForm({
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="sc-copies">Editions</Label>
-                                <Input
-                                    id="sc-copies"
-                                    type="number"
-                                    min={1}
-                                    value={copies}
-                                    onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    How many copies of this item can exist
-                                </p>
+                                <Label>Artwork type</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setKind("ONE_OF_ONE")}
+                                        className={`rounded-lg border p-3 text-left transition ${kind === "ONE_OF_ONE"
+                                            ? "border-primary bg-primary/5"
+                                            : "border-border hover:bg-muted/50"
+                                            }`}
+                                    >
+                                        <span className="block text-sm font-medium">One of one</span>
+                                        <span className="block text-xs text-muted-foreground">
+                                            A single unique piece with one owner
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setKind("EDITION")}
+                                        className={`rounded-lg border p-3 text-left transition ${kind === "EDITION"
+                                            ? "border-primary bg-primary/5"
+                                            : "border-border hover:bg-muted/50"
+                                            }`}
+                                    >
+                                        <span className="block text-sm font-medium">Edition</span>
+                                        <span className="block text-xs text-muted-foreground">
+                                            A print run — its own token, one unit per copy
+                                        </span>
+                                    </button>
+                                </div>
                             </div>
+
+                            {kind === "EDITION" && (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="sc-copies">Edition size</Label>
+                                        <Input
+                                            id="sc-copies"
+                                            type="number"
+                                            min={1}
+                                            max={10000}
+                                            value={copies}
+                                            onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Fixed forever at mint — the supply can never be increased
+                                        </p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="sc-symbol">Token symbol</Label>
+                                        <Input
+                                            id="sc-symbol"
+                                            value={symbol}
+                                            maxLength={12}
+                                            onChange={(e) =>
+                                                setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+                                            }
+                                            placeholder="SUNSET"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            {symbolCheck.data
+                                                ? symbolCheck.data.message
+                                                : "1-12 letters or digits, unique across the platform"}
+                                        </p>
+                                    </div>
+                                </>
+                            )}
                             <div className="space-y-2">
                                 <Label htmlFor="sc-royalty">Creator royalty (%)</Label>
                                 <Input

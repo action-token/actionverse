@@ -868,6 +868,13 @@ model QuarterReward {
 model AppConfig {
     id              Int   @id @default(autoincrement())
     nearbyPinRadius Float
+
+    // Default platform cut applied to newly deployed edition contracts, and
+    // the treasury proposed when updating the shared 1-of-1 collection.
+    // Editions freeze their fee at deploy, so changing this never alters an
+    // edition that already exists — see `contracts/ft_oz`.
+    platformFeeBps       Int     @default(250)
+    platformFeeRecipient String?
 }
 
 // Singleton-style config (one row) for broadcasting bounties to Telegram.
@@ -1458,6 +1465,20 @@ enum NftStatus {
     MINTED
 }
 
+// Which on-chain shape backs this artwork.
+//
+// ONE_OF_ONE  -> a token in the shared `nft_oz` collection contract. Exactly
+//                one owner, always exactly one unit.
+// EDITION     -> its own `ft_oz` contract, deployed per artwork. Supply and
+//                holder balances are fungible; edition size is read live from
+//                the contract (`art_meta().edition_size`), never cached here —
+//                see the removed `copies` field's history if this needs
+//                revisiting.
+enum NftKind {
+    ONE_OF_ONE
+    EDITION
+}
+
 model Nft {
     id             String         @id @default(uuid())
     name           String
@@ -1465,12 +1486,20 @@ model Nft {
     thumbnail      String
     contentUrl     String
     mediaType      String
-    copies         Int
+    kind           NftKind        @default(ONE_OF_ONE)
     creatorId      String
     creator        User           @relation(fields: [creatorId], references: [id], onDelete: Cascade)
     collectionId   String?
     collection     Collection?    @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+    // For EDITION this is the artwork's own deployed contract; for ONE_OF_ONE
+    // it is the shared collection contract the token lives in. Recorded per
+    // row so an environment/contract change never silently repoints old rows.
+    contractAddress String?
+    // Only meaningful for ONE_OF_ONE — EDITION artworks have no token id.
     onChainTokenId String?
+    // EDITION only: the token's own ticker, unique across the platform.
+    symbol         String?
+    royaltyBps     Int            @default(0)
     txHash         String?
     status         NftStatus      @default(PENDING)
     ownerships     NftOwnership[]
@@ -1485,9 +1514,11 @@ model Nft {
     lowestActivePrice  Float?
     activeListingCount Int    @default(0)
 
+    @@unique([symbol])
     @@index([creatorId])
     @@index([collectionId])
     @@index([status])
+    @@index([kind])
 }
 
 // One row per (nft, seller) — mirrors the contract's per-seller `Listing`,
@@ -1500,8 +1531,15 @@ model NftListing {
     sellerId        String
     seller          User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
     price           Float
-    availableCopies Int
-    totalCopies     Int
+    // SEP-41 token the price is denominated in, mirroring the contract's
+    // per-listing `payment_token`. Null means the native XLM SAC.
+    paymentToken    String?
+    // Deliberately no copies/quantity column: the contract's `Listing` is the
+    // only source of truth for how many units are for sale, and it can change
+    // underneath this row at any time (a buy, a direct transfer, a burn) — a
+    // cached count here would just be a second, driftable place for the same
+    // fact to live. Live quantity is read via `getOnChainListing`/
+    // `getEditionListing` at request time.
     isActive        Boolean  @default(true)
     createdAt       DateTime @default(now())
     updatedAt       DateTime @updatedAt
@@ -1530,13 +1568,18 @@ model Collection {
     @@index([creatorId])
 }
 
+// Existence index only — "has `ownerId` ever held `nftId`" — so `myOwned` can
+// find candidate rows without scanning every artwork on-chain for this user.
+// Deliberately no quantity column: on-chain balance is the only source of
+// truth for how much someone holds, read live at request time (see
+// `getOnChainBalance`/`getEditionBalance`), since a cached count here would
+// drift the moment a holder buys, sells, or transfers outside a confirm* call.
 model NftOwnership {
     id        String   @id @default(uuid())
     nftId     String
     nft       Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
     ownerId   String
     owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-    quantity  Int      @default(1)
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 

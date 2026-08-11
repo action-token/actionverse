@@ -1,31 +1,30 @@
-// export const BASE_URL = "https://app.action-tokens.com/";
-// export const BASE_URL = "http://localhost:3000";
+import { env } from "~/env";
+
+const IS_PUBNET = env.NEXT_PUBLIC_STELLAR_PUBNET;
+
 export const BASE_URL = process.env.NODE_ENV === "production" ? "https://app.action-tokens.com/" : "https://funnier-jeni-qualmishly.ngrok-free.dev/";
 export const EXPRESS_SERVER_URL = "https://portal.actn.xyz/actionverse/api/"
 
 // Bounty escrow Soroban contract ID — testnet for dev, mainnet for prod.
-export const BOUNTY_ESCROW_CONTRACT_ID =
-  process.env.NEXT_PUBLIC_STELLAR_PUBNET === "true"
-    ? "CBTALUV2T6FRODHLQIT5MRD6SVXOQ5NTURYY5EFS5NWTCZ6ZLKJCJGXW"
-    : "CDVOU7U6H5CPUHW457T2TG22RQVHAAW5F4EQAPQ57ZUETGLVCUMRRYJS";
+export const BOUNTY_ESCROW_CONTRACT_ID = IS_PUBNET
+  ? "CBTALUV2T6FRODHLQIT5MRD6SVXOQ5NTURYY5EFS5NWTCZ6ZLKJCJGXW"
+  : "CDVOU7U6H5CPUHW457T2TG22RQVHAAW5F4EQAPQ57ZUETGLVCUMRRYJS";
 
-// NFT marketplace Soroban contract ID (testnet) — updated via deploy; read from env.
-export const NFT_MARKETPLACE_CONTRACT_ID =
-  process.env.NEXT_PUBLIC_STELLAR_PUBNET === "true"
-    ? "CDPYXEQILAJ4EV3GIDBOUNRPQ6PICR3DX4NNUIGKMMOCYJVNGYX2EHDG"
-    : "CDPYXEQILAJ4EV3GIDBOUNRPQ6PICR3DX4NNUIGKMMOCYJVNGYX2EHDG";
+// Shared 1-of-1 art collection contract — testnet for dev, mainnet for prod.
+// Fill these in from `pnpm contracts:deploy`, which prints both values.
+export const ART_NFT_CONTRACT_ID = IS_PUBNET
+  ? ""
+  : "CAHBL3WCXHAMRYQX5XKVHTGDQVYLKXSC4T37WPKCCEM7QLUMQRJJINBV";
 
-// The contract's `price`/`total_price` fields are i128 amounts in the payment
-// token's raw (stroop-like) units. Stellar assets use 7 decimal places by
-// convention, so this is the single conversion point between that and the
-// human-readable price shown/entered in the UI and stored in `Nft`-related rows.
-export const PAYMENT_TOKEN_DECIMALS = 7;
-export const PAYMENT_TOKEN_SCALE = 10_000_000; // 10 ** PAYMENT_TOKEN_DECIMALS
+// Wasm hash of `ft_oz`. Uploaded once per network; every edition deploys its
+// own contract instance from this hash, so it is a content id, not an address.
+export const ART_EDITION_WASM_HASH = IS_PUBNET
+  ? ""
+  : "307d54cb276e3c4b759fa55385d5753630b62faf7c9205182297244a80ca62c5";
 
-export function humanPriceToRaw(price: number): bigint {
-  return BigInt(Math.round(price * PAYMENT_TOKEN_SCALE));
-}
-
-export function rawPriceToHuman(raw: bigint | number): number {
-  return Number(raw) / PAYMENT_TOKEN_SCALE;
-}
+// Account that collects the platform's cut of every sale. Testnet uses the
+// MOTHER account; set a dedicated treasury before deploying to pubnet rather
+// than routing real fee income through the operational key.
+export const PLATFORM_TREASURY_ADDRESS = IS_PUBNET
+  ? ""
+  : "GCIRB3GJI5PKOW7BUFERNGVB5DMMQT3RCD2I4Z7W4R4F4ED7QTL2K7HU";
