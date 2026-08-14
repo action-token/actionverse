@@ -985,6 +985,13 @@ function ClassicNftForm({
 
 const SC_FORM_STEPS = ["details", "media"];
 
+// Mirrors `editionSize: z.number().int().min(1).max(10_000)` in
+// `nft.getMintXDR` — the contract itself has no ceiling (an OZ fungible
+// token's supply is an i128), this cap is purely this app's own policy. Kept
+// here too so the form can reject an out-of-range value before a wallet
+// round-trip, instead of only finding out from the server after minting.
+const MAX_EDITION_SIZE = 10_000;
+
 function SmartContractNftForm({
     onBack,
     onClose,
@@ -1112,6 +1119,7 @@ function SmartContractNftForm({
         !!contentUrl &&
         !!contentMimeType &&
         copies >= 1 &&
+        (kind === "ONE_OF_ONE" || copies <= MAX_EDITION_SIZE) &&
         price > 0 &&
         (kind === "ONE_OF_ONE" ||
             (symbol.length > 0 && symbolCheck.data?.available === true));
@@ -1293,13 +1301,24 @@ function SmartContractNftForm({
                                             id="sc-copies"
                                             type="number"
                                             min={1}
-                                            max={10000}
+                                            max={MAX_EDITION_SIZE}
                                             value={copies}
-                                            onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
+                                            onChange={(e) => setCopies(Math.round(Number(e.target.value)) || 0)}
+                                            aria-invalid={copies < 1 || copies > MAX_EDITION_SIZE}
                                         />
-                                        <p className="text-xs text-muted-foreground">
-                                            Fixed forever at mint — the supply can never be increased
-                                        </p>
+                                        {copies > MAX_EDITION_SIZE ? (
+                                            <p className="text-xs text-destructive">
+                                                Max edition size is {MAX_EDITION_SIZE.toLocaleString()}.
+                                            </p>
+                                        ) : copies < 1 ? (
+                                            <p className="text-xs text-destructive">
+                                                Edition size must be at least 1.
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground">
+                                                Fixed forever at mint — the supply can never be increased
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="sc-symbol">Token symbol</Label>
