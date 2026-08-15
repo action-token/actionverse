@@ -1,4 +1,4 @@
-import { Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
+import { Pencil, ShoppingBag, Tag } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -40,8 +40,7 @@ export function NftDetailView({
   mode: "manage" | "buy";
   myListing?: MyListing;
   heldQuantity?: number;
-  /** `quantity` is only meaningful for an EDITION — a 1-of-1 always passes 1. */
-  onUpdatePrice?: (price: number, quantity: number) => void | Promise<void>;
+  onUpdatePrice?: (price: number) => void | Promise<void>;
   onCancelListing?: () => void | Promise<void>;
   isSavingListing?: boolean;
   /** Which seller's listing this buy dialog is for — each seller is its own
@@ -49,7 +48,7 @@ export function NftDetailView({
   sellerId?: string;
   /** The logged-in viewer's own id — used to hide the buy action on your own listing. */
   viewerId?: string;
-  onBuy?: (sellerId: string, quantity: number) => void | Promise<void>;
+  onBuy?: (sellerId: string) => void | Promise<void>;
   isBuying?: boolean;
   onChainInsights?: RouterOutputs["nft"]["onChainInsights"];
   isLoadingOnChainInsights?: boolean;
@@ -70,7 +69,6 @@ export function NftDetailView({
 
       {mode === "manage" ? (
         <ManagePriceCard
-          kind={nft.kind}
           myListing={myListing ?? null}
           heldQuantity={heldQuantity}
           onUpdatePrice={onUpdatePrice}
@@ -124,23 +122,9 @@ export function NftDetailView({
               </dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">
-                {nft.kind === "EDITION" ? "Edition size" : "Type"}
-              </dt>
-              <dd className="font-semibold">
-                {nft.kind === "EDITION"
-                  ? onChainInsights?.minted && onChainInsights.editionSize !== null
-                    ? `${onChainInsights.editionSize} copies`
-                    : "Edition"
-                  : "1 of 1"}
-              </dd>
+              <dt className="text-muted-foreground">Type</dt>
+              <dd className="font-semibold">1 of 1</dd>
             </div>
-            {nft.kind === "EDITION" && nft.symbol && (
-              <div>
-                <dt className="text-muted-foreground">Symbol</dt>
-                <dd className="font-mono font-semibold">{nft.symbol}</dd>
-              </div>
-            )}
             <div>
               <dt className="text-muted-foreground">Media type</dt>
               <dd className="truncate font-semibold">{nft.mediaType}</dd>
@@ -220,7 +204,6 @@ export function NftDetailView({
 }
 
 function ManagePriceCard({
-  kind,
   myListing,
   heldQuantity,
   onUpdatePrice,
@@ -228,27 +211,21 @@ function ManagePriceCard({
   isSaving,
   network,
 }: {
-  kind: "ONE_OF_ONE" | "EDITION";
   myListing: MyListing;
   heldQuantity: number;
-  onUpdatePrice?: (price: number, quantity: number) => void | Promise<void>;
+  onUpdatePrice?: (price: number) => void | Promise<void>;
   onCancelListing?: () => void | Promise<void>;
   isSaving: boolean;
   network?: string;
 }) {
-  const isEdition = kind === "EDITION";
   const [editing, setEditing] = useState(false);
   const [price, setPrice] = useState(myListing?.price ?? 1);
-  // Defaults to the seller's whole holding — adjustable down from there, so
-  // "list everything" stays a one-click default while a partial sale is a
-  // deliberate choice, not a hidden default.
-  const [quantity, setQuantity] = useState(Math.max(1, myListing?.available ?? heldQuantity));
   const isActive = myListing?.isActive ?? false;
 
   if (heldQuantity <= 0 && !isActive) {
     return (
       <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
-        You no longer hold a copy of this {isEdition ? "edition" : "NFT"}.
+        You no longer hold this NFT.
       </div>
     );
   }
@@ -257,7 +234,6 @@ function ManagePriceCard({
 
   function startEditing() {
     setPrice(myListing?.price ?? 1);
-    setQuantity(Math.max(1, Math.min(heldQuantity, myListing?.available ?? heldQuantity)));
     setEditing(true);
   }
 
@@ -284,30 +260,8 @@ function ManagePriceCard({
               onChange={(e) => setPrice(Number(e.target.value) || 0)}
               className="h-12 max-w-[10rem] text-2xl font-black tabular-nums"
             />
-            <span className="text-sm font-bold text-primary">
-              XLM{isEdition ? " each" : ""}
-            </span>
+            <span className="text-sm font-bold text-primary">XLM</span>
           </div>
-
-          {isEdition && (
-            <div className="mt-3">
-              <label htmlFor="list-quantity" className="text-xs text-muted-foreground">
-                How many of your {heldQuantity.toLocaleString()} to list
-              </label>
-              <Input
-                id="list-quantity"
-                type="number"
-                min={1}
-                max={heldQuantity}
-                step={1}
-                value={quantity}
-                onChange={(e) =>
-                  setQuantity(Math.min(heldQuantity, Math.max(1, Math.round(Number(e.target.value)) || 1)))
-                }
-                className="mt-1 h-10 max-w-[8rem] font-bold tabular-nums"
-              />
-            </div>
-          )}
 
           <div className="mt-4 flex gap-2">
             <Button
@@ -322,7 +276,7 @@ function ManagePriceCard({
               className="flex-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
               disabled={isSaving}
               onClick={async () => {
-                await onUpdatePrice?.(price, isEdition ? quantity : 1);
+                await onUpdatePrice?.(price);
                 setEditing(false);
               }}
             >
@@ -335,11 +289,6 @@ function ManagePriceCard({
           <p className="mt-1 flex items-baseline gap-1.5 text-3xl font-black tabular-nums">
             {myListing!.price}
             <span className="text-sm font-bold text-primary">XLM</span>
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {myListing!.available.toLocaleString()} available to buy
-            {heldQuantity > myListing!.available &&
-              ` · ${(heldQuantity - myListing!.available).toLocaleString()} more you hold unlisted`}
           </p>
 
           <div className="mt-4 flex gap-2">
@@ -390,11 +339,9 @@ function BuyPriceCard({
   status: ByIdNft["status"];
   sellerId?: string;
   viewerId?: string;
-  onBuy?: (sellerId: string, quantity: number) => void | Promise<void>;
+  onBuy?: (sellerId: string) => void | Promise<void>;
   isBuying: boolean;
 }) {
-  const [quantity, setQuantity] = useState(1);
-
   const selected = listings.find((l) => l.sellerId === sellerId) ?? listings[0] ?? null;
   const available = selected?.available ?? 0;
   const isOwnListing = !!selected && !!viewerId && selected.sellerId === viewerId;
@@ -414,46 +361,20 @@ function BuyPriceCard({
 
   return (
     <div className="rounded-2xl border bg-card p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Price per copy
-          </p>
-          <p className="mt-1 flex items-baseline gap-1.5 text-3xl font-black tabular-nums">
-            {selected.pricePerCopy}
-            <span className="text-sm font-bold text-primary">XLM</span>
-          </p>
-        </div>
-
-        {canBuy && (
-          <div className="flex items-center rounded-full border">
-            <button
-              type="button"
-              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              disabled={quantity <= 1}
-              aria-label="Decrease quantity"
-              className="flex h-12 w-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
-            >
-              <Minus className="h-4 w-4" />
-            </button>
-            <span className="w-8 text-center text-base font-bold tabular-nums">{quantity}</span>
-            <button
-              type="button"
-              onClick={() => setQuantity((q) => Math.min(available, q + 1))}
-              disabled={quantity >= available}
-              aria-label="Increase quantity"
-              className="flex h-12 w-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-30"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Price
+        </p>
+        <p className="mt-1 flex items-baseline gap-1.5 text-3xl font-black tabular-nums">
+          {selected.pricePerCopy}
+          <span className="text-sm font-bold text-primary">XLM</span>
+        </p>
       </div>
 
       <span
         className="mt-2 inline-block text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline"
       >
-        Sold by {selected.sellerName ?? "Unknown seller"} · {selected.available} available
+        Sold by {selected.sellerName ?? "Unknown seller"}
       </span>
 
       {isOwnListing ? (
@@ -463,12 +384,12 @@ function BuyPriceCard({
       ) : (
         canBuy && (
           <Button
-            onClick={() => onBuy?.(selected.sellerId, quantity)}
+            onClick={() => onBuy?.(selected.sellerId)}
             disabled={isBuying}
             className="mt-4 h-12 w-full gap-2 rounded-full bg-primary text-base font-bold text-primary-foreground hover:bg-primary/90"
           >
             <ShoppingBag className="h-4 w-4" />
-            {isBuying ? "Confirm purchase…" : `Buy for ${(selected.pricePerCopy * quantity).toFixed(2)} XLM`}
+            {isBuying ? "Confirm purchase…" : `Buy for ${selected.pricePerCopy.toFixed(2)} XLM`}
           </Button>
         )
       )}

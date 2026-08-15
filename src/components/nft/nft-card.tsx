@@ -19,10 +19,6 @@ export interface NftCardData {
   lowestActivePrice: number | null;
   activeListingCount: number;
   status: "PENDING" | "MINTED";
-  /** A 1-of-1 lives in the shared collection; an edition is its own token. */
-  kind?: "ONE_OF_ONE" | "EDITION";
-  /** Ticker of an edition's own token contract. Absent for a 1-of-1. */
-  symbol?: string | null;
   creator?: { id: string; name: string | null; image?: string | null } | null;
   isLiked?: boolean;
   likeCount?: number;
@@ -114,26 +110,12 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                 className="object-cover h-48 w-full transition-transform duration-500 group-hover:scale-105"
               />
 
-              {/* An edition and a 1-of-1 look identical on a thumbnail, so the
-                  scarcity has to be stated — it's the main thing a buyer is
-                  judging. Exact copy counts are a chain read, so the grid
-                  (potentially dozens of cards a page) doesn't fetch them —
-                  that number lives on the detail page instead. */}
-              {nft.kind === "EDITION" ? (
-                <Badge
-                  variant="secondary"
-                  className="absolute top-3 right-3 bg-black/70 text-white backdrop-blur-sm border-0"
-                >
-                  Edition{nft.symbol ? ` · ${nft.symbol}` : ""}
-                </Badge>
-              ) : (
-                <Badge
-                  variant="secondary"
-                  className="absolute top-3 right-3 bg-black/70 text-white backdrop-blur-sm border-0"
-                >
-                  1 of 1
-                </Badge>
-              )}
+              <Badge
+                variant="secondary"
+                className="absolute top-3 right-3 bg-black/70 text-white backdrop-blur-sm border-0"
+              >
+                1 of 1
+              </Badge>
 
               <Button
                 size="sm"

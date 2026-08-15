@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["bounty_escrow", "nft_oz", "ft_oz"]
+members = ["bounty_escrow", "nft_oz"]
 
 [workspace.dependencies]
 soroban-sdk = "26.1.1"

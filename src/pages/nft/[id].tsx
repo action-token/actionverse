@@ -49,13 +49,11 @@ export default function NftBuyPage() {
 
   // Same build-XDR -> sign (server-side or via clientsign) -> confirm shape
   // as the bounty escrow flow (see src/pages/bounty/create.tsx).
-  async function handleBuy(sellerId: string, quantity: number) {
+  async function handleBuy(sellerId: string) {
     if (!session?.user) {
       toast.error("Connect your wallet first");
       return;
     }
-    // Editions have no token id (they are their own contract), so the mint
-    // status is what gates buying, not `onChainTokenId`.
     if (nft?.status !== "MINTED") {
       toast.error("This artwork hasn't finished minting on-chain yet");
       return;
@@ -65,7 +63,6 @@ export default function NftBuyPage() {
       const { xdr, fullySignedByServer } = await getBuyXDR.mutateAsync({
         nftId: nft.id,
         sellerId,
-        quantity,
         signWith: needSign(),
       });
 
@@ -87,7 +84,7 @@ export default function NftBuyPage() {
         return;
       }
 
-      await confirmBuy.mutateAsync({ nftId: nft.id, sellerId, txHash, quantity });
+      await confirmBuy.mutateAsync({ nftId: nft.id, sellerId, txHash });
       await Promise.all([
         utils.nft.byId.invalidate({ id: nft.id }),
         // Both the buyer's new "You hold" balance and the seller's remaining

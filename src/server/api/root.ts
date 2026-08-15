@@ -22,8 +22,6 @@ import { tagRouter } from "./routers/tags";
 import { nftRouter } from "./routers/nft";
 import { collectionRouter } from "./routers/collection";
 
-import { ftRouter } from "./routers/ft";
-
 /**
  * This is the primary router for your server.
  *
@@ -50,7 +48,6 @@ export const appRouter = createTRPCRouter({
   community: communityRouters,
   tag: tagRouter,
   nft: nftRouter,
-  ft: ftRouter,
   collection: collectionRouter,
 });
 

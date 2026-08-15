@@ -16,13 +16,10 @@
     "run-script": "tsx ./script.ts",
     "contracts:test": "cd contracts/bounty_escrow && cargo test",
     "contracts:test:nft_oz": "cd contracts/nft_oz && cargo test",
-    "contracts:test:ft_oz": "cd contracts/ft_oz && cargo test",
-    "contracts:test:all": "pnpm contracts:test:nft_oz && pnpm contracts:test:ft_oz",
+    "contracts:test:all": "pnpm contracts:test:nft_oz",
     "contracts:build": "cd contracts/bounty_escrow && stellar contract build",
     "contracts:build:nft_oz": "cd contracts/nft_oz && PATH=\"$HOME/.cargo/bin:$PATH\" stellar contract build",
-    "contracts:build:ft_oz": "cd contracts/ft_oz && PATH=\"$HOME/.cargo/bin:$PATH\" stellar contract build",
     "contracts:bindings:nft_oz": "stellar contract bindings typescript --wasm contracts/target/wasm32v1-none/release/nft_oz.wasm --output-dir contracts/nft_oz/bindings --overwrite",
-    "contracts:bindings:ft_oz": "stellar contract bindings typescript --wasm contracts/target/wasm32v1-none/release/ft_oz.wasm --output-dir contracts/ft_oz/bindings --overwrite",
     "contracts:deploy": "node --env-file=.env --env-file=.env.development --import tsx scripts/deploy-contracts.ts"
   },
   "dependencies": {

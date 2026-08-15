@@ -18,13 +18,8 @@ import {
 import { SignUser } from "~/lib/stellar/utils";
 
 /**
- * Two different fees live under this router:
- *
- * - The **1-of-1 collection** is one shared contract owned by the platform, so
- *   its fee is changeable on-chain here and applies to every future sale.
- * - **Editions** are one contract per artwork, deployed with the fee frozen in
- *   (see `ft_oz`). Changing the stored default only affects editions deployed
- *   from that point on; existing ones keep the fee their collectors agreed to.
+ * The 1-of-1 collection is one shared contract owned by the platform, so its
+ * fee is changeable on-chain here and applies to every future sale.
  */
 export const platformFeeRouter = createTRPCRouter({
   getPlatformFee: protectedProcedure.query(async ({ ctx }) => {
@@ -46,8 +41,6 @@ export const platformFeeRouter = createTRPCRouter({
         collectionFeeBps === null
           ? null
           : { feeBps: collectionFeeBps, treasury: collectionTreasury },
-      // Editions can't be retro-changed, so this is advisory only.
-      editionsAreImmutable: true,
     };
   }),
 
@@ -70,8 +63,8 @@ export const platformFeeRouter = createTRPCRouter({
     }),
 
   /**
-   * The default applied to newly deployed editions. Capped at the contracts'
-   * own hard limit so the UI can't offer a value the chain would reject.
+   * The platform fee stored in `AppConfig`. Capped at the contract's own hard
+   * limit so the UI can't offer a value the chain would reject.
    */
   setPlatformFee: adminProcedure
     .input(

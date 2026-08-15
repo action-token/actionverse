@@ -111,24 +111,12 @@ export function BlockchainInsights({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Editions report open listings straight from their own contract;
-                a one-of-one has at most one, which the owner field covers. */}
             <Stat label="Active listings" value={String(insights.listings.length)} />
             <Stat label="You hold" value={String(insights.userBalance)} />
             <Stat
               label="Royalty"
               value={insights.royaltyBps !== null ? `${(insights.royaltyBps / 100).toFixed(2)}%` : "—"}
             />
-            {insights.kind === "EDITION" && (
-              <Stat
-                label="In circulation"
-                value={
-                  insights.editionSize !== null
-                    ? `${insights.circulatingSupply} / ${insights.editionSize}`
-                    : "—"
-                }
-              />
-            )}
           </div>
 
           <div className="rounded-2xl border bg-card px-4">
