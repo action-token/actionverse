@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
 import { api, type RouterOutputs } from "~/utils/api";
@@ -423,13 +424,15 @@ export default function BountyDetailPage() {
                       </Button>
 
                       <Button
+                        asChild
                         variant="default"
                         size="sm"
                         className="h-9 gap-1.5 hidden md:inline-flex"
-                        onClick={() => void router.push(`/bounty/edit/${id}?type=${bounty.enableMusic ? "music" : "general"}`)}
                       >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit
+                        <Link href={`/bounty/edit/${id}?type=${bounty.enableMusic ? "music" : "general"}`}>
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Link>
                       </Button>
                     </div>
                   )}
