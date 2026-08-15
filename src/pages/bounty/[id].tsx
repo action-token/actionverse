@@ -426,7 +426,7 @@ export default function BountyDetailPage() {
                         variant="default"
                         size="sm"
                         className="h-9 gap-1.5 hidden md:inline-flex"
-                        onClick={() => void router.push(`/bounty/edit/${id}`)}
+                        onClick={() => void router.push(`/bounty/edit/${id}?type=${bounty.enableMusic ? "music" : "general"}`)}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                         Edit

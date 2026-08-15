@@ -419,6 +419,12 @@ export default function CreateBountyPage() {
     }
   }, [router.query.draft]);
 
+  // Preselect bounty type from dropdown selection (?type=general|music)
+  useEffect(() => {
+    if (router.query.type === "music") setField("enableMusic", true);
+    else if (router.query.type === "general") setField("enableMusic", false);
+  }, [router.query.type, setField]);
+
   useEffect(() => {
     if (router.query.error === "api_key_missing") {
       toast.error("NEXT_PUBLIC_LASTFM_API_KEY is missing in your .env file!");
@@ -789,27 +795,22 @@ export default function CreateBountyPage() {
               </CardContent>
             </Card>
 
-            {/* 🎵 Music & Streaming Challenge Card */}
-            <Card className="border-border">
-              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+            {/* 🎵 Music & Streaming Challenge Card — only in Music Bounty mode */}
+            {enableMusic && (
+              <Card className="border-border">
+              <CardHeader className="pb-3">
                 <div className="space-y-0.5">
                   <CardTitle className="text-base flex items-center gap-2">
                     <Music className="h-4 w-4 text-purple-400" />
-                    Add Music &amp; Streaming Challenge
+                    Music &amp; Streaming Challenge
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
                     Automatically verify participant listening scrobbles via Last.fm API
                   </p>
                 </div>
-                <Switch
-                  checked={enableMusic}
-                  onCheckedChange={setEnableMusic}
-                  disabled={isDisabled}
-                />
               </CardHeader>
 
-              {enableMusic && (
-                <CardContent className="space-y-5 pt-3 border-t border-border/60">
+              <CardContent className="space-y-5 pt-3 border-t border-border/60">
                   {/* Last.fm Account Status */}
                   {!lastFmAccount ? (
                     <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-2">
@@ -1187,8 +1188,8 @@ export default function CreateBountyPage() {
                     </div>
                   </div>
                 </CardContent>
-              )}
-            </Card>
+              </Card>
+            )}
 
             {/* Submission Requirements — hidden in Music Only mode */}
             {(!enableMusic || musicMode === "HYBRID") ? (

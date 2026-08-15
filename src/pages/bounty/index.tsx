@@ -7,6 +7,7 @@ import { Button } from "~/components/shadcn/ui/button";
 import { ScrollArea } from "~/components/shadcn/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/shadcn/ui/select";
 import { BountyCard, BountyCardWithJoin, BountyCardSkeleton } from "~/components/bounty/bounty-card";
+import { CreateBountyButton } from "~/components/bounty/create-bounty-button";
 import { RecentActivityItem } from "~/components/bounty/recent-activity-item";
 import {
   Search,
@@ -17,16 +18,13 @@ import {
   Star,
   SlidersHorizontal,
   X,
-  Plus,
 } from "lucide-react";
 import { PLATFORM_ASSET } from "~/lib/stellar/constant";
 import { cn } from "~/lib/utils";
-import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store";
 
 export default function BountiesPage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const { setIsOpen: setLoginModalOpen } = useLoginRequiredModalStore();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"newest" | "prize">("newest");
   const [filter, setFilter] = useState<"all" | "not_joined" | "joined">("all");
@@ -103,13 +101,7 @@ export default function BountiesPage() {
               Discover challenges, complete tasks, and earn {PLATFORM_ASSET.code} rewards
             </p>
           </div>
-          <Button
-            onClick={() => session ? void router.push("/bounty/create") : setLoginModalOpen(true)}
-            className="shrink-0"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Create Bounty
-          </Button>
+          <CreateBountyButton />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">

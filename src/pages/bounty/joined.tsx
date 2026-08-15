@@ -12,9 +12,9 @@ import {
   SelectValue,
 } from "~/components/shadcn/ui/select";
 import { BountyCard, BountyCardSkeleton } from "~/components/bounty/bounty-card";
+import { CreateBountyButton } from "~/components/bounty/create-bounty-button";
 import {
   ArrowLeft,
-  Plus,
   Search,
   Star,
   Trophy,
@@ -108,15 +108,7 @@ export default function JoinedBountiesPage() {
               </p>
             </div>
           </div>
-          {session && (
-            <Button
-              onClick={() => void router.push("/bounty/create")}
-              className="shrink-0"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create Bounty
-            </Button>
-          )}
+          {session && <CreateBountyButton />}
         </div>
 
         {/* Search + Sort + Filter */}
@@ -192,10 +184,7 @@ export default function JoinedBountiesPage() {
                 <Button variant="outline" onClick={() => void router.push("/bounty")}>
                   Browse Bounties
                 </Button>
-                <Button onClick={() => void router.push("/bounty/create")}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Bounty
-                </Button>
+                <CreateBountyButton />
               </div>
             )}
           </div>

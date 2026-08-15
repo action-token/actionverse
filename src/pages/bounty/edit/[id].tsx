@@ -118,7 +118,13 @@ export default function EditBountyPage() {
       setMaxWinners(String(bounty.maxWinners));
       setInstructions(bounty.instructions ?? []);
       setRequiresActionCam(bounty.requiresActionCam ?? false);
-      setEnableMusic(bounty.enableMusic ?? false);
+      setEnableMusic(
+        router.query.type === "music"
+          ? true
+          : router.query.type === "general"
+            ? false
+            : (bounty.enableMusic ?? false),
+      );
       setMusicMode((bounty.musicConfig?.musicMode) ?? "HYBRID");
       setRuleType((bounty.musicConfig?.ruleType) ?? "ALL");
       setCustomRequiredTracks(bounty.musicConfig?.customRequiredTracks ?? 1);
@@ -142,6 +148,12 @@ export default function EditBountyPage() {
       setInitialized(true);
     }
   }, [bounty, initialized]);
+
+  /* Preselect bounty type from edit URL (?type=general|music) */
+  useEffect(() => {
+    if (router.query.type === "music") setEnableMusic(true);
+    else if (router.query.type === "general") setEnableMusic(false);
+  }, [router.query.type]);
 
   /* Last.fm search */
   const searchQ = api.bounty.Bounty.searchLastFmTracks.useQuery(
@@ -390,35 +402,20 @@ export default function EditBountyPage() {
               </CardContent>
             </Card>
 
-            {/* Music & Streaming Challenge */}
-            <Card className={cn("border-border overflow-hidden", enableMusic ? "border-primary/40 shadow-sm" : "")}>
-              <div className={cn("h-1 w-full", enableMusic ? "bg-gradient-to-r from-purple-500 to-primary" : "bg-gradient-to-r from-border to-border/50")} />
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Music className="h-4 w-4 text-muted-foreground" />
-                  Music & Streaming Challenge
-                  <Badge variant="outline" className="ml-auto text-[10px]">
-                    <Lock className="h-2.5 w-2.5 mr-1" />
-                    Optional
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">Enable Music Integration</Label>
-                    <p className="text-[11px] text-muted-foreground">
-                      Automatically verify participant listening scrobbles via Last.fm API
-                    </p>
-                  </div>
-                  <Switch checked={enableMusic} onCheckedChange={setEnableMusic} disabled={isSaving} />
-                </div>
+            {/* Music & Streaming Challenge — only in Music Bounty mode */}
+            {enableMusic && (
+              <Card className="border-border overflow-hidden border-primary/40 shadow-sm">
+                <div className="h-1 w-full bg-gradient-to-r from-purple-500 to-primary" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Music className="h-4 w-4 text-purple-400" />
+                    Music & Streaming Challenge
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Separator />
 
-                {enableMusic && (
-                  <>
-                    <Separator />
-
-                    {/* Music Mode */}
+                  {/* Music Mode */}
                     <div className="space-y-2">
                       <Label className="text-sm">Music Mode</Label>
                       <div className="grid grid-cols-2 gap-2">
@@ -646,10 +643,9 @@ export default function EditBountyPage() {
                         </div>
                       </div>
                     )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Submission Requirements — hidden in Music Only mode */}
             {(!enableMusic || musicMode === "HYBRID") && (
