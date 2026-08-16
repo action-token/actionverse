@@ -89,7 +89,7 @@ export function BlockchainInsights({
           <div
             className={
               insights.verified
-                ? "flex items-center gap-2 rounded-2xl border border-primary/30 bg-primary/10 p-4 text-primary"
+                ? "flex items-center gap-2 rounded-2xl border border-foreground/30 bg-foreground/10 p-4 text-foreground"
                 : "flex items-center gap-2 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-warning"
             }
           >

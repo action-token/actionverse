@@ -13,7 +13,6 @@ import {
   buildListXDR,
   buildMintAndListXDR,
   getOnChainArtMeta,
-  getOnChainBalance,
   getOnChainListing,
   getOnChainOwner,
   getSaleBreakdown,
@@ -599,10 +598,9 @@ export const nftRouter = createTRPCRouter({
       }
 
       const tokenId = Number(nft.onChainTokenId);
-      const [owner, meta, balance, listing] = await Promise.all([
+      const [owner, meta, listing] = await Promise.all([
         getOnChainOwner(tokenId),
         getOnChainArtMeta(tokenId),
-        account ? getOnChainBalance(account) : Promise.resolve(0),
         getOnChainListing(tokenId),
       ]);
       const sellerInfo = listing ? (await sellerInfoById(ctx.db, [listing.seller])).get(listing.seller) : null;
@@ -618,7 +616,7 @@ export const nftRouter = createTRPCRouter({
         thumbnailUrl: meta?.thumbnail_url ?? null,
         mediaUrl: meta?.media_url ?? null,
         creator: meta?.creator ?? null,
-        userBalance: balance,
+        userBalance: account && owner === account ? 1 : 0,
         listings: listing
           ? [
               {

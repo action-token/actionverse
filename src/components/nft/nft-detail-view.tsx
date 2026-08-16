@@ -92,19 +92,19 @@ export function NftDetailView({
         <TabsList className="h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0">
           <TabsTrigger
             value="details"
-            className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 font-semibold text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+            className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 font-semibold text-muted-foreground shadow-none data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
           >
             Details
           </TabsTrigger>
           <TabsTrigger
             value={mode === "manage" ? "creator" : "owners"}
-            className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 font-semibold text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+            className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 font-semibold text-muted-foreground shadow-none data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
           >
             {mode === "manage" ? "Creator" : "Owners"}
           </TabsTrigger>
           <TabsTrigger
             value="onchain"
-            className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 font-semibold text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+            className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 font-semibold text-muted-foreground shadow-none data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
           >
             On-Chain
           </TabsTrigger>
@@ -260,7 +260,7 @@ function ManagePriceCard({
               onChange={(e) => setPrice(Number(e.target.value) || 0)}
               className="h-12 max-w-[10rem] text-2xl font-black tabular-nums"
             />
-            <span className="text-sm font-bold text-primary">XLM</span>
+            <span className="text-sm font-bold text-foreground">XLM</span>
           </div>
 
           <div className="mt-4 flex gap-2">
@@ -273,7 +273,7 @@ function ManagePriceCard({
               Cancel
             </Button>
             <Button
-              className="flex-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+              className="flex-1 rounded-full bg-foreground text-background hover:bg-foreground/90"
               disabled={isSaving}
               onClick={async () => {
                 await onUpdatePrice?.(price);
@@ -288,7 +288,7 @@ function ManagePriceCard({
         <>
           <p className="mt-1 flex items-baseline gap-1.5 text-3xl font-black tabular-nums">
             {myListing!.price}
-            <span className="text-sm font-bold text-primary">XLM</span>
+            <span className="text-sm font-bold text-foreground">XLM</span>
           </p>
 
           <div className="mt-4 flex gap-2">
@@ -312,7 +312,7 @@ function ManagePriceCard({
         </>
       ) : (
         <Button
-          className="mt-3 h-12 w-full gap-2 rounded-full bg-primary text-base font-bold text-primary-foreground hover:bg-primary/90"
+          className="mt-3 h-12 w-full gap-2 rounded-full bg-foreground text-base font-bold text-background hover:bg-foreground/90"
           onClick={startEditing}
         >
           <Tag className="h-4 w-4" />
@@ -367,7 +367,7 @@ function BuyPriceCard({
         </p>
         <p className="mt-1 flex items-baseline gap-1.5 text-3xl font-black tabular-nums">
           {selected.pricePerCopy}
-          <span className="text-sm font-bold text-primary">XLM</span>
+          <span className="text-sm font-bold text-foreground">XLM</span>
         </p>
       </div>
 
@@ -386,7 +386,7 @@ function BuyPriceCard({
           <Button
             onClick={() => onBuy?.(selected.sellerId)}
             disabled={isBuying}
-            className="mt-4 h-12 w-full gap-2 rounded-full bg-primary text-base font-bold text-primary-foreground hover:bg-primary/90"
+            className="mt-4 h-12 w-full gap-2 rounded-full bg-foreground text-base font-bold text-background hover:bg-foreground/90"
           >
             <ShoppingBag className="h-4 w-4" />
             {isBuying ? "Confirm purchase…" : `Buy for ${selected.pricePerCopy.toFixed(2)} XLM`}

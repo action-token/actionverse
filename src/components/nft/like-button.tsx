@@ -37,7 +37,7 @@ export function LikeButton({
         className={cn(
           "transition-colors",
           variant === "overlay" ? "h-3.5 w-3.5" : "h-4 w-4",
-          isLiked && "fill-primary text-primary",
+          isLiked && "fill-foreground text-foreground",
         )}
       />
       {likeCount}
