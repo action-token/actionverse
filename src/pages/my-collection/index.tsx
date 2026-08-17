@@ -71,6 +71,7 @@ function ScNftCard({
                 creatorId={creatorId}
                 mediaType={mimeTypeToLabel(mediaType)}
                 price={price}
+                priceCurrency="XLM"
                 hideBuyButton
                 onView={() => {
                     void router.push(`/nft/manage/${nftId}`);

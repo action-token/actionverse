@@ -29,6 +29,10 @@ interface AssetViewProps {
      *  like My Collection where every card is already yours, so buying it
      *  never makes sense regardless of price. */
     hideBuyButton?: boolean
+    /** Unit `price` is denominated in. Defaults to the platform asset, but
+     *  smart-contract NFTs are priced (and can currently only be bought) in
+     *  XLM, so callers rendering those must override this. */
+    priceCurrency?: string
 }
 
 export default function AssetView({
@@ -45,6 +49,7 @@ export default function AssetView({
     onBuy, // Added onBuy prop
     onView, // Added onView prop
     hideBuyButton = false,
+    priceCurrency = PLATFORM_ASSET.code.toUpperCase(),
 }: AssetViewProps) {
     const [isVisible, setIsVisible] = useState(false)
     const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -188,7 +193,7 @@ export default function AssetView({
                                                     Platform Price
                                                 </span>
                                                 <span className="text-sm font-semibold">
-                                                    {price} {PLATFORM_ASSET.code.toUpperCase()}
+                                                    {price} {priceCurrency}
                                                 </span>
                                             </div>
                                         </div>
@@ -203,7 +208,7 @@ export default function AssetView({
                                         <div className="flex items-center justify-between">
                                             <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Price</span>
                                             <span className="text-xl font-bold">
-                                                {price} {PLATFORM_ASSET.code.toUpperCase()}
+                                                {price} {priceCurrency}
                                             </span>
                                         </div>
                                     ) : (

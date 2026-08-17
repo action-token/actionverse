@@ -450,6 +450,7 @@ export default function StoredItemsView() {
                                                                 isNFT={true} creatorId={item.asset.creatorId}
                                                                 price={item.price}
                                                                 priceInUSD={item.priceUSD}
+                                                                priceCurrency={item.isScNft ? "XLM" : undefined}
                                                                 mediaType={item.asset.mediaType}
                                                                 onView={() => {
                                                                     if (item.isScNft && item.scNftId) {
@@ -483,7 +484,7 @@ export default function StoredItemsView() {
                                                                         <div className="flex flex-col items-end gap-1">
                                                                             {item.price && item.price > 0 && (
                                                                                 <Badge>
-                                                                                    {item.price} {PLATFORM_ASSET.code}
+                                                                                    {item.price} {item.isScNft ? "XLM" : PLATFORM_ASSET.code}
                                                                                 </Badge>
                                                                             )}
                                                                             <Badge variant="outline" className="text-xs">
