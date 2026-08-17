@@ -418,8 +418,8 @@ function MediaStep() {
         if (files && files.length > 0) {
             const file = files[0]
             if (file) {
-                if (file.size > 1024 * 1024) {
-                    toast.error("File size should be less than 1MB")
+                if (file.size > 10 * 1024 * 1024) {
+                    toast.error("File size should be less than 10MB")
                     return
                 }
                 setFile(file)
@@ -467,7 +467,7 @@ function MediaStep() {
                                         <>
                                             <Upload className="h-6 w-6 text-muted-foreground" />
                                             <span className="text-sm text-muted-foreground">Click to upload cover image</span>
-                                            <span className="text-xs text-muted-foreground">JPG, PNG (max 1MB)</span>
+                                            <span className="text-xs text-muted-foreground">JPG, PNG (max 10MB)</span>
                                         </>
                                     )}
                                 </Button>

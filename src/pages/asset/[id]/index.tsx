@@ -54,16 +54,26 @@ const SingleAssetView = () => {
     const { data, isLoading, error } = api.fan.asset.getAssetById.useQuery({
         assetId,
     })
+    const isNonStellar = data?.kind === "NON_STELLAR"
+    const nonStellarAvailability = api.fan.asset.getNonStellarAvailability.useQuery(
+        {
+            assetId,
+            mode: selectedMenu === MyCollectionMenu.COLLECTION ? "owned" : "stock",
+        },
+        { enabled: !!data && isNonStellar },
+    )
     const copyCreatorAssetBalance = data
-        ? selectedMenu === MyCollectionMenu.COLLECTION
-            ? creatorAssetBalance({
-                code: data.code,
-                issuer: data.issuer,
-            })
-            : creatorStorageAssetBalance({
-                code: data.code,
-                issuer: data.issuer,
-            })
+        ? isNonStellar
+            ? (nonStellarAvailability.data ?? 0)
+            : selectedMenu === MyCollectionMenu.COLLECTION
+                ? creatorAssetBalance({
+                    code: data.code,
+                    issuer: data.issuer,
+                })
+                : creatorStorageAssetBalance({
+                    code: data.code,
+                    issuer: data.issuer,
+                })
         : "-1";
 
 
@@ -277,18 +287,20 @@ const SingleAssetView = () => {
                                     </Button>
                                 </div>
 
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <Hash className="w-5 h-5 text-gray-400" />
-                                        <div>
-                                            <div className="text-sm text-gray-500">Asset Code</div>
-                                            <div className="font-semibold">{data.code}</div>
+                                {!isNonStellar && (
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <Hash className="w-5 h-5 text-gray-400" />
+                                            <div>
+                                                <div className="text-sm text-gray-500">Asset Code</div>
+                                                <div className="font-semibold">{data.code}</div>
+                                            </div>
                                         </div>
+                                        <Button variant="ghost" size="sm" onClick={() => copyAddress(data.code)}>
+                                            <Copy className="w-4 h-4" />
+                                        </Button>
                                     </div>
-                                    <Button variant="ghost" size="sm" onClick={() => copyAddress(data.code)}>
-                                        <Copy className="w-4 h-4" />
-                                    </Button>
-                                </div>
+                                )}
 
                                 <div className="flex items-center gap-3">
                                     <Calendar className="w-5 h-5 text-gray-400" />
@@ -368,7 +380,7 @@ const SingleAssetView = () => {
                             <Button
                                 onClick={() => {
                                     setPreviewMedia({
-                                        url: data.thumbnail,
+                                        url: data.mediaUrl || data.thumbnail,
                                         type: MediaType.IMAGE,
                                     });
                                     setIsOpenPreview(true);
@@ -385,10 +397,11 @@ const SingleAssetView = () => {
                         {isThreeD && (
                             <Button
                                 onClick={() => {
-                                    setPreviewMedia({
-                                        url: data.mediaUrl,
-                                        type: MediaType.THREE_D,
-                                    });
+                                    setPreviewMedia(
+                                        data.mediaUrl
+                                            ? { url: data.mediaUrl, type: MediaType.THREE_D }
+                                            : { url: data.thumbnail, type: MediaType.IMAGE },
+                                    );
                                     setIsOpenPreview(true);
                                 }}
                                 className="w-full bg-gradient-to-r from-pink-600 to-pink-700 hover:from-pink-700 hover:to-pink-800 text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5"

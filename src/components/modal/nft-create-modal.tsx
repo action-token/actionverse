@@ -19,6 +19,7 @@ import {
     DollarSign,
     Coins,
     PlusCircle,
+    Package,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
@@ -90,7 +91,6 @@ import { Alert, AlertDescription } from "../shadcn/ui/alert";
 import RechargeLink from "../payment/recharge-link";
 import { useNFTCreateModalStore } from "../store/nft-create-modal-store";
 import { cn } from "~/lib/utils";
-import { Progress } from "../shadcn/ui/progress";
 
 export const ExtraSongInfo = z.object({
     artist: z.string(),
@@ -147,9 +147,9 @@ export const NftFormSchema = z.object({
 export default function NftCreateModal() {
     const { isOpen: isNFTModalOpen, setIsOpen: setNFTModalOpen } =
         useNFTCreateModalStore();
-    const [method, setMethod] = useState<"choice" | "classic" | "smart-contract">(
-        "choice",
-    );
+    const [method, setMethod] = useState<
+        "choice" | "classic" | "smart-contract" | "non-stellar"
+    >("choice");
 
     function handleClose() {
         setNFTModalOpen(false);
@@ -177,6 +177,12 @@ export default function NftCreateModal() {
                         onClose={handleClose}
                     />
                 )}
+                {method === "non-stellar" && (
+                    <NonStellarItemForm
+                        onBack={() => setMethod("choice")}
+                        onClose={handleClose}
+                    />
+                )}
             </DialogContent>
         </Dialog>
     );
@@ -186,7 +192,7 @@ function MintMethodChoice({
     onSelect,
     onClose,
 }: {
-    onSelect: (method: "classic" | "smart-contract") => void;
+    onSelect: (method: "classic" | "smart-contract" | "non-stellar") => void;
     onClose: () => void;
 }) {
     return (
@@ -202,7 +208,7 @@ function MintMethodChoice({
                     Choose how you want to create this item.
                 </DialogDescription>
             </DialogHeader>
-            <div className="grid grid-cols-1 gap-4 px-6 py-6 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 px-6 py-6 sm:grid-cols-3">
                 <button
                     type="button"
                     onClick={() => onSelect("classic")}
@@ -225,6 +231,18 @@ function MintMethodChoice({
                     <span className="text-sm text-muted-foreground">
                         Mint on the NFT marketplace smart contract — on-chain
                         ownership, royalties, and resale built in.
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onSelect("non-stellar")}
+                    className="flex flex-col items-start gap-2 rounded-xl border p-5 text-left transition-colors hover:border-primary hover:bg-muted"
+                >
+                    <Package className="h-6 w-6 text-primary" />
+                    <span className="font-semibold">Non Stellar Item</span>
+                    <span className="text-sm text-muted-foreground">
+                        List a regular digital item — nothing is minted on-chain, it{"'"}s
+                        just added to your store.
                     </span>
                 </button>
             </div>
@@ -273,7 +291,6 @@ function ClassicNftForm({
     const [mediaUploadSuccess, setMediaUploadSuccess] = useState(false);
     const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE);
     const [activeStep, setActiveStep] = useState<string>("details");
-    const [formProgress, setFormProgress] = useState(25);
 
     const [mediaUrl, setMediaUrl] = useState<string>();
     const [coverUrl, setCover] = useState<string>();
@@ -484,12 +501,6 @@ function ClassicNftForm({
         }
     };
 
-    // Update progress based on active step
-    React.useEffect(() => {
-        const stepIndex = FORM_STEPS.indexOf(activeStep);
-        setFormProgress((stepIndex + 1) * (100 / FORM_STEPS.length));
-    }, [activeStep]);
-
     const handleClose = () => {
         setActiveStep("details");
         setMediaUploadSuccess(false);
@@ -511,40 +522,21 @@ function ClassicNftForm({
                 <DialogTitle className="flex items-center gap-2 text-xl">
                             Create Store Item
                         </DialogTitle>
-                        <DialogDescription>
-                            Create you nft and place it to marketplace.
-                        </DialogDescription>
-                        <Progress value={formProgress} className="mt-2 h-2" />
-
-                        <div className="w-full px-6 ">
-                            <div className="flex items-center justify-between">
-                                {FORM_STEPS.map((step, index) => (
-                                    <div key={step} className="flex flex-col items-center">
-                                        <div
-                                            className={cn(
-                                                "mb-1 flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium ",
-                                                activeStep === step
-                                                    ? "bg-primary  shadow-sm shadow-foreground"
-                                                    : "bg-muted text-muted-foreground",
-                                            )}
-                                        >
-                                            {index + 1}
-                                        </div>
-                                        <span
-                                            className={cn(
-                                                "text-xs",
-                                                activeStep === step
-                                                    ? " font-medium"
-                                                    : "text-muted-foreground",
-                                            )}
-                                        >
-                                            {step === "media"
-                                                ? "Media Info"
-                                                : step === "details"
-                                                    ? "Asset Info"
-                                                    : "Price & Payment"}
-                                        </span>
-                                    </div>
+                        <div className="flex items-center justify-between gap-2">
+                            <DialogDescription>
+                                Create you nft and place it to marketplace.
+                            </DialogDescription>
+                            <div className="flex items-center gap-1.5">
+                                {FORM_STEPS.map((step) => (
+                                    <span
+                                        key={step}
+                                        className={cn(
+                                            "h-2 rounded-full transition-all",
+                                            activeStep === step
+                                                ? "w-6 border border-foreground/30 bg-primary shadow-sm"
+                                                : "w-2 bg-muted-foreground/40",
+                                        )}
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -639,43 +631,55 @@ function ClassicNftForm({
                                     <Card>
                                         <CardContent className="pt-6">
                                             <div className="space-y-4">
-                                                <div>
-                                                    <Label className="mb-2 block text-sm font-medium">
-                                                        Media Type
-                                                    </Label>
-                                                    <div className="grid grid-cols-4 gap-2">
-                                                        {Object.values(MediaType).map((media, i) => (
-                                                            <Button
-                                                                key={i}
-                                                                type="button"
-                                                                variant={
-                                                                    media === mediaType ? "destructive" : "muted"
-                                                                }
-                                                                onClick={() => handleMediaChange(media)}
-                                                                className={`flex items-center gap-2 ${media === mediaType ? "shadow-sm shadow-foreground" : ""} `}
-                                                            >
-                                                                {getMediaIcon(media)}
-                                                                <span>
-                                                                    {media === MediaType.THREE_D ? "3D" : media}
-                                                                </span>
-                                                            </Button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {tiers.data && (
+                                                <div className="grid grid-cols-2 gap-4">
                                                     <div>
                                                         <Label className="mb-2 block text-sm font-medium">
-                                                            Access Tier
+                                                            Media Type
                                                         </Label>
-                                                        <TiersOptions
-                                                            handleTierChange={(value: string) => {
-                                                                setTier(value);
-                                                            }}
-                                                            tiers={tiers.data}
-                                                        />
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {Object.values(MediaType).map((media, i) => {
+                                                                const isSelected = media === mediaType;
+                                                                return (
+                                                                    <Button
+                                                                        key={i}
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant={isSelected ? "destructive" : "muted"}
+                                                                        onClick={() => handleMediaChange(media)}
+                                                                        className={cn(
+                                                                            "gap-1.5 text-xs",
+                                                                            isSelected
+                                                                                ? "px-3 shadow-sm shadow-foreground"
+                                                                                : "w-9 px-0 justify-center",
+                                                                        )}
+                                                                    >
+                                                                        {getMediaIcon(media)}
+                                                                        {isSelected && (
+                                                                            <span>
+                                                                                {media === MediaType.THREE_D ? "3D" : media}
+                                                                            </span>
+                                                                        )}
+                                                                    </Button>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
-                                                )}
+
+                                                    {tiers.data && (
+                                                        <div>
+                                                            <Label className="mb-2 block text-sm font-medium">
+                                                                Access Tier
+                                                            </Label>
+                                                            <TiersOptions
+                                                                value={tier}
+                                                                handleTierChange={(value: string) => {
+                                                                    setTier(value);
+                                                                }}
+                                                                tiers={tiers.data}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
 
                                                 <div className="space-y-2">
                                                     <Label className="text-sm font-medium flex items-center gap-2">
@@ -982,6 +986,620 @@ function ClassicNftForm({
     );
 }
 
+const NON_STELLAR_FORM_STEPS = ["details", "media", "pricing"];
+export const NonStellarItemFormSchema = z.object({
+    name: z.string().refine(
+        (value) => {
+            return !BADWORDS.some((word) => value.includes(word));
+        },
+        {
+            message: "Input contains banned words.",
+        },
+    ),
+    description: z.string(),
+    mediaUrl: z.string().optional(),
+    coverImgUrl: z.string().min(1, { message: "Thumbnail is required" }),
+    mediaType: z.nativeEnum(MediaType),
+    price: z
+        .number({
+            required_error: "Price must be entered as a number",
+            invalid_type_error: "Price must be entered as a number",
+        })
+        .nonnegative()
+        .default(2),
+    priceUSD: z
+        .number({
+            required_error: "Limit must be entered as a number",
+            invalid_type_error: "Limit must be entered as a number",
+        })
+        .nonnegative()
+        .default(1),
+    limit: z
+        .number({
+            required_error: "Limit must be entered as a number",
+            invalid_type_error: "Limit must be entered as a number",
+        })
+        .nonnegative(),
+    tier: z.string().optional(),
+});
+
+function NonStellarItemForm({
+    onBack,
+    onClose,
+}: {
+    onBack: () => void;
+    onClose: () => void;
+}) {
+    const [file, setFile] = useState<File>();
+    const [uploading, setUploading] = useState(false);
+    const [mediaUpload, setMediaUpload] = useState(false);
+
+    const [tier, setTier] = useState<string>();
+
+    const [submitLoading, setSubmitLoading] = useState(false);
+    const [mediaUploadSuccess, setMediaUploadSuccess] = useState(false);
+    const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE);
+    const [activeStep, setActiveStep] = useState<string>("details");
+    const [mediaUrl, setMediaUrl] = useState<string>();
+    const [coverUrl, setCover] = useState<string>();
+
+    const {
+        register,
+        handleSubmit,
+        setValue,
+        getValues,
+        reset,
+        formState: { errors, isValid },
+        trigger,
+    } = useForm<z.infer<typeof NonStellarItemFormSchema>>({
+        resolver: zodResolver(NonStellarItemFormSchema),
+        mode: "onChange",
+        defaultValues: {
+            limit: 1,
+            mediaType: MediaType.IMAGE,
+            price: 2,
+            priceUSD: 1,
+        },
+    });
+
+    const tiers = api.fan.member.getAllMembership.useQuery({});
+
+    const addNonStellarAsset = api.fan.asset.createNonStellarAsset.useMutation({
+        onSuccess: () => {
+            toast.success("Item Created", {
+                position: "top-center",
+                duration: 4000,
+            });
+            handleClose();
+        },
+        onError: (error) => {
+            toast.error(error.message);
+        },
+    });
+
+    const onSubmit = () => {
+        setValue("tier", tier);
+        const data = getValues();
+        setSubmitLoading(true);
+        addNonStellarAsset.mutate(data, {
+            onSettled: () => setSubmitLoading(false),
+        });
+    };
+
+    function getEndpoint(type: MediaType) {
+        switch (type) {
+            case MediaType.IMAGE:
+                return "imageUploader";
+            case MediaType.MUSIC:
+                return "musicUploader";
+            case MediaType.VIDEO:
+                return "videoUploader";
+            case MediaType.THREE_D:
+                return "modelUploader";
+            default:
+                return "imageUploader";
+        }
+    }
+
+    function handleMediaChange(media: MediaType) {
+        setMediaType(media);
+        setValue("mediaType", media);
+        setMediaUrl(undefined);
+    }
+
+    const uploadFile = async (fileToUpload: File) => {
+        try {
+            setUploading(true);
+            const formData = new FormData();
+            formData.append("file", fileToUpload, fileToUpload.name);
+            const res = await fetch("/api/file", {
+                method: "POST",
+                body: formData,
+            });
+            const ipfsHash = await res.text();
+            const thumbnail = ipfsHashToPinataGatewayUrl(ipfsHash);
+            setCover(thumbnail);
+            setValue("coverImgUrl", thumbnail);
+            toast.success("Thumbnail uploaded successfully");
+            await trigger();
+
+            setUploading(false);
+        } catch (e) {
+            setUploading(false);
+            toast.error("Failed to upload file");
+        }
+    };
+
+    const handleChange = async (e: ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+
+        if (files) {
+            if (files.length > 0) {
+                const file = files[0];
+                if (file) {
+                    if (file.size > 10 * 1024 * 1024) {
+                        toast.error("File size should be less than 10MB");
+                        return;
+                    }
+                    setFile(file);
+                    await uploadFile(file);
+                }
+            }
+        }
+    };
+
+    const loading = addNonStellarAsset.isLoading || submitLoading;
+
+    const getMediaIcon = (type: MediaType) => {
+        switch (type) {
+            case MediaType.IMAGE:
+                return <ImageIcon className="h-4 w-4" />;
+            case MediaType.MUSIC:
+                return <Music className="h-4 w-4" />;
+            case MediaType.VIDEO:
+                return <Video className="h-4 w-4" />;
+            case MediaType.THREE_D:
+                return <Cube className="h-4 w-4" />;
+            default:
+                return <ImageIcon className="h-4 w-4" />;
+        }
+    };
+
+    const nextStep = () => {
+        const currentIndex = NON_STELLAR_FORM_STEPS.indexOf(activeStep);
+        if (currentIndex < NON_STELLAR_FORM_STEPS.length - 1) {
+            const next = NON_STELLAR_FORM_STEPS[currentIndex + 1];
+            if (next) {
+                setActiveStep(next);
+            }
+        }
+    };
+
+    const prevStep = () => {
+        const currentIndex = NON_STELLAR_FORM_STEPS.indexOf(activeStep);
+        if (currentIndex <= 0) {
+            onBack();
+            return;
+        }
+        const previous = NON_STELLAR_FORM_STEPS[currentIndex - 1];
+        if (previous) {
+            setActiveStep(previous);
+        }
+    };
+
+    const handleClose = () => {
+        setActiveStep("details");
+        setMediaUploadSuccess(false);
+        setMediaUrl(undefined);
+        setCover(undefined);
+        reset();
+        onClose();
+    };
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.3 }}
+            className="flex h-full flex-col"
+        >
+            <DialogHeader className=" px-6 py-4">
+                <DialogTitle className="flex items-center gap-2 text-xl">
+                    Create Store Item
+                </DialogTitle>
+                <div className="flex items-center justify-between gap-2">
+                    <DialogDescription>
+                        List a non-Stellar item — nothing is minted on-chain.
+                    </DialogDescription>
+                    <div className="flex items-center gap-1.5">
+                        {NON_STELLAR_FORM_STEPS.map((step) => (
+                            <span
+                                key={step}
+                                className={cn(
+                                    "h-2 rounded-full transition-all",
+                                    activeStep === step
+                                        ? "w-6 border border-foreground/30 bg-primary shadow-sm"
+                                        : "w-2 bg-muted-foreground/40",
+                                )}
+                            />
+                        ))}
+                    </div>
+                </div>
+            </DialogHeader>
+            <div className="overflow-y-auto px-6 py-4">
+                <form
+                    id="non-stellar-form"
+                    onSubmit={handleSubmit(onSubmit)}
+                    className="space-y-4"
+                >
+                    {activeStep === "details" && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <Card>
+                                <CardContent className="space-y-4 pt-6">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="ns-name">Item name</Label>
+                                        <Input
+                                            id="ns-name"
+                                            {...register("name")}
+                                            placeholder="Enter a name for your item"
+                                        />
+                                        {errors.name && (
+                                            <p className="text-sm text-destructive">
+                                                {errors.name.message}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="ns-description">Description</Label>
+                                        <Textarea
+                                            id="ns-description"
+                                            {...register("description")}
+                                            placeholder="Describe your item"
+                                            className="min-h-24 resize-none"
+                                        />
+                                        {errors.description && (
+                                            <p className="text-sm text-destructive">
+                                                {errors.description.message}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="ns-limit">Supply Limit</Label>
+                                        <Input
+                                            id="ns-limit"
+                                            type="number"
+                                            {...register("limit", { valueAsNumber: true })}
+                                            placeholder="Enter supply limit (default: 1)"
+                                        />
+                                        {errors.limit && (
+                                            <p className="text-sm text-destructive">
+                                                {errors.limit.message}
+                                            </p>
+                                        )}
+                                        <p className="text-xs text-muted-foreground">
+                                            This determines how many copies of this item can exist
+                                        </p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </motion.div>
+                    )}
+                    {activeStep === "media" && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <Label className="mb-2 block text-sm font-medium">
+                                                    Media Type
+                                                </Label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {Object.values(MediaType).map((media, i) => {
+                                                        const isSelected = media === mediaType;
+                                                        return (
+                                                            <Button
+                                                                key={i}
+                                                                type="button"
+                                                                size="sm"
+                                                                variant={isSelected ? "destructive" : "muted"}
+                                                                onClick={() => handleMediaChange(media)}
+                                                                className={cn(
+                                                                    "gap-1.5 text-xs",
+                                                                    isSelected
+                                                                        ? "px-3 shadow-sm shadow-foreground"
+                                                                        : "w-9 px-0 justify-center",
+                                                                )}
+                                                            >
+                                                                {getMediaIcon(media)}
+                                                                {isSelected && (
+                                                                    <span>
+                                                                        {media === MediaType.THREE_D ? "3D" : media}
+                                                                    </span>
+                                                                )}
+                                                            </Button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {tiers.data && (
+                                                <div>
+                                                    <Label className="mb-2 block text-sm font-medium">
+                                                        Access Tier
+                                                    </Label>
+                                                    <TiersOptions
+                                                        value={tier}
+                                                        handleTierChange={(value: string) => {
+                                                            setTier(value);
+                                                        }}
+                                                        tiers={tiers.data}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label className="text-sm font-medium flex items-center gap-2">
+                                                Thumbnail Image
+                                                <span className="text-xs text-muted-foreground">
+                                                    (This will be your item{"'"}s Thumbnail)
+                                                </span>
+                                            </Label>
+                                            <AnimatePresence>
+                                                {!coverUrl ? (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={() =>
+                                                            document.getElementById("ns-coverImg")?.click()
+                                                        }
+                                                        className="relative flex h-36 w-full  flex-col items-center justify-center gap-2 border-dashed"
+                                                    >
+                                                        <Upload className="h-6 w-6 text-muted-foreground" />
+                                                        <span className="text-sm text-muted-foreground">
+                                                            Upload Thumbnail
+                                                        </span>
+                                                        {uploading && (
+                                                            <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+                                                                <Loader2 className="h-6 w-6 animate-spin " />
+                                                            </div>
+                                                        )}
+                                                    </Button>
+                                                ) : (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, scale: 0.9 }}
+                                                        animate={{ opacity: 1, scale: 1 }}
+                                                        exit={{ opacity: 0, scale: 0.9 }}
+                                                        className="relative h-36 overflow-hidden rounded-md"
+                                                    >
+                                                        <Image
+                                                            fill
+                                                            alt="preview image"
+                                                            src={coverUrl ?? "/placeholder.svg"}
+                                                            className="object-cover"
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="destructive"
+                                                            size="icon"
+                                                            className="absolute right-1 top-1 h-6 w-6"
+                                                            onClick={() => {
+                                                                setCover(undefined);
+                                                                setValue("coverImgUrl", "");
+                                                            }}
+                                                        >
+                                                            <X className="h-3 w-3" />
+                                                        </Button>
+                                                        <div className="absolute bottom-0 left-0 right-0 bg-background/80 px-2 py-1">
+                                                            <Badge
+                                                                variant="outline"
+                                                                className="bg-green-100 text-green-800"
+                                                            >
+                                                                <Check className="mr-1 h-3 w-3" /> Uploaded
+                                                            </Badge>
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                            <Input
+                                                id="ns-coverImg"
+                                                type="file"
+                                                accept=".jpg, .png"
+                                                onChange={handleChange}
+                                                className="hidden"
+                                            />
+
+                                            {errors.coverImgUrl && (
+                                                <p className="text-sm text-destructive">
+                                                    {errors.coverImgUrl.message}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label className="text-sm font-medium">
+                                                Locked Content
+                                            </Label>
+                                            <div className="flex flex-col gap-2">
+                                                <UploadS3Button
+                                                    endpoint={getEndpoint(mediaType)}
+                                                    variant="button"
+                                                    label={`UPLOAD ${mediaType !== "THREE_D" ? mediaType : "3D"} CONTENT`}
+                                                    className="w-full"
+                                                    onClientUploadComplete={(res) => {
+                                                        const data = res;
+                                                        if (data?.url) {
+                                                            setMediaUrl(data.url);
+                                                            setValue("mediaUrl", data.url);
+                                                            setMediaUpload(false);
+                                                            setMediaUploadSuccess(true);
+                                                            trigger("mediaUrl");
+                                                        }
+                                                    }}
+                                                    onUploadError={(error: Error) => {
+                                                        toast.error(`ERROR! ${error.message}`);
+                                                    }}
+                                                />
+
+                                                {mediaType === "THREE_D" && (
+                                                    <Alert variant="info">
+                                                        <AlertDescription>
+                                                            <p className="text-center text-xs text-muted-foreground">
+                                                                Only .obj files are accepted
+                                                            </p>
+                                                        </AlertDescription>
+                                                    </Alert>
+                                                )}
+
+                                                <AnimatePresence>
+                                                    {mediaUrl && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: 10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: 10 }}
+                                                            transition={{ duration: 0.3 }}
+                                                            className="mt-2"
+                                                        >
+                                                            <Card className="overflow-hidden">
+                                                                <CardContent className="p-3">
+                                                                    <PlayableMedia
+                                                                        mediaType={mediaType}
+                                                                        mediaUrl={mediaUrl}
+                                                                    />
+                                                                </CardContent>
+                                                            </Card>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+
+                                                {errors.mediaUrl && (
+                                                    <p className="text-sm text-destructive">
+                                                        {errors.mediaUrl.message}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </motion.div>
+                    )}
+
+                    {activeStep === "pricing" && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <Card>
+                                <CardContent className="space-y-4 pt-6">
+                                    <div className="space-y-2">
+                                        <Label
+                                            htmlFor="ns-priceUSD"
+                                            className="flex items-center gap-2"
+                                        >
+                                            <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                            Price in USD
+                                        </Label>
+                                        <Input
+                                            id="ns-priceUSD"
+                                            type="number"
+                                            {...register("priceUSD", { valueAsNumber: true })}
+                                            placeholder="Enter price in USD"
+                                        />
+                                        {errors.priceUSD && (
+                                            <p className="text-sm text-destructive">
+                                                {errors.priceUSD.message}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="ns-price" className="flex items-center gap-2">
+                                            <Coins className="h-4 w-4 text-muted-foreground" />
+                                            Price in {PLATFORM_ASSET.code}
+                                        </Label>
+                                        <Input
+                                            id="ns-price"
+                                            type="number"
+                                            {...register("price", { valueAsNumber: true })}
+                                            placeholder={`Enter price in ${PLATFORM_ASSET.code}`}
+                                        />
+                                        {errors.price && (
+                                            <p className="text-sm text-destructive">
+                                                {errors.price.message}
+                                            </p>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </motion.div>
+                    )}
+                </form>
+            </div>
+
+            <DialogFooter className="border-t px-6 py-4 ">
+                <div className="flex w-full items-center justify-between">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={prevStep}
+                        className="flex items-center gap-1"
+                    >
+                        Previous
+                    </Button>
+
+                    {activeStep !== "pricing" ? (
+                        <Button
+                            type="button"
+                            onClick={nextStep}
+                            disabled={
+                                activeStep === "media" && !!errors.coverImgUrl
+                            }
+                            className="flex items-center gap-1 shadow-sm shadow-foreground"
+                        >
+                            Next
+                            <ArrowRight className="ml-1 h-4 w-4" />
+                        </Button>
+                    ) : (
+                        <Button
+                            type="button"
+                            variant="default"
+                            disabled={loading || !isValid}
+                            onClick={handleSubmit(onSubmit)}
+                            className="flex items-center gap-1 shadow-sm shadow-foreground"
+                        >
+                            {loading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Creating Item...
+                                </>
+                            ) : (
+                                "Create Item"
+                            )}
+                        </Button>
+                    )}
+                </div>
+            </DialogFooter>
+        </motion.div>
+    );
+}
+
 const SC_FORM_STEPS = ["details", "media"];
 
 function SmartContractNftForm({
@@ -997,7 +1615,6 @@ function SmartContractNftForm({
     const utils = api.useContext();
 
     const [activeStep, setActiveStep] = useState<string>("details");
-    const [formProgress, setFormProgress] = useState(100 / SC_FORM_STEPS.length);
     const [submitLoading, setSubmitLoading] = useState(false);
 
     const [name, setName] = useState("");
@@ -1077,7 +1694,6 @@ function SmartContractNftForm({
         const next = SC_FORM_STEPS[i + 1];
         if (next) {
             setActiveStep(next);
-            setFormProgress(((i + 2) / SC_FORM_STEPS.length) * 100);
         }
     }
 
@@ -1090,7 +1706,6 @@ function SmartContractNftForm({
         const prev = SC_FORM_STEPS[i - 1];
         if (prev) {
             setActiveStep(prev);
-            setFormProgress(((i) / SC_FORM_STEPS.length) * 100);
         }
     }
 
@@ -1202,11 +1817,25 @@ function SmartContractNftForm({
                 <DialogTitle className="flex items-center gap-2 text-xl">
                     Mint Smart Contract NFT
                 </DialogTitle>
-                <DialogDescription>
-                    Minted directly on the NFT marketplace smart contract — on-chain
-                    ownership, royalties, and resale built in.
-                </DialogDescription>
-                <Progress value={formProgress} className="mt-2 h-2" />
+                <div className="flex items-center justify-between gap-2">
+                    <DialogDescription>
+                        Minted directly on the NFT marketplace smart contract — on-chain
+                        ownership, royalties, and resale built in.
+                    </DialogDescription>
+                    <div className="flex items-center gap-1.5">
+                        {SC_FORM_STEPS.map((step) => (
+                            <span
+                                key={step}
+                                className={cn(
+                                    "h-2 rounded-full transition-all",
+                                    activeStep === step
+                                        ? "w-6 border border-foreground/30 bg-primary shadow-sm"
+                                        : "w-2 bg-muted-foreground/40",
+                                )}
+                            />
+                        ))}
+                    </div>
+                </div>
             </DialogHeader>
 
             <div className="overflow-y-auto px-6 py-4">
@@ -1271,23 +1900,34 @@ function SmartContractNftForm({
                         <CardContent className="space-y-4 pt-6">
                             <div>
                                 <Label className="mb-2 block text-sm font-medium">Media Type</Label>
-                                <div className="grid grid-cols-4 gap-2">
-                                    {Object.values(MediaType).map((media, i) => (
-                                        <Button
-                                            key={i}
-                                            type="button"
-                                            variant={media === mediaType ? "destructive" : "muted"}
-                                            onClick={() => {
-                                                setMediaType(media);
-                                                setContentUrl(undefined);
-                                                setContentMimeType(undefined);
-                                            }}
-                                            className={`flex items-center gap-2 ${media === mediaType ? "shadow-sm shadow-foreground" : ""}`}
-                                        >
-                                            {getMediaIcon(media)}
-                                            <span>{media === MediaType.THREE_D ? "3D" : media}</span>
-                                        </Button>
-                                    ))}
+                                <div className="flex flex-wrap gap-1.5">
+                                    {Object.values(MediaType).map((media, i) => {
+                                        const isSelected = media === mediaType;
+                                        return (
+                                            <Button
+                                                key={i}
+                                                type="button"
+                                                size="sm"
+                                                variant={isSelected ? "destructive" : "muted"}
+                                                onClick={() => {
+                                                    setMediaType(media);
+                                                    setContentUrl(undefined);
+                                                    setContentMimeType(undefined);
+                                                }}
+                                                className={cn(
+                                                    "gap-1.5 text-xs",
+                                                    isSelected
+                                                        ? "px-3 shadow-sm shadow-foreground"
+                                                        : "w-9 px-0 justify-center",
+                                                )}
+                                            >
+                                                {getMediaIcon(media)}
+                                                {isSelected && (
+                                                    <span>{media === MediaType.THREE_D ? "3D" : media}</span>
+                                                )}
+                                            </Button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -1434,13 +2074,15 @@ function SmartContractNftForm({
 
 function TiersOptions({
     tiers,
+    value,
     handleTierChange,
 }: {
     tiers: { id: number; name: string; price: number }[];
+    value?: string;
     handleTierChange: (value: string) => void;
 }) {
     return (
-        <Select onValueChange={handleTierChange}>
+        <Select value={value} onValueChange={handleTierChange}>
             <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select a tier" />
             </SelectTrigger>

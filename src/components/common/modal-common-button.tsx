@@ -208,6 +208,15 @@ export function OtherButtons({
 }) {
     const { selectedMenu, setSelectedMenu } = useMyCollectionTabs();
     if (currentData && copies) {
+        // Non-Stellar items are never minted, so there is no real Stellar asset
+        // to move into storage or list on the classic-asset marketplace.
+        if (currentData.kind === "NON_STELLAR") {
+            return (
+                <p className="text-center text-xs text-muted-foreground">
+                    Non-Stellar items can{"'"}t be placed in storage or resold.
+                </p>
+            );
+        }
         if (selectedMenu == MyCollectionMenu.COLLECTION) {
             return <StorageCreateDialog item={{ ...currentData, copies }} />;
         }

@@ -138,7 +138,7 @@ export default function CreatorStoredAssetModal() {
                                 <div className=" rounded-sm bg-gray-300 p-1   md:col-span-4">
                                     {data.asset.mediaType === "IMAGE" ? (
                                         <Image
-                                            src={data.asset.mediaUrl}
+                                            src={data.asset.mediaUrl || data.asset.thumbnail}
                                             alt={data.asset.name}
                                             width={1000}
                                             height={1000}
@@ -172,7 +172,17 @@ export default function CreatorStoredAssetModal() {
                                         />
                                     ) : (
                                         data.asset.mediaType === "THREE_D" && (
-                                            <ShowThreeDModel url={data.asset.mediaUrl} />
+                                            data.asset.mediaUrl ? (
+                                                <ShowThreeDModel url={data.asset.mediaUrl} />
+                                            ) : (
+                                                <Image
+                                                    src={data.asset.thumbnail}
+                                                    alt={data.asset.name}
+                                                    width={1000}
+                                                    height={1000}
+                                                    className="h-full max-h-[800px] w-full overflow-y-auto object-cover"
+                                                />
+                                            )
                                         )
                                     )}
                                 </div>

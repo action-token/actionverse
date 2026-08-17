@@ -1,7 +1,9 @@
-import { ItemPrivacy, MediaType } from "@prisma/client";
-import { Horizon } from "@stellar/stellar-sdk";
+import { AssetKind, ItemPrivacy, MediaType } from "@prisma/client";
+import { Horizon, Keypair } from "@stellar/stellar-sdk";
 import { TRPCError } from "@trpc/server";
+import { randomBytes } from "crypto";
 import { z } from "zod";
+import { env } from "~/env";
 import { STELLAR_URL } from "~/lib/stellar/constant";
 import { AccountSchema } from "~/lib/stellar/fan/utils";
 import { StellarAccount } from "~/lib/stellar/marketplace/test/Account";
@@ -77,6 +79,20 @@ export const NftFormSchema = z.object({
   tier: z.string().optional(),
 });
 
+export const NonStellarItemFormSchema = z.object({
+  name: NftFormSchema.shape.name,
+  description: z.string(),
+  mediaUrl: z.string().optional(),
+  coverImgUrl: z.string().min(1, { message: "Thumbnail is required" }),
+  mediaType: z.nativeEnum(MediaType),
+  price: NftFormSchema.shape.price,
+  priceUSD: NftFormSchema.shape.priceUSD,
+  limit: NftFormSchema.shape.limit,
+  songInfo: ExtraSongInfo.optional(),
+  isAdmin: z.boolean().optional(),
+  tier: z.string().optional(),
+});
+
 export const shopRouter = createTRPCRouter({
   createAsset: protectedProcedure
     .input(NftFormSchema)
@@ -146,6 +162,107 @@ export const shopRouter = createTRPCRouter({
           },
         });
       }
+    }),
+
+  createNonStellarAsset: protectedProcedure
+    .input(NonStellarItemFormSchema)
+    .mutation(async ({ ctx, input }) => {
+      const {
+        coverImgUrl,
+        description,
+        mediaType,
+        mediaUrl,
+        name,
+        price,
+        limit,
+        tier,
+        priceUSD,
+        isAdmin,
+      } = input;
+
+      const userId = ctx.session.user.id;
+      const creatorId = isAdmin ? undefined : userId; // for admin creator and placer id is undefined
+      const nftType = isAdmin ? "ADMIN" : "FAN";
+
+      let tierId: number | undefined;
+      let privacy: ItemPrivacy = ItemPrivacy.PUBLIC;
+
+      if (!tier) {
+        privacy = ItemPrivacy.PUBLIC;
+      } else if (tier == "public") {
+        privacy = ItemPrivacy.PUBLIC;
+      } else if (tier == "private") {
+        privacy = ItemPrivacy.PRIVATE;
+      } else {
+        tierId = Number(tier);
+        privacy = ItemPrivacy.TIER;
+      }
+
+      // Non-Stellar items are never minted on-chain. `code`/`issuer` stay
+      // required, non-null columns on Asset (many other features assume that),
+      // so we fill them with a unique placeholder code and the platform's
+      // mother account as a placeholder issuer. Neither is ever used to build
+      // a real Stellar Asset — every consumer must branch on `kind` first.
+      const code = `NS${randomBytes(5).toString("hex").toUpperCase()}`;
+      const issuer = Keypair.fromSecret(env.MOTHER_SECRET).publicKey();
+
+      return await ctx.db.asset.create({
+        data: {
+          kind: AssetKind.NON_STELLAR,
+          code,
+          issuer,
+          name,
+          mediaType,
+          mediaUrl: mediaUrl ?? "",
+          marketItems: {
+            create: {
+              price,
+              priceUSD,
+              placerId: creatorId,
+              type: nftType,
+              privacy: privacy,
+            },
+          },
+          description,
+          thumbnail: coverImgUrl,
+          creatorId,
+          limit,
+          tierId,
+          privacy: privacy,
+        },
+      });
+    }),
+
+  // Non-Stellar items have no real on-chain balance to check, so
+  // availability is derived from the asset's configured limit and the
+  // recorded buyer rows instead — "owned" counts the current user's copies
+  // (My Collection view), "stock" counts what is still left to sell (store
+  // view).
+  getNonStellarAvailability: protectedProcedure
+    .input(
+      z.object({
+        assetId: z.number(),
+        mode: z.enum(["owned", "stock"]),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { assetId, mode } = input;
+
+      if (mode === "owned") {
+        return await ctx.db.user_Asset.count({
+          where: { assetId, userId: ctx.session.user.id },
+        });
+      }
+
+      const asset = await ctx.db.asset.findUnique({
+        where: { id: assetId },
+        select: { limit: true },
+      });
+      if (!asset) throw new Error("asset not found");
+      if (asset.limit === null) return Number.POSITIVE_INFINITY;
+
+      const soldCount = await ctx.db.user_Asset.count({ where: { assetId } });
+      return Math.max(0, asset.limit - soldCount);
     }),
 
   updateAsset: protectedProcedure

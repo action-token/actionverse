@@ -54,14 +54,17 @@ export default function PaymentProcessItem({
   const session = useSession();
   const { needSign } = useNeedSign();
   const { code, issuer } = item;
+  const isNonStellar = item.kind === "NON_STELLAR";
   const { platformAssetBalance, active, getXLMBalance, balances, hasTrust } =
     useUserStellarAcc();
 
   console.log("Payment Process Props:", { item, price, priceUSD, marketItemId });
   const walletType = session.data?.user.walletType;
 
+  // Non-Stellar items have no real asset to hold a trustline on, so there is
+  // never a trustline fee/reserve to account for.
   const requiredFee = api.fan.trx.getRequiredPlatformAsset.useQuery({
-    xlm: hasTrust(code, issuer) ? 0 : 0.5,
+    xlm: isNonStellar ? 0 : hasTrust(code, issuer) ? 0 : 0.5,
   });
 
   const [xdr, setXdr] = useState<string>();
@@ -83,16 +86,36 @@ export default function PaymentProcessItem({
     },
   );
 
-  const xdrMutation =
+  const classicXdrMutation =
     api.marketplace.steller.buyFromMarketPaymentXDR.useMutation({
       onSuccess: (data) => {
         setXdr(data);
       },
       onError: (e) => toast.error(e.message.toString()),
     });
+  const nonStellarXdrMutation =
+    api.marketplace.steller.buyNonStellarItemPaymentXDR.useMutation({
+      onSuccess: (data) => {
+        setXdr(data);
+      },
+      onError: (e) => toast.error(e.message.toString()),
+    });
+  // Non-Stellar items skip the classic trustline/asset-transfer XDR entirely
+  // and use a payment-only transaction instead (see buyNonStellarItemPaymentXDR).
+  const xdrMutation = isNonStellar ? nonStellarXdrMutation : classicXdrMutation;
 
   async function handleXDR(method: PaymentMethod) {
-    xdrMutation.mutate({
+    if (isNonStellar) {
+      if (method !== "xlm" && method !== "asset") return;
+      nonStellarXdrMutation.mutate({
+        placerId,
+        assetId: item.id,
+        signWith: needSign(),
+        method,
+      });
+      return;
+    }
+    classicXdrMutation.mutate({
       placerId,
       assetCode: code,
       issuerPub: issuer,
@@ -209,6 +232,7 @@ export default function PaymentProcessItem({
               <PaymentOptions
                 method={paymentMethod}
                 setIsWallet={changePaymentMethod}
+                hideCard={isNonStellar}
               />
               <MethodDetails
                 paymentMethod={paymentMethod}
@@ -222,6 +246,7 @@ export default function PaymentProcessItem({
                 code={code}
                 issuer={issuer}
                 item={item}
+                isNonStellar={isNonStellar}
                 marketItemId={marketItemId ?? -1}
                 onConfirmPayment={handlePaymentConfirmation}
                 submitLoading={submitLoading}
@@ -238,18 +263,21 @@ export default function PaymentProcessItem({
 function PaymentOptions({
   method,
   setIsWallet,
+  hideCard,
 }: {
   method?: PaymentMethod;
   setIsWallet: (method: PaymentMethod) => void;
+  hideCard?: boolean;
 }) {
   const session = useSession();
   if (session.status !== "authenticated") return null;
 
   const walletType = session.data.user.walletType;
   const showCardOption =
-    walletType == WalletType.emailPass ||
-    walletType == WalletType.google ||
-    walletType == WalletType.facebook;
+    !hideCard &&
+    (walletType == WalletType.emailPass ||
+      walletType == WalletType.google ||
+      walletType == WalletType.facebook);
 
   return (
     <div className="space-y-3">
@@ -301,12 +329,21 @@ function PaymentOptions({
   }
 }
 
+// Structural type shared by buyFromMarketPaymentXDR and
+// buyNonStellarItemPaymentXDR's mutation results — only the fields
+// MethodDetails actually reads.
+type BuyXDRMutation = {
+  isLoading: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  data: string | undefined;
+  error: unknown;
+};
+
 type MethodDetailsProps = {
   marketItemId: number;
   paymentMethod?: PaymentMethod;
-  xdrMutation: ReturnType<
-    typeof api.marketplace.steller.buyFromMarketPaymentXDR.useMutation
-  >;
+  xdrMutation: BuyXDRMutation;
   requiredFee?: number;
   price: number;
   priceUSD: number;
@@ -316,6 +353,7 @@ type MethodDetailsProps = {
   code: string;
   issuer: string;
   item: AssetType;
+  isNonStellar: boolean;
   onConfirmPayment: () => void;
   submitLoading: boolean;
   paymentSuccess: boolean;
@@ -334,6 +372,7 @@ export function MethodDetails({
   code,
   issuer,
   item,
+  isNonStellar,
   onConfirmPayment,
   submitLoading,
   paymentSuccess,
@@ -406,7 +445,9 @@ export function MethodDetails({
     }
 
     if (paymentMethod === "xlm") {
-      const requiredXlm = priceUSD + 2 + (hasTrust(code, issuer) ? 0 : 0.5);
+      // Non-Stellar items have no real asset, so there is never a trustline to set up.
+      const requiredXlm =
+        priceUSD + 2 + (isNonStellar || hasTrust(code, issuer) ? 0 : 0.5);
       const currentXlm = parseFloat(getXLMBalance() ?? "0");
       const isSufficient = currentXlm >= requiredXlm;
 
@@ -450,7 +491,7 @@ export function MethodDetails({
           <div className="p-3 bg-muted/30 rounded-lg">
             <p className="text-sm text-center">Pay with credit card</p>
           </div>
-          <BuyWithSquire marketId={marketItemId} xdr={xdrMutation.data} />
+          <BuyWithSquire marketId={marketItemId} xdr={xdrMutation.data ?? ""} />
         </div>
       );
     }

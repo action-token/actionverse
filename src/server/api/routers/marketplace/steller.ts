@@ -9,6 +9,10 @@ import { getAssetToUSDCRate } from "~/lib/stellar/fan/get_token_price";
 import { covertSiteAsset2XLM } from "~/lib/stellar/marketplace/trx/convert_site_asset";
 import { alreadyHaveTrustOnNft } from "~/lib/stellar/marketplace/trx/utils";
 import {
+  GetNonStellarItemBuyXDRInPlatform,
+  GetNonStellarItemBuyXDRInXLM,
+} from "~/lib/stellar/marketplace/trx/non-stellar-item-sell";
+import {
   XDR4BuyAsset,
   XDR4BuyAssetWithSquire,
   XDR4BuyAssetWithXLM,
@@ -124,6 +128,72 @@ export const stellarRouter = createTRPCRouter({
             issuerPub,
             buyer,
             price: marketAsset.priceUSD.toString(),
+            signWith,
+          });
+        }
+      }
+    }),
+
+  // Non-Stellar items have no real Stellar asset to trustline/transfer, so
+  // this is a separate procedure (keyed by assetId, not code/issuer) that
+  // only builds the payment leg. See buyFromMarketPaymentXDR above for the
+  // classic-asset equivalent.
+  buyNonStellarItemPaymentXDR: protectedProcedure
+    .input(
+      z.object({
+        assetId: z.number(),
+        placerId: z.string().optional().nullable(),
+        signWith: SignUser,
+        method: z.enum(["xlm", "asset"]),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { assetId, signWith, placerId } = input;
+      const buyer = ctx.session.user.id;
+
+      const dbAsset = await ctx.db.asset.findUnique({
+        where: { id: assetId },
+        select: { kind: true },
+      });
+      if (!dbAsset) throw new Error("asset not found");
+      if (dbAsset.kind !== "NON_STELLAR") {
+        throw new Error("asset is not a non-stellar item");
+      }
+
+      const marketAsset = await ctx.db.marketAsset.findFirst({
+        where: { AND: [{ assetId }, { placerId }] },
+        select: { price: true, priceUSD: true },
+      });
+      if (!marketAsset) throw new Error("asset is not in market");
+
+      let storagePub: string;
+      if (placerId) {
+        const storage = await ctx.db.creator.findUnique({
+          where: { id: placerId },
+          select: { storagePub: true },
+        });
+        if (!storage?.storagePub) {
+          throw new Error("storage does not exist");
+        }
+        storagePub = storage.storagePub;
+      } else {
+        storagePub = Keypair.fromSecret(env.MOTHER_SECRET).publicKey();
+      }
+
+      switch (input.method) {
+        case "xlm": {
+          return await GetNonStellarItemBuyXDRInXLM({
+            storagePub,
+            priceXLM: marketAsset.priceUSD,
+            userId: buyer,
+            signWith,
+          });
+        }
+        case "asset": {
+          return await GetNonStellarItemBuyXDRInPlatform({
+            storagePub,
+            price: marketAsset.price,
+            userId: buyer,
             signWith,
           });
         }

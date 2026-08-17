@@ -185,6 +185,7 @@ export default function StoredItemsView() {
                 assetId: item.id,
                 asset: {
                     id: item.id,
+                    kind: "STELLAR_CLASSIC",
                     code: item.name,
                     issuer: "",
                     name: item.name,
@@ -452,6 +453,8 @@ export default function StoredItemsView() {
                                                                 priceInUSD={item.priceUSD}
                                                                 priceCurrency={item.isScNft ? "XLM" : undefined}
                                                                 mediaType={item.asset.mediaType}
+                                                                assetKind={item.asset.kind}
+                                                                hideBuyButton={true}
                                                                 onView={() => {
                                                                     if (item.isScNft && item.scNftId) {
                                                                         void router.push(`/nft/manage/${item.scNftId}`)
@@ -491,6 +494,11 @@ export default function StoredItemsView() {
                                                                                 {getMediaTypeIcon(item.asset.mediaType)}
                                                                                 <span className="ml-1">{item.asset.mediaType}</span>
                                                                             </Badge>
+                                                                            {item.asset.kind === "NON_STELLAR" && (
+                                                                                <Badge variant="outline" className="text-xs">
+                                                                                    Non-Stellar
+                                                                                </Badge>
+                                                                            )}
                                                                         </div>
                                                                     </div>
                                                                 </CardContent>

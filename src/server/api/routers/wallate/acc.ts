@@ -39,7 +39,16 @@ export const accRouter = createTRPCRouter({
       });
     });
 
-    return { dbAssets, accAssets, assets };
+    // Non-Stellar items are never minted, so they can never show up in the
+    // on-chain token list above — User_Asset is the sole ownership record
+    // for them, so pull the buyer's copies from there instead.
+    const nonStellarPurchases = await ctx.db.user_Asset.findMany({
+      where: { userId, asset: { kind: "NON_STELLAR" } },
+      select: { asset: { select: AssetSelectAllProperty } },
+    });
+    const nonStellarAssets = nonStellarPurchases.map((p) => p.asset);
+
+    return { dbAssets: [...dbAssets, ...nonStellarAssets], accAssets, assets };
   }),
 
   getAccountBalance: protectedProcedure.query(async ({ ctx, input }) => {

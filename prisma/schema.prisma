@@ -498,6 +498,11 @@ enum ItemPrivacy {
 
 // ------------------------Marketplace SCHEMA-------------------------
 
+enum AssetKind {
+    STELLAR_CLASSIC
+    NON_STELLAR
+}
+
 model Asset {
     id          Int     @id @default(autoincrement())
     name        String
@@ -505,6 +510,7 @@ model Asset {
 
     limit Int? // if null then it is unlimited
 
+    kind          AssetKind @default(STELLAR_CLASSIC)
     code          String
     issuer        String
     issuerPrivate String?

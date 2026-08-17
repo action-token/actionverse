@@ -63,7 +63,18 @@ const SingleAssetView = () => {
         { enabled: !!data },
     )
 
-    const hasTrustonAsset = data ? hasTrust(data.asset.code, data.asset.issuer) : false
+    const isNonStellar = data?.asset.kind === "NON_STELLAR"
+    const { data: nonStellarOwnedCopies } = api.fan.asset.getNonStellarAvailability.useQuery(
+        { assetId: data?.asset.id ?? -1, mode: "owned" },
+        { enabled: !!data && isNonStellar },
+    )
+    // Non-Stellar items are never minted, so a genuine buyer never has a real
+    // trustline — ownership is checked via the User_Asset purchase record instead.
+    const hasTrustonAsset = data
+        ? isNonStellar
+            ? (nonStellarOwnedCopies ?? 0) > 0
+            : hasTrust(data.asset.code, data.asset.issuer)
+        : false
 
     // Core UI Logic
     const canBuy = copyData && copyData > 0 && canBuyUser
@@ -387,7 +398,7 @@ const SingleAssetView = () => {
                             <Button
                                 onClick={() => {
                                     setPreviewMedia({
-                                        url: data.asset.thumbnail,
+                                        url: data.asset.mediaUrl || data.asset.thumbnail,
                                         type: MediaType.IMAGE,
                                     });
                                     setIsOpenPreview(true);
@@ -404,10 +415,11 @@ const SingleAssetView = () => {
                         {canPlayOrView && isThreeD && (
                             <Button
                                 onClick={() => {
-                                    setPreviewMedia({
-                                        url: data.asset.mediaUrl,
-                                        type: MediaType.THREE_D,
-                                    });
+                                    setPreviewMedia(
+                                        data.asset.mediaUrl
+                                            ? { url: data.asset.mediaUrl, type: MediaType.THREE_D }
+                                            : { url: data.asset.thumbnail, type: MediaType.IMAGE },
+                                    );
                                     setIsOpenPreview(true);
                                 }}
                                 className="w-full bg-gradient-to-r from-pink-600 to-pink-700 hover:from-pink-700 hover:to-pink-800 text-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5"

@@ -55,7 +55,6 @@ import { AnimatePresence, motion } from "framer-motion"
 import { PaymentChoose, usePaymentMethodStore } from "../common/payment-options"
 import { ipfsHashToPinataGatewayUrl } from "~/utils/ipfs"
 import { CubeIcon } from "@heroicons/react/24/solid"
-import { Progress } from "../shadcn/ui/progress"
 import { cn } from "~/lib/utils"
 import { Badge } from "../shadcn/ui/badge"
 import { Alert, AlertDescription } from "../shadcn/ui/alert"
@@ -159,7 +158,6 @@ function QrCodeCreate({ onClose }: { onClose: () => void }) {
     const [mediaUploadSuccess, setMediaUploadSuccess] = useState(false)
     const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE)
     const [activeStep, setActiveStep] = useState<string>("details")
-    const [formProgress, setFormProgress] = useState(25)
 
     const [mediaUrl, setMediaUrl] = useState<string>()
     const [coverUrl, setCover] = useState<string>()
@@ -314,8 +312,8 @@ function QrCodeCreate({ onClose }: { onClose: () => void }) {
             if (files.length > 0) {
                 const file = files[0]
                 if (file) {
-                    if (file.size > 1024 * 1024) {
-                        toast.error("File size should be less than 1MB")
+                    if (file.size > 10 * 1024 * 1024) {
+                        toast.error("File size should be less than 10MB")
                         return
                     }
                     setFile(file)
@@ -362,11 +360,6 @@ function QrCodeCreate({ onClose }: { onClose: () => void }) {
         }
     }
 
-    React.useEffect(() => {
-        const stepIndex = FORM_STEPS.indexOf(activeStep)
-        setFormProgress((stepIndex + 1) * (100 / FORM_STEPS.length))
-    }, [activeStep])
-
     const handleClose = () => {
         onClose()
         setActiveStep("details")
@@ -387,47 +380,20 @@ function QrCodeCreate({ onClose }: { onClose: () => void }) {
                 className="flex h-full flex-col"
             >
                 <div className="border-b border-border bg-gradient-to-r from-primary/5 to-primary/0 px-6 py-6">
-                    <div className="mb-4">
-                        <h2 className="text-xl font-bold text-foreground">Create QR Code Item</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Create and list your digital asset on the marketplace</p>
-                    </div>
-
-
-                    <div className="mt-6">
-                        <div className="flex items-center justify-between gap-2">
-                            {FORM_STEPS.map((step, index) => (
-                                <React.Fragment key={step}>
-                                    <div className="flex flex-col items-center gap-2">
-                                        <div
-                                            className={cn(
-                                                "flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold transition-all duration-200",
-                                                activeStep === step
-                                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30"
-                                                    : index < FORM_STEPS.indexOf(activeStep)
-                                                        ? "bg-primary text-primary-foreground"
-                                                        : "bg-secondary text-secondary-foreground border border-border",
-                                            )}
-                                        >
-                                            {index < FORM_STEPS.indexOf(activeStep) ? <Check className="h-4 w-4" /> : index + 1}
-                                        </div>
-                                        <span
-                                            className={cn(
-                                                "text-xs font-medium transition-colors duration-200",
-                                                activeStep === step ? "text-foreground" : "text-muted-foreground",
-                                            )}
-                                        >
-                                            {step === "media" ? "Media" : step === "details" ? "Details" : "Pricing"}
-                                        </span>
-                                    </div>
-                                    {index < FORM_STEPS.length - 1 && (
-                                        <div
-                                            className={cn(
-                                                "mb-8 flex-1 h-0.5 transition-colors duration-200",
-                                                index < FORM_STEPS.indexOf(activeStep) ? "bg-primary" : "bg-border",
-                                            )}
-                                        />
+                    <h2 className="text-xl font-bold text-foreground">Create QR Code Item</h2>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                        <p className="text-sm text-muted-foreground">Create and list your digital asset on the marketplace</p>
+                        <div className="flex items-center gap-1.5">
+                            {FORM_STEPS.map((step) => (
+                                <span
+                                    key={step}
+                                    className={cn(
+                                        "h-2 rounded-full transition-all",
+                                        activeStep === step
+                                            ? "w-6 border border-foreground/30 bg-primary shadow-sm"
+                                            : "w-2 bg-muted-foreground/40",
                                     )}
-                                </React.Fragment>
+                                />
                             ))}
                         </div>
                     </div>
@@ -513,40 +479,51 @@ function QrCodeCreate({ onClose }: { onClose: () => void }) {
                             >
                                 <Card className="border-0 bg-secondary/30 shadow-none">
                                     <CardContent className="pt-6 space-y-6">
-                                        <div>
-                                            <Label className="mb-3 block text-sm font-semibold text-foreground">Media Type</Label>
-                                            <div className="grid grid-cols-4 gap-2">
-                                                {Object.values(MediaType).map((media, i) => (
-                                                    <Button
-                                                        key={i}
-                                                        type="button"
-                                                        variant={media === mediaType ? "default" : "outline"}
-                                                        onClick={() => handleMediaChange(media)}
-                                                        className={cn(
-                                                            "flex flex-col items-center gap-1 py-4 h-auto transition-all duration-200",
-                                                            media === mediaType && "ring-2 ring-primary ring-offset-2",
-                                                        )}
-                                                    >
-                                                        {getMediaIcon(media)}
-                                                        <span className="text-xs font-medium leading-tight">
-                                                            {media === MediaType.THREE_D ? "3D" : media}
-                                                        </span>
-                                                    </Button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {tiers.data && (
+                                        <div className="grid grid-cols-2 gap-4">
                                             <div>
-                                                <Label className="mb-3 block text-sm font-semibold text-foreground">Access Tier</Label>
-                                                <TiersOptions
-                                                    handleTierChange={(value: string) => {
-                                                        setTier(value)
-                                                    }}
-                                                    tiers={tiers.data}
-                                                />
+                                                <Label className="mb-3 block text-sm font-semibold text-foreground">Media Type</Label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {Object.values(MediaType).map((media, i) => {
+                                                        const isSelected = media === mediaType
+                                                        return (
+                                                            <Button
+                                                                key={i}
+                                                                type="button"
+                                                                size="sm"
+                                                                variant={isSelected ? "default" : "outline"}
+                                                                onClick={() => handleMediaChange(media)}
+                                                                className={cn(
+                                                                    "gap-1.5 text-xs transition-all duration-200",
+                                                                    isSelected
+                                                                        ? "px-3 ring-2 ring-primary ring-offset-2"
+                                                                        : "w-9 px-0 justify-center",
+                                                                )}
+                                                            >
+                                                                {getMediaIcon(media)}
+                                                                {isSelected && (
+                                                                    <span className="text-xs font-medium leading-tight">
+                                                                        {media === MediaType.THREE_D ? "3D" : media}
+                                                                    </span>
+                                                                )}
+                                                            </Button>
+                                                        )
+                                                    })}
+                                                </div>
                                             </div>
-                                        )}
+
+                                            {tiers.data && (
+                                                <div>
+                                                    <Label className="mb-3 block text-sm font-semibold text-foreground">Access Tier</Label>
+                                                    <TiersOptions
+                                                        value={tier}
+                                                        handleTierChange={(value: string) => {
+                                                            setTier(value)
+                                                        }}
+                                                        tiers={tiers.data}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
 
                                         <Separator className="my-2" />
 
@@ -569,7 +546,7 @@ function QrCodeCreate({ onClose }: { onClose: () => void }) {
                                                         <Upload className="h-8 w-8 text-muted-foreground" />
                                                         <div className="text-center">
                                                             <p className="text-sm font-medium text-foreground">Click to upload</p>
-                                                            <p className="text-xs text-muted-foreground mt-0.5">JPG or PNG, max 1MB</p>
+                                                            <p className="text-xs text-muted-foreground mt-0.5">JPG or PNG, max 10MB</p>
                                                         </div>
                                                         {uploading && (
                                                             <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-lg">
@@ -831,13 +808,15 @@ function QrCodeCreate({ onClose }: { onClose: () => void }) {
 
 function TiersOptions({
     tiers,
+    value,
     handleTierChange,
 }: {
     tiers: { id: number; name: string; price: number }[]
+    value?: string
     handleTierChange: (value: string) => void
 }) {
     return (
-        <Select onValueChange={handleTierChange}>
+        <Select value={value} onValueChange={handleTierChange}>
             <SelectTrigger className="w-full border border-input">
                 <SelectValue placeholder="Select an access tier..." />
             </SelectTrigger>

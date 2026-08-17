@@ -121,10 +121,7 @@ export default function SellPageAssetList() {
                 <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
                     You haven{"'"}t created any sell page assets yet. Create your first asset to get started.
                 </p>
-                <Button>
-                    <Package className="h-4 w-4 mr-2" />
-                    Create Asset
-                </Button>
+
             </div>
         )
     }

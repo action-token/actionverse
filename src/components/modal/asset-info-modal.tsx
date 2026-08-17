@@ -63,17 +63,28 @@ export default function AssetInfoModal() {
     }
 
 
-    const copyCreatorAssetBalance = data
-        ? selectedMenu === MyCollectionMenu.COLLECTION
-            ? creatorAssetBalance({
-                code: data.code,
-                issuer: data.issuer,
-            })
-            : creatorStorageAssetBalance({
-                code: data.code,
-                issuer: data.issuer,
-            })
-        : 0;
+    const isNonStellar = data?.kind === "NON_STELLAR";
+    const nonStellarAvailability = api.fan.asset.getNonStellarAvailability.useQuery(
+        {
+            assetId: data?.id ?? -1,
+            mode: selectedMenu === MyCollectionMenu.COLLECTION ? "owned" : "stock",
+        },
+        { enabled: !!data && isNonStellar },
+    );
+
+    const copyCreatorAssetBalance = !data
+        ? 0
+        : isNonStellar
+            ? (nonStellarAvailability.data ?? 0)
+            : selectedMenu === MyCollectionMenu.COLLECTION
+                ? creatorAssetBalance({
+                    code: data.code,
+                    issuer: data.issuer,
+                })
+                : creatorStorageAssetBalance({
+                    code: data.code,
+                    issuer: data.issuer,
+                });
 
     if (data) {
         // console.log("vong cong data", data);

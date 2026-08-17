@@ -49,6 +49,7 @@ export const AssetSelectAllProperty = {
   code: true,
   name: true,
   issuer: true,
+  kind: true,
   creatorId: true,
   thumbnail: true,
   privacy: true,
@@ -77,6 +78,16 @@ export const marketRouter = createTRPCRouter({
       });
       if (!storage?.storagePub) {
         throw new Error("storage does not exist");
+      }
+
+      const asset = await ctx.db.asset.findUnique({
+        where: { code_issuer: { code, issuer } },
+        select: { kind: true },
+      });
+      if (asset?.kind === "NON_STELLAR") {
+        throw new Error(
+          "Non-Stellar items are not minted on Stellar and cannot be placed in storage.",
+        );
       }
 
       const assetAmount = placingCopies.toString();
@@ -771,10 +782,25 @@ export const marketRouter = createTRPCRouter({
       console.log("id............", id);
       const marketItem = await ctx.db.marketAsset.findUnique({
         where: { id },
-        include: { asset: { select: { code: true, issuer: true } } },
+        include: {
+          asset: { select: { code: true, issuer: true, kind: true, limit: true } },
+        },
       });
 
       if (!marketItem) throw new Error("market item not found");
+
+      // Non-Stellar items are never minted, so there is no on-chain balance
+      // to check. Availability is instead the configured limit minus the
+      // number of buyer records recorded for this asset.
+      if (marketItem.asset.kind === "NON_STELLAR") {
+        if (marketItem.asset.limit === null) return Number.POSITIVE_INFINITY;
+
+        const soldCount = await ctx.db.user_Asset.count({
+          where: { assetId: marketItem.assetId },
+        });
+
+        return Math.max(0, marketItem.asset.limit - soldCount);
+      }
 
       const placerId = marketItem.placerId;
 

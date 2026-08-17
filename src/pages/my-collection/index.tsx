@@ -181,6 +181,7 @@ const MyCollection = () => {
                                     isNFT={true}
                                     creatorId={asset.creatorId}
                                     mediaType={asset.mediaType}
+                                    assetKind={asset.kind}
                                     onView={() => handleViewAsset(asset)}
                                     onBuy={() => {
                                         setData(asset);
@@ -290,6 +291,7 @@ const SecondaryStorage = () => {
                                 isNFT={true}
                                 creatorId={asset.creatorId}
                                 mediaType={asset.mediaType}
+                                assetKind={asset.kind}
                                 onView={() => handleViewAsset(asset)}
                                 onBuy={() => {
                                     setData(asset);

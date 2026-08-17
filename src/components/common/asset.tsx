@@ -33,6 +33,7 @@ interface AssetViewProps {
      *  smart-contract NFTs are priced (and can currently only be bought) in
      *  XLM, so callers rendering those must override this. */
     priceCurrency?: string
+    assetKind?: "STELLAR_CLASSIC" | "NON_STELLAR"
 }
 
 export default function AssetView({
@@ -50,7 +51,9 @@ export default function AssetView({
     onView, // Added onView prop
     hideBuyButton = false,
     priceCurrency = PLATFORM_ASSET.code.toUpperCase(),
+    assetKind,
 }: AssetViewProps) {
+    const nftLabel = assetKind === "NON_STELLAR" ? "ITEM" : "NFT"
     const [isVisible, setIsVisible] = useState(false)
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const handleViewClick = (event: React.MouseEvent) => {
@@ -129,7 +132,7 @@ export default function AssetView({
                                                 >
                                                     <Badge className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-0 shadow-lg backdrop-blur-md px-3 py-1">
                                                         <Gem className="w-3 h-3 mr-1.5 fill-white" />
-                                                        <span className="font-semibold">NFT</span>
+                                                        <span className="font-semibold">{nftLabel}</span>
                                                     </Badge>
                                                 </motion.div>
                                             </div>
