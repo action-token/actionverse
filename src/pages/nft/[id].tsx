@@ -12,12 +12,12 @@ import { NftMediaViewer } from "~/components/nft/nft-media-viewer";
 import { Skeleton } from "~/components/shadcn/ui/skeleton";
 import useNeedSign from "~/lib/hook";
 import { clientSelect } from "~/lib/stellar/fan/utils";
+import { type NftPaymentToken } from "~/lib/stellar/oz/nft";
 import { api } from "~/utils/api";
 
 export default function NftBuyPage() {
   const router = useRouter();
   const id = typeof router.query.id === "string" ? router.query.id : undefined;
-  const sellerId = typeof router.query.seller === "string" ? router.query.seller : undefined;
   const { data: session } = useSession();
   const utils = api.useContext();
   const { needSign } = useNeedSign();
@@ -26,13 +26,16 @@ export default function NftBuyPage() {
   const { data: onChainInsights, isLoading: isLoadingOnChainInsights } =
     api.nft.onChainInsights.useQuery({ id: id ?? "" }, { enabled: !!id });
 
-  const getBuyXDR = api.nft.getBuyXDR.useMutation();
-  const confirmBuy = api.nft.confirmBuy.useMutation();
+  const getBuyEditionXDR = api.nft.getBuyEditionXDR.useMutation();
+  const confirmBuyEdition = api.nft.confirmBuyEdition.useMutation();
+  const getBuyBatchXDR = api.nft.getBuyBatchXDR.useMutation();
+  const confirmBuyBatch = api.nft.confirmBuyBatch.useMutation();
   const toggleLike = api.nft.toggleLike.useMutation({
     onSuccess: () => void utils.nft.byId.invalidate({ id }),
   });
 
-  const [isBuying, setIsBuying] = useState(false);
+  const [isBuyingPrimary, setIsBuyingPrimary] = useState(false);
+  const [isBuyingResale, setIsBuyingResale] = useState(false);
 
   function close() {
     if (window.history.length > 1) router.back();
@@ -49,56 +52,102 @@ export default function NftBuyPage() {
 
   // Same build-XDR -> sign (server-side or via clientsign) -> confirm shape
   // as the bounty escrow flow (see src/pages/bounty/create.tsx).
-  async function handleBuy(sellerId: string) {
-    if (!session?.user) {
+  async function signAndSubmit(xdr: string, fullySignedByServer: boolean) {
+    if (fullySignedByServer) {
+      return extractTxHash(await submitSignedXDRToServer4User(xdr));
+    }
+    const clientResponse = await clientsign({
+      presignedxdr: xdr,
+      walletType: session!.user.walletType,
+      pubkey: session!.user.id,
+      test: clientSelect(),
+    });
+    return extractTxHash(clientResponse);
+  }
+
+  async function invalidateAfterPurchase() {
+    await Promise.all([
+      utils.nft.byId.invalidate({ id: nft!.id }),
+      utils.nft.onChainInsights.invalidate({ id: nft!.id }),
+      utils.nft.list.invalidate(),
+      utils.nft.myOwned.invalidate(),
+      utils.nft.myCreated.invalidate(),
+    ]);
+  }
+
+  /**
+   * One signature: `buy_edition` both registers the edition on-chain (if
+   * this is its first-ever sale) and mints the requested quantity straight
+   * to the buyer, so there's only one transaction to sign here regardless of
+   * whether this is the very first copy sold or the thousandth.
+   */
+  async function handleBuyPrimary({
+    paymentToken,
+    quantity,
+  }: {
+    paymentToken: NftPaymentToken;
+    quantity: number;
+  }) {
+    if (!session?.user || !nft) {
       toast.error("Connect your wallet first");
       return;
     }
-    if (nft?.status !== "MINTED") {
-      toast.error("This artwork hasn't finished minting on-chain yet");
-      return;
-    }
-    setIsBuying(true);
+    setIsBuyingPrimary(true);
     try {
-      const { xdr, fullySignedByServer } = await getBuyXDR.mutateAsync({
+      const { xdr, fullySignedByServer, purchaseId } = await getBuyEditionXDR.mutateAsync({
         nftId: nft.id,
-        sellerId,
+        paymentToken,
+        quantity,
         signWith: needSign(),
       });
 
-      let txHash: string | undefined;
-      if (fullySignedByServer) {
-        const result = await submitSignedXDRToServer4User(xdr);
-        txHash = extractTxHash(result);
-      } else {
-        const clientResponse = await clientsign({
-          presignedxdr: xdr,
-          walletType: session.user.walletType,
-          pubkey: session.user.id,
-          test: clientSelect(),
-        });
-        txHash = extractTxHash(clientResponse);
-      }
+      const txHash = await signAndSubmit(xdr, fullySignedByServer);
       if (!txHash) {
         toast.error("Purchase transaction could not be confirmed.");
         return;
       }
 
-      await confirmBuy.mutateAsync({ nftId: nft.id, sellerId, txHash });
-      await Promise.all([
-        utils.nft.byId.invalidate({ id: nft.id }),
-        // Both the buyer's new "You hold" balance and the seller's remaining
-        // available count come from this query.
-        utils.nft.onChainInsights.invalidate({ id: nft.id }),
-        utils.nft.list.invalidate(),
-        utils.nft.myOwned.invalidate(),
-        utils.nft.myCreated.invalidate(),
-      ]);
-      toast.success("Purchase complete!");
+      await confirmBuyEdition.mutateAsync({ nftId: nft.id, purchaseId, txHash });
+      await invalidateAfterPurchase();
+      toast.success(quantity > 1 ? `${quantity} copies purchased!` : "Purchase complete!");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Purchase failed");
     } finally {
-      setIsBuying(false);
+      setIsBuyingPrimary(false);
+    }
+  }
+
+  /**
+   * Buys several pooled resale listings at once via the contract's
+   * `buy_batch` — one signature for the whole batch, not one `buy`
+   * transaction per token.
+   */
+  async function handleBuyResaleBatch(tokenIds: string[], paymentToken: NftPaymentToken) {
+    if (!session?.user || !nft || tokenIds.length === 0) {
+      toast.error("Connect your wallet first");
+      return;
+    }
+    setIsBuyingResale(true);
+    try {
+      const { xdr, fullySignedByServer } = await getBuyBatchXDR.mutateAsync({
+        tokenIds,
+        paymentToken,
+        signWith: needSign(),
+      });
+
+      const txHash = await signAndSubmit(xdr, fullySignedByServer);
+      if (!txHash) {
+        toast.error("Purchase transaction could not be confirmed.");
+        return;
+      }
+
+      await confirmBuyBatch.mutateAsync({ tokenIds, txHash });
+      await invalidateAfterPurchase();
+      toast.success(tokenIds.length > 1 ? `${tokenIds.length} copies purchased!` : "Purchase complete!");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Purchase failed");
+    } finally {
+      setIsBuyingResale(false);
     }
   }
 
@@ -160,10 +209,11 @@ export default function NftBuyPage() {
               <NftDetailView
                 nft={nft}
                 mode="buy"
-                sellerId={sellerId}
                 viewerId={session?.user.id}
-                onBuy={handleBuy}
-                isBuying={isBuying}
+                onBuyPrimary={handleBuyPrimary}
+                isBuyingPrimary={isBuyingPrimary}
+                onBuyResaleBatch={handleBuyResaleBatch}
+                isBuyingResale={isBuyingResale}
                 onChainInsights={onChainInsights}
                 isLoadingOnChainInsights={isLoadingOnChainInsights}
               />

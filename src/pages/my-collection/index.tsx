@@ -217,13 +217,12 @@ const MyCollection = () => {
                     <>
                         {scOwned.data?.map((ownership) => (
                             <ScNftCard
-                                key={ownership.id}
+                                key={ownership.nft.id}
                                 nftId={ownership.nft.id}
                                 thumbnail={ownership.nft.thumbnail}
                                 name={ownership.nft.name}
                                 creatorId={ownership.nft.creator?.id ?? ownership.nft.creatorId}
                                 mediaType={ownership.nft.mediaType}
-                                price={ownership.nft.myListing?.price}
                                 subtitle={`${ownership.quantity} cop${ownership.quantity === 1 ? "y" : "ies"} · Smart Contract`}
                             />
                         ))}
@@ -249,7 +248,7 @@ const SecondaryStorage = () => {
     // account at all, so they're fetched and shown regardless of whether the
     // classic `acc` query below has one.
     const scOwned = api.nft.myOwned.useQuery();
-    const scListed = scOwned.data?.filter((o) => o.nft.myListing?.isActive) ?? [];
+    const scListed = scOwned.data?.filter((o) => o.tokens.some((t) => t.isListed)) ?? [];
     const { setData, setIsOpen } = useAssestInfoModalStore();
     const router = useRouter();
     const handleViewAsset = (asset: AssetType) => {
@@ -301,18 +300,24 @@ const SecondaryStorage = () => {
                         </div>
                     );
                 })}
-                {scListed.map((ownership) => (
-                    <ScNftCard
-                        key={ownership.id}
-                        nftId={ownership.nft.id}
-                        thumbnail={ownership.nft.thumbnail}
-                        name={ownership.nft.name}
-                        creatorId={ownership.nft.creator?.id ?? ownership.nft.creatorId}
-                        mediaType={ownership.nft.mediaType}
-                        price={ownership.nft.myListing?.price}
-                        subtitle={`Listed at ${ownership.nft.myListing?.price} XLM · Smart Contract`}
-                    />
-                ))}
+                {scListed.map((ownership) => {
+                    const listedPrices = ownership.tokens
+                        .filter((t) => t.isListed && t.listingPrice !== null)
+                        .map((t) => t.listingPrice!);
+                    const lowestListed = listedPrices.length ? Math.min(...listedPrices) : undefined;
+                    return (
+                        <ScNftCard
+                            key={ownership.nft.id}
+                            nftId={ownership.nft.id}
+                            thumbnail={ownership.nft.thumbnail}
+                            name={ownership.nft.name}
+                            creatorId={ownership.nft.creator?.id ?? ownership.nft.creatorId}
+                            mediaType={ownership.nft.mediaType}
+                            price={lowestListed}
+                            subtitle={`Listed at ${lowestListed} XLM · Smart Contract`}
+                        />
+                    );
+                })}
             </div>
         </div>
     );

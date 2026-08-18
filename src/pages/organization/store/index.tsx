@@ -55,6 +55,7 @@ import { useCreateAlbumStore } from "~/components/store/album-create-store"
 import AlbumView from "~/components/music/album/album-item"
 import { addrShort } from "~/utils/utils"
 import AssetView from "~/components/common/asset"
+import { priceTokenLabel } from "~/components/nft/nft-card"
 import { useCreatorStoredAssetModalStore } from "~/components/store/creator-stored-asset-modal-store"
 import { useSellPageAssetStore } from "~/components/store/sell-page-asset-store"
 import SellPageAssetList from "~/components/sell-page-asset-list"
@@ -152,7 +153,17 @@ export default function StoredItemsView() {
 
     const isStoredItemsLoading = isClassicStoredLoading || scCreated.isLoading
 
-    type ExtendedStoredItem = MarketAssetType & { isScNft?: boolean; scNftId?: string }
+    type ExtendedStoredItem = MarketAssetType & {
+        // Card display fields both the classic and smart-contract branches
+        // below attach on top of (or instead of) their backing record.
+        title: string
+        image: string
+        mediaType: MediaType
+        isScNft?: boolean
+        scNftId?: string
+        /** A smart-contract edition's full price grid — see `AssetView`'s `prices` prop. */
+        prices?: { paymentToken: string; price: number }[]
+    }
 
     const getFilteredStoredItems = (): ExtendedStoredItem[] => {
         let items: ExtendedStoredItem[] = []
@@ -172,13 +183,24 @@ export default function StoredItemsView() {
         }
 
         if (scCreated.data && scCreated.data.length > 0) {
-            const scItems: ExtendedStoredItem[] = scCreated.data.map((item) => ({
+            // `ExtendedStoredItem` is nominally `MarketAssetType` (a classic
+            // Prisma `MarketAsset` row), which a smart-contract edition
+            // never actually is — this is purely a display shoehorn (same
+            // spirit as `id: item.id as unknown as number` below), never
+            // treated as a real MarketAsset anywhere past this UI.
+            const scItems = scCreated.data.map((item) => ({
                 id: item.id as unknown as number,
                 title: item.name ?? "Untitled",
                 image: item.thumbnail ?? "/placeholder.svg",
                 mediaType: item.mediaType as MediaType,
-                price: item.myListing?.price ?? item.lowestActivePrice ?? undefined,
+                // A resale (if any exists) is what's actually buyable right
+                // now; otherwise fall back to the edition's own cheapest
+                // primary price so a not-yet-sold item still shows something.
+                price:
+                    item.lowestActivePrice ??
+                    (item.prices.length ? Math.min(...item.prices.map((p) => p.price)) : undefined),
                 priceUSD: undefined,
+                prices: item.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price })),
                 placerId: item.creatorId,
                 type: "NFT",
                 placedAt: new Date(),
@@ -198,7 +220,7 @@ export default function StoredItemsView() {
                 },
                 isScNft: true,
                 scNftId: item.id,
-            }))
+            })) as unknown as ExtendedStoredItem[]
             items = [...items, ...scItems]
         }
 
@@ -452,6 +474,7 @@ export default function StoredItemsView() {
                                                                 price={item.price}
                                                                 priceInUSD={item.priceUSD}
                                                                 priceCurrency={item.isScNft ? "XLM" : undefined}
+                                                                prices={item.isScNft ? item.prices : undefined}
                                                                 mediaType={item.asset.mediaType}
                                                                 assetKind={item.asset.kind}
                                                                 hideBuyButton={true}
@@ -485,10 +508,18 @@ export default function StoredItemsView() {
                                                                             <h3 className="font-semibold">{item.asset.name}</h3>
                                                                         </div>
                                                                         <div className="flex flex-col items-end gap-1">
-                                                                            {item.price && item.price > 0 && (
-                                                                                <Badge>
-                                                                                    {item.price} {item.isScNft ? "XLM" : PLATFORM_ASSET.code}
-                                                                                </Badge>
+                                                                            {item.isScNft && item.prices && item.prices.length > 0 ? (
+                                                                                item.prices.map((p) => (
+                                                                                    <Badge key={p.paymentToken}>
+                                                                                        {p.price} {priceTokenLabel(p.paymentToken)}
+                                                                                    </Badge>
+                                                                                ))
+                                                                            ) : (
+                                                                                item.price && item.price > 0 && (
+                                                                                    <Badge>
+                                                                                        {item.price} {item.isScNft ? "XLM" : PLATFORM_ASSET.code}
+                                                                                    </Badge>
+                                                                                )
                                                                             )}
                                                                             <Badge variant="outline" className="text-xs">
                                                                                 {getMediaTypeIcon(item.asset.mediaType)}

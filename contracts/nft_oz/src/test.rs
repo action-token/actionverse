@@ -4,10 +4,10 @@ extern crate std;
 use soroban_sdk::{
     testutils::{Address as _, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
-    Address, Env, IntoVal, String,
+    Address, BytesN, Env, IntoVal, String, Vec,
 };
 
-use crate::{ArtInput, ArtNft, ArtNftClient};
+use crate::{ArtNft, ArtNftClient, EditionInput, PriceEntry, CONTRACT_VERSION};
 
 const FEE_BPS: u32 = 250; // 2.5%
 const ROYALTY_BPS: u32 = 500; // 5%
@@ -61,27 +61,70 @@ fn fund(f: &Fixture, who: &Address, amount: i128) {
     StellarAssetClient::new(&f.env, &f.payment).mint(who, &amount);
 }
 
-fn mint(f: &Fixture, creator: &Address, royalty_bps: u32) -> u32 {
-    mint_ref(f, creator, "row-1", royalty_bps)
+fn single_price(f: &Fixture, price: i128) -> Vec<PriceEntry> {
+    let mut v = Vec::new(&f.env);
+    v.push_back(PriceEntry { payment_token: f.payment.clone(), price });
+    v
 }
 
-fn mint_ref(f: &Fixture, creator: &Address, art_ref: &str, royalty_bps: u32) -> u32 {
-    f.client.mint_art(creator, &String::from_str(&f.env, art_ref), &art_input(f, royalty_bps))
-}
-
-fn art_input(f: &Fixture, royalty_bps: u32) -> ArtInput {
-    ArtInput {
+fn edition_input_with_prices(
+    f: &Fixture,
+    creator: &Address,
+    royalty_bps: u32,
+    supply: u32,
+    prices: Vec<PriceEntry>,
+) -> EditionInput {
+    EditionInput {
         title: String::from_str(&f.env, "Sunset"),
         description: String::from_str(&f.env, "A sunset over the bay"),
         thumbnail_url: String::from_str(&f.env, "https://cdn.test/thumb.png"),
         media_url: String::from_str(&f.env, "https://cdn.test/full.png"),
         media_type: String::from_str(&f.env, "image/png"),
+        creator: creator.clone(),
         royalty_bps,
+        supply,
+        prices,
     }
 }
 
+fn edition_input(f: &Fixture, creator: &Address, royalty_bps: u32, supply: u32, price: i128) -> EditionInput {
+    edition_input_with_prices(f, creator, royalty_bps, supply, single_price(f, price))
+}
+
+/// Buys `quantity` copies of the edition registered under `edition_ref`
+/// (registering it from `creator`/`royalty_bps`/`supply`/`price` the first
+/// time it's seen), returning the `(first_token_id, last_token_id)` minted.
+fn buy_ref(
+    f: &Fixture,
+    buyer: &Address,
+    creator: &Address,
+    edition_ref: &str,
+    purchase_ref: &str,
+    royalty_bps: u32,
+    supply: u32,
+    price: i128,
+    quantity: u32,
+) -> (u32, u32) {
+    f.client.buy_edition(
+        buyer,
+        &String::from_str(&f.env, edition_ref),
+        &edition_input(f, creator, royalty_bps, supply, price),
+        &String::from_str(&f.env, purchase_ref),
+        &f.payment,
+        &quantity,
+    )
+}
+
+/// A single-copy edition bought once — the equivalent of the old 1-of-1
+/// `mint` helper, for tests that only care about standard token behavior.
+fn buy_one(f: &Fixture, buyer: &Address, creator: &Address, royalty_bps: u32) -> u32 {
+    let (first, last) = buy_ref(f, buyer, creator, "row-1", "purchase-1", royalty_bps, 1, PRICE, 1);
+    assert_eq!(first, last);
+    first
+}
+
 // =============================================================================
-// Metadata & minting
+// Metadata & buying
 // =============================================================================
 
 #[test]
@@ -97,12 +140,13 @@ fn constructor_sets_metadata_and_fee() {
 }
 
 #[test]
-fn mint_assigns_sequential_ids_and_stores_metadata() {
+fn buy_edition_assigns_sequential_ids_and_stores_metadata() {
     let f = setup();
     let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE * 2);
 
-    let first = mint_ref(&f, &alice, "row-1", ROYALTY_BPS);
-    let second = mint_ref(&f, &alice, "row-2", ROYALTY_BPS);
+    let (first, _) = buy_ref(&f, &alice, &alice, "row-1", "purchase-1", ROYALTY_BPS, 1, PRICE, 1);
+    let (second, _) = buy_ref(&f, &alice, &alice, "row-2", "purchase-2", ROYALTY_BPS, 1, PRICE, 1);
 
     assert_eq!(second, first + 1, "token ids must be sequential, not hashed");
     assert_eq!(f.client.owner_of(&first), alice);
@@ -119,90 +163,285 @@ fn mint_assigns_sequential_ids_and_stores_metadata() {
     assert_eq!(amount, 500);
 }
 
-/// Two creators minting concurrently must never collide — the old hash-mod-1e6
-/// token id scheme silently overwrote ownership on collision.
 #[test]
-fn distinct_creators_get_distinct_tokens() {
+fn distinct_editions_get_distinct_tokens() {
     let f = setup();
     let alice = Address::generate(&f.env);
     let bob = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+    fund(&f, &bob, PRICE);
 
-    let a = mint_ref(&f, &alice, "row-a", 0);
-    let b = mint_ref(&f, &bob, "row-b", 0);
+    let (a, _) = buy_ref(&f, &alice, &alice, "row-a", "purchase-a", 0, 1, PRICE, 1);
+    let (b, _) = buy_ref(&f, &bob, &bob, "row-b", "purchase-b", 0, 1, PRICE, 1);
 
     assert_ne!(a, b);
     assert_eq!(f.client.owner_of(&a), alice);
     assert_eq!(f.client.owner_of(&b), bob);
 }
 
-/// The client can't decode the minted id out of transaction meta, so it looks
-/// the token up by the reference it supplied.
 #[test]
-fn token_is_resolvable_by_its_off_chain_ref() {
+fn buying_multiple_copies_mints_a_consecutive_range_to_the_buyer() {
     let f = setup();
-    let alice = Address::generate(&f.env);
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer
+    fund(&f, &bob, PRICE * 3);
 
-    let id = mint_ref(&f, &alice, "nft-row-abc", 0);
+    let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", ROYALTY_BPS, 5, PRICE, 3);
 
-    assert_eq!(f.client.token_by_ref(&String::from_str(&f.env, "nft-row-abc")), Some(id));
-    assert_eq!(f.client.token_by_ref(&String::from_str(&f.env, "nope")), None);
+    assert_eq!(last, first + 2, "a quantity-3 purchase must mint a 3-wide range");
+    assert_eq!(f.client.balance(&bob), 3);
+    for id in first..=last {
+        assert_eq!(f.client.owner_of(&id), bob);
+        let (receiver, _) = f.client.royalty_info(&id, &10_000);
+        assert_eq!(receiver, alice, "every copy in the batch must carry the edition's royalty");
+    }
+
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+    assert_eq!(f.client.remaining_supply(&edition_id), 2);
 }
 
-/// A retried mint of the same database row must not create a second token.
 #[test]
-#[should_panic(expected = "Error(Contract, #311)")]
-fn minting_the_same_ref_twice_is_rejected() {
+fn a_second_purchase_of_the_same_edition_continues_the_range() {
     let f = setup();
     let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let carol = Address::generate(&f.env);
+    fund(&f, &bob, PRICE * 2);
+    fund(&f, &carol, PRICE * 2);
 
-    mint_ref(&f, &alice, "nft-row-abc", 0);
-    mint_ref(&f, &alice, "nft-row-abc", 0);
+    let (_, last1) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 10, PRICE, 2);
+    let (first2, _) = buy_ref(&f, &carol, &alice, "row-1", "purchase-2", 0, 10, PRICE, 2);
+
+    assert_eq!(first2, last1 + 1);
+}
+
+/// A later purchase of an already-registered edition must not let a
+/// different caller overwrite who the creator/royalty receiver is.
+#[test]
+fn second_purchase_of_same_edition_ignores_new_edition_fields() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // real creator, fixed by the first purchase
+    let mallory = Address::generate(&f.env); // tries to pose as creator on a later call
+    fund(&f, &alice, PRICE * 2);
+
+    buy_ref(&f, &alice, &alice, "row-1", "purchase-1", ROYALTY_BPS, 10, PRICE, 1);
+    let (second, _) = buy_ref(&f, &alice, &mallory, "row-1", "purchase-2", 0, 10, PRICE, 1);
+
+    let meta = f.client.art_meta(&second).unwrap();
+    assert_eq!(meta.creator, alice);
+    let (receiver, _) = f.client.royalty_info(&second, &10_000);
+    assert_eq!(receiver, alice);
+}
+
+#[test]
+fn edition_is_resolvable_by_its_off_chain_ref() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+
+    buy_ref(&f, &alice, &alice, "nft-row-abc", "purchase-1", 0, 1, PRICE, 1);
+
+    assert!(f.client.edition_by_ref(&String::from_str(&f.env, "nft-row-abc")).is_some());
+    assert_eq!(f.client.edition_by_ref(&String::from_str(&f.env, "nope")), None);
+}
+
+/// The client can't decode a minted range out of transaction meta, so it
+/// looks the purchase up by the reference it supplied.
+#[test]
+fn purchase_is_resolvable_by_its_own_ref() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+
+    let (first, last) = buy_ref(&f, &alice, &alice, "row-1", "purchase-1", 0, 1, PRICE, 1);
+
+    let receipt = f.client.purchase_by_ref(&String::from_str(&f.env, "purchase-1")).unwrap();
+    assert_eq!(receipt.first_token_id, first);
+    assert_eq!(receipt.last_token_id, last);
+    assert_eq!(receipt.buyer, alice);
+    assert_eq!(f.client.purchase_by_ref(&String::from_str(&f.env, "nope")), None);
+}
+
+/// A retried purchase attempt (same idempotency key) must not double-mint.
+#[test]
+#[should_panic(expected = "Error(Contract, #321)")]
+fn reusing_a_purchase_ref_is_rejected() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE * 2);
+
+    buy_ref(&f, &alice, &alice, "row-1", "dup-purchase", 0, 10, PRICE, 1);
+    buy_ref(&f, &alice, &alice, "row-1", "dup-purchase", 0, 10, PRICE, 1);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #302)")]
-fn mint_rejects_royalty_over_cap() {
+fn buy_edition_rejects_royalty_over_cap() {
     let f = setup();
     let alice = Address::generate(&f.env);
-    mint(&f, &alice, 5_001);
+    fund(&f, &alice, PRICE);
+    buy_ref(&f, &alice, &alice, "row-1", "purchase-1", 5_001, 1, PRICE, 1);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #303)")]
-fn mint_rejects_empty_title() {
+fn buy_edition_rejects_empty_title() {
     let f = setup();
     let alice = Address::generate(&f.env);
-    f.client.mint_art(
+    fund(&f, &alice, PRICE);
+    f.client.buy_edition(
         &alice,
         &String::from_str(&f.env, "row-1"),
-        &ArtInput {
-            title: String::from_str(&f.env, ""),
-            description: String::from_str(&f.env, "d"),
-            thumbnail_url: String::from_str(&f.env, "https://cdn.test/t.png"),
-            media_url: String::from_str(&f.env, "https://cdn.test/f.png"),
-            media_type: String::from_str(&f.env, "image/png"),
-            royalty_bps: 0,
-        },
+        &EditionInput { title: String::from_str(&f.env, ""), ..edition_input(&f, &alice, 0, 1, PRICE) },
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &1,
     );
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #305)")]
-fn mint_rejects_empty_media_url() {
+fn buy_edition_rejects_empty_media_url() {
     let f = setup();
     let alice = Address::generate(&f.env);
-    f.client.mint_art(
+    fund(&f, &alice, PRICE);
+    f.client.buy_edition(
         &alice,
         &String::from_str(&f.env, "row-1"),
-        &ArtInput {
-            title: String::from_str(&f.env, "t"),
-            description: String::from_str(&f.env, "d"),
-            thumbnail_url: String::from_str(&f.env, "https://cdn.test/t.png"),
-            media_url: String::from_str(&f.env, ""),
-            media_type: String::from_str(&f.env, "image/png"),
-            royalty_bps: 0,
-        },
+        &EditionInput { media_url: String::from_str(&f.env, ""), ..edition_input(&f, &alice, 0, 1, PRICE) },
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &1,
     );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #313)")]
+fn buy_edition_rejects_zero_supply() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+    f.client.buy_edition(
+        &alice,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input(&f, &alice, 0, 0, PRICE),
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &1,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #314)")]
+fn buy_edition_rejects_empty_price_grid() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+    f.client.buy_edition(
+        &alice,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input_with_prices(&f, &alice, 0, 1, Vec::new(&f.env)),
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &1,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #315)")]
+fn buy_edition_rejects_duplicate_payment_token_in_price_grid() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+    let mut prices = Vec::new(&f.env);
+    prices.push_back(PriceEntry { payment_token: f.payment.clone(), price: PRICE });
+    prices.push_back(PriceEntry { payment_token: f.payment.clone(), price: PRICE * 2 });
+    f.client.buy_edition(
+        &alice,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input_with_prices(&f, &alice, 0, 1, prices),
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &1,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #316)")]
+fn buy_edition_rejects_zero_price() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+    f.client.buy_edition(
+        &alice,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input(&f, &alice, 0, 1, 0),
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &1,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #317)")]
+fn buy_edition_rejects_unaccepted_payment_token() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+    let other_admin = Address::generate(&f.env);
+    let other_sac = f.env.register_stellar_asset_contract_v2(other_admin);
+    let other_token = other_sac.address();
+
+    f.client.buy_edition(
+        &alice,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input(&f, &alice, 0, 1, PRICE),
+        &String::from_str(&f.env, "purchase-1"),
+        &other_token,
+        &1,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #319)")]
+fn buy_edition_rejects_zero_quantity() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
+    f.client.buy_edition(
+        &alice,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input(&f, &alice, 0, 1, PRICE),
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &0,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #319)")]
+fn buy_edition_rejects_quantity_over_the_per_call_cap() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE * 100);
+    f.client.buy_edition(
+        &alice,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input(&f, &alice, 0, 1_000, PRICE),
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &21,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #318)")]
+fn buy_edition_rejects_purchase_exceeding_remaining_supply() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    fund(&f, &alice, PRICE * 5);
+    buy_ref(&f, &alice, &alice, "row-1", "purchase-1", 0, 3, PRICE, 3);
+    buy_ref(&f, &alice, &alice, "row-1", "purchase-2", 0, 3, PRICE, 1);
 }
 
 // =============================================================================
@@ -214,7 +453,8 @@ fn owner_can_transfer_directly() {
     let f = setup();
     let alice = Address::generate(&f.env);
     let bob = Address::generate(&f.env);
-    let id = mint(&f, &alice, 0);
+    fund(&f, &alice, PRICE);
+    let id = buy_one(&f, &alice, &alice, 0);
 
     f.client.transfer(&alice, &bob, &id);
 
@@ -228,7 +468,8 @@ fn approved_spender_can_transfer_from() {
     let f = setup();
     let alice = Address::generate(&f.env);
     let bob = Address::generate(&f.env);
-    let id = mint(&f, &alice, 0);
+    fund(&f, &alice, PRICE);
+    let id = buy_one(&f, &alice, &alice, 0);
 
     let expiry = f.env.ledger().sequence() + 1_000;
     f.client.approve(&alice, &bob, &id, &expiry);
@@ -242,114 +483,36 @@ fn approved_spender_can_transfer_from() {
 fn holder_can_burn() {
     let f = setup();
     let alice = Address::generate(&f.env);
-    let id = mint(&f, &alice, 0);
+    fund(&f, &alice, PRICE);
+    let id = buy_one(&f, &alice, &alice, 0);
 
     f.client.burn(&alice, &id);
     assert_eq!(f.client.balance(&alice), 0);
 }
 
 // =============================================================================
-// Marketplace
+// Marketplace (secondary/resale — every already-minted copy behaves like a
+// 1-of-1 regardless of which edition it came from)
 // =============================================================================
 
-/// The storefront's "create for sale" path: one signature mints and lists
-/// atomically, so there is no second transaction that could read a stale
-/// `token_id` or a stale account sequence.
 #[test]
-fn mint_and_list_creates_a_token_with_a_live_listing_in_one_call() {
+fn primary_purchase_pays_creator_and_platform_but_no_royalty() {
     let f = setup();
-    let alice = Address::generate(&f.env);
-
-    let id = f.client.mint_and_list(
-        &alice,
-        &String::from_str(&f.env, "row-1"),
-        &art_input(&f, ROYALTY_BPS),
-        &PRICE,
-        &f.payment,
-    );
-
-    assert_eq!(f.client.owner_of(&id), alice);
-    let listing = f.client.listing(&id).unwrap();
-    assert_eq!(listing.seller, alice);
-    assert_eq!(listing.price, PRICE);
-    assert_eq!(listing.payment_token, f.payment);
-}
-
-#[test]
-fn a_token_from_mint_and_list_is_immediately_buyable() {
-    let f = setup();
-    let alice = Address::generate(&f.env);
-    let bob = Address::generate(&f.env);
-    fund(&f, &bob, PRICE);
-
-    let id = f.client.mint_and_list(
-        &alice,
-        &String::from_str(&f.env, "row-1"),
-        &art_input(&f, ROYALTY_BPS),
-        &PRICE,
-        &f.payment,
-    );
-    f.client.buy(&bob, &id);
-
-    assert_eq!(f.client.owner_of(&id), bob);
-    assert_eq!(f.client.listing(&id), None);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #300)")]
-fn mint_and_list_rejects_zero_price() {
-    let f = setup();
-    let alice = Address::generate(&f.env);
-    f.client.mint_and_list(
-        &alice,
-        &String::from_str(&f.env, "row-1"),
-        &art_input(&f, 0),
-        &0,
-        &f.payment,
-    );
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #311)")]
-fn mint_and_list_rejects_a_duplicate_ref_like_plain_mint_does() {
-    let f = setup();
-    let alice = Address::generate(&f.env);
-    f.client.mint_and_list(
-        &alice,
-        &String::from_str(&f.env, "row-1"),
-        &art_input(&f, 0),
-        &PRICE,
-        &f.payment,
-    );
-    f.client.mint_and_list(
-        &alice,
-        &String::from_str(&f.env, "row-1"),
-        &art_input(&f, 0),
-        &PRICE,
-        &f.payment,
-    );
-}
-
-#[test]
-fn primary_sale_pays_seller_and_platform_but_no_royalty() {
-    let f = setup();
-    let alice = Address::generate(&f.env);
-    let bob = Address::generate(&f.env);
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer
     fund(&f, &bob, PRICE * 2);
 
-    let id = mint(&f, &alice, ROYALTY_BPS);
-    f.client.list(&alice, &id, &PRICE, &f.payment);
-    f.client.buy(&bob, &id);
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", ROYALTY_BPS, 1, PRICE, 1);
 
     let platform_fee = PRICE * FEE_BPS as i128 / 10_000;
 
     assert_eq!(f.client.owner_of(&id), bob, "token must move to the buyer");
     assert_eq!(f.token.balance(&f.treasury), platform_fee);
-    // Alice is both seller and creator, so she is not charged a royalty on her
-    // own sale — she receives everything except the platform fee.
+    // Alice is the creator and there's no separate seller on a primary sale,
+    // so she is not charged a royalty on her own edition — she receives
+    // everything except the platform fee.
     assert_eq!(f.token.balance(&alice), PRICE - platform_fee);
     assert_eq!(f.token.balance(&bob), PRICE * 2 - PRICE);
-    assert_eq!(f.client.listing(&id), None, "listing must be consumed");
 }
 
 #[test]
@@ -361,16 +524,11 @@ fn resale_pays_royalty_to_the_original_creator() {
     fund(&f, &bob, PRICE);
     fund(&f, &carol, PRICE);
 
-    let id = mint(&f, &alice, ROYALTY_BPS);
-
-    // Primary sale.
-    f.client.list(&alice, &id, &PRICE, &f.payment);
-    f.client.buy(&bob, &id);
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", ROYALTY_BPS, 1, PRICE, 1);
     let alice_after_primary = f.token.balance(&alice);
 
-    // Resale by bob at the same price.
-    f.client.list(&bob, &id, &PRICE, &f.payment);
-    f.client.buy(&carol, &id);
+    f.client.list(&bob, &id, &single_price(&f, PRICE));
+    f.client.buy(&carol, &id, &f.payment);
 
     let platform_fee = PRICE * FEE_BPS as i128 / 10_000;
     let royalty = PRICE * ROYALTY_BPS as i128 / 10_000;
@@ -385,6 +543,164 @@ fn resale_pays_royalty_to_the_original_creator() {
     assert_eq!(f.token.balance(&bob), PRICE - platform_fee - royalty);
 }
 
+/// A reseller isn't limited to whichever currencies the creator originally
+/// priced the edition in — they can offer their own copy in multiple
+/// currencies at once, and the buyer picks which one to pay with.
+#[test]
+fn reseller_can_price_in_multiple_currencies() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer, then reseller
+    let carol = Address::generate(&f.env); // second buyer, pays in the other currency
+    fund(&f, &bob, PRICE);
+
+    let other_admin = Address::generate(&f.env);
+    let other_sac = f.env.register_stellar_asset_contract_v2(other_admin);
+    let other_token = other_sac.address();
+    StellarAssetClient::new(&f.env, &other_token).mint(&carol, &PRICE);
+
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 1, PRICE, 1);
+
+    let mut prices = Vec::new(&f.env);
+    prices.push_back(PriceEntry { payment_token: f.payment.clone(), price: PRICE });
+    prices.push_back(PriceEntry { payment_token: other_token.clone(), price: PRICE });
+    f.client.list(&bob, &id, &prices);
+
+    let listing = f.client.listing(&id).unwrap();
+    assert_eq!(listing.prices.len(), 2);
+
+    // Carol pays in the *second* currency, not the one the edition itself
+    // was originally priced in.
+    f.client.buy(&carol, &id, &other_token);
+
+    assert_eq!(f.client.owner_of(&id), carol);
+    assert_eq!(TokenClient::new(&f.env, &other_token).balance(&bob), PRICE - (PRICE * FEE_BPS as i128 / 10_000));
+}
+
+/// Listing several held copies at once is meant to collapse into one
+/// signature instead of one `list` call per token — this is what backs the
+/// manage page's "Hold N / list N for sale" control.
+#[test]
+fn list_batch_lists_every_token_at_the_same_price() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer, then reseller
+    fund(&f, &bob, PRICE * 5);
+
+    let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 5);
+    assert_eq!(last - first + 1, 5);
+
+    let mut token_ids = Vec::new(&f.env);
+    for id in first..=last {
+        token_ids.push_back(id);
+    }
+    let prices = single_price(&f, PRICE);
+    f.client.list_batch(&bob, &token_ids, &prices);
+
+    for id in first..=last {
+        let listing = f.client.listing(&id).unwrap();
+        assert_eq!(listing.seller, bob);
+        assert_eq!(listing.prices, prices);
+    }
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #319)")]
+fn list_batch_rejects_an_empty_batch() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 1, PRICE, 1);
+
+    f.client.list_batch(&bob, &Vec::new(&f.env), &single_price(&f, PRICE));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #308)")]
+fn list_batch_rejects_a_token_the_caller_does_not_own() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let carol = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 1, PRICE, 1);
+
+    let mut token_ids = Vec::new(&f.env);
+    token_ids.push_back(id);
+    // Carol doesn't own token `id` — bob does.
+    f.client.list_batch(&carol, &token_ids, &single_price(&f, PRICE));
+}
+
+/// Buying several pooled resale listings at once is meant to collapse into
+/// one signature instead of one `buy` call per token — this is what backs
+/// the buy page's quantity stepper over pooled resale listings.
+#[test]
+fn buy_batch_buys_every_token_and_pays_each_seller() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer, then reseller of all 5
+    let carol = Address::generate(&f.env); // batch buyer
+    fund(&f, &bob, PRICE * 5);
+    fund(&f, &carol, PRICE * 5);
+
+    let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", ROYALTY_BPS, 5, PRICE, 5);
+    let mut token_ids = Vec::new(&f.env);
+    for id in first..=last {
+        token_ids.push_back(id);
+    }
+    f.client.list_batch(&bob, &token_ids, &single_price(&f, PRICE));
+
+    let bob_before = f.token.balance(&bob);
+    let alice_before = f.token.balance(&alice);
+    let treasury_before = f.token.balance(&f.treasury);
+
+    f.client.buy_batch(&carol, &token_ids, &f.payment);
+
+    for id in first..=last {
+        assert_eq!(f.client.owner_of(&id), carol);
+        assert!(f.client.listing(&id).is_none());
+    }
+
+    let royalty_per = PRICE * ROYALTY_BPS as i128 / 10_000;
+    let platform_fee_per = PRICE * FEE_BPS as i128 / 10_000;
+    assert_eq!(f.token.balance(&alice) - alice_before, royalty_per * 5);
+    assert_eq!(f.token.balance(&f.treasury) - treasury_before, platform_fee_per * 5);
+    assert_eq!(
+        f.token.balance(&bob) - bob_before,
+        (PRICE - royalty_per - platform_fee_per) * 5,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #319)")]
+fn buy_batch_rejects_an_empty_batch() {
+    let f = setup();
+    let carol = Address::generate(&f.env);
+    fund(&f, &carol, PRICE);
+
+    f.client.buy_batch(&carol, &Vec::new(&f.env), &f.payment);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #306)")]
+fn buy_batch_rejects_an_unlisted_token() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let carol = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+    fund(&f, &carol, PRICE);
+
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 1, PRICE, 1);
+    // `id` was never listed.
+    let mut token_ids = Vec::new(&f.env);
+    token_ids.push_back(id);
+    f.client.buy_batch(&carol, &token_ids, &f.payment);
+}
+
 #[test]
 fn sale_breakdown_matches_what_buy_actually_pays() {
     let f = setup();
@@ -394,18 +710,16 @@ fn sale_breakdown_matches_what_buy_actually_pays() {
     fund(&f, &bob, PRICE);
     fund(&f, &carol, PRICE);
 
-    let id = mint(&f, &alice, ROYALTY_BPS);
-    f.client.list(&alice, &id, &PRICE, &f.payment);
-    f.client.buy(&bob, &id);
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", ROYALTY_BPS, 1, PRICE, 1);
 
-    f.client.list(&bob, &id, &PRICE, &f.payment);
-    let quoted = f.client.sale_breakdown(&id).unwrap();
+    f.client.list(&bob, &id, &single_price(&f, PRICE));
+    let quoted = f.client.sale_breakdown(&id, &f.payment).unwrap();
 
     let treasury_before = f.token.balance(&f.treasury);
     let creator_before = f.token.balance(&alice);
     let seller_before = f.token.balance(&bob);
 
-    f.client.buy(&carol, &id);
+    f.client.buy(&carol, &id, &f.payment);
 
     assert_eq!(f.token.balance(&f.treasury) - treasury_before, quoted.platform_fee);
     assert_eq!(f.token.balance(&alice) - creator_before, quoted.royalty);
@@ -417,25 +731,27 @@ fn sale_breakdown_matches_what_buy_actually_pays() {
     );
 }
 
-/// The seller signs only when listing. A purchase must go through with the
-/// buyer's signature alone, which is the whole reason the marketplace lives
-/// inside the token contract.
+/// The creator signs nothing at all — not at creation, not at first sale.
+/// Only the buyer signs a primary purchase, which is the whole reason
+/// `buy_edition` can register-and-mint an edition on a total stranger's
+/// first purchase of it.
 ///
 /// The auth tree spelled out here is exactly what the client has to produce:
-/// `buy` plus one payment sub-invocation per recipient, all authorized by the
-/// buyer. On-chain these are covered automatically because the buyer is the
-/// transaction source account, but simulation still has to discover them —
-/// which is why the frontend must simulate rather than hand-build this XDR.
+/// `buy_edition` plus one payment sub-invocation per recipient, all
+/// authorized by the buyer. On-chain these are covered automatically because
+/// the buyer is the transaction source account, but simulation still has to
+/// discover them — which is why the frontend must simulate rather than
+/// hand-build this XDR.
 #[test]
-fn buy_requires_only_the_buyers_signature() {
+fn buy_edition_requires_only_the_buyers_signature() {
     let env = Env::default();
     let owner = Address::generate(&env);
     let treasury = Address::generate(&env);
     let sac_admin = Address::generate(&env);
-    let alice = Address::generate(&env);
-    let bob = Address::generate(&env);
+    let alice = Address::generate(&env); // creator, never signs
+    let bob = Address::generate(&env); // buyer
 
-    let sac = env.register_stellar_asset_contract_v2(sac_admin.clone());
+    let sac = env.register_stellar_asset_contract_v2(sac_admin);
     let payment = sac.address();
 
     let contract_id = env.register(
@@ -453,25 +769,25 @@ fn buy_requires_only_the_buyers_signature() {
 
     env.mock_all_auths();
     StellarAssetClient::new(&env, &payment).mint(&bob, &PRICE);
-    let id = client.mint_and_list(
-        &alice,
-        &String::from_str(&env, "row-1"),
-        &ArtInput {
-            title: String::from_str(&env, "Sunset"),
-            description: String::from_str(&env, "d"),
-            thumbnail_url: String::from_str(&env, "https://cdn.test/t.png"),
-            media_url: String::from_str(&env, "https://cdn.test/f.png"),
-            media_type: String::from_str(&env, "image/png"),
-            royalty_bps: ROYALTY_BPS,
-        },
-        &PRICE,
-        &payment,
-    );
 
-    // Alice is the creator, so this primary sale pays only the treasury and
-    // alice — no royalty leg.
+    let mut prices = Vec::new(&env);
+    prices.push_back(PriceEntry { payment_token: payment.clone(), price: PRICE });
+    let edition = EditionInput {
+        title: String::from_str(&env, "Sunset"),
+        description: String::from_str(&env, "d"),
+        thumbnail_url: String::from_str(&env, "https://cdn.test/t.png"),
+        media_url: String::from_str(&env, "https://cdn.test/f.png"),
+        media_type: String::from_str(&env, "image/png"),
+        creator: alice.clone(),
+        royalty_bps: ROYALTY_BPS,
+        supply: 1,
+        prices,
+    };
+
+    // Alice is the creator, so this primary purchase pays only the treasury
+    // and alice — no royalty leg.
     let platform_fee = PRICE * FEE_BPS as i128 / 10_000;
-    let seller_amount = PRICE - platform_fee;
+    let creator_amount = PRICE - platform_fee;
 
     let fee_leg = MockAuthInvoke {
         contract: &payment,
@@ -479,30 +795,34 @@ fn buy_requires_only_the_buyers_signature() {
         args: (bob.clone(), treasury.clone(), platform_fee).into_val(&env),
         sub_invokes: &[],
     };
-    let seller_leg = MockAuthInvoke {
+    let creator_leg = MockAuthInvoke {
         contract: &payment,
         fn_name: "transfer",
-        args: (bob.clone(), alice.clone(), seller_amount).into_val(&env),
+        args: (bob.clone(), alice.clone(), creator_amount).into_val(&env),
         sub_invokes: &[],
     };
 
-    // From here on only bob's authorization exists. If settlement needed
-    // alice to sign, this call would fail.
+    // From here on only bob's authorization exists. If this needed alice to
+    // sign anything, this call would fail.
     env.set_auths(&[]);
-    client
+    let edition_ref = String::from_str(&env, "row-1");
+    let purchase_ref = String::from_str(&env, "purchase-1");
+    let (first, last) = client
         .mock_auths(&[MockAuth {
             address: &bob,
             invoke: &MockAuthInvoke {
                 contract: &contract_id,
-                fn_name: "buy",
-                args: (bob.clone(), id).into_val(&env),
-                sub_invokes: &[fee_leg, seller_leg],
+                fn_name: "buy_edition",
+                args: (bob.clone(), edition_ref.clone(), edition.clone(), purchase_ref.clone(), payment.clone(), 1u32)
+                    .into_val(&env),
+                sub_invokes: &[fee_leg, creator_leg],
             },
         }])
-        .buy(&bob, &id);
+        .buy_edition(&bob, &edition_ref, &edition, &purchase_ref, &payment, &1);
 
-    assert_eq!(client.owner_of(&id), bob);
-    assert_eq!(TokenClient::new(&env, &payment).balance(&alice), seller_amount);
+    assert_eq!(first, last);
+    assert_eq!(client.owner_of(&first), bob);
+    assert_eq!(TokenClient::new(&env, &payment).balance(&alice), creator_amount);
 }
 
 #[test]
@@ -510,11 +830,11 @@ fn buy_requires_only_the_buyers_signature() {
 fn cannot_buy_your_own_listing() {
     let f = setup();
     let alice = Address::generate(&f.env);
-    fund(&f, &alice, PRICE);
+    fund(&f, &alice, PRICE * 2);
 
-    let id = mint(&f, &alice, 0);
-    f.client.list(&alice, &id, &PRICE, &f.payment);
-    f.client.buy(&alice, &id);
+    let id = buy_one(&f, &alice, &alice, 0);
+    f.client.list(&alice, &id, &single_price(&f, PRICE));
+    f.client.buy(&alice, &id, &f.payment);
 }
 
 #[test]
@@ -523,9 +843,10 @@ fn cannot_list_a_token_you_do_not_own() {
     let f = setup();
     let alice = Address::generate(&f.env);
     let bob = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
 
-    let id = mint(&f, &alice, 0);
-    f.client.list(&bob, &id, &PRICE, &f.payment);
+    let id = buy_one(&f, &alice, &alice, 0);
+    f.client.list(&bob, &id, &single_price(&f, PRICE));
 }
 
 /// Listing does not escrow, so a seller can transfer the token away while the
@@ -537,22 +858,24 @@ fn buying_a_stale_listing_is_rejected() {
     let alice = Address::generate(&f.env);
     let bob = Address::generate(&f.env);
     let carol = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
     fund(&f, &carol, PRICE);
 
-    let id = mint(&f, &alice, 0);
-    f.client.list(&alice, &id, &PRICE, &f.payment);
+    let id = buy_one(&f, &alice, &alice, 0);
+    f.client.list(&alice, &id, &single_price(&f, PRICE));
     f.client.transfer(&alice, &bob, &id);
 
-    f.client.buy(&carol, &id);
+    f.client.buy(&carol, &id, &f.payment);
 }
 
 #[test]
 fn cancel_listing_removes_it() {
     let f = setup();
     let alice = Address::generate(&f.env);
-    let id = mint(&f, &alice, 0);
+    fund(&f, &alice, PRICE);
+    let id = buy_one(&f, &alice, &alice, 0);
 
-    f.client.list(&alice, &id, &PRICE, &f.payment);
+    f.client.list(&alice, &id, &single_price(&f, PRICE));
     assert!(f.client.listing(&id).is_some());
 
     f.client.cancel_listing(&alice, &id);
@@ -565,53 +888,44 @@ fn only_the_seller_can_cancel() {
     let f = setup();
     let alice = Address::generate(&f.env);
     let bob = Address::generate(&f.env);
-    let id = mint(&f, &alice, 0);
+    fund(&f, &alice, PRICE);
+    let id = buy_one(&f, &alice, &alice, 0);
 
-    f.client.list(&alice, &id, &PRICE, &f.payment);
+    f.client.list(&alice, &id, &single_price(&f, PRICE));
     f.client.cancel_listing(&bob, &id);
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #300)")]
+#[should_panic(expected = "Error(Contract, #316)")]
 fn listing_at_zero_price_is_rejected() {
     let f = setup();
     let alice = Address::generate(&f.env);
-    let id = mint(&f, &alice, 0);
-    f.client.list(&alice, &id, &0, &f.payment);
+    fund(&f, &alice, PRICE);
+    let id = buy_one(&f, &alice, &alice, 0);
+    f.client.list(&alice, &id, &single_price(&f, 0));
 }
 
 // =============================================================================
 // Royalties
 // =============================================================================
 
-/// A buyer must not be able to strip the royalty off a piece before flipping
-/// it — only the original creator can change it.
+/// Royalty is fixed by the edition's own creation — there's no admin
+/// entrypoint to change it afterwards, so a buyer (or anyone else) can never
+/// strip or rewrite the royalty off a piece post-mint.
 #[test]
-#[should_panic(expected = "Error(Contract, #310)")]
-fn holder_cannot_rewrite_royalty() {
+fn royalty_amount_matches_the_editions_bps_and_is_uniform_across_a_batch() {
     let f = setup();
-    let alice = Address::generate(&f.env);
-    let bob = Address::generate(&f.env);
-    fund(&f, &bob, PRICE);
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer
+    fund(&f, &bob, PRICE * 3);
 
-    let id = mint(&f, &alice, ROYALTY_BPS);
-    f.client.list(&alice, &id, &PRICE, &f.payment);
-    f.client.buy(&bob, &id);
+    let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", ROYALTY_BPS, 5, PRICE, 3);
 
-    f.client.set_token_royalty(&id, &bob, &0, &bob);
-}
-
-#[test]
-fn creator_can_adjust_their_own_royalty() {
-    let f = setup();
-    let alice = Address::generate(&f.env);
-    let id = mint(&f, &alice, ROYALTY_BPS);
-
-    f.client.set_token_royalty(&id, &alice, &1_000, &alice);
-
-    let (receiver, amount) = f.client.royalty_info(&id, &10_000);
-    assert_eq!(receiver, alice);
-    assert_eq!(amount, 1_000);
+    for id in first..=last {
+        let (receiver, amount) = f.client.royalty_info(&id, &10_000);
+        assert_eq!(receiver, alice);
+        assert_eq!(amount, ROYALTY_BPS as i128);
+    }
 }
 
 // =============================================================================
@@ -672,23 +986,31 @@ fn non_owner_cannot_update_platform_fee() {
 }
 
 #[test]
-fn pause_blocks_mint_list_and_buy_but_not_exits() {
+fn pause_blocks_buy_edition_list_and_buy_but_not_exits() {
     let f = setup();
     let alice = Address::generate(&f.env);
     let bob = Address::generate(&f.env);
+    fund(&f, &alice, PRICE);
     fund(&f, &bob, PRICE);
 
-    let id = mint(&f, &alice, 0);
-    f.client.list(&alice, &id, &PRICE, &f.payment);
+    let id = buy_one(&f, &alice, &alice, 0);
+    f.client.list(&alice, &id, &single_price(&f, PRICE));
 
     f.client.pause(&f.owner);
     assert!(f.client.paused());
 
-    assert!(f.client.try_buy(&bob, &id).is_err());
-    assert!(f.client.try_list(&alice, &id, &PRICE, &f.payment).is_err());
+    assert!(f.client.try_buy(&bob, &id, &f.payment).is_err());
+    assert!(f.client.try_list(&alice, &id, &single_price(&f, PRICE)).is_err());
     assert!(f
         .client
-        .try_mint_and_list(&alice, &String::from_str(&f.env, "row-2"), &art_input(&f, 0), &PRICE, &f.payment)
+        .try_buy_edition(
+            &alice,
+            &String::from_str(&f.env, "row-2"),
+            &edition_input(&f, &alice, 0, 1, PRICE),
+            &String::from_str(&f.env, "purchase-2"),
+            &f.payment,
+            &1,
+        )
         .is_err());
 
     // Holders must still be able to get out while the platform is halted.
@@ -698,4 +1020,57 @@ fn pause_blocks_mint_list_and_buy_but_not_exits() {
 
     f.client.unpause(&f.owner);
     assert!(!f.client.paused());
+}
+
+// =============================================================================
+// Upgradeability
+// =============================================================================
+
+#[test]
+fn version_reports_current_contract_version() {
+    let f = setup();
+    assert_eq!(f.client.version(), CONTRACT_VERSION);
+}
+
+#[test]
+#[should_panic]
+fn upgrade_to_unknown_wasm_hash_panics() {
+    let f = setup();
+    let bogus_hash = BytesN::from_array(&f.env, &[0u8; 32]);
+    f.client.upgrade(&bogus_hash, &f.owner);
+}
+
+#[test]
+#[should_panic]
+fn non_owner_cannot_upgrade() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let mallory = Address::generate(&env);
+
+    let contract_id = env.register(
+        ArtNft,
+        (
+            owner,
+            treasury,
+            FEE_BPS,
+            String::from_str(&env, "Actionverse Art"),
+            String::from_str(&env, "AVART"),
+            String::from_str(&env, "https://actionverse.test/nft/"),
+        ),
+    );
+    let client = ArtNftClient::new(&env, &contract_id);
+    let bogus_hash = BytesN::from_array(&env, &[0u8; 32]);
+
+    client
+        .mock_auths(&[MockAuth {
+            address: &mallory,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "upgrade",
+                args: (bogus_hash.clone(), mallory.clone()).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .upgrade(&bogus_hash, &mallory);
 }

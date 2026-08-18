@@ -20,7 +20,7 @@ import { cn } from "~/lib/utils";
 import Asset from "~/components/common/admin-asset";
 import MarketAssetComponent from "~/components/common/market-asset";
 import PageAssetComponent from "~/components/common/page-asset";
-import { NftCard } from "~/components/nft/nft-card";
+import { NftCard, toNftCardData } from "~/components/nft/nft-card";
 import { MoreAssetsSkeleton } from "~/components/common/grid-loading";
 import { useBuyModalStore } from "~/components/store/buy-modal-store";
 import { useSession } from "next-auth/react";
@@ -622,7 +622,7 @@ const AllAssets = ({
                 )}
                 {scNfts.data?.pages.map((page, pageIndex) =>
                     page.items.map((item, index) => (
-                        <NftCard key={`sc-${pageIndex}-${index}`} nft={item} index={index} />
+                        <NftCard key={`sc-${pageIndex}-${index}`} nft={toNftCardData(item)} index={index} />
                     )),
                 )}
 

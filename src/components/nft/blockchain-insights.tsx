@@ -1,10 +1,10 @@
 import { CheckCircle2, Copy, ExternalLink, ShieldAlert } from "lucide-react";
 import toast from "react-hot-toast";
+import { priceTokenLabel } from "~/components/nft/nft-card";
 import { Skeleton } from "~/components/shadcn/ui/skeleton";
 import {
   stellarExpertAccountUrl,
   stellarExpertContractUrl,
-  stellarExpertTxUrl,
 } from "~/lib/stellar/explorer";
 import { truncateString } from "~/utils/string";
 import { type RouterOutputs } from "~/utils/api";
@@ -82,7 +82,8 @@ export function BlockchainInsights({
     <div className="space-y-4">
       {!insights.minted ? (
         <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-          Not minted on-chain yet — blockchain details appear once minting confirms.
+          No copies minted yet — the first purchase registers this edition on-chain and
+          mints straight to that buyer.
         </div>
       ) : (
         <>
@@ -104,30 +105,21 @@ export function BlockchainInsights({
               </p>
               <p className="text-xs opacity-80">
                 {insights.verified
-                  ? "Listing data matches the contract right now."
-                  : "The contract reports different listing data than our cache — reload to resync."}
+                  ? "Edition data matches the contract right now."
+                  : "The contract reports different edition data than our cache — reload to resync."}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Stat label="Active listings" value={String(insights.listings.length)} />
-            <Stat label="You hold" value={String(insights.userBalance)} />
-            <Stat
-              label="Royalty"
-              value={insights.royaltyBps !== null ? `${(insights.royaltyBps / 100).toFixed(2)}%` : "—"}
-            />
+            <Stat label="Minted" value={`${insights.mintedCount} / ${insights.supply}`} />
+            <Stat label="You hold" value={String(insights.myTokenIds.length)} />
+            <Stat label="Royalty" value={`${(insights.royaltyBps / 100).toFixed(2)}%`} />
+            <Stat label="Remaining" value={String(insights.remainingSupply)} />
           </div>
 
           <div className="rounded-2xl border bg-card px-4">
-            {insights.tokenId && <CopyableRow label="Token ID" value={insights.tokenId} />}
-            {insights.owner && (
-              <CopyableRow
-                label="Owner"
-                value={insights.owner}
-                href={stellarExpertAccountUrl(insights.owner)}
-              />
-            )}
+            <CopyableRow label="Edition ID" value={String(insights.editionId)} />
             {insights.creator && (
               <CopyableRow
                 label="On-chain creator"
@@ -135,15 +127,42 @@ export function BlockchainInsights({
                 href={stellarExpertAccountUrl(insights.creator)}
               />
             )}
-            {insights.mintTxHash && (
-              <CopyableRow
-                label="Mint tx"
-                value={insights.mintTxHash}
-                href={stellarExpertTxUrl(insights.mintTxHash)}
-              />
-            )}
           </div>
+
+          {insights.myTokenIds.length > 0 && (
+            <div className="rounded-2xl border bg-card p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Your token IDs
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {insights.myTokenIds.map((id) => (
+                  <span
+                    key={id}
+                    className="rounded-full bg-muted px-2.5 py-1 font-mono text-xs font-semibold"
+                  >
+                    #{id}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </>
+      )}
+
+      {insights.prices.length > 0 && (
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Price grid
+          </p>
+          <div className="space-y-1">
+            {insights.prices.map((p) => (
+              <div key={p.paymentToken} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{priceTokenLabel(p.paymentToken)}</span>
+                <span className="font-semibold tabular-nums">{p.price}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {insights.contractId && (

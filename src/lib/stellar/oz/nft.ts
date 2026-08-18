@@ -2,12 +2,17 @@ import { Asset, Horizon, rpc } from "@stellar/stellar-sdk";
 import {
   Client as ArtNftClient,
   type ArtMeta,
+  type EditionInput,
+  type EditionMeta,
   type Listing,
+  type PriceEntry,
+  type PurchaseReceipt,
   type SaleBreakdown,
 } from "contracts/nft_oz/bindings/src/index";
 import { ART_NFT_CONTRACT_ID } from "~/lib/common";
 import {
   networkPassphrase,
+  PLATFORM_ASSET,
   requireContractConstant,
   SOROBAN_INCLUSION_FEE,
   SOROBAN_RPC_URL,
@@ -16,14 +21,26 @@ import {
 import { WithSing, type SignUserType } from "../utils";
 
 /**
+ * `xlm` and `asset` (the platform token) are live today; `usdc` is a valid
+ * value already so a new `NftPrice` row/price-grid column is all a future
+ * currency needs — no schema or contract change. Deliberately not imported
+ * from `~/components/payment/payment-process`'s `PaymentMethodEnum` (which
+ * this mirrors) so this server-safe module never pulls a client component
+ * file into a server bundle; keep the two lists in sync by hand.
+ */
+export const NFT_PAYMENT_TOKENS = ["xlm", "asset", "usdc"] as const;
+export type NftPaymentToken = (typeof NFT_PAYMENT_TOKENS)[number];
+
+/**
  * `publicKey` becomes both the transaction source account and the identity
  * whose auth entries get attached during simulation — pass the address of
  * whichever party (creator/seller/buyer) must sign the resulting XDR.
  *
- * This matters most for `buy`: settlement invokes the payment token's
- * `transfer` as a sub-invocation, and those legs only end up in the auth tree
- * because simulation discovers them from this account. Hand-building the XDR
- * instead would produce a transaction that fails auth on submission.
+ * This matters most for `buy`/`buy_edition`: settlement invokes the payment
+ * token's `transfer` as a sub-invocation, and those legs only end up in the
+ * auth tree because simulation discovers them from this account. Hand-
+ * building the XDR instead would produce a transaction that fails auth on
+ * submission.
  */
 function getClient(publicKey?: string): ArtNftClient {
   return new ArtNftClient({
@@ -39,6 +56,36 @@ export function nativeTokenAddress(): string {
   return Asset.native().contractId(networkPassphrase);
 }
 
+/** The platform asset's Stellar Asset Contract. */
+export function platformAssetContractId(): string {
+  return PLATFORM_ASSET.contractId(networkPassphrase);
+}
+
+/**
+ * Resolves a `NftPaymentToken` to the SEP-41 contract address `buy_edition`/
+ * `list`/`buy` actually deal in. The one place a new currency needs a real
+ * address wired up once its SAC exists.
+ */
+export function paymentTokenAddress(method: NftPaymentToken): string {
+  switch (method) {
+    case "xlm":
+      return nativeTokenAddress();
+    case "asset":
+      return platformAssetContractId();
+    case "usdc":
+      throw new Error("USDC is not wired up yet — no SAC address configured");
+  }
+}
+
+/** The inverse of `paymentTokenAddress`, for displaying an on-chain price
+ *  entry's raw SAC address back as "xlm"/"asset". Falls back to the raw
+ *  address for a currency this app doesn't have a label for yet. */
+export function labelForPaymentTokenAddress(address: string): string {
+  if (address === nativeTokenAddress()) return "xlm";
+  if (address === platformAssetContractId()) return "asset";
+  return address;
+}
+
 /**
  * Polls classic Horizon rather than Soroban RPC for a transaction's outcome.
  *
@@ -46,9 +93,9 @@ export function nativeTokenAddress(): string {
  * cannot decode the transaction meta protocol 27 produces ("Bad union switch:
  * 4"), so `rpc.Server.getTransaction()` throws outright. Horizon computes
  * `successful` server-side, sidestepping the decoder entirely. The same
- * limitation is why a minted token id is read back via `token_by_ref` instead
- * of from the invocation's return value — see
- * `contracts/bounty_escrow/README.md`.
+ * limitation is why a purchase's minted range is read back with
+ * `purchase_by_ref` instead of from the invocation's return value — see
+ * `contracts/nft_oz/src/lib.rs`'s doc comment on `buy_edition`.
  */
 async function pollTransactionSuccess(hash: string): Promise<boolean> {
   const server = new Horizon.Server(STELLAR_URL);
@@ -99,9 +146,8 @@ export async function ledgerFromNow(offset = 500_000): Promise<number> {
  * equivalent) load-balances across several backend nodes that don't always
  * agree with each other for a few seconds after a ledger closes, so a single
  * read immediately after confirmation can legitimately come back empty even
- * though the mint genuinely landed. Retrying turns that into added latency
- * instead of a false "it didn't work" — the same shape of fix as
- * `getEditionBalanceForListing`.
+ * though the purchase genuinely landed. Retrying turns that into added
+ * latency instead of a false "it didn't work".
  */
 export async function pollUntilVisible<T>(
   read: () => Promise<T | null>,
@@ -121,39 +167,74 @@ export async function pollUntilVisible<T>(
 // Writes
 // =============================================================================
 
-export async function buildMintArtXDR({
-  creatorPubKey,
-  artRef,
+/**
+ * Buys `quantity` copies of an edition, minting them straight to the buyer.
+ *
+ * The *first* purchase of a given `editionRef` also registers the edition
+ * on-chain from the fields passed here — this is why creating a listing
+ * never asks the creator for a signature: the creator only signs nothing at
+ * all, ever, and the buyer's purchase is what puts the edition on-chain.
+ * Every later purchase of the same `editionRef` mints the next range against
+ * the already-registered edition and ignores these descriptive fields.
+ */
+export async function buildBuyEditionXDR({
+  buyerPubKey,
+  editionRef,
   title,
   description,
   thumbnailUrl,
   mediaUrl,
   mediaType,
+  creatorPubKey,
   royaltyBps,
+  supply,
+  prices,
+  purchaseRef,
+  paymentToken,
+  quantity,
 }: {
-  creatorPubKey: string;
-  /** The `Nft` row id — lets `token_by_ref` resolve the minted token later. */
-  artRef: string;
+  buyerPubKey: string;
+  /** The `Nft` row id — lets `edition_by_ref` resolve the edition later. */
+  editionRef: string;
   title: string;
   description: string;
   thumbnailUrl: string;
   mediaUrl: string;
   mediaType: string;
+  creatorPubKey: string;
   royaltyBps: number;
+  supply: number;
+  /** The edition's full price grid, raw units per currency. */
+  prices: { paymentToken: string; priceRaw: bigint }[];
+  /** The `NftPurchase` row id — lets `purchase_by_ref` resolve this specific
+   *  attempt's minted range afterwards, robust to concurrent purchases of
+   *  the same edition (see the contract's doc comment for why). */
+  purchaseRef: string;
+  paymentToken: string;
+  quantity: number;
 }): Promise<string> {
-  const client = getClient(creatorPubKey);
-  const tx = await client.mint_art(
+  const client = getClient(buyerPubKey);
+  const edition: EditionInput = {
+    title,
+    description,
+    thumbnail_url: thumbnailUrl,
+    media_url: mediaUrl,
+    media_type: mediaType,
+    creator: creatorPubKey,
+    royalty_bps: royaltyBps,
+    supply,
+    prices: prices.map(
+      (p): PriceEntry => ({ payment_token: p.paymentToken, price: p.priceRaw }),
+    ),
+  };
+  const tx = await client.buy_edition(
     {
-      creator: creatorPubKey,
-      art_ref: artRef,
-      art: {
-        title,
-        description,
-        thumbnail_url: thumbnailUrl,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        royalty_bps: royaltyBps,
-      },
+      buyer: buyerPubKey,
+      edition_ref: editionRef,
+      edition,
+      purchase_ref: purchaseRef,
+      payment_token: paymentToken,
+      quantity,
     },
     { fee: SOROBAN_INCLUSION_FEE },
   );
@@ -161,76 +242,53 @@ export async function buildMintArtXDR({
 }
 
 /**
- * Mints and lists in one signed call — the storefront's "create for sale"
- * path. See `mint_and_list`'s contract-side doc comment for why this replaced
- * a separate mint-then-list pair of transactions: that shape needed the
- * second transaction to read the first one's effects back through the public
- * Soroban RPC pool, which doesn't always agree with itself within the couple
- * of seconds right after a ledger closes. One call has no gap for a second
- * transaction to read stale state from.
+ * Lists in one or more currencies at once — a reseller isn't limited to
+ * whichever currencies the creator originally priced the edition in.
  */
-export async function buildMintAndListXDR({
-  creatorPubKey,
-  artRef,
-  title,
-  description,
-  thumbnailUrl,
-  mediaUrl,
-  mediaType,
-  royaltyBps,
-  priceRaw,
-  paymentToken,
-}: {
-  creatorPubKey: string;
-  artRef: string;
-  title: string;
-  description: string;
-  thumbnailUrl: string;
-  mediaUrl: string;
-  mediaType: string;
-  royaltyBps: number;
-  priceRaw: bigint;
-  paymentToken?: string;
-}): Promise<string> {
-  const client = getClient(creatorPubKey);
-  const tx = await client.mint_and_list(
-    {
-      creator: creatorPubKey,
-      art_ref: artRef,
-      art: {
-        title,
-        description,
-        thumbnail_url: thumbnailUrl,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        royalty_bps: royaltyBps,
-      },
-      price: priceRaw,
-      payment_token: paymentToken ?? nativeTokenAddress(),
-    },
-    { fee: SOROBAN_INCLUSION_FEE },
-  );
-  return tx.toXDR();
-}
-
 export async function buildListXDR({
   sellerPubKey,
   tokenId,
-  priceRaw,
-  paymentToken,
+  prices,
 }: {
   sellerPubKey: string;
   tokenId: number;
-  priceRaw: bigint;
-  paymentToken?: string;
+  prices: { paymentToken: string; priceRaw: bigint }[];
 }): Promise<string> {
   const client = getClient(sellerPubKey);
   const tx = await client.list(
     {
       seller: sellerPubKey,
       token_id: tokenId,
-      price: priceRaw,
-      payment_token: paymentToken ?? nativeTokenAddress(),
+      prices: prices.map((p): PriceEntry => ({ payment_token: p.paymentToken, price: p.priceRaw })),
+    },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
+  return tx.toXDR();
+}
+
+/**
+ * Lists several of the caller's tokens at once, all at the same price grid —
+ * one signature instead of one `list` call per token. The common case: a
+ * seller holding a consecutive run from one `buy_edition` purchase relists
+ * several of them together via the manage page's "Hold N / list N" control.
+ * Each token still gets its own independent on-chain `Listing`, resolved
+ * individually afterwards the same way a single `list` call's result is.
+ */
+export async function buildListBatchXDR({
+  sellerPubKey,
+  tokenIds,
+  prices,
+}: {
+  sellerPubKey: string;
+  tokenIds: number[];
+  prices: { paymentToken: string; priceRaw: bigint }[];
+}): Promise<string> {
+  const client = getClient(sellerPubKey);
+  const tx = await client.list_batch(
+    {
+      seller: sellerPubKey,
+      token_ids: tokenIds,
+      prices: prices.map((p): PriceEntry => ({ payment_token: p.paymentToken, price: p.priceRaw })),
     },
     { fee: SOROBAN_INCLUSION_FEE },
   );
@@ -255,18 +313,46 @@ export async function buildCancelListingXDR({
 /**
  * One invocation that pays the seller, creator and treasury and moves the
  * token. The seller does not sign — their consent was recorded when they
- * listed — so this is the buyer's signature alone.
+ * listed — so this is the buyer's signature alone. For a specific already-
+ * minted resold copy only; buying a fresh copy of an edition is
+ * `buildBuyEditionXDR`.
  */
 export async function buildBuyXDR({
   buyerPubKey,
   tokenId,
+  paymentToken,
 }: {
   buyerPubKey: string;
   tokenId: number;
+  paymentToken: string;
 }): Promise<string> {
   const client = getClient(buyerPubKey);
   const tx = await client.buy(
-    { buyer: buyerPubKey, token_id: tokenId },
+    { buyer: buyerPubKey, token_id: tokenId, payment_token: paymentToken },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
+  return tx.toXDR();
+}
+
+/**
+ * Buys several listed tokens at once, all paid in the same currency — one
+ * signature instead of one `buy` call per token. The common case: a buyer
+ * taking N copies pooled across one or more resale listings for the same
+ * edition. Listings can belong to different sellers; each settles exactly
+ * as an individual `buy` would.
+ */
+export async function buildBuyBatchXDR({
+  buyerPubKey,
+  tokenIds,
+  paymentToken,
+}: {
+  buyerPubKey: string;
+  tokenIds: number[];
+  paymentToken: string;
+}): Promise<string> {
+  const client = getClient(buyerPubKey);
+  const tx = await client.buy_batch(
+    { buyer: buyerPubKey, token_ids: tokenIds, payment_token: paymentToken },
     { fee: SOROBAN_INCLUSION_FEE },
   );
   return tx.toXDR();
@@ -310,19 +396,62 @@ export async function buildSetPlatformFeeXDR({
 // Reads
 //
 // Every read is a simulation, so a contract that panics (missing token, no
-// listing) surfaces as a thrown error. These normalize that to `null` — an
-// absent listing is an ordinary UI state, not a failure.
+// edition) surfaces as a thrown error. These normalize that to `null` — an
+// absent edition/listing is an ordinary UI state, not a failure.
 // =============================================================================
 
 /**
- * Resolves a minted token's id from the `Nft` row id passed at mint time.
- * Returns `null` while the mint is still unconfirmed, retrying against RPC
- * replication lag (see `pollUntilVisible`) before giving up.
+ * Resolves a registered edition's id from the `Nft` row id passed at
+ * purchase time. Returns `null` until the edition's first purchase has
+ * landed, retrying against RPC replication lag (see `pollUntilVisible`)
+ * before giving up.
  */
-export async function getTokenIdByRef(artRef: string): Promise<number | null> {
+export async function getEditionByRef(editionRef: string): Promise<number | null> {
   return pollUntilVisible(async () => {
     try {
-      const { result } = await getClient().token_by_ref({ art_ref: artRef });
+      const { result } = await getClient().edition_by_ref({ edition_ref: editionRef });
+      return result ?? null;
+    } catch {
+      return null;
+    }
+  });
+}
+
+export async function getEditionMeta(editionId: number): Promise<EditionMeta | null> {
+  try {
+    const { result } = await getClient().edition_meta({ edition_id: editionId });
+    return result ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getEditionPrices(editionId: number): Promise<PriceEntry[]> {
+  try {
+    const { result } = await getClient().edition_prices({ edition_id: editionId });
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+export async function getRemainingSupply(editionId: number): Promise<number> {
+  try {
+    const { result } = await getClient().remaining_supply({ edition_id: editionId });
+    return result;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Resolves what a specific purchase attempt actually minted. Retried the
+ * same way `getEditionByRef` is — see `pollUntilVisible`.
+ */
+export async function getPurchaseByRef(purchaseRef: string): Promise<PurchaseReceipt | null> {
+  return pollUntilVisible(async () => {
+    try {
+      const { result } = await getClient().purchase_by_ref({ purchase_ref: purchaseRef });
       return result ?? null;
     } catch {
       return null;
@@ -357,12 +486,14 @@ export async function getOnChainListing(tokenId: number): Promise<Listing | null
   }
 }
 
-/** What a buyer would actually pay, straight from the contract. */
+/** What a resale buyer would actually pay in one specific currency, straight
+ *  from the contract. */
 export async function getSaleBreakdown(
   tokenId: number,
+  paymentToken: string,
 ): Promise<SaleBreakdown | null> {
   try {
-    const { result } = await getClient().sale_breakdown({ token_id: tokenId });
+    const { result } = await getClient().sale_breakdown({ token_id: tokenId, payment_token: paymentToken });
     return result ?? null;
   } catch {
     return null;

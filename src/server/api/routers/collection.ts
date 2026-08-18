@@ -76,12 +76,13 @@ export const collectionRouter = createTRPCRouter({
             orderBy: { createdAt: "desc" },
             include: {
               creator: { select: { id: true, name: true, image: true } },
+              prices: true,
               _count: { select: { likes: true } },
               likes: { where: { userId: userId ?? NO_SUCH_USER }, select: { id: true } },
-              listings: {
-                where: { isActive: true },
-                orderBy: { price: "asc" },
-                include: { seller: { select: { id: true, name: true, image: true } } },
+              tokens: {
+                include: {
+                  listing: { include: { seller: { select: { id: true, name: true, image: true } } } },
+                },
               },
             },
           },
@@ -99,6 +100,10 @@ export const collectionRouter = createTRPCRouter({
         activeListingCount: number;
         likeCount: number;
         isLiked: boolean;
+        // The edition's own "buy a new copy" price, from its price grid —
+        // null once sold out (or if it never had one, which shouldn't
+        // happen in practice).
+        primaryPrice: number | null;
         listing?: {
           sellerId: string;
           sellerName: string | null;
@@ -108,12 +113,13 @@ export const collectionRouter = createTRPCRouter({
         };
       };
 
-      // One card per active listing (so a resold copy shows as its own
-      // "Resold by X" card, mirroring the main marketplace grid), falling
-      // back to a single plain card for items with no active listing so the
-      // collection still reads as a full inventory/catalog.
+      // One card per active *resale* listing (so a resold copy shows as its
+      // own "Resold by X" card, mirroring the main marketplace grid),
+      // falling back to a single plain card (priced via `primaryPrice`) for
+      // editions with no active resale listing so the collection still
+      // reads as a full inventory/catalog.
       const cards = collection.nfts.flatMap((n): CollectionCard[] => {
-        const { likes, _count, listings, ...nft } = n;
+        const { likes, _count, prices, tokens, ...nft } = n;
         const base = {
           id: nft.id,
           name: nft.name,
@@ -124,16 +130,18 @@ export const collectionRouter = createTRPCRouter({
           activeListingCount: nft.activeListingCount,
           likeCount: _count.likes,
           isLiked: likes.length > 0,
+          primaryPrice: prices.length ? Math.min(...prices.map((p) => p.price)) : null,
         };
-        if (listings.length === 0) return [base];
-        return listings.map((listing) => ({
+        const activeListings = tokens.filter((t) => t.listing?.isActive);
+        if (activeListings.length === 0) return [base];
+        return activeListings.map((t) => ({
           ...base,
           listing: {
-            sellerId: listing.sellerId,
-            sellerName: listing.seller.name,
-            sellerImage: listing.seller.image,
-            price: listing.price,
-            isResale: listing.sellerId !== nft.creatorId,
+            sellerId: t.listing!.sellerId,
+            sellerName: t.listing!.seller.name,
+            sellerImage: t.listing!.seller.image,
+            price: t.listing!.price,
+            isResale: t.listing!.sellerId !== nft.creatorId,
           },
         }));
       });

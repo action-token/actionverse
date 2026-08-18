@@ -10,6 +10,7 @@ import { Button } from "~/components/shadcn/ui/button"
 import { Gem, Star, Eye, ShoppingCart, Link } from "lucide-react"
 import { addrShort } from "~/utils/utils"
 import { PLATFORM_ASSET } from "~/lib/stellar/constant"
+import { priceRowLabel, priceTokenLabel } from "~/components/nft/nft-card"
 import { motion } from "framer-motion"
 
 interface AssetViewProps {
@@ -33,6 +34,11 @@ interface AssetViewProps {
      *  smart-contract NFTs are priced (and can currently only be bought) in
      *  XLM, so callers rendering those must override this. */
     priceCurrency?: string
+    /** A smart-contract edition's full price grid (one entry per currency
+     *  it's offered in, e.g. XLM and the platform asset). When present, this
+     *  takes over the price display and shows one row per currency instead
+     *  of the single `price`/`priceCurrency` pair. */
+    prices?: { paymentToken: string; price: number }[]
     assetKind?: "STELLAR_CLASSIC" | "NON_STELLAR"
 }
 
@@ -51,6 +57,7 @@ export default function AssetView({
     onView, // Added onView prop
     hideBuyButton = false,
     priceCurrency = PLATFORM_ASSET.code.toUpperCase(),
+    prices,
     assetKind,
 }: AssetViewProps) {
     const nftLabel = assetKind === "NON_STELLAR" ? "ITEM" : "NFT"
@@ -182,7 +189,23 @@ export default function AssetView({
                                 </div>
 
                                 <div className="rounded-xl p-4 border bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
-                                    {priceInUSD && price ? (
+                                    {prices && prices.length > 0 ? (
+                                        // One row per currency this item is priced in (e.g. XLM and
+                                        // the platform asset) — a smart-contract edition's full price
+                                        // grid, not just its cheapest currency.
+                                        <div className="space-y-2">
+                                            {prices.map((p) => (
+                                                <div key={p.paymentToken} className="flex items-center justify-between">
+                                                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                        {priceRowLabel(p.paymentToken)}
+                                                    </span>
+                                                    <span className="text-sm font-semibold">
+                                                        {p.price} {priceTokenLabel(p.paymentToken)}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : priceInUSD && price ? (
                                         // Both USD and platform asset price
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">
@@ -224,7 +247,7 @@ export default function AssetView({
                                     )}
                                 </div>
                             </div>
-                            {price && !hideBuyButton && (
+                            {(price ?? (prices?.length ?? 0) > 0) && !hideBuyButton && (
                                 <div className="pt-1 ">
                                     <Button onClick={onBuy} size="sm" className="w-full transition-colors shadow-sm shadow-black/30">
                                         <ShoppingCart className="w-4 h-4 mr-2" />

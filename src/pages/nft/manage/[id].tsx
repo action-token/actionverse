@@ -12,6 +12,7 @@ import { NftMediaViewer } from "~/components/nft/nft-media-viewer";
 import { Skeleton } from "~/components/shadcn/ui/skeleton";
 import useNeedSign from "~/lib/hook";
 import { clientSelect } from "~/lib/stellar/fan/utils";
+import { type NftPaymentToken } from "~/lib/stellar/oz/nft";
 import { api } from "~/utils/api";
 
 export default function ManageNftPage() {
@@ -24,9 +25,15 @@ export default function ManageNftPage() {
   const { data: nft, isLoading } = api.nft.byId.useQuery({ id: id ?? "" }, { enabled: !!id });
   const { data: onChainInsights, isLoading: isLoadingOnChainInsights } =
     api.nft.onChainInsights.useQuery({ id: id ?? "" }, { enabled: !!id });
+  // `myOwned` groups every edition the caller holds copies of — filtered to
+  // this one for the per-copy list/price/cancel controls below rather than a
+  // dedicated endpoint, since the data already exists there.
+  const { data: myOwned } = api.nft.myOwned.useQuery();
 
   const getListXDR = api.nft.getListXDR.useMutation();
   const confirmListing = api.nft.confirmListing.useMutation();
+  const getListBatchXDR = api.nft.getListBatchXDR.useMutation();
+  const confirmListBatch = api.nft.confirmListBatch.useMutation();
   const getCancelListingXDR = api.nft.getCancelListingXDR.useMutation();
   const confirmCancelListing = api.nft.confirmCancelListing.useMutation();
   const toggleLike = api.nft.toggleLike.useMutation({
@@ -40,16 +47,8 @@ export default function ManageNftPage() {
     else void router.push("/my-collection");
   }
 
-  const viewerId = session?.user.id;
-  // Both sourced live from the contract, not the database — a listing's real
-  // available count and a holder's real balance can change (a buy, a direct
-  // transfer) without this app ever seeing a confirm* call for it.
-  const onChainListing =
-    onChainInsights?.minted ? onChainInsights.listings.find((l) => l.sellerId === viewerId) : undefined;
-  const myListing = onChainListing
-    ? { price: onChainListing.pricePerCopy, available: onChainListing.available, isActive: true }
-    : null;
-  const heldQuantity = onChainInsights?.minted ? onChainInsights.userBalance : 0;
+  const myEntry = myOwned?.find((o) => o.nft.id === id);
+  const myTokens = myEntry?.tokens ?? [];
 
   function handleLike() {
     if (!session?.user) {
@@ -79,32 +78,43 @@ export default function ManageNftPage() {
     return extractTxHash(clientResponse);
   }
 
-  async function handleUpdatePrice(price: number) {
-    if (!session?.user || nft?.status !== "MINTED") return;
+  async function invalidateAfterListingChange() {
+    await Promise.all([
+      utils.nft.byId.invalidate({ id }),
+      utils.nft.onChainInsights.invalidate({ id }),
+      utils.nft.myOwned.invalidate(),
+      utils.nft.myCreated.invalidate(),
+    ]);
+  }
+
+  /** Lists one specific token, without the loading-state/invalidate/toast
+   *  wrapper — shared by both the single- and batch-listing flows below. */
+  async function listOneToken(
+    tokenId: string,
+    prices: { paymentToken: NftPaymentToken; price: number }[],
+  ): Promise<boolean> {
+    const txHash = await signAndSubmit(() =>
+      getListXDR.mutateAsync({ tokenId, prices, signWith: needSign() }),
+    );
+    if (!txHash) return false;
+    await confirmListing.mutateAsync({ tokenId, txHash });
+    return true;
+  }
+
+  async function handleListToken(
+    tokenId: string,
+    prices: { paymentToken: NftPaymentToken; price: number }[],
+  ) {
+    if (!session?.user) return;
     setIsSavingListing(true);
     try {
-      const txHash = await signAndSubmit(() =>
-        getListXDR.mutateAsync({
-          nftId: nft.id,
-          price,
-          signWith: needSign(),
-        }),
-      );
-      if (!txHash) {
+      const ok = await listOneToken(tokenId, prices);
+      if (!ok) {
         toast.error("Listing transaction could not be confirmed.");
         return;
       }
-      await confirmListing.mutateAsync({ nftId: nft.id, txHash });
-      await Promise.all([
-        utils.nft.byId.invalidate({ id: nft.id }),
-        // "You hold" and the live listing/available count on this page both
-        // come from this query — without invalidating it, they'd keep
-        // serving the pre-mutation snapshot until a hard reload.
-        utils.nft.onChainInsights.invalidate({ id: nft.id }),
-        utils.nft.myOwned.invalidate(),
-        utils.nft.myCreated.invalidate(),
-      ]);
-      toast.success(myListing?.isActive ? "Price updated" : "Listed for sale");
+      await invalidateAfterListingChange();
+      toast.success("Listed for sale");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Listing failed");
     } finally {
@@ -112,24 +122,48 @@ export default function ManageNftPage() {
     }
   }
 
-  async function handleCancelListing() {
-    if (!session?.user || nft?.status !== "MINTED") return;
+  /**
+   * Lists N held copies at once via the contract's `list_batch` — one
+   * signature for the whole batch, not one `list` transaction per token.
+   * Powers the manage page's `[-] N / M Hold [+]` control.
+   */
+  async function handleListMultiple(
+    tokenIds: string[],
+    prices: { paymentToken: NftPaymentToken; price: number }[],
+  ) {
+    if (!session?.user || tokenIds.length === 0) return;
     setIsSavingListing(true);
     try {
       const txHash = await signAndSubmit(() =>
-        getCancelListingXDR.mutateAsync({ nftId: nft.id, signWith: needSign() }),
+        getListBatchXDR.mutateAsync({ tokenIds, prices, signWith: needSign() }),
+      );
+      if (!txHash) {
+        toast.error("Listing transaction could not be confirmed.");
+        return;
+      }
+      await confirmListBatch.mutateAsync({ tokenIds, txHash });
+      await invalidateAfterListingChange();
+      toast.success(tokenIds.length > 1 ? `${tokenIds.length} copies listed for sale` : "Listed for sale");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Listing failed");
+    } finally {
+      setIsSavingListing(false);
+    }
+  }
+
+  async function handleCancelListing(tokenId: string) {
+    if (!session?.user) return;
+    setIsSavingListing(true);
+    try {
+      const txHash = await signAndSubmit(() =>
+        getCancelListingXDR.mutateAsync({ tokenId, signWith: needSign() }),
       );
       if (!txHash) {
         toast.error("Cancel transaction could not be confirmed.");
         return;
       }
-      await confirmCancelListing.mutateAsync({ nftId: nft.id, txHash });
-      await Promise.all([
-        utils.nft.byId.invalidate({ id: nft.id }),
-        utils.nft.onChainInsights.invalidate({ id: nft.id }),
-        utils.nft.myOwned.invalidate(),
-        utils.nft.myCreated.invalidate(),
-      ]);
+      await confirmCancelListing.mutateAsync({ tokenId, txHash });
+      await invalidateAfterListingChange();
       toast.success("Listing cancelled");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Cancel failed");
@@ -187,7 +221,7 @@ export default function ManageNftPage() {
                 contentUrl={nft.contentUrl}
                 mediaType={nft.mediaType}
                 name={nft.name}
-                locked={heldQuantity <= 0}
+                locked={myTokens.length <= 0}
                 fill
               />
             </div>
@@ -196,9 +230,9 @@ export default function ManageNftPage() {
               <NftDetailView
                 nft={nft}
                 mode="manage"
-                myListing={myListing}
-                heldQuantity={heldQuantity}
-                onUpdatePrice={handleUpdatePrice}
+                myTokens={myTokens}
+                onListToken={handleListToken}
+                onListMultiple={handleListMultiple}
                 onCancelListing={handleCancelListing}
                 isSavingListing={isSavingListing}
                 onChainInsights={onChainInsights}

@@ -1,14 +1,21 @@
 /**
- * One-time deployment for the Soroban art contracts.
+ * One-time deployment for the shared art NFT collection contract.
  *
- *   pnpm contracts:build:nft_oz && pnpm contracts:build:ft_oz
+ *   pnpm contracts:build:nft_oz
  *   pnpm contracts:deploy
  *
- * Uploads both Wasm blobs, then deploys the single shared 1-of-1 collection
- * contract. Editions are *not* deployed here — each artwork deploys its own
- * from the uploaded Wasm hash at mint time, paid for and signed by its creator.
+ * Every creator's editions live in this one shared contract — there is no
+ * per-edition or per-creator deploy; `buy_edition` registers an edition (and
+ * mints into it) lazily, the first time it sells, rather than at deploy or
+ * creation time.
  *
- * Prints the constants to paste into `src/lib/common.ts`.
+ * Re-running with `ART_NFT_CONTRACT_ID` already set in `src/lib/common.ts`
+ * is a no-op (the collection is a singleton — redeploying would orphan every
+ * token already minted into the first address). To force a fresh deploy
+ * (e.g. after a storage-incompatible contract change with no data worth
+ * keeping), blank out that network's `ART_NFT_CONTRACT_ID` first.
+ *
+ * Prints the constant to paste into `src/lib/common.ts`.
  */
 import { readFileSync } from "fs";
 import { resolve } from "path";
@@ -114,16 +121,12 @@ async function main() {
   console.log(`Network: ${networkPassphrase}`);
   console.log(`Deployer: ${deployer.publicKey()}\n`);
 
-  // Strictly sequential: every upload is signed by the same account, and
-  // building them concurrently reads the same sequence number twice, so the
-  // second transaction is dead on arrival.
   console.log("Uploading Wasm...");
   const nftWasmHash = await uploadWasm("nft_oz.wasm");
-  const ftWasmHash = await uploadWasm("ft_oz.wasm");
 
-  // The collection is a singleton. Re-running after only the edition Wasm
-  // changed must not mint a second one at a fresh address, orphaning every
-  // token already minted into the first.
+  // The collection is a singleton. Re-running after an unrelated change must
+  // not deploy a second one at a fresh address, orphaning every token
+  // already minted into the first.
   if (ART_NFT_CONTRACT_ID) {
     const existing = new ArtNftClient({
       contractId: ART_NFT_CONTRACT_ID,
@@ -134,8 +137,7 @@ async function main() {
       const { result } = await existing.name();
       console.log(`\nCollection already deployed at ${ART_NFT_CONTRACT_ID} ("${result}") — skipping.`);
       console.log("\n--- src/lib/common.ts ---");
-      console.log(`ART_NFT_CONTRACT_ID    = "${ART_NFT_CONTRACT_ID}"`);
-      console.log(`ART_EDITION_WASM_HASH  = "${ftWasmHash}"`);
+      console.log(`ART_NFT_CONTRACT_ID = "${ART_NFT_CONTRACT_ID}"`);
       console.log("-------------------------");
       return;
     } catch {
@@ -145,7 +147,7 @@ async function main() {
     }
   }
 
-  console.log("\nDeploying the shared 1-of-1 collection...");
+  console.log("\nDeploying the shared art NFT collection...");
   const deployTx = await ArtNftClient.deploy(
     {
       owner: deployer.publicKey(),
@@ -179,12 +181,12 @@ async function main() {
     networkPassphrase === Networks.PUBLIC ? "pubnet (first)" : "testnet (second)";
 
   console.log(`\n--- paste into src/lib/common.ts, ${branch} branch ---`);
-  console.log(`ART_NFT_CONTRACT_ID    = "${contractId}"`);
-  console.log(`ART_EDITION_WASM_HASH  = "${ftWasmHash}"`);
+  console.log(`ART_NFT_CONTRACT_ID = "${contractId}"`);
   console.log("------------------------------------------------------");
   console.log(
     "\nThe collection's owner is the deployer account — it is the only key that " +
-      "can change the platform fee or pause the collection. Keep it safe.",
+      "can change the platform fee, pause the collection, or upgrade its code " +
+      "(via `upgrade`). Keep it safe.",
   );
 }
 

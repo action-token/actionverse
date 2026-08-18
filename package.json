@@ -20,7 +20,8 @@
     "contracts:build": "cd contracts/bounty_escrow && stellar contract build",
     "contracts:build:nft_oz": "cd contracts/nft_oz && PATH=\"$HOME/.cargo/bin:$PATH\" stellar contract build",
     "contracts:bindings:nft_oz": "stellar contract bindings typescript --wasm contracts/target/wasm32v1-none/release/nft_oz.wasm --output-dir contracts/nft_oz/bindings --overwrite",
-    "contracts:deploy": "node --env-file=.env --env-file=.env.development --import tsx scripts/deploy-contracts.ts"
+    "contracts:deploy": "node --env-file=.env --env-file=.env.development --import tsx scripts/deploy-contracts.ts",
+    "contracts:upgrade": "node --env-file=.env --env-file=.env.development --import tsx scripts/upgrade-contracts.ts"
   },
   "dependencies": {
     "@albedo-link/intent": "^0.12.0",

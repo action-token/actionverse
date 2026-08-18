@@ -10,27 +10,111 @@ import { Badge } from "~/components/shadcn/ui/badge";
 import { Button } from "~/components/shadcn/ui/button";
 import { Card, CardContent } from "~/components/shadcn/ui/card";
 import { PlaceholderArt } from "~/components/nft/placeholder-art";
-import { api } from "~/utils/api";
+import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { api, type RouterOutputs } from "~/utils/api";
+
+export function priceTokenLabel(token?: string): string {
+  switch (token) {
+    case "asset":
+      return PLATFORM_ASSET.code;
+    case "usdc":
+      return "USDC";
+    default:
+      return "XLM";
+  }
+}
+
+/** Row label for a price-grid entry, e.g. on `AssetView`'s card —
+ *  "XLM PRICE", "PLATFORM PRICE", "USDC PRICE". */
+export function priceRowLabel(token?: string): string {
+  switch (token) {
+    case "asset":
+      return "PLATFORM PRICE";
+    case "usdc":
+      return "USDC PRICE";
+    default:
+      return "XLM PRICE";
+  }
+}
 
 export interface NftCardData {
   id: string;
   name: string;
   thumbnail: string;
-  lowestActivePrice: number | null;
-  activeListingCount: number;
   status: "PENDING" | "MINTED";
   creator?: { id: string; name: string | null; image?: string | null } | null;
   isLiked?: boolean;
   likeCount?: number;
-  /** Present when this card represents one specific seller's active listing
-   *  (marketplace browse / homepage showcase) rather than the NFT as a whole
-   *  (profile/collection views, which stay creator-attributed). */
+  /** Price to show on the card — the edition's lowest primary price, or a
+   *  specific resale listing's price when `listing` is set. `null` means
+   *  "not currently for sale" (e.g. sold out with no active resale). */
+  price: number | null;
+  /** Which currency `price` is denominated in — "xlm" | "asset" | "usdc". */
+  priceToken?: string;
+  /** Full multi-currency price grid, when more than one currency is on
+   *  offer — used instead of the single `price`/`priceToken` to show every
+   *  accepted currency on the card. */
+  prices?: { paymentToken: string; price: number }[];
+  /** Edition supply, present on a primary "buy a new copy" card. */
+  supply?: number;
+  mintedCount?: number;
+  /** Present when this card represents one specific resold copy rather than
+   *  a fresh mint from the edition — its own browsable entry, not merged
+   *  into the original edition's card. */
   listing?: {
+    tokenId: string;
+    /** Every token id this card represents — more than one when the same
+     *  seller listed several copies of this edition at the same price,
+     *  merged into one card instead of one per token. */
+    tokenIds: string[];
+    quantity: number;
     sellerId: string;
     sellerName: string | null;
     sellerImage?: string | null;
-    price: number;
     isResale: boolean;
+  };
+}
+
+type MarketplaceListItem = RouterOutputs["nft"]["list"]["items"][number];
+
+/** Adapts `nft.list`'s merged primary/resale feed item into `NftCardData`. */
+export function toNftCardData(item: MarketplaceListItem): NftCardData {
+  if (item.kind === "resale") {
+    return {
+      id: item.id,
+      name: item.name,
+      thumbnail: item.thumbnail,
+      status: item.status,
+      creator: item.creator,
+      isLiked: item.isLiked,
+      likeCount: item.likeCount,
+      price: item.price,
+      priceToken: item.priceToken,
+      prices: item.prices,
+      listing: {
+        tokenId: item.tokenId,
+        tokenIds: item.tokenIds,
+        quantity: item.quantity,
+        sellerId: item.sellerId,
+        sellerName: item.sellerName,
+        sellerImage: item.sellerImage,
+        isResale: item.sellerId !== item.creator?.id,
+      },
+    };
+  }
+  return {
+    id: item.id,
+    name: item.name,
+    thumbnail: item.thumbnail,
+    status: item.status,
+    creator: item.creator,
+    isLiked: item.isLiked,
+    likeCount: item.likeCount,
+    price: item.price,
+    priceToken: item.priceToken,
+    prices: item.prices,
+    supply: item.supply,
+    mintedCount: item.mintedCount,
   };
 }
 
@@ -80,16 +164,19 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
   }
   */
 
-  const isPending = nft.status === "PENDING";
-  const isForSale = !isPending && (nft.listing !== undefined || nft.activeListingCount > 0);
+  const isForSale = nft.price !== null;
   const byline = nft.listing
     ? { image: nft.listing.sellerImage, name: nft.listing.sellerName, seed: nft.listing.sellerId }
     : { image: nft.creator?.image, name: nft.creator?.name, seed: nft.creator?.id ?? nft.id };
   const bylinePrefix = nft.listing ? (nft.listing.isResale ? "Resold by " : "Created by ") : "by ";
-  const price = nft.listing ? nft.listing.price : nft.lowestActivePrice;
+  const price = nft.price;
   const href = nft.listing
-    ? `/nft/${nft.id}?seller=${nft.listing.sellerId}`
+    ? `/nft/${nft.id}?token=${nft.listing.tokenId}`
     : `/nft/${nft.id}`;
+  const supplyBadge =
+    nft.supply && nft.supply > 1 ? `${nft.mintedCount ?? 0}/${nft.supply}` : "1 of 1";
+  const resaleBadge =
+    nft.listing && nft.listing.quantity > 1 ? `Resale ×${nft.listing.quantity}` : "Resale";
 
   return (
     <motion.div
@@ -114,7 +201,7 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                 variant="secondary"
                 className="absolute top-3 right-3 bg-black/70 text-white backdrop-blur-sm border-0"
               >
-                1 of 1
+                {nft.listing ? resaleBadge : supplyBadge}
               </Badge>
 
               <Button
@@ -126,31 +213,25 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
               </Button>
 
               <div className="absolute top-3 right-3 flex items-center gap-2">
-                {isPending ? (
-                  <Badge className="bg-black/80 text-white border-0 shadow-lg px-3 py-1 font-semibold uppercase text-[10px]">
-                    Minting
+                <motion.div
+                  animate={{
+                    boxShadow: [
+                      "0 0 0 rgba(59, 130, 246, 0)",
+                      "0 0 20px rgba(59, 130, 246, 0.6)",
+                      "0 0 0 rgba(59, 130, 246, 0)",
+                    ],
+                  }}
+                  transition={{
+                    duration: 2.5,
+                    repeat: Number.POSITIVE_INFINITY,
+                    repeatType: "loop",
+                  }}
+                >
+                  <Badge className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-0 shadow-lg backdrop-blur-md px-3 py-1">
+                    <Gem className="w-3 h-3 mr-1.5 fill-white" />
+                    <span className="font-semibold">NFT</span>
                   </Badge>
-                ) : (
-                  <motion.div
-                    animate={{
-                      boxShadow: [
-                        "0 0 0 rgba(59, 130, 246, 0)",
-                        "0 0 20px rgba(59, 130, 246, 0.6)",
-                        "0 0 0 rgba(59, 130, 246, 0)",
-                      ],
-                    }}
-                    transition={{
-                      duration: 2.5,
-                      repeat: Number.POSITIVE_INFINITY,
-                      repeatType: "loop",
-                    }}
-                  >
-                    <Badge className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-0 shadow-lg backdrop-blur-md px-3 py-1">
-                      <Gem className="w-3 h-3 mr-1.5 fill-white" />
-                      <span className="font-semibold">NFT</span>
-                    </Badge>
-                  </motion.div>
-                )}
+                </motion.div>
               </div>
             </div>
 
@@ -200,14 +281,29 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                 </div>
 
                 <div className="rounded-xl p-4 border bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                      Price
-                    </span>
-                    <span className="text-xl font-bold text-green-600 dark:text-green-400">
-                      {isPending ? "Minting…" : isForSale ? `${price} XLM` : "Not listed"}
-                    </span>
-                  </div>
+                  {isForSale && nft.prices && nft.prices.length > 1 ? (
+                    <div className="space-y-1">
+                      {nft.prices.map((p) => (
+                        <div key={p.paymentToken} className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            {priceTokenLabel(p.paymentToken)}
+                          </span>
+                          <span className="text-base font-bold text-green-600 dark:text-green-400">
+                            {p.price} {priceTokenLabel(p.paymentToken)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                        Price
+                      </span>
+                      <span className="text-xl font-bold text-green-600 dark:text-green-400">
+                        {isForSale ? `${price} ${priceTokenLabel(nft.priceToken)}` : "Sold out"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

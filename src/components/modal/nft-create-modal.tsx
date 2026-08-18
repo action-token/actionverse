@@ -1609,9 +1609,6 @@ function SmartContractNftForm({
     onBack: () => void;
     onClose: () => void;
 }) {
-    const session = useSession();
-    const walletType = session.data?.user.walletType ?? WalletType.none;
-    const { needSign } = useNeedSign();
     const utils = api.useContext();
 
     const [activeStep, setActiveStep] = useState<string>("details");
@@ -1620,7 +1617,14 @@ function SmartContractNftForm({
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
     const [royaltyPercent, setRoyaltyPercent] = useState(0);
-    const [price, setPrice] = useState(1);
+    const [supply, setSupply] = useState(1);
+    // Empty string means "not offered in this currency" — at least one of
+    // the two must end up positive. Kept as separate fields (rather than a
+    // generic array) to match the fixed two-column grid asked for; a third
+    // column (USDC, etc.) is one more field plus one more entry in
+    // `handleCreate`'s `prices` array, not a redesign.
+    const [priceXlm, setPriceXlm] = useState("1");
+    const [priceAsset, setPriceAsset] = useState("");
 
     const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE);
     const [contentMimeType, setContentMimeType] = useState<string>();
@@ -1629,9 +1633,6 @@ function SmartContractNftForm({
     const [thumbnailUploading, setThumbnailUploading] = useState(false);
 
     const createNft = api.nft.create.useMutation();
-    const deletePendingNft = api.nft.deletePendingNft.useMutation();
-    const getMintXDR = api.nft.getMintXDR.useMutation();
-    const confirmMint = api.nft.confirmMint.useMutation();
 
     function getEndpoint(type: MediaType) {
         switch (type) {
@@ -1709,98 +1710,49 @@ function SmartContractNftForm({
         }
     }
 
+    const parsedPriceXlm = Number(priceXlm) || 0;
+    const parsedPriceAsset = Number(priceAsset) || 0;
+
     const canSubmit =
         name.trim().length > 0 &&
         !!thumbnailUrl &&
         !!contentUrl &&
         !!contentMimeType &&
-        price > 0;
-
-    // Same build-XDR -> sign (server-side or via clientsign) -> confirm shape
-    // as the bounty escrow flow (see src/pages/bounty/create.tsx) — no
-    // wallet-specific Soroban signing code, no SDK signAndSend/RPC decoding.
-    async function signAndSubmit(xdr: string, fullySignedByServer: boolean) {
-        if (fullySignedByServer) {
-            return extractTxHash(await submitSignedXDRToServer4User(xdr));
-        }
-        const clientResponse = await clientsign({
-            presignedxdr: xdr,
-            walletType,
-            pubkey: session.data!.user.id,
-            test: clientSelect(),
-        });
-        return extractTxHash(clientResponse);
-    }
+        supply >= 1 &&
+        (parsedPriceXlm > 0 || parsedPriceAsset > 0);
 
     /**
-     * One signature: the contract mints and lists atomically (`mint_and_list`),
-     * so there's only ever one transaction to sign and one confirmation to
-     * wait for here.
+     * A plain database write — no XDR, no signature, nothing for the creator
+     * to sign or pay for. Nothing mints here: the row becomes a live,
+     * buyable marketplace entry immediately, and `buy_edition` registers it
+     * on-chain (from this same data) the moment someone actually buys a
+     * copy. See the module doc on `contracts/nft_oz`'s `buy_edition`.
      */
-    async function handleMint() {
-        if (!session.data?.user || !thumbnailUrl || !contentUrl || !contentMimeType) return;
+    async function handleCreate() {
+        if (!thumbnailUrl || !contentUrl || !contentMimeType) return;
         setSubmitLoading(true);
-        let nftId: string | undefined;
-        // Once a real transaction hash exists, the mint (and its listing) may
-        // already be on-chain — deleting the row past this point would orphan
-        // a real artwork with no DB record, so the row is only ever cleaned up
-        // before this is set.
-        let mintHash: string | undefined;
         try {
-            const nft = await createNft.mutateAsync({
+            const prices: { paymentToken: "xlm" | "asset"; price: number }[] = [];
+            if (parsedPriceXlm > 0) prices.push({ paymentToken: "xlm", price: parsedPriceXlm });
+            if (parsedPriceAsset > 0) prices.push({ paymentToken: "asset", price: parsedPriceAsset });
+
+            await createNft.mutateAsync({
                 name: name.trim(),
                 description: description.trim(),
                 thumbnail: thumbnailUrl,
                 contentUrl,
                 mediaType: contentMimeType,
                 royaltyBps: Math.round(royaltyPercent * 100),
+                supply,
+                prices,
             });
-            nftId = nft.id;
 
-            const mintTx = await getMintXDR.mutateAsync({
-                nftId: nft.id,
-                price,
-                signWith: needSign(),
-            });
-            mintHash = await signAndSubmit(mintTx.xdr, mintTx.fullySignedByServer);
-            if (!mintHash) {
-                // Wallet dialog was closed/cancelled, or the transaction didn't
-                // land — don't leave a fake "minted" row behind.
-                toast.error("Minting transaction could not be confirmed.");
-                await deletePendingNft.mutateAsync({ nftId: nft.id });
-                return;
-            }
-
-            await confirmMint.mutateAsync({ nftId: nft.id, txHash: mintHash });
-
-            toast.success("NFT minted and listed!");
+            toast.success("Listing created!");
             onClose();
         } catch (e) {
-            const message = e instanceof Error ? e.message : "Minting failed";
-            if (mintHash) {
-                // The transaction was submitted — it likely landed on-chain and
-                // only the confirmation step failed to catch up. Don't discard
-                // the row; leave it PENDING so it's retryable/inspectable
-                // rather than silently orphaning a real mint.
-                toast.error(
-                    `Your transaction was submitted, but confirming it timed out: ${message}. It likely still went through — check your collection in a moment before minting again.`,
-                );
-            } else {
-                toast.error(message);
-                if (nftId) {
-                    await deletePendingNft.mutateAsync({ nftId }).catch(() => undefined);
-                }
-            }
+            toast.error(e instanceof Error ? e.message : "Failed to create listing");
         } finally {
-            await Promise.all([
-                utils.nft.myOwned.invalidate(),
-                utils.nft.myCreated.invalidate(),
-                utils.nft.list.invalidate(),
-                // Covers the case where this item's manage/detail page was
-                // already open in another tab and had cached a pre-mint
-                // ("not minted yet") snapshot before this call landed.
-                ...(nftId ? [utils.nft.onChainInsights.invalidate({ id: nftId })] : []),
-            ]);
+            await Promise.all([utils.nft.list.invalidate(), utils.nft.myCreated.invalidate()]);
             setSubmitLoading(false);
         }
     }
@@ -1815,12 +1767,13 @@ function SmartContractNftForm({
         >
             <DialogHeader className="px-6 py-4">
                 <DialogTitle className="flex items-center gap-2 text-xl">
-                    Mint Smart Contract NFT
+                    Create Smart Contract NFT
                 </DialogTitle>
                 <div className="flex items-center justify-between gap-2">
                     <DialogDescription>
-                        Minted directly on the NFT marketplace smart contract — on-chain
-                        ownership, royalties, and resale built in.
+                        On-chain ownership, royalties, and resale built in — you sign
+                        nothing and pay nothing to create this. Copies mint straight to
+                        each buyer when they buy.
                     </DialogDescription>
                     <div className="flex items-center gap-1.5">
                         {SC_FORM_STEPS.map((step) => (
@@ -1861,35 +1814,87 @@ function SmartContractNftForm({
                                     className="min-h-24 resize-none"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="sc-royalty">Creator royalty (%)</Label>
-                                <Input
-                                    id="sc-royalty"
-                                    type="number"
-                                    min={0}
-                                    max={50}
-                                    step="0.1"
-                                    value={royaltyPercent}
-                                    onChange={(e) => setRoyaltyPercent(Number(e.target.value) || 0)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    You earn this percentage on every resale
-                                </p>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="sc-royalty">Creator royalty (%)</Label>
+                                    <Input
+                                        id="sc-royalty"
+                                        type="number"
+                                        min={0}
+                                        max={50}
+                                        step="0.1"
+                                        value={royaltyPercent}
+                                        onChange={(e) => setRoyaltyPercent(Number(e.target.value) || 0)}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Earned on every resale
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="sc-supply">Supply limit</Label>
+                                    <Input
+                                        id="sc-supply"
+                                        type="number"
+                                        min={1}
+                                        step="1"
+                                        value={supply}
+                                        onChange={(e) => setSupply(Math.max(1, Math.round(Number(e.target.value) || 1)))}
+                                        placeholder="Default: 1"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Copies ever mintable
+                                    </p>
+                                </div>
                             </div>
+
+                            <Separator />
+
                             <div className="space-y-2">
-                                <Label htmlFor="sc-price" className="flex items-center gap-2">
-                                    <Coins className="h-4 w-4 text-muted-foreground" />
-                                    Price (XLM)
-                                </Label>
-                                <Input
-                                    id="sc-price"
-                                    type="number"
-                                    min={0.0000001}
-                                    step="any"
-                                    value={price}
-                                    onChange={(e) => setPrice(Number(e.target.value) || 0)}
-                                    placeholder="Enter price in XLM"
-                                />
+                                <p className="text-sm font-medium">Price per copy</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Buyers pick whichever currency they want to pay with —
+                                    leave a field empty to not offer that currency. More
+                                    currencies (like USDC) can be added later without changing
+                                    anything about this item.
+                                </p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="sc-price-xlm" className="flex items-center gap-2">
+                                            <Coins className="h-4 w-4 text-muted-foreground" />
+                                            Price (XLM)
+                                        </Label>
+                                        <Input
+                                            id="sc-price-xlm"
+                                            type="number"
+                                            min={0}
+                                            step="any"
+                                            value={priceXlm}
+                                            onChange={(e) => setPriceXlm(e.target.value)}
+                                            placeholder="e.g. 5"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="sc-price-asset" className="flex items-center gap-2">
+                                            <Coins className="h-4 w-4 text-muted-foreground" />
+                                            Price ({PLATFORM_ASSET.code})
+                                        </Label>
+                                        <Input
+                                            id="sc-price-asset"
+                                            type="number"
+                                            min={0}
+                                            step="any"
+                                            value={priceAsset}
+                                            onChange={(e) => setPriceAsset(e.target.value)}
+                                            placeholder="Optional"
+                                        />
+                                    </div>
+                                </div>
+                                {parsedPriceXlm <= 0 && parsedPriceAsset <= 0 && (
+                                    <p className="text-sm text-destructive">
+                                        Set a price in at least one currency.
+                                    </p>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -2020,8 +2025,9 @@ function SmartContractNftForm({
 
                             <Alert>
                                 <AlertDescription>
-                                    Minting calls the smart contract directly from your
-                                    connected wallet — no storage account needed.
+                                    Creating this doesn{"'"}t touch the blockchain or ask for a
+                                    signature — it just lists the item. Copies mint on-chain
+                                    straight to each buyer, right when they buy.
                                 </AlertDescription>
                             </Alert>
                         </CardContent>
@@ -2044,7 +2050,10 @@ function SmartContractNftForm({
                             type="button"
                             onClick={nextStep}
                             className="flex items-center gap-1 shadow-sm shadow-foreground"
-                            disabled={activeStep === "media" && (!thumbnailUrl || !contentUrl)}
+                            disabled={
+                                activeStep === "details" &&
+                                (name.trim().length === 0 || (parsedPriceXlm <= 0 && parsedPriceAsset <= 0))
+                            }
                         >
                             Next
                             <ArrowRight className="ml-1 h-4 w-4" />
@@ -2052,17 +2061,17 @@ function SmartContractNftForm({
                     ) : (
                         <Button
                             type="button"
-                            onClick={() => void handleMint()}
+                            onClick={() => void handleCreate()}
                             disabled={!canSubmit || submitLoading}
                             className="flex items-center gap-1 shadow-sm shadow-foreground"
                         >
                             {submitLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Minting...
+                                    Creating...
                                 </>
                             ) : (
-                                "Mint NFT"
+                                "Create Listing"
                             )}
                         </Button>
                     )}
