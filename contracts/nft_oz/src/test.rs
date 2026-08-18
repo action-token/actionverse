@@ -20,6 +20,7 @@ struct Fixture<'a> {
     token: TokenClient<'a>,
     owner: Address,
     treasury: Address,
+    unlock_authority: Address,
 }
 
 fn setup() -> Fixture<'static> {
@@ -28,6 +29,7 @@ fn setup() -> Fixture<'static> {
 
     let owner = Address::generate(&env);
     let treasury = Address::generate(&env);
+    let unlock_authority = Address::generate(&env);
     let sac_admin = Address::generate(&env);
 
     let sac = env.register_stellar_asset_contract_v2(sac_admin);
@@ -43,6 +45,7 @@ fn setup() -> Fixture<'static> {
             String::from_str(&env, "Actionverse Art"),
             String::from_str(&env, "AVART"),
             String::from_str(&env, "https://actionverse.test/nft/"),
+            unlock_authority.clone(),
         ),
     );
 
@@ -53,6 +56,7 @@ fn setup() -> Fixture<'static> {
         token,
         owner,
         treasury,
+        unlock_authority,
     }
 }
 
@@ -747,6 +751,7 @@ fn buy_edition_requires_only_the_buyers_signature() {
     let env = Env::default();
     let owner = Address::generate(&env);
     let treasury = Address::generate(&env);
+    let unlock_authority = Address::generate(&env);
     let sac_admin = Address::generate(&env);
     let alice = Address::generate(&env); // creator, never signs
     let bob = Address::generate(&env); // buyer
@@ -763,6 +768,7 @@ fn buy_edition_requires_only_the_buyers_signature() {
             String::from_str(&env, "Actionverse Art"),
             String::from_str(&env, "AVART"),
             String::from_str(&env, "https://actionverse.test/nft/"),
+            unlock_authority,
         ),
     );
     let client = ArtNftClient::new(&env, &contract_id);
@@ -957,6 +963,7 @@ fn non_owner_cannot_update_platform_fee() {
     let env = Env::default();
     let owner = Address::generate(&env);
     let treasury = Address::generate(&env);
+    let unlock_authority = Address::generate(&env);
     let mallory = Address::generate(&env);
 
     let contract_id = env.register(
@@ -968,6 +975,7 @@ fn non_owner_cannot_update_platform_fee() {
             String::from_str(&env, "Actionverse Art"),
             String::from_str(&env, "AVART"),
             String::from_str(&env, "https://actionverse.test/nft/"),
+            unlock_authority,
         ),
     );
     let client = ArtNftClient::new(&env, &contract_id);
@@ -1046,6 +1054,7 @@ fn non_owner_cannot_upgrade() {
     let env = Env::default();
     let owner = Address::generate(&env);
     let treasury = Address::generate(&env);
+    let unlock_authority = Address::generate(&env);
     let mallory = Address::generate(&env);
 
     let contract_id = env.register(
@@ -1057,6 +1066,7 @@ fn non_owner_cannot_upgrade() {
             String::from_str(&env, "Actionverse Art"),
             String::from_str(&env, "AVART"),
             String::from_str(&env, "https://actionverse.test/nft/"),
+            unlock_authority,
         ),
     );
     let client = ArtNftClient::new(&env, &contract_id);
@@ -1073,4 +1083,126 @@ fn non_owner_cannot_upgrade() {
             },
         }])
         .upgrade(&bogus_hash, &mallory);
+}
+
+// =============================================================================
+// Unlock — off-chain unlock-rule attestation (see the module doc on
+// `unlock_token_for`)
+// =============================================================================
+
+#[test]
+fn unlock_token_for_marks_a_token_unlocked() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer
+    fund(&f, &bob, PRICE);
+
+    let (token_id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 1);
+
+    assert!(!f.client.is_unlocked(&token_id));
+    f.client.unlock_token_for(&f.unlock_authority, &token_id);
+    assert!(f.client.is_unlocked(&token_id));
+}
+
+#[test]
+fn unlock_token_for_is_idempotent() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    let (token_id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 1);
+
+    f.client.unlock_token_for(&f.unlock_authority, &token_id);
+    f.client.unlock_token_for(&f.unlock_authority, &token_id); // must not panic
+    assert!(f.client.is_unlocked(&token_id));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #323)")]
+fn only_unlock_authority_can_unlock() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let mallory = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    let (token_id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 1);
+
+    f.client.unlock_token_for(&mallory, &token_id);
+}
+
+#[test]
+fn unlocking_one_token_does_not_unlock_a_sibling_from_the_same_edition() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    fund(&f, &bob, PRICE * 2);
+
+    let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 2);
+    assert_eq!(last, first + 1);
+
+    f.client.unlock_token_for(&f.unlock_authority, &first);
+
+    assert!(f.client.is_unlocked(&first));
+    assert!(!f.client.is_unlocked(&last), "unlocking one copy must not unlock another");
+}
+
+#[test]
+fn owner_can_rotate_the_unlock_authority() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let new_authority = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    let (token_id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 1);
+
+    f.client.set_unlock_authority(&new_authority);
+
+    // The old authority is no longer recognized...
+    f.client
+        .try_unlock_token_for(&f.unlock_authority, &token_id)
+        .expect_err("the old unlock authority must be rejected after rotation");
+
+    // ...while the new one works.
+    f.client.unlock_token_for(&new_authority, &token_id);
+    assert!(f.client.is_unlocked(&token_id));
+}
+
+#[test]
+#[should_panic]
+fn non_owner_cannot_set_unlock_authority() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let unlock_authority = Address::generate(&env);
+    let mallory = Address::generate(&env);
+
+    let contract_id = env.register(
+        ArtNft,
+        (
+            owner,
+            treasury,
+            FEE_BPS,
+            String::from_str(&env, "Actionverse Art"),
+            String::from_str(&env, "AVART"),
+            String::from_str(&env, "https://actionverse.test/nft/"),
+            unlock_authority,
+        ),
+    );
+    let client = ArtNftClient::new(&env, &contract_id);
+    let new_authority = Address::generate(&env);
+
+    client
+        .mock_auths(&[MockAuth {
+            address: &mallory,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_unlock_authority",
+                args: (new_authority.clone(),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .set_unlock_authority(&new_authority);
 }

@@ -58,6 +58,10 @@ export interface NftCardData {
   /** Edition supply, present on a primary "buy a new copy" card. */
   supply?: number;
   mintedCount?: number;
+  /** Set for a gated ("VIP ticket") edition — routes to
+   *  `/smart-contract/[id]` instead of the plain `/nft/[id]` page, which
+   *  has nothing to say about locked content or unlock progress. */
+  unlockRuleType?: string | null;
   /** Present when this card represents one specific resold copy rather than
    *  a fresh mint from the edition — its own browsable entry, not merged
    *  into the original edition's card. */
@@ -115,6 +119,7 @@ export function toNftCardData(item: MarketplaceListItem): NftCardData {
     prices: item.prices,
     supply: item.supply,
     mintedCount: item.mintedCount,
+    unlockRuleType: item.unlockRuleType,
   };
 }
 
@@ -170,9 +175,11 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
     : { image: nft.creator?.image, name: nft.creator?.name, seed: nft.creator?.id ?? nft.id };
   const bylinePrefix = nft.listing ? (nft.listing.isResale ? "Resold by " : "Created by ") : "by ";
   const price = nft.price;
-  const href = nft.listing
-    ? `/nft/${nft.id}?token=${nft.listing.tokenId}`
-    : `/nft/${nft.id}`;
+  // `/smart-contract/[id]` is the one buy page for every NFT now — primary
+  // or resold, gated or not — replacing the old `/nft/[id]`. It reads
+  // `nft.byId` itself and shows the resale card whenever `resaleListings`
+  // is non-empty, so no token id needs to travel in the URL.
+  const href = `/smart-contract/${nft.id}`;
   const supplyBadge =
     nft.supply && nft.supply > 1 ? `${nft.mintedCount ?? 0}/${nft.supply}` : "1 of 1";
   const resaleBadge =
@@ -286,7 +293,7 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                       {nft.prices.map((p) => (
                         <div key={p.paymentToken} className="flex items-center justify-between">
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            {priceTokenLabel(p.paymentToken)}
+                            {priceTokenLabel(p.paymentToken)} PRICE
                           </span>
                           <span className="text-base font-bold text-green-600 dark:text-green-400">
                             {p.price} {priceTokenLabel(p.paymentToken)}
@@ -297,7 +304,7 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                   ) : (
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                        Price
+                        XLM Price
                       </span>
                       <span className="text-xl font-bold text-green-600 dark:text-green-400">
                         {isForSale ? `${price} ${priceTokenLabel(nft.priceToken)}` : "Sold out"}

@@ -2,1478 +2,1505 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-    provider      = "prisma-client-js"
-    binaryTargets = ["native", "rhel-openssl-1.0.x"]
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
 }
 
 datasource db {
-    provider = "postgresql"
-    // NOTE: When using mysql or sqlserver, uncomment the @db.Text annotations in model Account below
-    // Further reading:
-    // https://next-auth.js.org/adapters/prisma#create-the-prisma-schema
-    // https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#string
-    url      = env("DATABASE_URL")
+  provider = "postgresql"
+  // NOTE: When using mysql or sqlserver, uncomment the @db.Text annotations in model Account below
+  // Further reading:
+  // https://next-auth.js.org/adapters/prisma#create-the-prisma-schema
+  // https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#string
+  url      = env("DATABASE_URL")
 }
 
 // ------------------------Generic SCHEMA-------------------------
 // ------------------------NOTIFICATION SCHEMA-------------------------
 enum PinType {
-    EVENT
-    EXPERIENCE
-    LAUNCH
-    OTHER
-    LANDMARK
+  EVENT
+  EXPERIENCE
+  LAUNCH
+  OTHER
+  LANDMARK
 }
 
 model Tag {
-    name          String          @id
-    AdminAssetTag AdminAssetTag[]
+  name          String          @id
+  AdminAssetTag AdminAssetTag[]
 }
 
 enum MediaType {
-    MUSIC
-    VIDEO
-    IMAGE
-    THREE_D
-    DOCUMENT
+  MUSIC
+  VIDEO
+  IMAGE
+  THREE_D
+  DOCUMENT
 }
 
 // ------------------------NOTIFICATION SCHEMA-------------------------
 
 enum NotificationType {
-    LIKE
-    COMMENT
-    SUBSCRIPTION
-    POST
-    SHOP_ASSET
-    FOLLOW
-    MEMBER
-    REPLY
-    COMMUNITY_POST
-    COMMUNITY_COMMENT
-    COMMUNITY_REPLY
-    COMMUNITY_MEMBER_JOIN
-    COMMUNITY_INVITE
-    COMMUNITY_REACTION
-    BOUNTY
-    BOUNTY_PARTICIPANT
-    BOUNTY_SUBMISSION
-    BOUNTY_WINNER
+  LIKE
+  COMMENT
+  SUBSCRIPTION
+  POST
+  SHOP_ASSET
+  FOLLOW
+  MEMBER
+  REPLY
+  COMMUNITY_POST
+  COMMUNITY_COMMENT
+  COMMUNITY_REPLY
+  COMMUNITY_MEMBER_JOIN
+  COMMUNITY_INVITE
+  COMMUNITY_REACTION
+  BOUNTY
+  BOUNTY_PARTICIPANT
+  BOUNTY_SUBMISSION
+  BOUNTY_WINNER
 }
 
 // it is kinda notification actor and the entity that is being acted upon
 // Notification model to track notifications for both users and creators
 model Notification {
-    id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-    notificationObjectId Int
-    notificationObject   NotificationObject @relation(fields: [notificationObjectId], references: [id], onDelete: Cascade)
+  notificationObjectId Int
+  notificationObject   NotificationObject @relation(fields: [notificationObjectId], references: [id], onDelete: Cascade)
 
-    seen      DateTime?
-    createdAt DateTime  @default(now())
+  seen      DateTime?
+  createdAt DateTime  @default(now())
 
-    notifierId String
-    isCreator  Boolean @default(false) // Notification for creators if true, for users if false
+  notifierId String
+  isCreator  Boolean @default(false) // Notification for creators if true, for users if false
 }
 
 model NotificationObject {
-    id             Int              @id @default(autoincrement())
-    entityType     NotificationType
-    // Int id for entities with numeric PKs (Post, Comment, Follow, CommunityMember, ...).
-    entityId       Int?
-    // String id for entities with non-numeric PKs (Bounty uses a UUID).
-    entityStringId String?
-    createdAt      DateTime         @default(now())
-    Notification   Notification[]
-    actorId        String
-    actor          User             @relation(fields: [actorId], references: [id], onDelete: Cascade)
-    isUser         Boolean          @default(true)
+  id             Int              @id @default(autoincrement())
+  entityType     NotificationType
+  // Int id for entities with numeric PKs (Post, Comment, Follow, CommunityMember, ...).
+  entityId       Int?
+  // String id for entities with non-numeric PKs (Bounty uses a UUID).
+  entityStringId String?
+  createdAt      DateTime         @default(now())
+  Notification   Notification[]
+  actorId        String
+  actor          User             @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  isUser         Boolean          @default(true)
 }
 
 // ------------------------FAN SCHEMA-------------------------
 model Subscription {
-    id            Int             @id @default(autoincrement())
-    name          String
-    description   String
-    features      String[] // Stored as JSON array
-    color         String          @default("bg-blue-500")
-    popular       Boolean         @default(false)
-    isActive      Boolean         @default(true)
-    price         Float // here price is the copy of creator page asset
-    creatorId     String
-    creator       Creator         @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    assets        Asset[]
-    LocationGroup LocationGroup[]
-    postGroup     PostGroup[]
+  id            Int             @id @default(autoincrement())
+  name          String
+  description   String
+  features      String[] // Stored as JSON array
+  color         String          @default("bg-blue-500")
+  popular       Boolean         @default(false)
+  isActive      Boolean         @default(true)
+  price         Float // here price is the copy of creator page asset
+  creatorId     String
+  creator       Creator         @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  assets        Asset[]
+  LocationGroup LocationGroup[]
+  postGroup     PostGroup[]
 
-    @@unique([name, creatorId])
+  @@unique([name, creatorId])
 }
 
 model Like {
-    id          Int       @id @default(autoincrement())
-    userId      String
-    user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-    createdAt   DateTime  @default(now())
-    postGroupId Int
-    postGroup   PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
-    status      Boolean   @default(true)
+  id          Int       @id @default(autoincrement())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  postGroupId Int
+  postGroup   PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  status      Boolean   @default(true)
 
-    @@unique([postGroupId, userId])
+  @@unique([postGroupId, userId])
 }
 
 model Comment {
-    id              Int       @id @default(autoincrement())
-    parentCommentID Int? // Optional field to reference parent comment (for nested comments)
-    userId          String // Foreign key referencing User model
-    user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-    content         String // Content of the comment
-    postGroupId     Int
-    postGroup       PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
-    // Optional relationship: a comment can have a parent comment
-    parentComment   Comment?  @relation("ChildComments", fields: [parentCommentID], references: [id], onDelete: Cascade)
+  id              Int       @id @default(autoincrement())
+  parentCommentID Int? // Optional field to reference parent comment (for nested comments)
+  userId          String // Foreign key referencing User model
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content         String // Content of the comment
+  postGroupId     Int
+  postGroup       PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  // Optional relationship: a comment can have a parent comment
+  parentComment   Comment?  @relation("ChildComments", fields: [parentCommentID], references: [id], onDelete: Cascade)
 
-    createdAt DateTime @default(now()) // Timestamp when the comment was created
+  createdAt DateTime @default(now()) // Timestamp when the comment was created
 
-    // Optional field: allows for a comment to have child comments (replies)
-    childComments Comment[] @relation("ChildComments") // Collection of child comments (replies)
+  // Optional field: allows for a comment to have child comments (replies)
+  childComments Comment[] @relation("ChildComments") // Collection of child comments (replies)
 }
 
 model User_Asset {
-    id     Int    @id @default(autoincrement())
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     Int    @id @default(autoincrement())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    assetId Int
-    asset   Asset @relation(fields: [assetId], references: [id], onDelete: NoAction)
+  assetId Int
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: NoAction)
 
-    buyAt DateTime @default(now())
+  buyAt DateTime @default(now())
 }
 
 // Be  a member 
 model Follow {
-    id     Int    @id @default(autoincrement())
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     Int    @id @default(autoincrement())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    creatorId String
-    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
-    followAt DateTime @default(now())
+  followAt DateTime @default(now())
 
-    // Unique constraint on userId and subscriptionId
-    @@unique([userId, creatorId])
+  // Unique constraint on userId and subscriptionId
+  @@unique([userId, creatorId])
 }
 
 // General Follow
 model TemporalFollow {
-    id     Int    @id @default(autoincrement())
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     Int    @id @default(autoincrement())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    creatorId String
-    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
-    followAt DateTime @default(now())
+  followAt DateTime @default(now())
 
-    // Unique constraint on userId and subscriptionId
-    @@unique([userId, creatorId])
+  // Unique constraint on userId and subscriptionId
+  @@unique([userId, creatorId])
 }
 
 model Media {
-    id          Int        @id @default(autoincrement())
-    url         String
-    type        MediaType
-    title       String?
-    artist      String?
-    album       String?
-    thumbnail   String?
-    duration    Int?
-    postGroupId Int?
-    postGroup   PostGroup? @relation(fields: [postGroupId], references: [id])
+  id          Int        @id @default(autoincrement())
+  url         String
+  type        MediaType
+  title       String?
+  artist      String?
+  album       String?
+  thumbnail   String?
+  duration    Int?
+  postGroupId Int?
+  postGroup   PostGroup? @relation(fields: [postGroupId], references: [id])
 }
 
 model CreatorPageAsset {
-    creatorId String @id
+  creatorId String @id
 
-    code          String
-    issuer        String
-    issuerPrivate String?
-    thumbnail     String?
-    priceUSD      Float   @default(1)
-    price         Float   @default(2)
+  code          String
+  issuer        String
+  issuerPrivate String?
+  thumbnail     String?
+  priceUSD      Float   @default(1)
+  price         Float   @default(2)
 
-    limit Int
+  limit Int
 
-    creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 }
 
 model Creator {
-    id         String   @id
-    joinedAt   DateTime @default(now())
-    profileUrl String?
-    coverUrl   String?
-    bio        String?
-    name       String
+  id         String   @id
+  joinedAt   DateTime @default(now())
+  profileUrl String?
+  coverUrl   String?
+  bio        String?
+  name       String
 
-    backgroundSVG String?
-    showSVG       Boolean @default(false)
-    vanityURL     String? @unique(map: "unique_vanityurl")
+  backgroundSVG String?
+  showSVG       Boolean @default(false)
+  vanityURL     String? @unique(map: "unique_vanityurl")
 
-    storagePub    String
-    storageSecret String
+  storagePub    String
+  storageSecret String
 
-    justStorageCreated Boolean?
-    aprovalSend        Boolean
-    approved           Boolean? // if undefined than it is sended for aproval, false means banned, true means aproved
+  justStorageCreated Boolean?
+  aprovalSend        Boolean
+  approved           Boolean? // if undefined than it is sended for aproval, false means banned, true means aproved
 
-    // pageAsset
-    pageAssetId Int?
+  // pageAsset
+  pageAssetId Int?
 
-    customPageAssetCodeIssuer String? // CODE-ISSUER-ASSET-USD
-    //handle
-    website                   String?
-    twitter                   String?
-    instagram                 String?
+  customPageAssetCodeIssuer String? // CODE-ISSUER-ASSET-USD
+  //handle
+  website                   String?
+  twitter                   String?
+  instagram                 String?
 
-    user               User                @relation(fields: [id], references: [id], onDelete: Cascade)
-    subscriptions      Subscription[]
-    assets             Asset[]
-    marketAssets       MarketAsset[]
-    pageAsset          CreatorPageAsset?
-    followers          Follow[]
-    LocationGroup      LocationGroup[]
-    vanitySubscription VanitySubscription?
-    Album              Album[]
-    Song               Song[]
-    createdAt          DateTime            @default(now())
-    Appearance         Appearance[]
+  user               User                @relation(fields: [id], references: [id], onDelete: Cascade)
+  subscriptions      Subscription[]
+  assets             Asset[]
+  marketAssets       MarketAsset[]
+  pageAsset          CreatorPageAsset?
+  followers          Follow[]
+  LocationGroup      LocationGroup[]
+  vanitySubscription VanitySubscription?
+  Album              Album[]
+  Song               Song[]
+  createdAt          DateTime            @default(now())
+  Appearance         Appearance[]
 
-    SellPageAsset     SellPageAsset[]
-    temporalFollows   TemporalFollow[]
-    hotspots          Hotspot[]
-    locationTags      LocationTag[]
-    locationGroupJobs LocationGroupJob[]
-    agentJobs         AgentJob[]
-    gallery           CreatorGallery?
-    gallerySlots      GallerySlotOverride[]
-    museumRooms       MuseumRoom[]
-    postGroups        PostGroup[]
+  SellPageAsset     SellPageAsset[]
+  temporalFollows   TemporalFollow[]
+  hotspots          Hotspot[]
+  locationTags      LocationTag[]
+  locationGroupJobs LocationGroupJob[]
+  agentJobs         AgentJob[]
+  gallery           CreatorGallery?
+  gallerySlots      GallerySlotOverride[]
+  museumRooms       MuseumRoom[]
+  postGroups        PostGroup[]
 
-    @@index([bio, name])
+  @@index([bio, name])
 }
 
 model Appearance {
-    id        String   @id @default(cuid())
-    name      String
-    isDefault Boolean  @default(false)
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    creatorId String? // Optional field to reference the creator
-    creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    widgets   Widget[]
-    theme     Json? // Store theme as JSON
-    isPublic  Boolean  @default(false)
+  id        String   @id @default(cuid())
+  name      String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  creatorId String? // Optional field to reference the creator
+  creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  widgets   Widget[]
+  theme     Json? // Store theme as JSON
+  isPublic  Boolean  @default(false)
 
-    @@index([creatorId])
+  @@index([creatorId])
 }
 
 model Widget {
-    id           String  @id @default(cuid())
-    widgetId     String // The type of widget (e.g., "stats", "profile", etc.)
-    size         String // "small", "medium", or "large"
-    order        Int
-    pinned       Boolean @default(false)
-    groupId      String? // For grouped widgets
-    customWidth  Float? // For custom width percentage in groups
-    appearanceId String
-    settings     Json? // Add this line
+  id           String  @id @default(cuid())
+  widgetId     String // The type of widget (e.g., "stats", "profile", etc.)
+  size         String // "small", "medium", or "large"
+  order        Int
+  pinned       Boolean @default(false)
+  groupId      String? // For grouped widgets
+  customWidth  Float? // For custom width percentage in groups
+  appearanceId String
+  settings     Json? // Add this line
 
-    appearance Appearance @relation(fields: [appearanceId], references: [id], onDelete: Cascade)
-    createdAt  DateTime   @default(now())
-    updatedAt  DateTime   @updatedAt
+  appearance Appearance @relation(fields: [appearanceId], references: [id], onDelete: Cascade)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 
-    @@index([appearanceId])
+  @@index([appearanceId])
 }
 
 model VanitySubscription {
-    id        String   @id @default(cuid())
-    creatorId String   @unique
-    creator   Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    startDate DateTime @default(now())
-    endDate   DateTime
+  id        String   @id @default(cuid())
+  creatorId String   @unique
+  creator   Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  startDate DateTime @default(now())
+  endDate   DateTime
 
-    // Payment tracking
-    lastPaymentAmount Float
-    lastPaymentDate   DateTime
+  // Payment tracking
+  lastPaymentAmount Float
+  lastPaymentDate   DateTime
 }
 
 model PostGroup {
-    id             Int           @id @default(autoincrement())
-    content        String
-    heading        String        @default("Heading")
-    description    String?
-    creatorId      String
-    creator        Creator       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    subscriptionId Int?
-    subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  id             Int           @id @default(autoincrement())
+  content        String
+  heading        String        @default("Heading")
+  description    String?
+  creatorId      String
+  creator        Creator       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  subscriptionId Int?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
 
-    createdAt   DateTime         @default(now())
-    updatedAt   DateTime         @updatedAt
-    posts       Post[]
-    collections PostCollection[]
-    likes       Like[]
-    comments    Comment[]
-    medias      Media[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  posts       Post[]
+  collections PostCollection[]
+  likes       Like[]
+  comments    Comment[]
+  medias      Media[]
 }
 
 model Post {
-    id          Int             @id @default(autoincrement())
-    isCollected Boolean         @default(false)
-    createdAt   DateTime        @default(now())
-    updatedAt   DateTime        @updatedAt
-    postGroupId Int
-    postGroup   PostGroup       @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
-    collection  PostCollection?
+  id          Int             @id @default(autoincrement())
+  isCollected Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  postGroupId Int
+  postGroup   PostGroup       @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  collection  PostCollection?
 
-    @@index([postGroupId])
-    @@index([isCollected])
+  @@index([postGroupId])
+  @@index([isCollected])
 }
 
 model PostCollection {
-    id          Int       @id @default(autoincrement())
-    postId      Int       @unique
-    post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
-    userId      String
-    user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-    postGroupId Int
-    postGroup   PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
-    collectedAt DateTime  @default(now())
+  id          Int       @id @default(autoincrement())
+  postId      Int       @unique
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postGroupId Int
+  postGroup   PostGroup @relation(fields: [postGroupId], references: [id], onDelete: Cascade)
+  collectedAt DateTime  @default(now())
 
-    @@unique([postGroupId, userId])
-    @@index([userId])
-    @@index([postGroupId])
+  @@unique([postGroupId, userId])
+  @@index([userId])
+  @@index([postGroupId])
 }
 
 // Necessary for Next auth
 model Account {
-    id                String  @id @default(cuid())
-    userId            String
-    type              String
-    provider          String
-    providerAccountId String
-    refresh_token     String? // @db.Text
-    access_token      String? // @db.Text
-    expires_at        Int?
-    token_type        String?
-    scope             String?
-    id_token          String? // @db.Text
-    session_state     String?
-    user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? // @db.Text
+  access_token      String? // @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? // @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([provider, providerAccountId])
+  @@unique([provider, providerAccountId])
 }
 
 model Session {
-    id           String   @id @default(cuid())
-    sessionToken String   @unique
-    userId       String
-    expires      DateTime
-    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model User {
-    id                String    @id @default(cuid())
-    name              String?
-    email             String?   @unique
-    bio               String?
-    image             String?
-    emailVerified     DateTime?
-    firstSignUpMethod String? // e.g. email, google, github, etc.
+  id                String    @id @default(cuid())
+  name              String?
+  email             String?   @unique
+  bio               String?
+  image             String?
+  emailVerified     DateTime?
+  firstSignUpMethod String? // e.g. email, google, github, etc.
 
-    joinedAt         DateTime?          @default(now())
-    fromAppSignup    Boolean?           @default(false)
-    accounts         Account[]
-    sessions         Session[]
-    creator          Creator?
-    likes            Like[]
-    comments         Comment[]
-    assets           User_Asset[]
-    Admin            Admin[]
-    songs            User_Song[]
-    followings       Follow[]
-    LocationConsumer LocationConsumer[]
+  joinedAt         DateTime?          @default(now())
+  fromAppSignup    Boolean?           @default(false)
+  accounts         Account[]
+  sessions         Session[]
+  creator          Creator?
+  likes            Like[]
+  comments         Comment[]
+  assets           User_Asset[]
+  Admin            Admin[]
+  songs            User_Song[]
+  followings       Follow[]
+  LocationConsumer LocationConsumer[]
 
-    actorNotificationObjects NotificationObject[]
+  actorNotificationObjects NotificationObject[]
 
-    RedeemConsumer  RedeemConsumer[]
-    beams           Beam[]
-    beamReactions   BeamReaction[]
-    beamComments    BeamComment[]
-    temporalFollows TemporalFollow[]
+  RedeemConsumer  RedeemConsumer[]
+  beams           Beam[]
+  beamReactions   BeamReaction[]
+  beamComments    BeamComment[]
+  temporalFollows TemporalFollow[]
 
-    ownedCommunities                 Community[]                       @relation("CommunityOwner")
-    communityMemberships             CommunityMember[]
-    communityPosts                   CommunityPost[]
-    communityComments                CommunityComment[]
-    communityPostLikes               CommunityPostLike[]
-    communityActivities              CommunityActivity[]
-    communityNotificationPreferences CommunityNotificationPreference[]
-    Bounty                           Bounty[]
-    BountyParticipant                BountyParticipant[]
-    BountySubmission                 BountySubmission[]
-    BountyWinner                     BountyWinner[]
-    lastFmAccount                    LastFMAccount?
-    gallerySlotLikes                 GallerySlotLike[]
-    postCollections                  PostCollection[]
-    createdNfts                      Nft[]
-    nftTokens                        NftToken[]
-    nftListings                      NftListing[]
-    nftPurchases                     NftPurchase[]
-    nftLikes                         NftLike[]
-    collectionLikes                  CollectionLike[]
-    nftCollections                   Collection[]
+  ownedCommunities                 Community[]                       @relation("CommunityOwner")
+  communityMemberships             CommunityMember[]
+  communityPosts                   CommunityPost[]
+  communityComments                CommunityComment[]
+  communityPostLikes               CommunityPostLike[]
+  communityActivities              CommunityActivity[]
+  communityNotificationPreferences CommunityNotificationPreference[]
+  Bounty                           Bounty[]
+  BountyParticipant                BountyParticipant[]
+  BountySubmission                 BountySubmission[]
+  BountyWinner                     BountyWinner[]
+  lastFmAccount                    LastFMAccount?
+  gallerySlotLikes                 GallerySlotLike[]
+  postCollections                  PostCollection[]
+  createdNfts                      Nft[]
+  nftTokens                        NftToken[]
+  nftListings                      NftListing[]
+  nftPurchases                     NftPurchase[]
+  nftLikes                         NftLike[]
+  collectionLikes                  CollectionLike[]
+  nftCollections                   Collection[]
+  // Personal, invisible-to-everyone-else AR pin sets from a gated NFT's
+  // unlock rule — see `LocationGroup.restrictedToUserId`.
+  restrictedPinGroups              LocationGroup[]                   @relation("RestrictedPinGroups")
 }
 
 model VerificationToken {
-    identifier String
-    token      String   @unique
-    expires    DateTime
+  identifier String
+  token      String   @unique
+  expires    DateTime
 
-    @@unique([identifier, token])
+  @@unique([identifier, token])
 }
 
 // ------------------------MUSIC SCHEMA-------------------------
 
 model Album {
-    id          Int      @id @default(autoincrement())
-    name        String
-    description String
-    coverImgUrl String
-    creatorId   String?
-    creator     Creator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
-    createdAt   DateTime @default(now())
-    songs       Song[]
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String
+  coverImgUrl String
+  creatorId   String?
+  creator     Creator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  songs       Song[]
 }
 
 model Song {
-    id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-    artist String
+  artist String
 
-    assetId Int   @unique
-    asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId Int   @unique
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
-    creatorId String?
-    creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  creatorId String?
+  creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
 
-    price    Float
-    priceUSD Float
+  price    Float
+  priceUSD Float
 
-    albumId Int
-    album   Album @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  albumId Int
+  album   Album @relation(fields: [albumId], references: [id], onDelete: Cascade)
 
-    createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-    User_Song User_Song[]
+  User_Song User_Song[]
 }
 
 model User_Song {
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    songId Int
-    song   Song @relation(fields: [songId], references: [id], onDelete: Cascade)
+  songId Int
+  song   Song @relation(fields: [songId], references: [id], onDelete: Cascade)
 
-    @@id([userId, songId])
+  @@id([userId, songId])
 }
 
 enum ItemPrivacy {
-    DRAFT
-    FOR_SALE
-    NOT_FOR_SALE
-    PUBLIC
-    FOLLOWER // only for followers
-    PRIVATE // only for members
-    TIER // tier based
+  DRAFT
+  FOR_SALE
+  NOT_FOR_SALE
+  PUBLIC
+  FOLLOWER // only for followers
+  PRIVATE // only for members
+  TIER // tier based
 }
 
 // ------------------------Marketplace SCHEMA-------------------------
 
 enum AssetKind {
-    STELLAR_CLASSIC
-    NON_STELLAR
+  STELLAR_CLASSIC
+  NON_STELLAR
 }
 
 model Asset {
-    id          Int     @id @default(autoincrement())
-    name        String
-    description String?
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
 
-    limit Int? // if null then it is unlimited
+  limit Int? // if null then it is unlimited
 
-    kind          AssetKind @default(STELLAR_CLASSIC)
-    code          String
-    issuer        String
-    issuerPrivate String?
+  kind          AssetKind @default(STELLAR_CLASSIC)
+  code          String
+  issuer        String
+  issuerPrivate String?
 
-    mediaType MediaType
-    mediaUrl  String
-    thumbnail String
+  mediaType MediaType
+  mediaUrl  String
+  thumbnail String
 
-    privacy ItemPrivacy @default(PUBLIC)
+  privacy ItemPrivacy @default(PUBLIC)
 
-    creatorId String? // if null then it is admin asset
-    creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId String? // if null then it is admin asset
+  creator   Creator? @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
-    tierId Int?
-    tier   Subscription? @relation(fields: [tierId], references: [id], onDelete: SetNull)
+  tierId Int?
+  tier   Subscription? @relation(fields: [tierId], references: [id], onDelete: SetNull)
 
-    isQRItem Boolean @default(false)
+  isQRItem Boolean @default(false)
 
-    song          Song?
-    buyers        User_Asset[]
-    marketItems   MarketAsset[]
-    LocationGroup LocationGroup[]
-    Redeem        Redeem[]
-    createdAt     DateTime        @default(now())
+  song          Song?
+  buyers        User_Asset[]
+  marketItems   MarketAsset[]
+  LocationGroup LocationGroup[]
+  Redeem        Redeem[]
+  createdAt     DateTime        @default(now())
 
-    @@unique([code, issuer])
-    @@index([name, description])
+  @@unique([code, issuer])
+  @@index([name, description])
 }
 
 // this will eliminate asset buy modal overhead.
 enum MarketType {
-    SONG
-    ADMIN
-    FAN
+  SONG
+  ADMIN
+  FAN
 }
 
 // this for creators;
 model MarketAsset {
-    id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-    isQRItem Boolean     @default(false)
-    privacy  ItemPrivacy @default(PUBLIC)
+  isQRItem Boolean     @default(false)
+  privacy  ItemPrivacy @default(PUBLIC)
 
-    price    Float
-    priceUSD Float @default(1)
+  price    Float
+  priceUSD Float @default(1)
 
-    type MarketType @default(FAN)
+  type MarketType @default(FAN)
 
-    assetId Int
-    asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId Int
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
-    placedAt DateTime @default(now())
+  placedAt DateTime @default(now())
 
-    placerId String? // admin placing this assets
-    placer   Creator? @relation(fields: [placerId], references: [id], onDelete: Cascade)
+  placerId String? // admin placing this assets
+  placer   Creator? @relation(fields: [placerId], references: [id], onDelete: Cascade)
 
-    createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-    @@unique([assetId, placerId])
+  @@unique([assetId, placerId])
 }
 
 // ------------------------Wallete SCHEMA-------------------------
 
 model AdminAsset {
-    id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-    description String
-    link        String
-    codeIssuer  String
-    code        String
+  description String
+  link        String
+  codeIssuer  String
+  code        String
 
-    logoUrl      String
-    logoBlueData String?
-    color        String
+  logoUrl      String
+  logoBlueData String?
+  color        String
 
-    createdAt   DateTime @default(now())
-    // market links
-    StellarTerm String?
-    StellarX    String?
-    Litemint    String?
+  createdAt   DateTime @default(now())
+  // market links
+  StellarTerm String?
+  StellarX    String?
+  Litemint    String?
 
-    adminId String
-    admin   Admin  @relation(fields: [adminId], references: [id], onDelete: NoAction)
+  adminId String
+  admin   Admin  @relation(fields: [adminId], references: [id], onDelete: NoAction)
 
-    tags AdminAssetTag[]
+  tags AdminAssetTag[]
 }
 
 model AdminAssetTag {
-    id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-    tagName String
-    tag     Tag    @relation(fields: [tagName], references: [name], onDelete: Cascade)
+  tagName String
+  tag     Tag    @relation(fields: [tagName], references: [name], onDelete: Cascade)
 
-    adminAssetId Int
-    addminAsset  AdminAsset @relation(fields: [adminAssetId], references: [id], onDelete: Cascade)
+  adminAssetId Int
+  addminAsset  AdminAsset @relation(fields: [adminAssetId], references: [id], onDelete: Cascade)
 }
 
 model Admin {
-    id       String   @id
-    joinedAt DateTime @default(now())
+  id       String   @id
+  joinedAt DateTime @default(now())
 
-    profileUrl String?
-    coverUrl   String?
-    bio        String?
-    name       String?
+  profileUrl String?
+  coverUrl   String?
+  bio        String?
+  name       String?
 
-    user       User         @relation(fields: [id], references: [id], onDelete: Cascade)
-    AdminAsset AdminAsset[]
+  user       User         @relation(fields: [id], references: [id], onDelete: Cascade)
+  AdminAsset AdminAsset[]
 }
 
 // ------------------------Mapping SCHEMA-------------------------
 model Hotspot {
-    id        String  @id @default(cuid())
-    creatorId String
-    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
-    // Drop schedule
-    dropEveryDays    Int // interval in days between drops
-    pinDurationDays  Int // lifetime of each dropped LocationGroup (days)
-    hotspotStartDate DateTime // when the first drop fires
-    hotspotEndDate   DateTime // after this no new drops
+  // Drop schedule
+  dropEveryDays    Int // interval in days between drops
+  pinDurationDays  Int // lifetime of each dropped LocationGroup (days)
+  hotspotStartDate DateTime // when the first drop fires
+  hotspotEndDate   DateTime // after this no new drops
 
-    // Colletion
-    autoCollect Boolean @default(false) // if true then it will automatically collect from users when they come in the geo fence, otherwise they need to manually click collect button
-    multiPin    Boolean @default(false) // if true then it will drop multiple pins in the geo fence, otherwise it will drop only one pin
+  // Colletion
+  autoCollect Boolean @default(false) // if true then it will automatically collect from users when they come in the geo fence, otherwise they need to manually click collect button
+  multiPin    Boolean @default(false) // if true then it will drop multiple pins in the geo fence, otherwise it will drop only one pin
 
-    // Geo
-    shape   String // "circle" | "square" | "polygon"
-    geoJson Json // GeoJSON Feature
+  // Geo
+  shape   String // "circle" | "square" | "polygon"
+  geoJson Json // GeoJSON Feature
 
-    // QStash
-    qstashScheduleId String?
-    isActive         Boolean  @default(true)
-    hidden           Boolean  @default(false)
-    createdAt        DateTime @default(now())
-    updatedAt        DateTime @updatedAt
+  // QStash
+  qstashScheduleId String?
+  isActive         Boolean  @default(true)
+  hidden           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-    locationGroups LocationGroup[]
+  locationGroups LocationGroup[]
 }
 
 model LocationTag {
-    id        String  @id @default(cuid())
-    name      String  @unique
-    label     String
-    creatorId String
-    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  name      String  @unique
+  label     String
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
-    locationGroups LocationGroupTag[]
+  locationGroups LocationGroupTag[]
 }
 
 model LocationGroupTag {
-    locationGroupId String
-    locationGroup   LocationGroup @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
-    tagId           String
-    tag             LocationTag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  locationGroupId String
+  locationGroup   LocationGroup @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
+  tagId           String
+  tag             LocationTag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-    @@id([locationGroupId, tagId])
+  @@id([locationGroupId, tagId])
 }
 
 model LocationTagCache {
-    title     String   @id
-    tags      String[]
-    createdAt DateTime @default(now())
+  title     String   @id
+  tags      String[]
+  createdAt DateTime @default(now())
 }
 
 model LocationGroup {
-    id String @id @default(cuid())
+  id String @id @default(cuid())
 
-    privacy ItemPrivacy @default(PUBLIC)
+  privacy ItemPrivacy @default(PUBLIC)
 
-    subscriptionId Int?
-    Subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  subscriptionId Int?
+  Subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
 
-    assetId Int?
-    asset   Asset? @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId Int?
+  asset   Asset? @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
-    pageAsset Boolean? @default(false)
+  pageAsset Boolean? @default(false)
 
-    creatorId String
-    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
-    limit     Int @default(0)
-    remaining Int @default(0)
+  limit     Int @default(0)
+  remaining Int @default(0)
 
-    title       String
-    description String?
+  title       String
+  description String?
 
-    startDate DateTime
-    endDate   DateTime
+  startDate DateTime
+  endDate   DateTime
 
-    approved Boolean?
+  approved Boolean?
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    latitude  Float
-    longitude Float
-    radius    Float
+  latitude  Float
+  longitude Float
+  radius    Float
 
-    image          String?
-    optimizedImage String?
+  image          String?
+  optimizedImage String?
 
-    hidden Boolean @default(false)
-    link   String?
+  hidden Boolean @default(false)
+  link   String?
 
-    multiPin Boolean @default(false)
-    type     PinType @default(OTHER) // Added new type field
+  multiPin Boolean @default(false)
+  type     PinType @default(OTHER) // Added new type field
 
-    locations         Location[]
-    hotspot           Hotspot?           @relation(fields: [hotspotId], references: [id])
-    hotspotId         String?
-    locationGroupTags LocationGroupTag[]
+  locations         Location[]
+  hotspot           Hotspot?           @relation(fields: [hotspotId], references: [id])
+  hotspotId         String?
+  locationGroupTags LocationGroupTag[]
+
+  // ── Gated-NFT unlock pin set (see Nft.unlockLocationRule) ──────────────
+  // When set, this group is a private, single-token clone of a gated
+  // NFT's unlock rule — invisible to every user except `restrictedToUser`
+  // (enforced in gameRouter.getPins / pages/api/game/locations and
+  // consumePin), not a shared/public campaign. Null for every ordinary
+  // LocationGroup that exists today; nothing above this line changes
+  // behavior for those.
+  restrictedToUserId  String?
+  restrictedToUser    User?     @relation("RestrictedPinGroups", fields: [restrictedToUserId], references: [id])
+  // One private pin set per minted copy — not per edition, not per buyer,
+  // since each copy independently unlocks its own reward.
+  unlockForTokenId    String?   @unique
+  unlockForToken      NftToken? @relation(fields: [unlockForTokenId], references: [id], onDelete: Cascade)
+  // Denormalized for convenience queries ("how many pin sets exist for
+  // this edition") without joining through NftToken; not itself a lookup
+  // key.
+  unlockForNftId      String?
+  unlockForNft        Nft?      @relation(fields: [unlockForNftId], references: [id], onDelete: Cascade)
+  // Set once this token's collected pins meet its rule's requirement and
+  // the one-time call to the contract's `unlock_token_for` succeeds. Null
+  // until then; lets a retry/cron avoid double-submitting.
+  onChainUnlockedAt   DateTime?
+  onChainUnlockTxHash String?
 }
 
 model Location {
-    id String @id @default(cuid())
+  id String @id @default(cuid())
 
-    latitude  Float
-    longitude Float
+  latitude  Float
+  longitude Float
 
-    autoCollect     Boolean
-    hidden          Boolean        @default(false)
-    locationGroupId String?
-    locationGroup   LocationGroup? @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
+  autoCollect     Boolean
+  hidden          Boolean        @default(false)
+  locationGroupId String?
+  locationGroup   LocationGroup? @relation(fields: [locationGroupId], references: [id], onDelete: Cascade)
 
-    consumers LocationConsumer[]
+  consumers LocationConsumer[]
 }
 
 model LocationConsumer {
-    id String @id @default(cuid())
+  id String @id @default(cuid())
 
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    locationId String
-    location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
-    redeemCode String    @unique
-    isRedeemed Boolean   @default(false)
-    redeemedAt DateTime?
+  redeemCode String    @unique
+  isRedeemed Boolean   @default(false)
+  redeemedAt DateTime?
 
-    claimedAt DateTime?
+  claimedAt DateTime?
 
-    viewedAt DateTime?
+  viewedAt DateTime?
 
-    hidden Boolean @default(false)
+  hidden Boolean @default(false)
 
-    createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model LocationGroupJob {
-    id        String @id @default(cuid())
-    creatorId String
+  id        String @id @default(cuid())
+  creatorId String
 
-    status    String @default("pending")
-    total     Int    @default(0)
-    completed Int    @default(0)
+  status    String @default("pending")
+  total     Int    @default(0)
+  completed Int    @default(0)
 
-    payload    Json
-    redeemMode String @default("separate")
+  payload    Json
+  redeemMode String @default("separate")
 
-    log   Json    @default("[]")
-    error String?
+  log   Json    @default("[]")
+  error String?
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
-    @@index([creatorId, createdAt])
+  @@index([creatorId, createdAt])
 }
 
 model AgentJob {
-    id        String  @id @default(cuid())
-    creatorId String
-    creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
-    status  String  @default("pending")
-    result  Json?
-    error   String?
-    payload Json // ← add this
+  status  String  @default("pending")
+  result  Json?
+  error   String?
+  payload Json // ← add this
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    @@index([creatorId, createdAt])
+  @@index([creatorId, createdAt])
 }
 
 model GeoCache {
-    key       String   @id
-    value     String   @db.Text
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  key       String   @id
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Redeem {
-    code            String           @id
-    totalRedeemable Int
-    redeemConsumers RedeemConsumer[]
-    assetRedeemId   Int
-    assetRedeem     Asset            @relation(fields: [assetRedeemId], references: [id], onDelete: Cascade)
+  code            String           @id
+  totalRedeemable Int
+  redeemConsumers RedeemConsumer[]
+  assetRedeemId   Int
+  assetRedeem     Asset            @relation(fields: [assetRedeemId], references: [id], onDelete: Cascade)
 }
 
 model RedeemConsumer {
-    id         Int      @id @default(autoincrement())
-    userId     String
-    user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    code       String
-    redeemCode Redeem   @relation(fields: [code], references: [code], onDelete: Cascade)
-    redeemedAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code       String
+  redeemCode Redeem   @relation(fields: [code], references: [code], onDelete: Cascade)
+  redeemedAt DateTime @default(now())
 }
 
 model OriginReward {
-    id                String    @id @default(uuid())
-    monthYear         String    @unique
-    data              Json // Stores all distribution info
-    totalBalance      Float     @default(0) // Total distributable balance for the month
-    isDistributed     Boolean   @default(false) // Whether the month's distribution is paid
-    distributedAmount Float? // Actual distributed amount
-    lastUpdatedAt     DateTime  @default(now())
-    rewardedAt        DateTime?
+  id                String    @id @default(uuid())
+  monthYear         String    @unique
+  data              Json // Stores all distribution info
+  totalBalance      Float     @default(0) // Total distributable balance for the month
+  isDistributed     Boolean   @default(false) // Whether the month's distribution is paid
+  distributedAmount Float? // Actual distributed amount
+  lastUpdatedAt     DateTime  @default(now())
+  rewardedAt        DateTime?
 
-    // Simple distribution tracking
-    completedUsers Json? // Array of wallet addresses that have been successfully distributed to
-    workflowHandle Json? // Trigger.dev workflow handle ID for tracking
-    lastError      Json?
+  // Simple distribution tracking
+  completedUsers Json? // Array of wallet addresses that have been successfully distributed to
+  workflowHandle Json? // Trigger.dev workflow handle ID for tracking
+  lastError      Json?
 }
 
 model OriginBlockedUser {
-    id            String   @id @default(uuid())
-    walletAddress String   @unique
-    reason        String?
-    blockedAt     DateTime @default(now())
+  id            String   @id @default(uuid())
+  walletAddress String   @unique
+  reason        String?
+  blockedAt     DateTime @default(now())
 }
 
 model QuarterBlockedUser {
-    id            String   @id @default(uuid())
-    walletAddress String   @unique
-    reason        String?
-    blockedAt     DateTime @default(now())
+  id            String   @id @default(uuid())
+  walletAddress String   @unique
+  reason        String?
+  blockedAt     DateTime @default(now())
 }
 
 model QuarterReward {
-    id                String    @id @default(uuid())
-    year              Int
-    quarter           String
-    data              Json // Stores all distribution info
-    isDistributed     Boolean   @default(false) // Whether the month's distribution is paid
-    distributedAmount Float? // Actual distributed amount
-    lastUpdatedAt     DateTime  @default(now())
-    rewardedAt        DateTime?
+  id                String    @id @default(uuid())
+  year              Int
+  quarter           String
+  data              Json // Stores all distribution info
+  isDistributed     Boolean   @default(false) // Whether the month's distribution is paid
+  distributedAmount Float? // Actual distributed amount
+  lastUpdatedAt     DateTime  @default(now())
+  rewardedAt        DateTime?
 
-    // Simple distribution tracking
-    completedUsers Json? // Array of wallet addresses that have been successfully distributed to
-    workflowHandle Json? // Trigger.dev workflow handle ID for tracking
-    lastError      Json?
+  // Simple distribution tracking
+  completedUsers Json? // Array of wallet addresses that have been successfully distributed to
+  workflowHandle Json? // Trigger.dev workflow handle ID for tracking
+  lastError      Json?
 
-    @@unique([year, quarter])
+  @@unique([year, quarter])
 }
 
 model AppConfig {
-    id              Int   @id @default(autoincrement())
-    nearbyPinRadius Float
+  id              Int   @id @default(autoincrement())
+  nearbyPinRadius Float
 
-    // Default platform cut, and the treasury proposed when updating the
-    // shared 1-of-1 collection.
-    platformFeeBps       Int     @default(250)
-    platformFeeRecipient String?
+  // Default platform cut, and the treasury proposed when updating the
+  // shared 1-of-1 collection.
+  platformFeeBps       Int     @default(250)
+  platformFeeRecipient String?
 }
 
 // Singleton-style config (one row) for broadcasting bounties to Telegram.
 // The bot token is sensitive — never expose the full token to the client.
 model TelegramConfig {
-    id        Int      @id @default(autoincrement())
-    botToken  String // Telegram bot token from @BotFather
-    chatId    String // Channel/group chat id (e.g. -100xxxxxxxxxx)
-    enabled   Boolean  @default(false)
-    updatedAt DateTime @updatedAt
-    updatedBy String? // admin user id who last changed it
+  id        Int      @id @default(autoincrement())
+  botToken  String // Telegram bot token from @BotFather
+  chatId    String // Channel/group chat id (e.g. -100xxxxxxxxxx)
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+  updatedBy String? // admin user id who last changed it
 }
 
 model SellPageAsset {
-    id           Int      @id @default(autoincrement())
-    title        String
-    description  String?
-    amountToSell Int
-    price        Float
-    priceUSD     Float    @default(1)
-    priceXLM     Float    @default(0)
-    isSold       Boolean  @default(false)
-    placedAt     DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  title        String
+  description  String?
+  amountToSell Int
+  price        Float
+  priceUSD     Float    @default(1)
+  priceXLM     Float    @default(0)
+  isSold       Boolean  @default(false)
+  placedAt     DateTime @default(now())
 
-    placerId String? // admin placing this assets
-    placer   Creator?  @relation(fields: [placerId], references: [id], onDelete: Cascade)
-    soldAt   DateTime? @default(now())
+  placerId String? // admin placing this assets
+  placer   Creator?  @relation(fields: [placerId], references: [id], onDelete: Cascade)
+  soldAt   DateTime? @default(now())
 
-    @@unique([id, placerId])
+  @@unique([id, placerId])
 }
 
 // ------------------------- Beam Feature ------------------------------------
 enum BeamType {
-    IMAGE
-    VIDEO
-    CARD
-    AI
+  IMAGE
+  VIDEO
+  CARD
+  AI
 }
 
 enum StyleCategory {
-    CHRISTMAS
-    EVERYDAY
-    BIRTHDAY
+  CHRISTMAS
+  EVERYDAY
+  BIRTHDAY
 }
 
 model Beam {
-    id            String         @id @default(cuid())
-    type          BeamType
-    senderName    String
-    recipientName String
-    message       String?
-    contentUrl    String?
-    styleCategory StyleCategory?
-    style         String?
-    customPrompt  String?
-    overlayText   String?
-    arEnabled     Boolean        @default(false)
-    isPublic      Boolean        @default(false)
-    viewCount     Int            @default(0)
-    createdAt     DateTime       @default(now())
-    updatedAt     DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  type          BeamType
+  senderName    String
+  recipientName String
+  message       String?
+  contentUrl    String?
+  styleCategory StyleCategory?
+  style         String?
+  customPrompt  String?
+  overlayText   String?
+  arEnabled     Boolean        @default(false)
+  isPublic      Boolean        @default(false)
+  viewCount     Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-    userId    String
-    user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-    reactions BeamReaction[]
-    comments  BeamComment[]
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reactions BeamReaction[]
+  comments  BeamComment[]
 
-    @@index([userId])
-    @@index([isPublic])
-    @@index([type])
+  @@index([userId])
+  @@index([isPublic])
+  @@index([type])
 }
 
 model BeamReaction {
-    id        String   @id @default(cuid())
-    emoji     String
-    createdAt DateTime @default(now())
+  id        String   @id @default(cuid())
+  emoji     String
+  createdAt DateTime @default(now())
 
-    beamId String
-    beam   Beam   @relation(fields: [beamId], references: [id], onDelete: Cascade)
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  beamId String
+  beam   Beam   @relation(fields: [beamId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([beamId, userId])
-    @@index([beamId])
+  @@unique([beamId, userId])
+  @@index([beamId])
 }
 
 model BeamComment {
-    id        String   @id @default(cuid())
-    content   String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    beamId String
-    beam   Beam   @relation(fields: [beamId], references: [id], onDelete: Cascade)
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  beamId String
+  beam   Beam   @relation(fields: [beamId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@index([beamId])
+  @@index([beamId])
 }
 
 // ------------------------- Community Feature ------------------------------------
 
 enum CommunityMemberListVisibility {
-    EVERYONE
-    MEMBERS_ONLY
+  EVERYONE
+  MEMBERS_ONLY
 }
 
 enum CommunityPostPermission {
-    ALL_MEMBERS
-    OWNER_ONLY
+  ALL_MEMBERS
+  OWNER_ONLY
 }
 
 enum CommunityRole {
-    OWNER
-    MEMBER
+  OWNER
+  MEMBER
 }
 
 enum CommunityActivityType {
-    JOIN
-    LEAVE
-    POST_CREATED
-    POST_LIKED
-    COMMENT_CREATED
-    MEMBER_INVITED
+  JOIN
+  LEAVE
+  POST_CREATED
+  POST_LIKED
+  COMMENT_CREATED
+  MEMBER_INVITED
 }
 
 model Community {
-    id          Int      @id @default(autoincrement())
-    title       String
-    description String
-    coverUrl    String
-    profileUrl  String
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  coverUrl    String
+  profileUrl  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-    memberListVisibility CommunityMemberListVisibility @default(EVERYONE)
-    postPermission       CommunityPostPermission       @default(ALL_MEMBERS)
+  memberListVisibility CommunityMemberListVisibility @default(EVERYONE)
+  postPermission       CommunityPostPermission       @default(ALL_MEMBERS)
 
-    isTokenGated   Boolean @default(false)
-    tokenGateLogic String  @default("AND")
+  isTokenGated   Boolean @default(false)
+  tokenGateLogic String  @default("AND")
 
-    ownerId String
-    owner   User   @relation("CommunityOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+  owner   User   @relation("CommunityOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
-    members                          CommunityMember[]
-    posts                            CommunityPost[]
-    activities                       CommunityActivity[]
-    communityNotificationPreferences CommunityNotificationPreference[]
-    tokenRequirements                CommunityTokenRequirement[]
+  members                          CommunityMember[]
+  posts                            CommunityPost[]
+  activities                       CommunityActivity[]
+  communityNotificationPreferences CommunityNotificationPreference[]
+  tokenRequirements                CommunityTokenRequirement[]
 
-    @@index([title, description])
-    @@index([ownerId])
-    @@index([createdAt])
+  @@index([title, description])
+  @@index([ownerId])
+  @@index([createdAt])
 }
 
 model CommunityTokenRequirement {
-    id              Int       @id @default(autoincrement())
-    communityId     Int
-    community       Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    assetCode       String
-    assetIssuer     String
-    assetImage      String?
-    requiredBalance Float     @default(0)
-    createdAt       DateTime  @default(now())
+  id              Int       @id @default(autoincrement())
+  communityId     Int
+  community       Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  assetCode       String
+  assetIssuer     String
+  assetImage      String?
+  requiredBalance Float     @default(0)
+  createdAt       DateTime  @default(now())
 
-    @@index([communityId])
+  @@index([communityId])
 }
 
 model CommunityMember {
-    id          Int           @id @default(autoincrement())
-    communityId Int
-    community   Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    userId      String
-    user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-    role        CommunityRole @default(MEMBER)
-    joinedAt    DateTime      @default(now())
+  id          Int           @id @default(autoincrement())
+  communityId Int
+  community   Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        CommunityRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
 
-    @@unique([communityId, userId])
-    @@index([userId])
-    @@index([communityId])
+  @@unique([communityId, userId])
+  @@index([userId])
+  @@index([communityId])
 }
 
 model CommunityPost {
-    id          Int       @id @default(autoincrement())
-    content     String
-    communityId Int
-    community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    authorId    String
-    author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  id          Int       @id @default(autoincrement())
+  content     String
+  communityId Int
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-    commentsEnabled Boolean @default(true)
+  commentsEnabled Boolean @default(true)
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    medias   CommunityPostMedia[]
-    comments CommunityComment[]
-    likes    CommunityPostLike[]
+  medias   CommunityPostMedia[]
+  comments CommunityComment[]
+  likes    CommunityPostLike[]
 
-    @@index([communityId, createdAt])
-    @@index([authorId])
+  @@index([communityId, createdAt])
+  @@index([authorId])
 }
 
 model CommunityPostMedia {
-    id     Int           @id @default(autoincrement())
-    url    String
-    type   MediaType
-    postId Int
-    post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  id     Int           @id @default(autoincrement())
+  url    String
+  type   MediaType
+  postId Int
+  post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-    @@index([postId])
+  @@index([postId])
 }
 
 model CommunityPostLike {
-    id        Int           @id @default(autoincrement())
-    postId    Int
-    post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-    userId    String
-    user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-    createdAt DateTime      @default(now())
+  id        Int           @id @default(autoincrement())
+  postId    Int
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
 
-    @@unique([postId, userId])
+  @@unique([postId, userId])
 }
 
 model CommunityComment {
-    id              Int                @id @default(autoincrement())
-    content         String
-    postId          Int
-    post            CommunityPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
-    userId          String
-    user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-    parentCommentId Int?
-    parentComment   CommunityComment?  @relation("CommunityChildComments", fields: [parentCommentId], references: [id], onDelete: Cascade)
-    childComments   CommunityComment[] @relation("CommunityChildComments")
-    createdAt       DateTime           @default(now())
+  id              Int                @id @default(autoincrement())
+  content         String
+  postId          Int
+  post            CommunityPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentCommentId Int?
+  parentComment   CommunityComment?  @relation("CommunityChildComments", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  childComments   CommunityComment[] @relation("CommunityChildComments")
+  createdAt       DateTime           @default(now())
 
-    @@index([postId])
-    @@index([userId])
+  @@index([postId])
+  @@index([userId])
 }
 
 model CommunityActivity {
-    id          Int                   @id @default(autoincrement())
-    communityId Int
-    community   Community             @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    actorId     String
-    actor       User                  @relation(fields: [actorId], references: [id], onDelete: Cascade)
-    type        CommunityActivityType
-    entityId    Int?
-    createdAt   DateTime              @default(now())
+  id          Int                   @id @default(autoincrement())
+  communityId Int
+  community   Community             @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  actorId     String
+  actor       User                  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  type        CommunityActivityType
+  entityId    Int?
+  createdAt   DateTime              @default(now())
 
-    @@index([communityId, createdAt])
-    @@index([actorId])
+  @@index([communityId, createdAt])
+  @@index([actorId])
 }
 
 model CommunityNotificationPreference {
-    id          Int       @id @default(autoincrement())
-    communityId Int
-    community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    userId      String
-    user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          Int       @id @default(autoincrement())
+  communityId Int
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    newPosts    Boolean @default(true)
-    newComments Boolean @default(true)
-    newMembers  Boolean @default(true)
-    reactions   Boolean @default(true)
+  newPosts    Boolean @default(true)
+  newComments Boolean @default(true)
+  newMembers  Boolean @default(true)
+  reactions   Boolean @default(true)
 
-    @@unique([communityId, userId])
+  @@unique([communityId, userId])
 }
 
 // ------------------------- Bounty Feature ------------------------------------
 
 enum BountyStatus {
-    RUNNING
-    PAUSED
-    COMPLETED
+  RUNNING
+  PAUSED
+  COMPLETED
 }
 
 enum BountySubmissionStatus {
-    PENDING
-    APPROVED
-    REJECTED
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Bounty {
-    id          String       @id @default(uuid())
-    title       String
-    summary     String
-    description String
-    prizeAmount Float
-    rewardNote  String?
-    maxWinners  Int          @default(1)
-    status      BountyStatus @default(RUNNING)
-    txHash      String?
+  id          String       @id @default(uuid())
+  title       String
+  summary     String
+  description String
+  prizeAmount Float
+  rewardNote  String?
+  maxWinners  Int          @default(1)
+  status      BountyStatus @default(RUNNING)
+  txHash      String?
 
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    instructions String[] // what participants must submit
+  instructions String[] // what participants must submit
 
-    prizeAssetCode   String
-    prizeAssetIssuer String?
+  prizeAssetCode   String
+  prizeAssetIssuer String?
 
-    // Soroban bounty_escrow contract this bounty's prize is held in — every
-    // bounty is on-chain escrow now (see src/lib/stellar/bounty/escrow.ts).
-    // Stamped in at creation time so a future contract redeploy/upgrade never
-    // breaks an already-funded bounty's selection/claim flow.
-    escrowContractId String
+  // Soroban bounty_escrow contract this bounty's prize is held in — every
+  // bounty is on-chain escrow now (see src/lib/stellar/bounty/escrow.ts).
+  // Stamped in at creation time so a future contract redeploy/upgrade never
+  // breaks an already-funded bounty's selection/claim flow.
+  escrowContractId String
 
-    // True when the on-chain "creator" address (the one that funded the
-    // escrow and authorizes select_winner/cancel_bounty) is the Creator's
-    // custodial storage account (Creator.storagePub/storageSecret) rather
-    // than the bounty owner's own wallet/session identity.
-    fundedFromCreatorStorage Boolean @default(false)
+  // True when the on-chain "creator" address (the one that funded the
+  // escrow and authorizes select_winner/cancel_bounty) is the Creator's
+  // custodial storage account (Creator.storagePub/storageSecret) rather
+  // than the bounty owner's own wallet/session identity.
+  fundedFromCreatorStorage Boolean @default(false)
 
-    // When true, participants must submit proof via Action Cam (live capture,
-    // server-stamped + cryptographically sealed). Owner can toggle off at any time.
-    requiresActionCam Boolean @default(false)
+  // When true, participants must submit proof via Action Cam (live capture,
+  // server-stamped + cryptographically sealed). Owner can toggle off at any time.
+  requiresActionCam Boolean @default(false)
 
-    // 🎵 Music & Last.fm Integration
-    enableMusic Boolean            @default(false)
-    musicConfig BountyMusicConfig?
+  // 🎵 Music & Last.fm Integration
+  enableMusic Boolean            @default(false)
+  musicConfig BountyMusicConfig?
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    participants BountyParticipant[]
-    submissions  BountySubmission[]
-    winners      BountyWinner[]
+  participants BountyParticipant[]
+  submissions  BountySubmission[]
+  winners      BountyWinner[]
 
-    @@index([userId])
-    @@index([status])
-    @@index([createdAt])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model BountyParticipant {
-    id       Int    @id @default(autoincrement())
-    bountyId String
-    bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    userId   String
-    user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       Int    @id @default(autoincrement())
+  bountyId String
+  bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    joinedAt DateTime @default(now())
+  joinedAt DateTime @default(now())
 
-    trackProgress BountyParticipantTrackProgress[]
+  trackProgress BountyParticipantTrackProgress[]
 
-    @@unique([bountyId, userId])
-    @@index([bountyId])
-    @@index([userId])
+  @@unique([bountyId, userId])
+  @@index([bountyId])
+  @@index([userId])
 }
 
 // ------------------------- Last.fm & Music Models ----------------------------
 
 model LastFMAccount {
-    id         String  @id @default(cuid())
-    username   String
-    realName   String?
-    country    String?
-    sessionKey String? @unique
-    profileUrl String
-    image      String?
-    playCount  Int     @default(0)
+  id         String  @id @default(cuid())
+  username   String
+  realName   String?
+  country    String?
+  sessionKey String? @unique
+  profileUrl String
+  image      String?
+  playCount  Int     @default(0)
 
-    userId String @unique
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    isConnected Boolean  @default(true)
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+  isConnected Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-    @@index([username])
+  @@index([username])
 }
 
 enum BountyMusicMode {
-    MUSIC_ONLY
-    HYBRID
+  MUSIC_ONLY
+  HYBRID
 }
 
 enum BountyRuleType {
-    ALL
-    ANY_N
-    TOTAL_PLAYS
+  ALL
+  ANY_N
+  TOTAL_PLAYS
 }
 
 model BountyMusicConfig {
-    id       String @id @default(uuid())
-    bountyId String @unique
-    bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid())
+  bountyId String @unique
+  bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
 
-    musicMode            BountyMusicMode @default(HYBRID)
-    ruleType             BountyRuleType  @default(ANY_N)
-    customRequiredTracks Int?
-    customTotalPlays     Int?
+  musicMode            BountyMusicMode @default(HYBRID)
+  ruleType             BountyRuleType  @default(ANY_N)
+  customRequiredTracks Int?
+  customTotalPlays     Int?
 
-    tracks BountyTrack[]
+  tracks BountyTrack[]
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model BountyTrack {
-    id            String            @id @default(uuid())
-    musicConfigId String
-    musicConfig   BountyMusicConfig @relation(fields: [musicConfigId], references: [id], onDelete: Cascade)
+  id            String            @id @default(uuid())
+  musicConfigId String
+  musicConfig   BountyMusicConfig @relation(fields: [musicConfigId], references: [id], onDelete: Cascade)
 
-    title           String
-    artist          String
-    album           String?
-    albumArtUrl     String?
-    durationSec     Int     @default(180)
-    targetPlayCount Int     @default(1)
+  title           String
+  artist          String
+  album           String?
+  albumArtUrl     String?
+  durationSec     Int     @default(180)
+  targetPlayCount Int     @default(1)
 
-    lastFmUrl  String
-    spotifyUrl String?
-    youtubeUrl String?
+  lastFmUrl  String
+  spotifyUrl String?
+  youtubeUrl String?
 
-    createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-    @@index([musicConfigId])
+  @@index([musicConfigId])
 }
 
 model BountyParticipantTrackProgress {
-    id            String            @id @default(uuid())
-    participantId Int
-    participant   BountyParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  id            String            @id @default(uuid())
+  participantId Int
+  participant   BountyParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
-    trackId          String
-    currentPlayCount Int     @default(0)
-    targetPlayCount  Int     @default(1)
-    isSatisfied      Boolean @default(false)
+  trackId          String
+  currentPlayCount Int     @default(0)
+  targetPlayCount  Int     @default(1)
+  isSatisfied      Boolean @default(false)
 
-    updatedAt DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
-    @@unique([participantId, trackId])
+  @@unique([participantId, trackId])
 }
 
 model BountySubmission {
-    id       Int    @id @default(autoincrement())
-    bountyId String
-    bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    userId   String
-    user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       Int    @id @default(autoincrement())
+  bountyId String
+  bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    content String
-    status  BountySubmissionStatus @default(PENDING)
+  content String
+  status  BountySubmissionStatus @default(PENDING)
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    captures BountySubmissionCapture[]
-    media    BountySubmissionMedia[]
+  captures BountySubmissionCapture[]
+  media    BountySubmissionMedia[]
 
-    @@index([bountyId])
-    @@index([userId])
+  @@index([bountyId])
+  @@index([userId])
 }
 
 model BountySubmissionMedia {
-    id           Int              @id @default(autoincrement())
-    submissionId Int
-    submission   BountySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id           Int              @id @default(autoincrement())
+  submissionId Int
+  submission   BountySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
-    url      String
-    type     MediaType
-    fileName String?
+  url      String
+  type     MediaType
+  fileName String?
 
-    createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-    @@index([submissionId])
+  @@index([submissionId])
 }
 
 // One submission can contain many captures (photos + videos mixed, or just
 // one). Each capture row is one file. Used for both Action Cam (signed) and
 // plain (unsigned) flows — the difference is which fields are populated.
 model BountySubmissionCapture {
-    id           Int              @id @default(autoincrement())
-    submissionId Int
-    submission   BountySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id           Int              @id @default(autoincrement())
+  submissionId Int
+  submission   BountySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
-    // Type of media.
-    captureType String // "PHOTO" | "VIDEO"
+  // Type of media.
+  captureType String // "PHOTO" | "VIDEO"
 
-    // ── Integrity hashes ────────────────────────────────────────────
-    captureOriginalHash String // sha256 of the raw bytes (client-computed)
-    captureSealedHash   String // sha256 of the bytes now in S3
+  // ── Integrity hashes ────────────────────────────────────────────
+  captureOriginalHash String // sha256 of the raw bytes (client-computed)
+  captureSealedHash   String // sha256 of the bytes now in S3
 
-    // ── Action Cam metadata (null for plain uploads) ────────────────
-    captureLat        Float?
-    captureLon        Float?
-    captureCapturedAt DateTime? // server-stamped at seal time
-    captureWallet     String?
-    captureSignature  String? // HMAC-SHA256 hex, present for Action Cam
-    captureSealedAt   DateTime?
+  // ── Action Cam metadata (null for plain uploads) ────────────────
+  captureLat        Float?
+  captureLon        Float?
+  captureCapturedAt DateTime? // server-stamped at seal time
+  captureWallet     String?
+  captureSignature  String? // HMAC-SHA256 hex, present for Action Cam
+  captureSealedAt   DateTime?
 
-    // ── Storage URLs (always full public S3 URLs) ─────────────────
-    captureStorageUrl String // URL of the ORIGINAL media in S3
-    capturePreviewUrl String? // URL of the stamped preview (Action Cam only);
-    // null for plain uploads
+  // ── Storage URLs (always full public S3 URLs) ─────────────────
+  captureStorageUrl String // URL of the ORIGINAL media in S3
+  capturePreviewUrl String? // URL of the stamped preview (Action Cam only);
+  // null for plain uploads
 
-    // ── Per-capture status (independent review) ───────────────────
-    status BountySubmissionStatus @default(PENDING)
+  // ── Per-capture status (independent review) ───────────────────
+  status BountySubmissionStatus @default(PENDING)
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    @@index([submissionId])
-    @@index([status])
+  @@index([submissionId])
+  @@index([status])
 }
 
 model BountyWinner {
-    id       Int    @id @default(autoincrement())
-    bountyId String
-    bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
-    userId   String
-    user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       Int    @id @default(autoincrement())
+  bountyId String
+  bounty   Bounty @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    prizeAmount Float
-    txHash      String?
-    claimedAt   DateTime?
-    selectedAt  DateTime  @default(now())
+  prizeAmount Float
+  txHash      String?
+  claimedAt   DateTime?
+  selectedAt  DateTime  @default(now())
 
-    @@unique([bountyId, userId])
-    @@index([bountyId])
-    @@index([userId])
+  @@unique([bountyId, userId])
+  @@index([bountyId])
+  @@index([userId])
 }
 
 model CreatorGallery {
-    creatorId          String   @id
-    creator            Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    musicURL           String?
-    creatorTitle       String?
-    creatorDescription String?
-    updatedAt          DateTime @updatedAt
-    createdAt          DateTime @default(now())
+  creatorId          String   @id
+  creator            Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  musicURL           String?
+  creatorTitle       String?
+  creatorDescription String?
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
 }
 
 model GallerySlotOverride {
-    id                 Int      @id @default(autoincrement())
-    slotId             String
-    imageUrl           String?
-    title              String?
-    description        String?
-    aspectRatio        String?
-    photoDescription   String?
-    photoDescPlacement String?
-    gridCell           Int?
-    roomIndex          Int      @default(0)
-    creatorId          String
-    creator            Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    updatedAt          DateTime @updatedAt
-    createdAt          DateTime @default(now())
+  id                 Int      @id @default(autoincrement())
+  slotId             String
+  imageUrl           String?
+  title              String?
+  description        String?
+  aspectRatio        String?
+  photoDescription   String?
+  photoDescPlacement String?
+  gridCell           Int?
+  roomIndex          Int      @default(0)
+  creatorId          String
+  creator            Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
 
-    @@unique([slotId, creatorId, roomIndex])
-    @@index([creatorId])
+  @@unique([slotId, creatorId, roomIndex])
+  @@index([creatorId])
 }
 
 model GallerySlotLike {
-    id        Int      @id @default(autoincrement())
-    slotId    String
-    creatorId String
-    roomIndex Int      @default(0)
-    userId    String
-    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    createdAt DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  slotId    String
+  creatorId String
+  roomIndex Int      @default(0)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
-    @@unique([slotId, creatorId, roomIndex, userId])
-    @@index([slotId, creatorId, roomIndex])
+  @@unique([slotId, creatorId, roomIndex, userId])
+  @@index([slotId, creatorId, roomIndex])
 }
 
 model MuseumRoom {
-    id            Int     @id @default(autoincrement())
-    creatorId     String
-    creator       Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    roomIndex     Int
-    label         String?
-    northDoorCell Int?
+  id            Int     @id @default(autoincrement())
+  creatorId     String
+  creator       Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  roomIndex     Int
+  label         String?
+  northDoorCell Int?
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    @@unique([creatorId, roomIndex])
-    @@index([creatorId])
+  @@unique([creatorId, roomIndex])
+  @@index([creatorId])
 }
 
 // ------------------------NFT MARKETPLACE SCHEMA-------------------------
 // SEP-50 compliant NFT marketplace
 
 enum NftStatus {
-    // Registered as an edition entry in the database only — no on-chain
-    // presence yet. The row is still fully listed and buyable: `buy_edition`
-    // registers the edition on-chain (from this row's own data) the moment
-    // the *first* copy sells, so there is no "waiting on the creator" phase
-    // to gate visibility on.
-    PENDING
-    // At least one copy has been minted on-chain (`onChainEditionId` is set).
-    MINTED
+  // Registered as an edition entry in the database only — no on-chain
+  // presence yet. The row is still fully listed and buyable: `buy_edition`
+  // registers the edition on-chain (from this row's own data) the moment
+  // the *first* copy sells, so there is no "waiting on the creator" phase
+  // to gate visibility on.
+  PENDING
+  // At least one copy has been minted on-chain (`onChainEditionId` is set).
+  MINTED
 }
 
 // One creator submission ("edition"): bounded artwork with a fixed `supply`,
@@ -1481,49 +1508,112 @@ enum NftStatus {
 // `buy_edition` in `contracts/nft_oz`. A `supply` of 1 is the classic 1-of-1
 // case; nothing else about the model changes for it.
 model Nft {
-    id               String        @id @default(uuid())
-    name             String
-    description      String
-    thumbnail        String
-    contentUrl       String
-    mediaType        String
-    creatorId        String
-    creator          User          @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    collectionId     String?
-    collection       Collection?   @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-    // The shared collection contract the edition lives in. Recorded per row
-    // so an environment/contract change never silently repoints old rows.
-    // Null until the edition's first purchase registers it on-chain.
-    contractAddress  String?
-    onChainEditionId String?
-    royaltyBps       Int           @default(0)
-    // Total copies this edition will ever mint (>= 1, default 1).
-    supply           Int           @default(1)
-    // Cached from the contract's `EditionMeta.minted`, refreshed on every
-    // confirmed purchase — a display cache, not a source of truth. The
-    // contract's own `minted`/`supply` (read via `edition_meta`) is what
-    // `buy_edition` actually enforces.
-    mintedCount      Int           @default(0)
-    txHash           String?
-    status           NftStatus     @default(PENDING)
-    tokens           NftToken[]
-    prices           NftPrice[]
-    purchases        NftPurchase[]
-    likes            NftLike[]
-    createdAt        DateTime      @default(now())
-    updatedAt        DateTime      @updatedAt
+  id               String        @id @default(uuid())
+  name             String
+  description      String
+  thumbnail        String
+  contentUrl       String
+  mediaType        String
+  creatorId        String
+  creator          User          @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  collectionId     String?
+  collection       Collection?   @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  // The shared collection contract the edition lives in. Recorded per row
+  // so an environment/contract change never silently repoints old rows.
+  // Null until the edition's first purchase registers it on-chain.
+  contractAddress  String?
+  onChainEditionId String?
+  royaltyBps       Int           @default(0)
+  // Total copies this edition will ever mint (>= 1, default 1).
+  supply           Int           @default(1)
+  // Cached from the contract's `EditionMeta.minted`, refreshed on every
+  // confirmed purchase — a display cache, not a source of truth. The
+  // contract's own `minted`/`supply` (read via `edition_meta`) is what
+  // `buy_edition` actually enforces.
+  mintedCount      Int           @default(0)
+  txHash           String?
+  status           NftStatus     @default(PENDING)
+  tokens           NftToken[]
+  prices           NftPrice[]
+  purchases        NftPurchase[]
+  likes            NftLike[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-    // Denormalized from `NftListing` (recomputed on every listing change) so
-    // browse/sort/card views don't need a live aggregate query per NFT —
-    // same cached-counter pattern as e.g. Post.viewCount. Covers *resale*
-    // listings only; the primary "buy a new copy" price comes from `prices`.
-    lowestActivePrice  Float?
-    activeListingCount Int          @default(0)
-    NftListing         NftListing[]
+  // Denormalized from `NftListing` (recomputed on every listing change) so
+  // browse/sort/card views don't need a live aggregate query per NFT —
+  // same cached-counter pattern as e.g. Post.viewCount. Covers *resale*
+  // listings only; the primary "buy a new copy" price comes from `prices`.
+  lowestActivePrice  Float?
+  activeListingCount Int          @default(0)
+  NftListing         NftListing[]
 
-    @@index([creatorId])
-    @@index([collectionId])
-    @@index([status])
+  // ── Optional "VIP ticket" gating: locked reward content that only
+  // reveals once a copy's unlock rule is completed. Null/empty means an
+  // ordinary, ungated edition — every field below is additive. ──────────
+  unlockRuleType     NftUnlockRuleType?
+  unlockLocationRule NftUnlockLocationRule?
+  lockedMedia        NftLockedMedia[]
+  unlockPinGroups    LocationGroup[]
+
+  @@index([creatorId])
+  @@index([collectionId])
+  @@index([status])
+}
+
+// One reward item a creator attaches to a gated edition — a song, image,
+// video, or a plain external link (e.g. a SoundCloud page rather than a
+// file we host). Several can be attached; all reveal together once a
+// specific copy's unlock rule is completed.
+enum NftLockedMediaType {
+  SONG
+  IMAGE
+  VIDEO
+  OTHER
+}
+
+model NftLockedMedia {
+  id        String             @id @default(uuid())
+  nftId     String
+  nft       Nft                @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  url       String
+  type      NftLockedMediaType
+  label     String?
+  sortOrder Int                @default(0)
+  createdAt DateTime           @default(now())
+
+  @@index([nftId])
+}
+
+// Only one rule kind exists today — visiting N creator-chosen locations.
+// A future rule kind (e.g. "hold X token") gets its own table the same way,
+// selected by a new value here, rather than a generic polymorphic rule
+// engine built ahead of a second kind actually existing.
+enum NftUnlockRuleType {
+  LOCATION_VISIT
+}
+
+// The creator's *template* for a gated edition's unlock rule, set once per
+// edition. Every individually minted copy gets its own private clone of
+// these points as a `LocationGroup` (see `LocationGroup.unlockForTokenId`)
+// — this table itself never gets pins collected against it directly.
+model NftUnlockLocationRule {
+  id        String                   @id @default(uuid())
+  nftId     String                   @unique
+  nft       Nft                      @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  radius    Float                    @default(30) // meters — how close counts as "visiting" a point
+  points    NftUnlockLocationPoint[]
+  createdAt DateTime                 @default(now())
+}
+
+model NftUnlockLocationPoint {
+  id        String                @id @default(uuid())
+  ruleId    String
+  rule      NftUnlockLocationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  label     String?
+  latitude  Float
+  longitude Float
+  sortOrder Int                   @default(0)
 }
 
 // The price grid a creator sets at creation — one row per accepted currency
@@ -1532,20 +1622,20 @@ model Nft {
 // of pricing; once `onChainEditionId` is set, `edition_prices` on-chain is
 // the ground truth and this is just the display cache the create form wrote.
 model NftPrice {
-    id           String   @id @default(uuid())
-    nftId        String
-    nft          Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
-    // "xlm" | "asset" | "usdc" — the same `PaymentMethodEnum` values used by
-    // the classic-asset purchase flow (see
-    // src/components/payment/payment-process.tsx), so the buy dialog keys
-    // off one enum everywhere instead of raw SAC addresses. Resolved to an
-    // actual contract address only when building the `buy_edition` XDR.
-    paymentToken String
-    price        Float
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
+  id           String   @id @default(uuid())
+  nftId        String
+  nft          Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  // "xlm" | "asset" | "usdc" — the same `PaymentMethodEnum` values used by
+  // the classic-asset purchase flow (see
+  // src/components/payment/payment-process.tsx), so the buy dialog keys
+  // off one enum everywhere instead of raw SAC addresses. Resolved to an
+  // actual contract address only when building the `buy_edition` XDR.
+  paymentToken String
+  price        Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-    @@unique([nftId, paymentToken])
+  @@unique([nftId, paymentToken])
 }
 
 // One row per individually minted copy of an edition. This is what makes a
@@ -1556,19 +1646,22 @@ model NftPrice {
 // rest of this router already uses for `Nft.status`/`NftListing` — not
 // re-verified against chain on every read.
 model NftToken {
-    id        String      @id @default(uuid())
-    nftId     String
-    nft       Nft         @relation(fields: [nftId], references: [id], onDelete: Cascade)
-    // The on-chain token_id.
-    tokenId   String      @unique
-    ownerId   String
-    owner     User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-    listing   NftListing?
-    createdAt DateTime    @default(now())
-    updatedAt DateTime    @updatedAt
+  id             String         @id @default(uuid())
+  nftId          String
+  nft            Nft            @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  // The on-chain token_id.
+  tokenId        String         @unique
+  ownerId        String
+  owner          User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  listing        NftListing?
+  // This copy's own private AR pin set, if the edition is gated — see
+  // `LocationGroup.unlockForTokenId`.
+  unlockPinGroup LocationGroup?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-    @@index([nftId])
-    @@index([ownerId])
+  @@index([nftId])
+  @@index([ownerId])
 }
 
 // One row per secondary-market listing of a single already-minted copy —
@@ -1578,26 +1671,26 @@ model NftToken {
 // `NftToken` rather than the edition as a whole — a seller with several
 // copies of the same edition can list each independently.
 model NftListing {
-    id           String            @id @default(uuid())
-    nftId        String
-    nft          Nft               @relation(fields: [nftId], references: [id], onDelete: Cascade)
-    tokenId      String            @unique
-    token        NftToken          @relation(fields: [tokenId], references: [tokenId], onDelete: Cascade)
-    sellerId     String
-    seller       User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-    // Denormalized cheapest entry from `prices`, for existing single-price
-    // sorting/aggregate code (`Nft.lowestActivePrice` etc.) — `prices` is the
-    // source of truth for what this listing actually offers.
-    price        Float
-    // SEP-41 token the price is denominated in, mirroring the contract's
-    // per-listing `payment_token`. Null means the native XLM SAC.
-    paymentToken String?
-    isActive     Boolean           @default(true)
-    createdAt    DateTime          @default(now())
-    updatedAt    DateTime          @updatedAt
-    prices       NftListingPrice[]
+  id           String            @id @default(uuid())
+  nftId        String
+  nft          Nft               @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  tokenId      String            @unique
+  token        NftToken          @relation(fields: [tokenId], references: [tokenId], onDelete: Cascade)
+  sellerId     String
+  seller       User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  // Denormalized cheapest entry from `prices`, for existing single-price
+  // sorting/aggregate code (`Nft.lowestActivePrice` etc.) — `prices` is the
+  // source of truth for what this listing actually offers.
+  price        Float
+  // SEP-41 token the price is denominated in, mirroring the contract's
+  // per-listing `payment_token`. Null means the native XLM SAC.
+  paymentToken String?
+  isActive     Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  prices       NftListingPrice[]
 
-    @@index([nftId, isActive])
+  @@index([nftId, isActive])
 }
 
 // A reseller's own price grid for one specific listed copy — same shape as
@@ -1605,19 +1698,19 @@ model NftListing {
 // `NftListing` instead of a whole edition, mirroring the contract's
 // per-token `Listing.prices`.
 model NftListingPrice {
-    id           String     @id @default(uuid())
-    listingId    String
-    listing      NftListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-    paymentToken String
-    price        Float
-    createdAt    DateTime   @default(now())
+  id           String     @id @default(uuid())
+  listingId    String
+  listing      NftListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  paymentToken String
+  price        Float
+  createdAt    DateTime   @default(now())
 
-    @@unique([listingId, paymentToken])
+  @@unique([listingId, paymentToken])
 }
 
 enum NftPurchaseStatus {
-    PENDING
-    CONFIRMED
+  PENDING
+  CONFIRMED
 }
 
 // Tracks one attempted bulk purchase of an edition. This row's id *is* the
@@ -1628,22 +1721,22 @@ enum NftPurchaseStatus {
 // reliable way to learn the assigned token range (see the doc comment on
 // `buy_edition` in `contracts/nft_oz/src/lib.rs` for why).
 model NftPurchase {
-    id           String            @id @default(uuid())
-    nftId        String
-    nft          Nft               @relation(fields: [nftId], references: [id], onDelete: Cascade)
-    buyerId      String
-    buyer        User              @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-    quantity     Int
-    paymentToken String
-    unitPrice    Float
-    status       NftPurchaseStatus @default(PENDING)
-    txHash       String?
-    firstTokenId String?
-    lastTokenId  String?
-    createdAt    DateTime          @default(now())
+  id           String            @id @default(uuid())
+  nftId        String
+  nft          Nft               @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  buyerId      String
+  buyer        User              @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  quantity     Int
+  paymentToken String
+  unitPrice    Float
+  status       NftPurchaseStatus @default(PENDING)
+  txHash       String?
+  firstTokenId String?
+  lastTokenId  String?
+  createdAt    DateTime          @default(now())
 
-    @@index([nftId])
-    @@index([buyerId])
+  @@index([nftId])
+  @@index([buyerId])
 }
 
 // A named grouping of smart-contract NFTs owned by a creator. Optional — an
@@ -1651,45 +1744,45 @@ model NftPurchase {
 // creator's collections. Distinct from the classic-Stellar `Creator`/`Asset`
 // model entirely — this only groups the new on-chain NFTs.
 model Collection {
-    id          String           @id @default(uuid())
-    name        String
-    description String?
-    coverImage  String?
-    creatorId   String
-    creator     User             @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-    nfts        Nft[]
-    likes       CollectionLike[]
-    createdAt   DateTime         @default(now())
-    updatedAt   DateTime         @updatedAt
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  coverImage  String?
+  creatorId   String
+  creator     User             @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  nfts        Nft[]
+  likes       CollectionLike[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
-    @@unique([creatorId, name])
-    @@index([creatorId])
+  @@unique([creatorId, name])
+  @@index([creatorId])
 }
 
 // Separate from the generic `Like` model (which is hard-coupled to
 // PostGroup) since NFT favorites are keyed on a different entity.
 model NftLike {
-    id        String   @id @default(uuid())
-    nftId     String
-    nft       Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
-    userId    String
-    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    createdAt DateTime @default(now())
+  id        String   @id @default(uuid())
+  nftId     String
+  nft       Nft      @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
-    @@unique([nftId, userId])
-    @@index([userId])
+  @@unique([nftId, userId])
+  @@index([userId])
 }
 
 // Same pattern as `NftLike`, for favoriting a Collection as a whole rather
 // than an individual NFT within it.
 model CollectionLike {
-    id           String     @id @default(uuid())
-    collectionId String
-    collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-    userId       String
-    user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-    createdAt    DateTime   @default(now())
+  id           String     @id @default(uuid())
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
 
-    @@unique([collectionId, userId])
-    @@index([userId])
+  @@unique([collectionId, userId])
+  @@index([userId])
 }

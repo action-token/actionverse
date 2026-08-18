@@ -20,6 +20,8 @@ import {
     Coins,
     PlusCircle,
     Package,
+    MapPin,
+    Sparkles,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
@@ -90,6 +92,9 @@ import { UploadS3Button } from "../common/upload-button";
 import { Alert, AlertDescription } from "../shadcn/ui/alert";
 import RechargeLink from "../payment/recharge-link";
 import { useNFTCreateModalStore } from "../store/nft-create-modal-store";
+import { Switch } from "~/components/shadcn/ui/switch";
+import { LockedMediaEditor, type LockedMediaDraft } from "~/components/smart-contract/locked-media-editor";
+import { UnlockLocationPicker, type UnlockPoint } from "~/components/smart-contract/unlock-location-picker";
 import { cn } from "~/lib/utils";
 
 export const ExtraSongInfo = z.object({
@@ -1600,7 +1605,16 @@ function NonStellarItemForm({
     );
 }
 
-const SC_FORM_STEPS = ["details", "media"];
+function isValidHttpUrl(value: string) {
+    try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+        return false;
+    }
+}
+
+const SC_FORM_STEPS = ["details", "pricing", "locked", "unlock"];
 
 function SmartContractNftForm({
     onBack,
@@ -1626,43 +1640,23 @@ function SmartContractNftForm({
     const [priceXlm, setPriceXlm] = useState("1");
     const [priceAsset, setPriceAsset] = useState("");
 
-    const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE);
-    const [contentMimeType, setContentMimeType] = useState<string>();
+    // The thumbnail *is* the item's own visible content here — there's no
+    // separate "media" upload step. `contentMimeType` is the thumbnail
+    // file's own mime type, captured at upload time, since `nft.create`
+    // still needs some `mediaType` even though this form never asks the
+    // creator to pick one.
     const [thumbnailUrl, setThumbnailUrl] = useState<string>();
-    const [contentUrl, setContentUrl] = useState<string>();
+    const [contentMimeType, setContentMimeType] = useState<string>();
     const [thumbnailUploading, setThumbnailUploading] = useState(false);
 
+    // Optional "VIP ticket" gating — see VIP_TICKET_UNLOCK_PLAN.md. Neither
+    // step below is required; leaving lockedMedia empty and unlockEnabled
+    // false produces an ordinary, ungated listing exactly as before.
+    const [lockedMedia, setLockedMedia] = useState<LockedMediaDraft[]>([]);
+    const [unlockEnabled, setUnlockEnabled] = useState(false);
+    const [unlockPoints, setUnlockPoints] = useState<UnlockPoint[]>([]);
+
     const createNft = api.nft.create.useMutation();
-
-    function getEndpoint(type: MediaType) {
-        switch (type) {
-            case MediaType.IMAGE:
-                return "imageUploader";
-            case MediaType.MUSIC:
-                return "musicUploader";
-            case MediaType.VIDEO:
-                return "videoUploader";
-            case MediaType.THREE_D:
-                return "modelUploader";
-            default:
-                return "imageUploader";
-        }
-    }
-
-    function getMediaIcon(type: MediaType) {
-        switch (type) {
-            case MediaType.IMAGE:
-                return <ImageIcon className="h-4 w-4" />;
-            case MediaType.MUSIC:
-                return <Music className="h-4 w-4" />;
-            case MediaType.VIDEO:
-                return <Video className="h-4 w-4" />;
-            case MediaType.THREE_D:
-                return <Cube className="h-4 w-4" />;
-            default:
-                return <ImageIcon className="h-4 w-4" />;
-        }
-    }
 
     async function uploadThumbnail(file: File) {
         try {
@@ -1672,6 +1666,7 @@ function SmartContractNftForm({
             const res = await fetch("/api/file", { method: "POST", body: formData });
             const ipfsHash = await res.text();
             setThumbnailUrl(ipfsHashToPinataGatewayUrl(ipfsHash));
+            setContentMimeType(file.type);
             toast.success("Thumbnail uploaded successfully");
         } catch {
             toast.error("Failed to upload file");
@@ -1713,13 +1708,18 @@ function SmartContractNftForm({
     const parsedPriceXlm = Number(priceXlm) || 0;
     const parsedPriceAsset = Number(priceAsset) || 0;
 
+    const completeLockedMedia = lockedMedia.filter(
+        (m): m is LockedMediaDraft & { url: string } => !!m.url && isValidHttpUrl(m.url),
+    );
+
     const canSubmit =
         name.trim().length > 0 &&
         !!thumbnailUrl &&
-        !!contentUrl &&
         !!contentMimeType &&
         supply >= 1 &&
-        (parsedPriceXlm > 0 || parsedPriceAsset > 0);
+        (parsedPriceXlm > 0 || parsedPriceAsset > 0) &&
+        completeLockedMedia.length > 0 &&
+        (!unlockEnabled || unlockPoints.length > 0);
 
     /**
      * A plain database write — no XDR, no signature, nothing for the creator
@@ -1729,7 +1729,7 @@ function SmartContractNftForm({
      * copy. See the module doc on `contracts/nft_oz`'s `buy_edition`.
      */
     async function handleCreate() {
-        if (!thumbnailUrl || !contentUrl || !contentMimeType) return;
+        if (!thumbnailUrl || !contentMimeType) return;
         setSubmitLoading(true);
         try {
             const prices: { paymentToken: "xlm" | "asset"; price: number }[] = [];
@@ -1740,11 +1740,27 @@ function SmartContractNftForm({
                 name: name.trim(),
                 description: description.trim(),
                 thumbnail: thumbnailUrl,
-                contentUrl,
+                // No separate "content" upload in this form — the thumbnail
+                // is the item's own visible content.
+                contentUrl: thumbnailUrl,
                 mediaType: contentMimeType,
                 royaltyBps: Math.round(royaltyPercent * 100),
                 supply,
                 prices,
+                lockedMedia: completeLockedMedia.map((m) => ({
+                    url: m.url,
+                    type: m.type,
+                    label: m.label.trim() || undefined,
+                })),
+                ...(unlockEnabled && unlockPoints.length > 0
+                    ? {
+                          unlockLocationPoints: unlockPoints.map((p) => ({
+                              lat: p.lat,
+                              lng: p.lng,
+                              label: p.label,
+                          })),
+                      }
+                    : {}),
             });
 
             toast.success("Listing created!");
@@ -1815,6 +1831,71 @@ function SmartContractNftForm({
                                 />
                             </div>
 
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium">Thumbnail Image</Label>
+                                <AnimatePresence>
+                                    {!thumbnailUrl ? (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => document.getElementById("sc-coverImg")?.click()}
+                                            className="relative flex h-36 w-full flex-col items-center justify-center gap-2 border-dashed"
+                                        >
+                                            <Upload className="h-6 w-6 text-muted-foreground" />
+                                            <span className="text-sm text-muted-foreground">
+                                                Upload Thumbnail
+                                            </span>
+                                            {thumbnailUploading && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+                                                    <Loader2 className="h-6 w-6 animate-spin" />
+                                                </div>
+                                            )}
+                                        </Button>
+                                    ) : (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            className="relative h-36 overflow-hidden rounded-md"
+                                        >
+                                            <Image
+                                                fill
+                                                alt="preview image"
+                                                src={thumbnailUrl}
+                                                className="object-cover"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="destructive"
+                                                size="icon"
+                                                className="absolute right-1 top-1 h-6 w-6"
+                                                onClick={() => setThumbnailUrl(undefined)}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                            <div className="absolute bottom-0 left-0 right-0 bg-background/80 px-2 py-1">
+                                                <Badge variant="outline" className="bg-green-100 text-green-800">
+                                                    <Check className="mr-1 h-3 w-3" /> Uploaded
+                                                </Badge>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                                <Input
+                                    id="sc-coverImg"
+                                    type="file"
+                                    accept=".jpg, .png"
+                                    onChange={handleThumbnailChange}
+                                    className="hidden"
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {activeStep === "pricing" && (
+                    <Card>
+                        <CardContent className="space-y-4 pt-6">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="sc-royalty">Creator royalty (%)</Label>
@@ -1896,132 +1977,6 @@ function SmartContractNftForm({
                                     </p>
                                 )}
                             </div>
-                        </CardContent>
-                    </Card>
-                )}
-
-                {activeStep === "media" && (
-                    <Card>
-                        <CardContent className="space-y-4 pt-6">
-                            <div>
-                                <Label className="mb-2 block text-sm font-medium">Media Type</Label>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {Object.values(MediaType).map((media, i) => {
-                                        const isSelected = media === mediaType;
-                                        return (
-                                            <Button
-                                                key={i}
-                                                type="button"
-                                                size="sm"
-                                                variant={isSelected ? "destructive" : "muted"}
-                                                onClick={() => {
-                                                    setMediaType(media);
-                                                    setContentUrl(undefined);
-                                                    setContentMimeType(undefined);
-                                                }}
-                                                className={cn(
-                                                    "gap-1.5 text-xs",
-                                                    isSelected
-                                                        ? "px-3 shadow-sm shadow-foreground"
-                                                        : "w-9 px-0 justify-center",
-                                                )}
-                                            >
-                                                {getMediaIcon(media)}
-                                                {isSelected && (
-                                                    <span>{media === MediaType.THREE_D ? "3D" : media}</span>
-                                                )}
-                                            </Button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Thumbnail Image</Label>
-                                <AnimatePresence>
-                                    {!thumbnailUrl ? (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => document.getElementById("sc-coverImg")?.click()}
-                                            className="relative flex h-36 w-full flex-col items-center justify-center gap-2 border-dashed"
-                                        >
-                                            <Upload className="h-6 w-6 text-muted-foreground" />
-                                            <span className="text-sm text-muted-foreground">
-                                                Upload Thumbnail
-                                            </span>
-                                            {thumbnailUploading && (
-                                                <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-                                                    <Loader2 className="h-6 w-6 animate-spin" />
-                                                </div>
-                                            )}
-                                        </Button>
-                                    ) : (
-                                        <motion.div
-                                            initial={{ opacity: 0, scale: 0.9 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0.9 }}
-                                            className="relative h-36 overflow-hidden rounded-md"
-                                        >
-                                            <Image
-                                                fill
-                                                alt="preview image"
-                                                src={thumbnailUrl}
-                                                className="object-cover"
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="destructive"
-                                                size="icon"
-                                                className="absolute right-1 top-1 h-6 w-6"
-                                                onClick={() => setThumbnailUrl(undefined)}
-                                            >
-                                                <X className="h-3 w-3" />
-                                            </Button>
-                                            <div className="absolute bottom-0 left-0 right-0 bg-background/80 px-2 py-1">
-                                                <Badge variant="outline" className="bg-green-100 text-green-800">
-                                                    <Check className="mr-1 h-3 w-3" /> Uploaded
-                                                </Badge>
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                                <Input
-                                    id="sc-coverImg"
-                                    type="file"
-                                    accept=".jpg, .png"
-                                    onChange={handleThumbnailChange}
-                                    className="hidden"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Content</Label>
-                                <UploadS3Button
-                                    endpoint={getEndpoint(mediaType)}
-                                    variant="button"
-                                    label={`UPLOAD ${mediaType !== "THREE_D" ? mediaType : "3D"} CONTENT`}
-                                    className="w-full"
-                                    onBeforeUploadBegin={(file) => {
-                                        setContentMimeType(file.type);
-                                        return file;
-                                    }}
-                                    onClientUploadComplete={(res) => {
-                                        if (res?.url) {
-                                            setContentUrl(res.url);
-                                            toast.success("Content uploaded successfully");
-                                        }
-                                    }}
-                                    onUploadError={(error: Error) => {
-                                        toast.error(`ERROR! ${error.message}`);
-                                    }}
-                                />
-                                {contentUrl && (
-                                    <Badge variant="outline" className="bg-green-100 text-green-800">
-                                        <Check className="mr-1 h-3 w-3" /> Content uploaded
-                                    </Badge>
-                                )}
-                            </div>
 
                             <Alert>
                                 <AlertDescription>
@@ -2030,6 +1985,70 @@ function SmartContractNftForm({
                                     straight to each buyer, right when they buy.
                                 </AlertDescription>
                             </Alert>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {activeStep === "locked" && (
+                    <Card>
+                        <CardContent className="space-y-4 pt-6">
+                            <div>
+                                <Label className="mb-1 flex items-center gap-2 text-sm font-medium">
+                                    <Sparkles className="h-4 w-4 text-primary" />
+                                    Locked content
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Songs, images, videos, or links that stay hidden from every
+                                    buyer until they unlock this copy. Add at least one — this is
+                                    the reward the ticket is actually for.
+                                </p>
+                            </div>
+                            <LockedMediaEditor items={lockedMedia} onChange={setLockedMedia} />
+                            {completeLockedMedia.length === 0 && (
+                                <p className="text-sm text-destructive">
+                                    Add at least one reward item (with a valid link, if using
+                                    "Link") to continue.
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {activeStep === "unlock" && (
+                    <Card>
+                        <CardContent className="space-y-4 pt-6">
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <Label className="flex items-center gap-2 text-sm font-medium">
+                                        <MapPin className="h-4 w-4 text-primary" />
+                                        Require visiting locations to unlock
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Applies separately to every copy sold — buying 4 copies of
+                                        a 3-location rule drops 12 pins in total, not 3.
+                                    </p>
+                                </div>
+                                <Switch checked={unlockEnabled} onCheckedChange={setUnlockEnabled} />
+                            </div>
+
+                            {unlockEnabled && (
+                                <UnlockLocationPicker points={unlockPoints} onChange={setUnlockPoints} />
+                            )}
+
+                            {unlockEnabled && unlockPoints.length === 0 && (
+                                <p className="text-sm text-destructive">
+                                    Add at least one location, or turn this off.
+                                </p>
+                            )}
+
+                            {!unlockEnabled && (
+                                <Alert>
+                                    <AlertDescription>
+                                        No rule set — every buyer unlocks their copy{"'"}s reward
+                                        immediately, just by owning it.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
                         </CardContent>
                     </Card>
                 )}
@@ -2045,14 +2064,16 @@ function SmartContractNftForm({
                         Previous
                     </Button>
 
-                    {activeStep !== "media" ? (
+                    {activeStep !== SC_FORM_STEPS[SC_FORM_STEPS.length - 1] ? (
                         <Button
                             type="button"
                             onClick={nextStep}
                             className="flex items-center gap-1 shadow-sm shadow-foreground"
                             disabled={
-                                activeStep === "details" &&
-                                (name.trim().length === 0 || (parsedPriceXlm <= 0 && parsedPriceAsset <= 0))
+                                (activeStep === "details" &&
+                                    (name.trim().length === 0 || !thumbnailUrl || !contentMimeType)) ||
+                                (activeStep === "pricing" && parsedPriceXlm <= 0 && parsedPriceAsset <= 0) ||
+                                (activeStep === "locked" && completeLockedMedia.length === 0)
                             }
                         >
                             Next

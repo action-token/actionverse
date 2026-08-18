@@ -462,7 +462,7 @@ export default function StoredItemsView() {
                                                             className=""
                                                             onClick={() => {
                                                                 if (item.isScNft && item.scNftId) {
-                                                                    void router.push(`/nft/manage/${item.scNftId}`)
+                                                                    void router.push(`/smart-contract/manage/${item.scNftId}`)
                                                                 } else {
                                                                     setIsOpenStoredModal(true)
                                                                     setStoredModalData(item)
@@ -480,7 +480,7 @@ export default function StoredItemsView() {
                                                                 hideBuyButton={true}
                                                                 onView={() => {
                                                                     if (item.isScNft && item.scNftId) {
-                                                                        void router.push(`/nft/manage/${item.scNftId}`)
+                                                                        void router.push(`/smart-contract/manage/${item.scNftId}`)
                                                                     }
                                                                 }}
                                                             />
@@ -488,7 +488,7 @@ export default function StoredItemsView() {
                                                     ) : (
                                                         <Card className="overflow-hidden cursor-pointer" onClick={() => {
                                                             if (item.isScNft && item.scNftId) {
-                                                                void router.push(`/nft/manage/${item.scNftId}`)
+                                                                void router.push(`/smart-contract/manage/${item.scNftId}`)
                                                             } else {
                                                                 handleStoredItemClick(item)
                                                             }

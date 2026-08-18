@@ -147,6 +147,11 @@ export default async function handler(
             remaining: { gt: 0 },
             hidden: false,
           },
+          // A gated NFT's per-token pin set (see `ensureTokenUnlockPinSet`
+          // in nft.ts) is private to the one buyer it was cloned for —
+          // invisible to everyone else, even though it's otherwise an
+          // ordinary approved LocationGroup.
+          { OR: [{ restrictedToUserId: null }, { restrictedToUserId: userId }] },
           privacyConditions,
         ],
       },

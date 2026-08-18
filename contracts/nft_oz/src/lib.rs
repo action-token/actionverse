@@ -52,7 +52,7 @@ const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// Bump this before building/deploying each new wasm so `version()` reflects
 /// what's actually running on-chain — paired with the `Upgradeable` impl
 /// below, this is how future changes ship without a redeploy (new address).
-const CONTRACT_VERSION: u32 = 3;
+const CONTRACT_VERSION: u32 = 4;
 
 /// Basis-points denominator for fee/royalty math (10_000 = 100%).
 const BPS_DENOM: i128 = 10_000;
@@ -213,6 +213,16 @@ pub enum DataKey {
     NextEditionId,
     PlatformFeeBps,
     Treasury,
+    /// The hot key allowed to call `unlock_token_for` — separate from the
+    /// `Ownable` owner (which can pause/upgrade the whole contract) since
+    /// this one gets called automatically by the backend on every pin
+    /// collection, not by a human operator. See `unlock_token_for`.
+    UnlockAuthority,
+    /// (token_id) -> bool. Permanent once true — a token's unlock rule was
+    /// completed off-chain and the backend attested to it. Per-token, not
+    /// per-edition or per-owner: the rule ("visit N locations") applies to
+    /// one specific minted copy, not to the edition as a whole.
+    Unlocked(u32),
 }
 
 #[contracterror]
@@ -252,6 +262,9 @@ pub enum ArtError {
     /// the same purchase attempt.
     DuplicatePurchaseRef = 321,
     PurchaseRefTooLong = 322,
+    /// The caller of `unlock_token_for` isn't the registered unlock
+    /// authority (or none has been set yet).
+    NotUnlockAuthority = 323,
 }
 
 // =============================================================================
@@ -317,6 +330,14 @@ pub struct PlatformFeeUpdated {
     pub treasury: Address,
 }
 
+#[contractevent]
+pub struct ContentUnlocked {
+    #[topic]
+    pub token_id: u32,
+    #[topic]
+    pub owner: Address,
+}
+
 // =============================================================================
 // Contract
 // =============================================================================
@@ -337,6 +358,7 @@ impl ArtNft {
         name: String,
         symbol: String,
         base_uri: String,
+        unlock_authority: Address,
     ) {
         if platform_fee_bps > MAX_PLATFORM_FEE_BPS {
             panic_with_error!(e, ArtError::InvalidFee);
@@ -347,6 +369,7 @@ impl ArtNft {
 
         e.storage().instance().set(&DataKey::PlatformFeeBps, &platform_fee_bps);
         e.storage().instance().set(&DataKey::Treasury, &treasury);
+        e.storage().instance().set(&DataKey::UnlockAuthority, &unlock_authority);
         e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
     }
 
@@ -870,11 +893,68 @@ impl ArtNft {
         e.storage().instance().get(&DataKey::Treasury)
     }
 
+    /// Rotates the unlock authority's hot key without a full upgrade — the
+    /// backend process holding this key gets called automatically and
+    /// often, so being able to swap it (e.g. after a suspected leak)
+    /// without touching the owner's cold key matters more here than for
+    /// most admin settings.
+    #[only_owner]
+    pub fn set_unlock_authority(e: &Env, new_authority: Address) {
+        e.storage().instance().set(&DataKey::UnlockAuthority, &new_authority);
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+    }
+
     /// The contract build currently running on-chain — bump
     /// `CONTRACT_VERSION` on every release that changes behavior so this
     /// stays truthful after an `upgrade`.
     pub fn version(_e: &Env) -> u32 {
         CONTRACT_VERSION
+    }
+
+    // -------------------------------------------------------------------------
+    // Unlock — a locked-content NFT's off-chain unlock rule (e.g. "visit N
+    // AR pin locations"), attested by the backend once it verifies the rule
+    // was completed. Soroban has no way to verify real-world location
+    // itself, so the backend necessarily remains the party attesting that;
+    // what moves on-chain is the permanent, publicly-verifiable *result* of
+    // that attestation, not the check itself.
+    // -------------------------------------------------------------------------
+
+    /// Called by the backend once it has independently verified (off-chain)
+    /// that this specific token's unlock rule was completed. Idempotent —
+    /// calling it again for an already-unlocked token is a no-op, not an
+    /// error, so a retried backend call after a dropped response is safe.
+    /// Keyed by `token_id` alone, not edition or owner: the rule applies to
+    /// one specific minted copy, decided once, regardless of who holds it
+    /// later.
+    #[when_not_paused]
+    pub fn unlock_token_for(e: &Env, caller: Address, token_id: u32) {
+        caller.require_auth();
+        let authority: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::UnlockAuthority)
+            .unwrap_or_else(|| panic_with_error!(e, ArtError::NotUnlockAuthority));
+        if caller != authority {
+            panic_with_error!(e, ArtError::NotUnlockAuthority);
+        }
+
+        let key = DataKey::Unlocked(token_id);
+        if e.storage().persistent().get::<_, bool>(&key).unwrap_or(false) {
+            return; // already unlocked — idempotent
+        }
+        e.storage().persistent().set(&key, &true);
+        e.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
+
+        let owner = Consecutive::owner_of(e, token_id);
+        ContentUnlocked { token_id, owner }.publish(e);
+    }
+
+    /// Public, permissionless read — anyone (the buyer, a marketplace UI,
+    /// an auditor) can verify on-chain whether a given token's unlock rule
+    /// was completed, without trusting the backend's word for it.
+    pub fn is_unlocked(e: &Env, token_id: u32) -> bool {
+        e.storage().persistent().get(&DataKey::Unlocked(token_id)).unwrap_or(false)
     }
 }
 
@@ -895,9 +975,10 @@ impl Ownable for ArtNft {}
 
 #[contractimpl(contracttrait)]
 impl Pausable for ArtNft {
-    /// Emergency stop for `buy_edition`, `list`, and `buy`. Transfers,
-    /// approvals, and `cancel_listing` stay open so holders can always exit a
-    /// position while the platform is halted.
+    /// Emergency stop for `buy_edition`, `list`, `buy`, and
+    /// `unlock_token_for`. Transfers, approvals, and `cancel_listing` stay
+    /// open so holders can always exit a position while the platform is
+    /// halted.
     #[only_owner]
     fn pause(e: &Env, _caller: Address) {
         pausable::pause(e);

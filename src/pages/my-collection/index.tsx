@@ -57,11 +57,15 @@ function ScNftCard({
     price?: number;
 }) {
     const router = useRouter();
+    // Items in "my collection" are always ones the viewer owns, so this
+    // always goes to the manage page (list/cancel, unlock progress) —
+    // replacing the old `/nft/manage/[id]`.
+    const href = `/smart-contract/manage/${nftId}`;
     return (
         <div
             className="cursor-pointer"
             onClick={() => {
-                void router.push(`/nft/manage/${nftId}`);
+                void router.push(href);
             }}
         >
             <AssetView
@@ -74,10 +78,10 @@ function ScNftCard({
                 priceCurrency="XLM"
                 hideBuyButton
                 onView={() => {
-                    void router.push(`/nft/manage/${nftId}`);
+                    void router.push(href);
                 }}
                 onBuy={() => {
-                    void router.push(`/nft/manage/${nftId}`);
+                    void router.push(href);
                 }}
             />
         </div>

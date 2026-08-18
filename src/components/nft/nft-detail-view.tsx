@@ -198,6 +198,7 @@ export function NftDetailView({
           onListMultiple={onListMultiple}
           isSaving={isSavingListing}
           network={onChainInsights?.network}
+          resaleBlocked={!!nft.unlockRuleType}
         />
       ) : nft.resaleListings.length > 0 ? (
         <ResaleBuyCard
@@ -328,13 +329,18 @@ export function NftDetailView({
 // Manage — one row per copy the caller holds, each independently listable
 // =============================================================================
 
-function ManagePriceCard({
+/** Exported so `src/pages/smart-contract/[id].tsx` — now the one page for
+ *  buying *and* managing every NFT — can render it directly instead of the
+ *  full `NftDetailView` (which also renders its own title/description/tabs
+ *  that page already has its own versions of). */
+export function ManagePriceCard({
   myTokens,
   onListToken,
   onCancelListing,
   onListMultiple,
   isSaving,
   network,
+  resaleBlocked = false,
 }: {
   myTokens: MyToken[];
   onListToken?: (tokenId: string, prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
@@ -345,6 +351,11 @@ function ManagePriceCard({
   ) => void | Promise<void>;
   isSaving: boolean;
   network?: string;
+  /** Gated ("VIP ticket") editions — resale isn't designed yet, see
+   * VIP_TICKET_UNLOCK_PLAN.md, so new listings are hidden here entirely
+   * (the backend rejects them too either way). Cancelling an existing
+   * listing stays available — exiting a position should never be blocked. */
+  resaleBlocked?: boolean;
 }) {
   if (myTokens.length === 0) {
     return (
@@ -371,7 +382,13 @@ function ManagePriceCard({
       </div>
 
       {unlisted.length > 0 && (
-        <HoldAndListCard tokens={unlisted} onListMultiple={onListMultiple} isSaving={isSaving} />
+        resaleBlocked ? (
+          <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+            Resale isn{"'"}t available yet for tickets with unlock rewards.
+          </div>
+        ) : (
+          <HoldAndListCard tokens={unlisted} onListMultiple={onListMultiple} isSaving={isSaving} />
+        )
       )}
 
       {listed.map((token) => (
@@ -379,6 +396,7 @@ function ManagePriceCard({
           key={token.tokenId}
           token={token}
           isSaving={isSaving}
+          resaleBlocked={resaleBlocked}
           onList={(prices) => onListToken?.(token.tokenId, prices)}
           onCancel={() => onCancelListing?.(token.tokenId)}
         />
@@ -517,11 +535,13 @@ function TokenListingRow({
   isSaving,
   onList,
   onCancel,
+  resaleBlocked = false,
 }: {
   token: MyToken;
   isSaving: boolean;
   onList: (prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
   onCancel: () => void | Promise<void>;
+  resaleBlocked?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [priceXlm, setPriceXlm] = useState("1");
@@ -617,10 +637,12 @@ function TokenListingRow({
             ))}
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="gap-1 rounded-full" onClick={startEditing}>
-              <Pencil className="h-3 w-3" />
-              Edit
-            </Button>
+            {!resaleBlocked && (
+              <Button size="sm" variant="outline" className="gap-1 rounded-full" onClick={startEditing}>
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -656,8 +678,13 @@ function TokenListingRow({
  * own seller, so "buy N" signs N separate `buy` transactions in sequence
  * (the contract has no batch resale-purchase entry point), but the buyer
  * only has to choose a quantity once, same shape as the primary buy card.
+ *
+ * Exported so `src/pages/smart-contract/[id].tsx` — now the one buy page
+ * for every NFT, gated or not — can show it for a resold copy exactly as
+ * `nft/[id].tsx` used to. Resale never applies to a gated edition (blocked
+ * server-side), so this only ever renders there for an ungated one.
  */
-function ResaleBuyCard({
+export function ResaleBuyCard({
   listings,
   viewerId,
   onBuy,
@@ -821,7 +848,14 @@ function ResaleBuyCard({
 // Buy — a fresh copy, minted on demand from the edition
 // =============================================================================
 
-function PrimaryBuyCard({
+/**
+ * Exported so the gated-ticket page (`src/pages/smart-contract/[id].tsx`)
+ * can reuse the exact same quantity/currency/network-fee breakdown instead
+ * of a second, drifting implementation — resale doesn't apply there (see
+ * VIP_TICKET_UNLOCK_PLAN.md), but a primary purchase is identical either
+ * way.
+ */
+export function PrimaryBuyCard({
   nft,
   onChainInsights,
   isLoadingOnChainInsights,

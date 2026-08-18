@@ -106,6 +106,11 @@ export const gameRouter = createTRPCRouter({
         where: {
           AND: [
             { approved: true, startDate: { lte: new Date() }, endDate: { gte: new Date() }, subscriptionId: null, remaining: { gt: 0 }, hidden: false },
+            // A gated NFT's per-token pin set (see `ensureTokenUnlockPinSet`
+            // in nft.ts) is private to the one buyer it was cloned for —
+            // invisible to everyone else, even though it's otherwise an
+            // ordinary approved LocationGroup.
+            { OR: [{ restrictedToUserId: null }, { restrictedToUserId: userId }] },
             privacyConditions,
           ],
         },
@@ -253,6 +258,18 @@ export const gameRouter = createTRPCRouter({
           });
           if (!location?.locationGroup) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Could not find the location" });
+          }
+          // A gated NFT's per-token pin set is private to the one buyer it
+          // was cloned for (see `ensureTokenUnlockPinSet` in nft.ts) — the
+          // `getPins`/`pages/api/game/locations` listings already hide it
+          // from everyone else, but that alone wouldn't stop a direct call
+          // here with a `pinId` learned some other way (e.g. a shared
+          // screenshot), so it's enforced again at the point of consumption.
+          if (
+            location.locationGroup.restrictedToUserId &&
+            location.locationGroup.restrictedToUserId !== userId
+          ) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "This pin belongs to someone else" });
           }
 
           if (location.locationGroup.multiPin) {
