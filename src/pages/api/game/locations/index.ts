@@ -144,7 +144,6 @@ export default async function handler(
             startDate: { lte: new Date() },
             endDate: { gte: new Date() },
             subscriptionId: null,
-            remaining: { gt: 0 },
             hidden: false,
           },
           // A gated NFT's per-token pin set (see `ensureTokenUnlockPinSet`
@@ -152,6 +151,12 @@ export default async function handler(
           // invisible to everyone else, even though it's otherwise an
           // ordinary approved LocationGroup.
           { OR: [{ restrictedToUserId: null }, { restrictedToUserId: userId }] },
+          // A shared/public pool (unlockForTokenId null) should disappear
+          // once sold out (`remaining <= 0`). A private per-token gated-
+          // ticket pin set must keep showing even after full collection,
+          // so its owner still sees an already-unlocked ticket's pins
+          // instead of the whole group vanishing the moment it's done.
+          { OR: [{ remaining: { gt: 0 } }, { unlockForTokenId: { not: null } }] },
           privacyConditions,
         ],
       },
@@ -211,15 +216,20 @@ export default async function handler(
         // Map locations with collected status
         if (multiPin) {
           return group.locations.map((location) => ({
-            ...location,
+            // `LocationGroup` has its own `latitude`/`longitude` (the rule
+            // template's first point) — spread after `...group` so each
+            // pin keeps its OWN coordinates instead of every pin in the
+            // group collapsing onto the group's single representative
+            // point.
             ...group,
+            ...location,
             id: location.id,
             collected: location.consumers.some((c) => c.userId === userId),
           }));
         } else {
           return group.locations.map((location) => ({
-            ...location,
             ...group,
+            ...location,
             id: location.id,
             collected: hasConsumedOne,
           }));

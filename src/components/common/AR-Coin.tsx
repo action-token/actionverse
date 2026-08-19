@@ -1,22 +1,7 @@
 import * as THREE from "three"
+import type { ConsumedLocation } from "~/types/game/location"
 
-export interface ConsumedLocation {
-    id: string | number
-    lat: number
-    lng: number
-    title: string
-    description: string
-    brand_name: string
-    url: string
-    image_url: string
-    collected: boolean
-    collection_limit_remaining: number
-    auto_collect: boolean
-    brand_image_url: string
-    brand_id: string
-}
-
-
+export type { ConsumedLocation }
 
 export class ARCoin {
     private mesh: THREE.Mesh
@@ -52,31 +37,43 @@ export class ARCoin {
         // in some versions.  We explicitly set the property for compatibility.
         textureLoader.crossOrigin = "anonymous" // or "" depending on env
 
-        // Create a fallback canvas texture in case image fails to load
-        const createFallbackTexture = (): THREE.CanvasTexture => {
+        // Fallback when neither the pin's own image nor the creator's
+        // image is available — a colored avatar drawn from the creator's
+        // name (initials), the same idea as a chat-app default avatar,
+        // instead of falling back to some unrelated hardcoded logo.
+        const createNameAvatarTexture = (): THREE.CanvasTexture => {
             const canvas = document.createElement("canvas")
             canvas.width = 256
             canvas.height = 256
             const ctx = canvas.getContext("2d")
             if (ctx) {
-                // Create a gradient background
                 const gradient = ctx.createLinearGradient(0, 0, 256, 256)
                 gradient.addColorStop(0, "#4F46E5")
                 gradient.addColorStop(1, "#2563EB")
                 ctx.fillStyle = gradient
                 ctx.fillRect(0, 0, 256, 256)
 
-                // Draw brand name as fallback
+                const initials = this.location.brand_name
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((word) => word[0]!.toUpperCase())
+                    .join("")
+
                 ctx.fillStyle = "#FFFFFF"
-                ctx.font = "bold 24px Arial"
+                ctx.font = "bold 96px Arial"
                 ctx.textAlign = "center"
-                ctx.fillText(this.location.brand_name, 128, 128)
+                ctx.textBaseline = "middle"
+                ctx.fillText(initials || "?", 128, 100)
+
+                ctx.font = "bold 20px Arial"
+                ctx.fillText(this.location.brand_name, 128, 190)
             }
             return new THREE.CanvasTexture(canvas)
         }
 
         // Load brand image texture with proper error handling
-        const brandTexture = createFallbackTexture()
+        const brandTexture = createNameAvatarTexture()
 
         // Apply 45 degree rotation to fallback texture
         brandTexture.rotation = Math.PI / 2 // 45 degrees in radians
@@ -93,44 +90,65 @@ export class ARCoin {
             }
         }
 
-        const rawUrl = this.location.image_url ?? this.location.brand_image_url ?? "https://app.action-tokens.com/images/action/logo.png"
-        const imageUrl = rawUrl.startsWith("/") || rawUrl.startsWith(window.location.origin)
-            ? rawUrl // same-origin, no need to proxy
-            : proxyImage(rawUrl)
+        // The server defaults `image_url`/`brand_image_url` to generic
+        // wadzzo-branded placeholder icons (`avaterIconUrl` in
+        // `pages/api/game/brands.ts` is still on the old `app.wadzzo.com`
+        // domain) when neither the pin nor the creator actually has an
+        // image set — those aren't real content, so treat them the same
+        // as "no image" and fall through to the name avatar instead of
+        // fetching an unrelated placeholder.
+        const isPlaceholder = (url: string | undefined) =>
+            !url || url.includes("app.wadzzo.com")
 
-        textureLoader.load(
-            imageUrl,
-            (texture) => {
-                // Configure loaded texture
-                texture.wrapS = THREE.ClampToEdgeWrapping
-                texture.wrapT = THREE.ClampToEdgeWrapping
-                texture.minFilter = THREE.LinearFilter
-                texture.magFilter = THREE.LinearFilter
+        // Fallback chain: the pin/location group's own image, then the
+        // creator's image, then (handled above) a name-based avatar.
+        const rawUrl = !isPlaceholder(this.location.image_url)
+            ? this.location.image_url
+            : !isPlaceholder(this.location.brand_image_url)
+                ? this.location.brand_image_url
+                : undefined
 
-                // Rotate texture by 45 degrees
-                texture.rotation = Math.PI / 2 // 45 degrees in radians
-                texture.center.set(0.5, 0.5) // Set rotation center to middle of texture
+        if (rawUrl) {
+            const imageUrl = rawUrl.startsWith("/") || rawUrl.startsWith(window.location.origin)
+                ? rawUrl // same-origin, no need to proxy
+                : proxyImage(rawUrl)
 
-                // Update both materials with the loaded texture
-                if (Array.isArray(mesh.material)) {
-                    const frontMat = mesh.material[1] as THREE.MeshStandardMaterial | undefined
-                    const backMat = mesh.material[2] as THREE.MeshStandardMaterial | undefined
-                    if (frontMat) {
-                        frontMat.map = texture
-                        frontMat.needsUpdate = true
+            textureLoader.load(
+                imageUrl,
+                (texture) => {
+                    // Configure loaded texture
+                    texture.wrapS = THREE.ClampToEdgeWrapping
+                    texture.wrapT = THREE.ClampToEdgeWrapping
+                    texture.minFilter = THREE.LinearFilter
+                    texture.magFilter = THREE.LinearFilter
+
+                    // Rotate texture by 45 degrees
+                    texture.rotation = Math.PI / 2 // 45 degrees in radians
+                    texture.center.set(0.5, 0.5) // Set rotation center to middle of texture
+
+                    // Update both materials with the loaded texture
+                    if (Array.isArray(mesh.material)) {
+                        const frontMat = mesh.material[1] as THREE.MeshStandardMaterial | undefined
+                        const backMat = mesh.material[2] as THREE.MeshStandardMaterial | undefined
+                        if (frontMat) {
+                            frontMat.map = texture
+                            frontMat.needsUpdate = true
+                        }
+                        if (backMat) {
+                            backMat.map = texture
+                            backMat.needsUpdate = true
+                        }
                     }
-                    if (backMat) {
-                        backMat.map = texture
-                        backMat.needsUpdate = true
-                    }
+                },
+                undefined,
+                (error) => {
+                    // Load failed — the name-avatar fallback texture is already applied.
+                    console.warn(`Failed to load texture for coin: ${imageUrl}`, error)
                 }
-            },
-            undefined,
-            (error) => {
-                // Handle loading error - fallback texture is already applied
-                console.warn(`Failed to load texture for coin: ${imageUrl}`, error)
-            }
-        )
+            )
+        }
+        // else: no real image anywhere in the chain — keep the name-avatar
+        // canvas texture already applied as `brandTexture` above.
 
         // Clone the texture for the back side
         const brandTextureBack = brandTexture.clone()
@@ -198,37 +216,46 @@ export class ARCoin {
     }
 
     private createInfoSprite() {
-        // Create canvas for text
+        // Higher-res canvas + bigger sprite scale than before — the
+        // original 512x256/scale(10,5) rendered too small and blurry to
+        // read at typical AR viewing distance.
         const canvas = document.createElement("canvas")
         const context = canvas.getContext("2d")
         if (!context) return
 
-        // Set canvas size
-        canvas.width = 512
-        canvas.height = 256
+        canvas.width = 1024
+        canvas.height = 512
 
-        // Style the text
-        context.fillStyle = "rgba(0, 0, 0, 0.8)"
-        context.fillRect(0, 0, canvas.width, canvas.height)
+        // Rounded card background instead of a hard-edged rectangle.
+        const radius = 24
+        context.fillStyle = "rgba(0, 0, 0, 0.85)"
+        context.beginPath()
+        context.moveTo(radius, 0)
+        context.arcTo(canvas.width, 0, canvas.width, canvas.height, radius)
+        context.arcTo(canvas.width, canvas.height, 0, canvas.height, radius)
+        context.arcTo(0, canvas.height, 0, 0, radius)
+        context.arcTo(0, 0, canvas.width, 0, radius)
+        context.closePath()
+        context.fill()
 
         context.fillStyle = "#ffffff"
-        context.font = "bold 24px Arial"
+        context.font = "bold 52px Arial"
         context.textAlign = "center"
 
         // Draw brand name
-        context.fillText(this.location.brand_name, canvas.width / 2, 50)
+        context.fillText(this.location.brand_name, canvas.width / 2, 90)
 
         // Draw title
-        context.font = "18px Arial"
-        context.fillText(this.location.title, canvas.width / 2, 80)
+        context.font = "38px Arial"
+        context.fillText(this.location.title, canvas.width / 2, 150)
 
         // Draw description (word wrap)
-        context.font = "14px Arial"
+        context.font = "30px Arial"
         const words = this.location.description.split(" ")
         let line = ""
-        let y = 110
-        const maxWidth = 480
-        const lineHeight = 20
+        let y = 220
+        const maxWidth = 940
+        const lineHeight = 42
 
         for (let n = 0; n < words.length; n++) {
             const testLine = line + words[n] + " "
@@ -244,14 +271,14 @@ export class ARCoin {
             }
 
             // Limit to 3 lines
-            if (y >= 150) break
+            if (y >= 320) break
         }
         context.fillText(line, canvas.width / 2, y)
 
         // Draw collection info
         context.fillStyle = "#ffff00"
-        context.font = "12px Arial"
-        context.fillText(`Remaining: ${this.location.collection_limit_remaining}`, canvas.width / 2, y + 30)
+        context.font = "bold 26px Arial"
+        context.fillText(`Remaining: ${this.location.collection_limit_remaining}`, canvas.width / 2, y + 60)
 
         // Create texture from canvas
         const texture = new THREE.CanvasTexture(canvas)
@@ -265,8 +292,8 @@ export class ARCoin {
 
         // Create sprite
         this.textSprite = new THREE.Sprite(spriteMaterial)
-        this.textSprite.scale.set(10, 5, 1)
-        this.textSprite.position.set(0, 8, 0) // Position above the coin
+        this.textSprite.scale.set(20, 10, 1)
+        this.textSprite.position.set(0, 12, 0) // Position above the coin
         this.textSprite.visible = false
 
         this.billboardGroup.add(this.textSprite)

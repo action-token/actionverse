@@ -2,7 +2,7 @@ import { env } from "~/env";
 
 const IS_PUBNET = env.NEXT_PUBLIC_STELLAR_PUBNET;
 
-export const BASE_URL = process.env.NODE_ENV === "production" ? "https://app.action-tokens.com/" : "https://funnier-jeni-qualmishly.ngrok-free.dev/";
+export const BASE_URL = process.env.NODE_ENV === "production" ? "https://app.action-tokens.com/" : "https://development.d2zw8dm3mms6ad.amplifyapp.com/";
 export const EXPRESS_SERVER_URL = "https://portal.actn.xyz/actionverse/api/"
 
 // Bounty escrow Soroban contract ID — testnet for dev, mainnet for prod.

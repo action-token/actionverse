@@ -60,7 +60,7 @@ export default function AssetView({
     prices,
     assetKind,
 }: AssetViewProps) {
-    const nftLabel = assetKind === "NON_STELLAR" ? "ITEM" : "NFT"
+    const nftLabel = isPinned ? "PIN" : assetKind === "NON_STELLAR" ? "ITEM" : "NFT"
     const [isVisible, setIsVisible] = useState(false)
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const handleViewClick = (event: React.MouseEvent) => {
@@ -241,7 +241,13 @@ export default function AssetView({
                                         // No price - show asset type
                                         <div className="text-center">
                                             <span className="text-sm font-semibold text-muted-foreground">
-                                                {isPageAsset ? "Page Asset" : mediaType === "THREE_D" ? "3D Model" : mediaType}
+                                                {isPinned
+                                                    ? "Pin"
+                                                    : isPageAsset
+                                                        ? "Page Asset"
+                                                        : mediaType === "THREE_D"
+                                                            ? "3D Model"
+                                                            : mediaType}
                                             </span>
                                         </div>
                                     )}

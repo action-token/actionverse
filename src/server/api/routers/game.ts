@@ -106,23 +106,31 @@ export const gameRouter = createTRPCRouter({
       const locationGroups = await db.locationGroup.findMany({
         where: {
           AND: [
-            { approved: true, startDate: { lte: new Date() }, endDate: { gte: new Date() }, subscriptionId: null, remaining: { gt: 0 }, hidden: false },
+            { approved: true, startDate: { lte: new Date() }, endDate: { gte: new Date() }, subscriptionId: null, hidden: false },
             // A gated NFT's per-token pin set (see `ensureTokenUnlockPinSet`
             // in nft.ts) is private to the one buyer it was cloned for —
             // invisible to everyone else, even though it's otherwise an
             // ordinary approved LocationGroup.
             { OR: [{ restrictedToUserId: null }, { restrictedToUserId: userId }] },
+            // A shared/public pool (unlockForTokenId null) should disappear
+            // once sold out (`remaining <= 0`). A private per-token gated-
+            // ticket pin set must keep showing even after full collection,
+            // so its owner still sees an already-unlocked ticket's pins
+            // instead of the whole group vanishing the moment it's done.
+            { OR: [{ remaining: { gt: 0 } }, { unlockForTokenId: { not: null } }] },
             privacyConditions,
           ],
         },
         include: {
-          locations: { include: { consumers: { select: { userId: true, viewedAt: true } } } },
+          locations: { include: { consumers: { select: { userId: true, viewedAt: true, redeemCode: true } } } },
           Subscription: true,
           creator: { include: { pageAsset: { select: { code: true, issuer: true } } } },
         },
       });
 
       const pins = locationGroups.flatMap((group) => {
+        const multiPin = group.multiPin;
+
         const hasConsumedOne = group.locations.some((loc) =>
           loc.consumers.some((c) => c.userId === userId),
         );
@@ -130,37 +138,82 @@ export const gameRouter = createTRPCRouter({
         if (group.privacy === ItemPrivacy.TIER) {
           const creatorPageAsset = group.creator.pageAsset;
           const subscription = group.Subscription;
+
           if (creatorPageAsset && subscription) {
-            const bal = userAcc.getTokenBalance(creatorPageAsset.code, creatorPageAsset.issuer);
-            if (bal < subscription.price) return [];
-          } else {
-            return [];
+            const bal = userAcc.getTokenBalance(
+              creatorPageAsset.code,
+              creatorPageAsset.issuer,
+            );
+            if (bal >= subscription.price) {
+              if (multiPin) {
+                return group.locations.map((location) => ({
+                  // `LocationGroup` has its own `latitude`/`longitude` (the
+                  // rule template's first point) — spread after `...group`
+                  // so each pin keeps its OWN coordinates instead of every
+                  // pin collapsing onto the group's single representative
+                  // point.
+                  ...group,
+                  ...location,
+                  id: location.id,
+                  collected: location.consumers.some(
+                    (c) => c.userId === userId,
+                  ),
+                }));
+              } else {
+                return group.locations.map((location) => ({
+                  ...group,
+                  ...location,
+                  id: location.id,
+                  collected: hasConsumedOne,
+                }));
+              }
+            }
           }
         }
+        else {
+          if (multiPin) {
+            return group.locations.map((location) => ({
+              ...group,
+              ...location,
+              id: location.id,
+              collected: location.consumers.some((c) => c.userId === userId),
+            }));
+          } else {
+            return group.locations.map((location) => ({
+              ...group,
+              ...location,
+              id: location.id,
+              collected: hasConsumedOne,
+            }));
+          }
+        }
+      }).filter((location) => location !== undefined);
 
-        return group.locations.map((location) => ({
-          id: location.id,
-          lat: location.latitude,
-          lng: location.longitude,
-          title: group.title,
-          description: group.description ?? "No description provided",
-          brand_name: group.creator.name,
-          viewed: location.consumers.some((el) => el.viewedAt != null),
-          url: group.link ?? "https://app.action-tokens.com/",
-          image_url: group.optimizedImage || group.image || group.creator.profileUrl || WadzzoIconURL,
-          collected: group.multiPin
-            ? location.consumers.some((c) => c.userId === userId)
-            : hasConsumedOne,
-          collection_limit_remaining: group.remaining,
-          auto_collect: location.autoCollect,
-          brand_image_url: group.creator.profileUrl ?? avaterIconUrl,
-          brand_id: group.creatorId,
-          public: true,
-        })) satisfies ConsumedLocation[];
-      });
+      const consumedLocations: ConsumedLocation[] = pins.map((location) => ({
+        id: location.id,
+        lat: location.latitude,
+        lng: location.longitude,
+        title: location.title,
+        description: location.description ?? "No description provided",
+        brand_name: location.creator.name,
+        viewed: location.consumers.some((el) => el.viewedAt != null),
+        url: location.link ?? "https://app.action-tokens.com/",
+        image_url: location.optimizedImage ?? location.image ?? location.creator.profileUrl ?? WadzzoIconURL,
+        collected: location.collected,
+        collection_limit_remaining: location?.remaining,
+        auto_collect: location.autoCollect,
+        brand_image_url: location?.creator.profileUrl ?? avaterIconUrl,
+        brand_id: location?.creatorId,
+        public: true,
+        redeemCode: location.consumers.find((c) => c.userId === userId)?.redeemCode ?? null,
+      })) satisfies ConsumedLocation[];
 
-      return { locations: pins };
+
+
+      return { locations: consumedLocations };
     }),
+
+
 
   // Returns all pins the current user has collected
   getConsumedPins: protectedProcedure.query(async ({ ctx }) => {

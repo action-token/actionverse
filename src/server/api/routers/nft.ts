@@ -175,7 +175,7 @@ async function ensureTokenUnlockPinSet(
           data: rule.points.map((p) => ({
             latitude: p.latitude,
             longitude: p.longitude,
-            autoCollect: true,
+            autoCollect: false,
           })),
         },
       },

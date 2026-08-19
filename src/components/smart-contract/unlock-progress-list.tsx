@@ -168,7 +168,7 @@ export function UnlockProgressList({
                                     </div>
                                     <CollectionMeter collected={token.collected} required={token.required} />
                                 </div>
-                                <Link href="/pins" className="block pt-1">
+                                <Link href="/action/home" className="block pt-1">
                                     <Button variant="outline" size="sm" className="w-full gap-2">
                                         <MapPin className="h-4 w-4" />
                                         Go collect pins

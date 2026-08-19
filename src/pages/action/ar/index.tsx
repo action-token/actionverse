@@ -9,25 +9,29 @@ import {
   WebcamRenderer,
 } from "~/lib/augmented-reality/locationbased-ar"
 import { ArrowLeft, Coins, Navigation, X, Camera, Smartphone, MapPin, AlertTriangle, RefreshCw, Circle } from "lucide-react"
-import ArCard from "~/components/common/ar-card"
 import { ARCoin } from "~/components/common/AR-Coin"
 import { useNearByPin } from "~/lib/state/augmented-reality/useNearbyPin"
 import { api } from "~/utils/api"
-import useWindowDimensions from "~/lib/state/augmented-reality/useWindowWidth"
 import type { ConsumedLocation } from "~/types/game/location"
 import { Button } from "~/components/shadcn/ui/button"
 import { useRouter } from "next/router"
 import Image from "next/image"
+
+// Once iOS grants `DeviceOrientationEvent.requestPermission()`, the grant
+// stays valid for the rest of this browser tab's session (same JS realm) —
+// re-requesting it doesn't need a fresh user gesture and resolves
+// instantly. Tracking that here (module scope, so it survives navigating
+// away from and back to this page via Next's client-side router) lets a
+// second-or-later visit skip the "Allow Motion Access" overlay entirely
+// instead of forcing the user to tap it every single time. A hard page
+// reload resets this, same as it resets iOS's own grant.
+let deviceOrientationPermissionGranted = false
 
 const ARPage = () => {
   const router = useRouter()
   const [selectedPin, setPin] = useState<ConsumedLocation>()
   const collectPinRes = useRef()
   const { data } = useNearByPin()
-  const winDim = useWindowDimensions()
-  const [infoBoxVisible, setInfoBoxVisible] = useState(false)
-  const [infoBoxPosition, setInfoBoxPosition] = useState({ left: 0, top: 0 })
-  const [infoText, setInfoText] = useState<ConsumedLocation>()
   const rendererRef = useRef<THREE.WebGLRenderer>()
   const previousIntersectedObject = useRef<THREE.Object3D | undefined>(undefined)
   const [showLoading, setShowLoading] = useState(false)
@@ -59,6 +63,12 @@ const ARPage = () => {
 
   // Request device orientation permission with user interaction
   const requestDeviceOrientationPermission = async () => {
+    // Already granted earlier this session — re-requesting resolves
+    // instantly without a gesture, so skip the overlay entirely.
+    if (deviceOrientationPermissionGranted) {
+      return true
+    }
+
     return new Promise<boolean>((resolve) => {
       // Create a user interaction button for iOS permission request
       const permissionButton = document.createElement("button")
@@ -136,6 +146,7 @@ const ARPage = () => {
 
             if (granted) {
               console.log("Device orientation permission granted!")
+              deviceOrientationPermissionGranted = true
               resolve(true)
             } else {
               console.error("Device orientation permission denied!")
@@ -165,19 +176,12 @@ const ARPage = () => {
       setPermissionStep("requesting")
       console.log("Starting permission request process...")
 
-      // Step 1: Request camera permission
+      // Step 1: Camera permission — not requested here. `WebcamRenderer`
+      // (constructed further down in `initializeAR`) requests it itself;
+      // asking here too just opened and immediately closed the camera a
+      // second time for no benefit (and once granted, the browser doesn't
+      // re-prompt anyway, so this step never needed to block on anything).
       setPermissionStep("camera")
-      console.log("Requesting camera permission...")
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      })
-      // Stop the stream immediately as we just needed permission
-      stream.getTracks().forEach((track) => track.stop())
-      console.log("Camera permission granted")
 
       // Step 2: Request device orientation permission with user interaction
       setPermissionStep("orientation")
@@ -568,9 +572,15 @@ const ARPage = () => {
               // Also set userData on billboard group for consistency
               billboardGroup.userData = consumedLocation
 
+              // Parent the billboard to the coin so it inherits the
+              // coin's GPS-based position (and floating animation)
+              // instead of sitting at the scene origin — adding it to
+              // `scene` directly left the card sprite stranded away
+              // from the coin, never appearing "on top of" it.
+              coinMesh.add(billboardGroup)
+
               // Add to scene using location-based positioning
               locar.add(coinMesh, coinData.lng, coinData.lat)
-              scene.add(billboardGroup)
 
               // Store references
               arCoinsRef.current.push(arCoin)
@@ -592,53 +602,34 @@ const ARPage = () => {
       // Start GPS tracking
       locar.startGps()
 
-      // Mouse/touch interaction for hover effects
+      // Raycaster reused for both the tap handler (from the tap's screen
+      // position) and the focus/gaze check below (from screen center).
       const raycaster = new THREE.Raycaster()
       const mouse = new THREE.Vector2()
 
-      // Handle click/tap events
-      // Handle mouse/touch move for hover effects
-      const onMouseMove = (event: MouseEvent | TouchEvent) => {
-        let clientX, clientY
+      // Focus (hover on desktop / holding the crosshair on a coin in AR)
+      // drives the billboard entirely: hold focus on a coin for
+      // FOCUS_OPEN_MS to open it, hold focus away from it for
+      // FOCUS_CLOSE_MS to close it. A tap still opens immediately, but is
+      // otherwise subject to the same close-on-unfocus rule.
+      const FOCUS_OPEN_MS = 500
+      const FOCUS_CLOSE_MS = 500
+      let focusedCoin: ARCoin | null = null
+      let focusStartTime = 0
+      let unfocusStartTime: number | null = null
 
-        if (event instanceof TouchEvent) {
-          if (event.touches.length > 0 && event.touches[0]) {
-            clientX = event.touches[0].clientX
-            clientY = event.touches[0].clientY
-          } else {
-            return
-          }
-        } else {
-          clientX = event.clientX
-          clientY = event.clientY
-        }
+      const openCoin = (coin: ARCoin) => {
+        if (hoveredCoinRef.current === coin) return
+        hoveredCoinRef.current?.hideCard()
+        coin.showCard(camera)
+        hoveredCoinRef.current = coin
+        unfocusStartTime = null
+        setPin(coin.getLocation())
+      }
 
-        mouse.x = (clientX / window.innerWidth) * 2 - 1
-        mouse.y = -(clientY / window.innerHeight) * 2 + 1
-
-        raycaster.setFromCamera(mouse, camera)
-        const intersects = raycaster.intersectObjects(coinsRef.current)
-
-        if (intersects.length > 0 && intersects[0]) {
-          const intersectedCoin = intersects[0].object
-          const arCoin = arCoinsRef.current.find((coin) => coin.getMesh() === intersectedCoin)
-
-          if (arCoin && hoveredCoinRef.current !== arCoin) {
-            // Hide previous hover
-            if (hoveredCoinRef.current) {
-              hoveredCoinRef.current.hideCard()
-            }
-            // Show new hover
-            arCoin.showCard(camera)
-            hoveredCoinRef.current = arCoin
-          }
-        } else {
-          // No intersection, hide any visible card
-          if (hoveredCoinRef.current) {
-            hoveredCoinRef.current.hideCard()
-            hoveredCoinRef.current = null
-          }
-        }
+      const closeCoin = () => {
+        hoveredCoinRef.current?.hideCard()
+        hoveredCoinRef.current = null
       }
 
       const onMouseClick = (event: MouseEvent | TouchEvent) => {
@@ -695,26 +686,18 @@ const ARPage = () => {
             console.log("🎯 Coin clicked:", objectData.brand_name)
             console.log("🎯 Full object data:", objectData)
 
-            // Set the info box content and position
-            setInfoText(objectData)
-            setInfoBoxVisible(true)
-
-            // Calculate screen position of the intersected object
-            const vector = new THREE.Vector3()
-            intersect.object.getWorldPosition(vector)
-            vector.project(camera)
-            const left = ((vector.x + 1) / 2) * window.innerWidth
-            const top = 120
-            setInfoBoxPosition({ left, top })
+            // Show the info card attached to the coin in the 3D scene
+            // itself (the same billboard sprite used on hover), instead
+            // of a flat HTML overlay positioned over the video feed.
+            const clickedCoin = arCoinsRef.current.find((coin) => coin.getMesh() === intersect.object)
+            if (clickedCoin) {
+              openCoin(clickedCoin)
+            }
 
             previousIntersectedObject.current = intersect.object
 
-            // Hide info box after 5 seconds (increased from 3)
-            setTimeout(() => setInfoBoxVisible(false), 5000)
-
             // Set selected pin - this should show the capture button
             console.log("🎯 Setting selected pin to:", objectData.brand_name)
-            setPin(objectData)
 
             // Add visual feedback
             document.body.style.cursor = "pointer"
@@ -731,8 +714,8 @@ const ARPage = () => {
         }
       }
 
-      // Add event listeners for both mouse and touch
-      window.addEventListener("mousemove", onMouseMove)
+      // Add event listener for taps (focus/hover, handled per-frame below,
+      // drives the billboard the rest of the time)
       window.addEventListener("click", onMouseClick)
 
       // Main animation loop
@@ -765,29 +748,49 @@ const ARPage = () => {
 
           // **FIX: Add validation to ensure userData exists**
           if (objectData) {
-            // Set the info box content and position
-            setInfoText(objectData)
-            setInfoBoxVisible(true)
+            // Show the info card attached to the coin in the 3D scene
+            // itself (the same billboard sprite used on hover), instead
+            // of a flat HTML overlay positioned over the video feed.
+            const clickedCoin = arCoinsRef.current.find((coin) => coin.getMesh() === intersect.object)
+            if (clickedCoin) {
+              openCoin(clickedCoin)
+            }
 
-            // Calculate screen position of the intersected object
-            const vector = new THREE.Vector3()
-            intersect.object.getWorldPosition(vector)
-            vector.project(camera)
-
-            const left = ((vector.x + 1) / 2) * window.innerWidth
-            const top = (-(vector.y - 1) / 2) * window.innerHeight
-
-            setInfoBoxPosition({ left, top })
             previousIntersectedObject.current = intersect.object
-
-            // Hide info box after 3 seconds
-            setTimeout(() => setInfoBoxVisible(false), 3000)
-
-            // Set selected pin
-            setPin(objectData)
             console.log("Selected pin set:", objectData) // Debug log
           } else {
             console.warn("Clicked object has no userData or invalid data:", intersect.object)
+          }
+        }
+
+        // Focus (hover): raycast from the screen center (crosshair) every
+        // frame. Holding a coin there for FOCUS_OPEN_MS opens its
+        // billboard hands-free; moving off it for FOCUS_CLOSE_MS closes
+        // whatever's currently open. Briefly glancing away and back
+        // within that window doesn't close it.
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera)
+        const focusIntersects = raycaster.intersectObjects(coinsRef.current)
+        const focusedMesh = focusIntersects[0]?.object
+        const currentlyFocusedCoin = focusedMesh
+          ? arCoinsRef.current.find((coin) => coin.getMesh() === focusedMesh)
+          : undefined
+
+        if (currentlyFocusedCoin) {
+          unfocusStartTime = null
+          if (currentlyFocusedCoin !== focusedCoin) {
+            focusedCoin = currentlyFocusedCoin
+            focusStartTime = Date.now()
+          } else if (Date.now() - focusStartTime >= FOCUS_OPEN_MS) {
+            openCoin(currentlyFocusedCoin)
+          }
+        } else {
+          focusedCoin = null
+          if (hoveredCoinRef.current) {
+            if (unfocusStartTime === null) {
+              unfocusStartTime = Date.now()
+            } else if (Date.now() - unfocusStartTime >= FOCUS_CLOSE_MS) {
+              closeCoin()
+            }
           }
         }
       })
@@ -795,7 +798,6 @@ const ARPage = () => {
       // Cleanup function
       cleanup = () => {
         window.removeEventListener("resize", handleResize)
-        window.removeEventListener("mousemove", onMouseMove)
 
         // Dispose device orientation controls
         if (deviceOrientationControlsRef.current) {
@@ -955,18 +957,6 @@ const ARPage = () => {
 
 
 
-
-      {/* Info Card */}
-      {infoBoxVisible && infoText && (
-        <ArCard
-          brandName={infoText.brand_name}
-          description={infoText.description}
-          position={{
-            left: Math.max(10, Math.min(winDim.width - 220, infoBoxPosition.left - 110)),
-            top: Math.max(100, infoBoxPosition.top - 50),
-          }}
-        />
-      )}
 
       {selectedPin && (
         <div className="fixed bottom-0 left-0 right-0 w-full z-40">
