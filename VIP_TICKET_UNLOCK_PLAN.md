@@ -222,13 +222,15 @@ pub fn is_unlocked(e: &Env, token_id: u32) -> bool {
 }
 ```
 
-**Backend signing key**: `unlock_token_for` needs its own funded Stellar
-keypair distinct from `STORAGE_SECRET` (the existing pin-reward payout
-account used by `ClaimXDR` in `src/lib/stellar/map/claim.ts`) — different
-trust boundary, so a new `UNLOCK_AUTHORITY_SECRET` env var, validated in
-`src/env.js` the same way `STORAGE_SECRET` is today. Its public key is
-what gets passed as `unlock_authority` at deploy (or into
-`set_unlock_authority` post-deploy).
+**Backend signing key**: originally planned as its own funded keypair
+under a new `UNLOCK_AUTHORITY_SECRET` env var, distinct from
+`STORAGE_SECRET` (the existing pin-reward payout account used by
+`ClaimXDR` in `src/lib/stellar/map/claim.ts`). **As actually shipped**,
+the client asked to reuse `MOTHER_SECRET` (already the contract's
+`Ownable` owner) as the unlock authority too, rather than mint a new key
+— simpler, and `set_unlock_authority` still means it can be split off
+later without another contract change if that trust boundary ever
+matters.
 
 Existing tests in `contracts/nft_oz/src/test.rs` need a matching
 `unlock_authority` constructor arg threaded through the test setup helper,
@@ -483,18 +485,23 @@ Migration: `npx prisma migrate dev --name nft-unlock-rule-and-locked-media`
      ```
 
 - **On-chain unlock trigger, in `src/server/api/routers/game.ts`'s
-  `consumePin`**: right after a `multiPin` collect successfully creates the
-  `LocationConsumer` row (the branch at game.ts:258-277), if
-  `location.locationGroup.unlockForTokenId` is set: re-count that group's
-  consumers; if the new count `>= ` the group's `limit` (i.e. this
-  collection just completed the token's requirement) **and**
-  `location.locationGroup.onChainUnlockedAt` is still null, call the
-  contract's `unlock_token_for(onChainTokenId)` (resolve the numeric
-  on-chain id via `NftToken.tokenId` for the group's `unlockForTokenId`)
-  signed by `UNLOCK_AUTHORITY_SECRET` (same XDR-build-and-submit shape as
-  `ClaimXDR` in `src/lib/stellar/map/claim.ts`, no buyer signature
-  needed), then persist `onChainUnlockedAt`/`onChainUnlockTxHash` on the
-  group. Wrapped in try/catch so a transient Stellar/RPC failure never
+  `consumePin`** — ✅ implemented (2026-08-19) essentially as designed
+  below, with two differences from the original sketch: it's keyed off
+  the `locationGroup.update`'s returned `remaining <= 0` rather than a
+  separate re-count, and signed by `MOTHER_SECRET` rather than a new
+  `UNLOCK_AUTHORITY_SECRET` (see the §0 note above). Right after a
+  `multiPin` collect successfully creates the `LocationConsumer` row (the
+  branch at game.ts:258-277), if `location.locationGroup.unlockForTokenId`
+  is set: re-count that group's consumers; if the new count `>= ` the
+  group's `limit` (i.e. this collection just completed the token's
+  requirement) **and** `location.locationGroup.onChainUnlockedAt` is still
+  null, call the contract's `unlock_token_for(onChainTokenId)` (resolve
+  the numeric on-chain id via `NftToken.tokenId` for the group's
+  `unlockForTokenId`) signed by the unlock authority key (same
+  XDR-build-and-submit shape as `ClaimXDR` in
+  `src/lib/stellar/map/claim.ts`, no buyer signature needed), then persist
+  `onChainUnlockedAt`/`onChainUnlockTxHash` on the group. Wrapped in
+  try/catch so a transient Stellar/RPC failure never
   breaks the pin collection response the buyer is waiting on —
   `onChainUnlockedAt` simply stays null and a retry (either the buyer
   viewing `unlockStatus` again triggering a lazy retry, or a small cron
