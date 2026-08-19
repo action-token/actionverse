@@ -88,24 +88,6 @@ async function requireOwnedToken(
 }
 
 /**
- * Resale for a gated ("VIP ticket") edition is hidden, not designed yet —
- * whether a partially/fully-unlocked copy's progress should travel with
- * it, reset, or block the sale outright on resale is an open question (see
- * VIP_TICKET_UNLOCK_PLAN.md), so rather than guess, listing one is rejected
- * outright until that's designed. Ordinary (ungated) editions are
- * unaffected.
- */
-async function requireResaleAllowed(db: Prisma.TransactionClient, nftId: string) {
-  const nft = await db.nft.findUnique({ where: { id: nftId }, select: { unlockRuleType: true } });
-  if (nft?.unlockRuleType) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Resale isn't available yet for tickets with unlock rewards",
-    });
-  }
-}
-
-/**
  * Gives one specific minted copy its own private AR pin set, cloned from
  * the edition's unlock rule template — see VIP_TICKET_UNLOCK_PLAN.md. Every
  * copy gets its own full set (buying 4 copies of a 4-location rule drops
@@ -515,8 +497,7 @@ export const nftRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const token = await requireOwnedToken(ctx.db, input.tokenId, ctx.session.user.id);
-      await requireResaleAllowed(ctx.db, token.nftId);
+      await requireOwnedToken(ctx.db, input.tokenId, ctx.session.user.id);
 
       const xdr = await buildListXDR({
         sellerPubKey: ctx.session.user.id,
@@ -596,8 +577,7 @@ export const nftRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       for (const tokenId of input.tokenIds) {
-        const token = await requireOwnedToken(ctx.db, tokenId, ctx.session.user.id);
-        await requireResaleAllowed(ctx.db, token.nftId);
+        await requireOwnedToken(ctx.db, tokenId, ctx.session.user.id);
       }
 
       const xdr = await buildListBatchXDR({
@@ -765,6 +745,19 @@ export const nftRouter = createTRPCRouter({
       return ctx.db.$transaction(async (tx) => {
         await tx.nftToken.update({ where: { tokenId: input.tokenId }, data: { ownerId: buyerId } });
         await tx.nftListing.update({ where: { tokenId: input.tokenId }, data: { isActive: false } });
+        // Hands this token's private pin set (if it's a gated ticket) to
+        // the new owner — a no-op for an ungated token, which has none.
+        // Unlock progress already collected stays counted (see
+        // `unlockStatus`'s group-scoped count below), so a resale never
+        // resets it; it just changes who can add to it going forward.
+        // Filtered through the `unlockForToken` relation, not a bare
+        // `unlockForTokenId: input.tokenId` — `input.tokenId` is the
+        // on-chain numeric id, while `unlockForTokenId` is a foreign key to
+        // `NftToken.id` (the internal row id); the two are different values.
+        await tx.locationGroup.updateMany({
+          where: { unlockForToken: { tokenId: input.tokenId } },
+          data: { restrictedToUserId: buyerId },
+        });
         await refreshListingAggregates(tx, listing.nftId);
         return tx.nft.findUniqueOrThrow({ where: { id: listing.nftId } });
       });
@@ -821,6 +814,14 @@ export const nftRouter = createTRPCRouter({
         for (const listing of listings) {
           await tx.nftToken.update({ where: { tokenId: listing.tokenId }, data: { ownerId: buyerId } });
           await tx.nftListing.update({ where: { tokenId: listing.tokenId }, data: { isActive: false } });
+          // See the equivalent comment and fix note in `confirmBuy` —
+          // hands over the token's private pin set, if it has one, without
+          // resetting it. Filtered through the relation, not a bare
+          // `unlockForTokenId: listing.tokenId` (on-chain id vs. internal id).
+          await tx.locationGroup.updateMany({
+            where: { unlockForToken: { tokenId: listing.tokenId } },
+            data: { restrictedToUserId: buyerId },
+          });
           nftIds.add(listing.nftId);
         }
         for (const nftId of nftIds) {
@@ -1162,9 +1163,17 @@ export const nftRouter = createTRPCRouter({
               select: { id: true, onChainUnlockTxHash: true },
             });
           }
+          // Scoped to the group, not `userId` — a restricted group only
+          // ever belongs to one user at a time (enforced in `consumePin`),
+          // so every consumer row under it is legitimate progress toward
+          // this token's requirement regardless of who collected it. That
+          // makes a resale carry progress forward instead of resetting it:
+          // if the previous owner collected 4 of 10, the new owner (who
+          // `confirmBuy`/`confirmBuyBatch` re-point this group's
+          // `restrictedToUserId` to) still reads 4/10, not 0/10.
           const collected = group
             ? await ctx.db.locationConsumer.count({
-                where: { userId, location: { locationGroupId: group.id } },
+                where: { location: { locationGroupId: group.id } },
               })
             : 0;
           const unlocked = collected >= required;

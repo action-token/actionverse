@@ -166,7 +166,6 @@ export default function SmartContractManagePage() {
   }
 
   const isGated = nft.lockedMedia.length > 0
-  const hasLocationRule = !!nft.unlockRuleType
   const requiredLocations = nft.unlockLocationRule?.points.length ?? 0
   const mediaCounts = {
     songs: nft.lockedMedia.filter((m) => m.type === "SONG").length,
@@ -254,7 +253,6 @@ export default function SmartContractManagePage() {
               onCancelListing={handleCancelListing}
               isSaving={isSavingListing}
               network={onChainInsights?.network}
-              resaleBlocked={hasLocationRule}
             />
 
             {isGated && (

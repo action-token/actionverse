@@ -198,7 +198,6 @@ export function NftDetailView({
           onListMultiple={onListMultiple}
           isSaving={isSavingListing}
           network={onChainInsights?.network}
-          resaleBlocked={!!nft.unlockRuleType}
         />
       ) : nft.resaleListings.length > 0 ? (
         <ResaleBuyCard
@@ -340,7 +339,6 @@ export function ManagePriceCard({
   onListMultiple,
   isSaving,
   network,
-  resaleBlocked = false,
 }: {
   myTokens: MyToken[];
   onListToken?: (tokenId: string, prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
@@ -351,11 +349,6 @@ export function ManagePriceCard({
   ) => void | Promise<void>;
   isSaving: boolean;
   network?: string;
-  /** Gated ("VIP ticket") editions — resale isn't designed yet, see
-   * VIP_TICKET_UNLOCK_PLAN.md, so new listings are hidden here entirely
-   * (the backend rejects them too either way). Cancelling an existing
-   * listing stays available — exiting a position should never be blocked. */
-  resaleBlocked?: boolean;
 }) {
   if (myTokens.length === 0) {
     return (
@@ -382,13 +375,7 @@ export function ManagePriceCard({
       </div>
 
       {unlisted.length > 0 && (
-        resaleBlocked ? (
-          <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
-            Resale isn{"'"}t available yet for tickets with unlock rewards.
-          </div>
-        ) : (
-          <HoldAndListCard tokens={unlisted} onListMultiple={onListMultiple} isSaving={isSaving} />
-        )
+        <HoldAndListCard tokens={unlisted} onListMultiple={onListMultiple} isSaving={isSaving} />
       )}
 
       {listed.map((token) => (
@@ -396,7 +383,6 @@ export function ManagePriceCard({
           key={token.tokenId}
           token={token}
           isSaving={isSaving}
-          resaleBlocked={resaleBlocked}
           onList={(prices) => onListToken?.(token.tokenId, prices)}
           onCancel={() => onCancelListing?.(token.tokenId)}
         />
@@ -535,13 +521,11 @@ function TokenListingRow({
   isSaving,
   onList,
   onCancel,
-  resaleBlocked = false,
 }: {
   token: MyToken;
   isSaving: boolean;
   onList: (prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
   onCancel: () => void | Promise<void>;
-  resaleBlocked?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [priceXlm, setPriceXlm] = useState("1");
@@ -637,12 +621,10 @@ function TokenListingRow({
             ))}
           </div>
           <div className="flex gap-2">
-            {!resaleBlocked && (
-              <Button size="sm" variant="outline" className="gap-1 rounded-full" onClick={startEditing}>
-                <Pencil className="h-3 w-3" />
-                Edit
-              </Button>
-            )}
+            <Button size="sm" variant="outline" className="gap-1 rounded-full" onClick={startEditing}>
+              <Pencil className="h-3 w-3" />
+              Edit
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -681,8 +663,11 @@ function TokenListingRow({
  *
  * Exported so `src/pages/smart-contract/[id].tsx` — now the one buy page
  * for every NFT, gated or not — can show it for a resold copy exactly as
- * `nft/[id].tsx` used to. Resale never applies to a gated edition (blocked
- * server-side), so this only ever renders there for an ungated one.
+ * `nft/[id].tsx` used to. Resale applies to gated editions too — a resold
+ * token keeps whatever unlock progress it already had (see
+ * `confirmBuy`/`confirmBuyBatch`, VIP_TICKET_UNLOCK_PLAN.md §2b) — this
+ * "cheapest N" pooling just doesn't yet surface that per-token progress to
+ * the buyer before purchase; see §2b step 6.
  */
 export function ResaleBuyCard({
   listings,

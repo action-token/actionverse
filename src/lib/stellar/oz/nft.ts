@@ -1,4 +1,5 @@
-import { Asset, Horizon, rpc } from "@stellar/stellar-sdk";
+import { Asset, Horizon, Keypair, rpc } from "@stellar/stellar-sdk";
+import { basicNodeSigner } from "@stellar/stellar-sdk/contract";
 import {
   Client as ArtNftClient,
   type ArtMeta,
@@ -390,6 +391,33 @@ export async function buildSetPlatformFeeXDR({
     { fee: SOROBAN_INCLUSION_FEE },
   );
   return tx.toXDR();
+}
+
+/**
+ * Records a token's completed unlock rule on-chain — called by the backend
+ * once it has independently verified (off-chain) that this specific token's
+ * pin set was fully collected. No buyer signature involved: the unlock
+ * authority keypair signs and submits in one step, same trust boundary as
+ * `STORAGE_SECRET`'s pin-reward payouts. Idempotent on the contract side, so
+ * a retried call for an already-unlocked token is a safe no-op.
+ */
+export async function unlockTokenFor({
+  unlockAuthoritySecret,
+  tokenId,
+}: {
+  unlockAuthoritySecret: string;
+  tokenId: number;
+}): Promise<string> {
+  const keypair = Keypair.fromSecret(unlockAuthoritySecret);
+  const client = getClient(keypair.publicKey());
+  const tx = await client.unlock_token_for(
+    { caller: keypair.publicKey(), token_id: tokenId },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
+  const sent = await tx.signAndSend({
+    signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,
+  });
+  return sent.sendTransactionResponse?.hash ?? "";
 }
 
 // =============================================================================

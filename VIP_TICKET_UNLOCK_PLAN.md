@@ -20,13 +20,30 @@
   role, `unlock_token_for`/`is_unlocked`/`set_unlock_authority` added
   exactly as designed below, `CONTRACT_VERSION` bumped to 4, 6 new tests
   (authority-only, idempotent, no sibling-token bleed, rotation) — `cargo
-  test` passes 54/54. **Not yet done**: actually deploying this build to
-  testnet/mainnet (the user's own call), regenerating
-  `contracts/nft_oz/bindings/`, adding `UNLOCK_AUTHORITY_SECRET` to
-  `src/env.js`, and wiring the backend call into `consumePin` — until all
-  of that lands, `unlockStatus`'s `unlocked` flag is decided by the DB
-  alone (collected pins vs. required), which is what actually gates
-  content today; the on-chain flag is inert until deployed and wired up.
+  test` passes 54/54. **Deployed and fully wired (2026-08-19):** the live
+  testnet contract (`CD3LMEHJG2AA5IZDGQB6O6HL2XPKU5WMXEGPRV25JY4Q4K2EBRK26N4S`,
+  `src/lib/common.ts`'s `ART_NFT_CONTRACT_ID`) was upgraded in place — no
+  existing tokens/listings affected — `set_unlock_authority` was called
+  (the `MOTHER_SECRET` key, per instruction, serves as both deployer and
+  unlock authority — no separate `UNLOCK_AUTHORITY_SECRET`), bindings were
+  regenerated, and `consumePin` in `src/server/api/routers/game.ts` now
+  calls the new `unlockTokenFor()` helper (`src/lib/stellar/oz/nft.ts`)
+  right after a multi-pin group's last location is collected, persisting
+  `onChainUnlockedAt`/`onChainUnlockTxHash`. Verified end-to-end through
+  the real app twice (not just direct contract calls): buy → collect all
+  required pins → `is_unlocked()` flips `true` on-chain automatically,
+  with a real tx hash recorded. **Note found along the way:** an
+  *unrelated, unused* decoy contract (referenced only by a dead
+  `NEXT_PUBLIC_NFT_MARKETPLACE_CONTRACT_ID` env var nothing reads) had a
+  contract-migration bug — `Ownable`'s owner was never bootstrapped after
+  an earlier refactor, permanently locking every owner-gated call
+  including future upgrades. Confirmed this does **not** affect the real
+  contract (its owner was always correctly set); redeployed a throwaway
+  replacement for the decoy since it was already touched, but it isn't
+  referenced by anything. `unlockStatus`'s `unlocked` flag is still
+  decided by the DB (collected pins vs. required) — that remains correct
+  and unchanged; the on-chain flag is now an independently-verifiable
+  *record* of the same fact, not a new gate.
 - ✅ §2 backend: fixed a real bug found in production use —
   `ensureTokenUnlockPinSet` used to run inside `confirmBuyEdition`'s
   `$transaction`, once per newly-minted token; for any decent purchase
@@ -61,6 +78,22 @@
   content," with the location rule as an optional *extra* requirement on
   top of that — a ticket with content but no rule unlocks immediately for
   any owner instead of never unlocking.
+- ✅ **§2b resale for gated tickets.** Client resolved the open resale
+  question (2026-08-19): resale is allowed for gated tokens, and a
+  token's unlock progress travels with it on sale (never resets; an
+  already-unlocked token stays unlocked for its new owner). Implemented:
+  `requireResaleAllowed` removed (listing a gated token is no longer
+  blocked); `confirmBuy`/`confirmBuyBatch` re-point the token's
+  `LocationGroup.restrictedToUserId` to the new buyer in the same
+  transaction as the ownership transfer; `unlockStatus`'s `collected`
+  count is scoped to the group instead of the querying user, so history
+  from a previous owner still counts; `ManagePriceCard`'s now-dead
+  `resaleBlocked` prop removed. **Not done**: §2b step 6, a per-listing
+  progress badge on `ResaleBuyCard` so a buyer can see "4/10 collected"
+  or "Unlocked" before buying a resold gated token — that card currently
+  pools resale listings into a plain "buy N cheapest" flow with no
+  per-token detail, so this would need a small UX redesign of that
+  component, not just a badge; left for a follow-up if wanted.
 
 ## Confirmed use case
 
@@ -81,12 +114,20 @@ Buying is unaffected by whether a rule exists: minting happens at purchase
 time exactly as it does today, for gated and ungated editions alike, in
 any quantity. The rule only gates *content visibility*, never ownership.
 
-**Resale is out of scope for now.** Whether a partially- or fully-unlocked
-token's progress should travel with it, reset, or block the sale entirely
-on resale is a real design question with no obvious right answer yet, so
-rather than guess, resale is simply **hidden from the UI for any token
-belonging to a gated (rule-having) edition** until that's designed
-separately. Ungated editions keep working exactly as today.
+**Resale, resolved (2026-08-19):** the client answered the open question —
+resale is **allowed** for gated tokens, and a token's unlock progress
+**travels with it, unchanged**, when it's resold:
+
+- If a token is already fully unlocked when its owner resells it, the
+  buyer receives it already unlocked — the reward stays revealed for
+  whoever owns the token now, no re-collecting required.
+- If a token is only partially collected (e.g. 4 of 10 locations) when
+  resold, the buyer picks up at 4/10, not 0/10 — progress is **never
+  reset** by a sale.
+
+This replaces the earlier "hide resale entirely for gated tokens" decision
+below §2 (`requireResaleAllowed`) — see "§2b Resale for gated tickets" for
+the implementation. Ungated editions are unaffected either way.
 
 This is different from the existing `LocationGroup`/`Location` campaigns
 used elsewhere in the app today, which are shared, public, first-come pools
@@ -310,11 +351,11 @@ collected independently, with no ordering constraint between them),
 `limit`/`remaining` = `points.length` (safe — only the token's owner can
 ever consume from it, enforced in §2).
 
-`restrictedToUserId` is a snapshot of the buyer at mint time, used for the
-AR-visibility filter (§2). Because resale is hidden for gated tokens (see
-above), this snapshot staying fixed is a non-issue *for now* — it will
-need to be revisited (probably replaced with a live join against
-`NftToken.ownerId`) whenever resale support for gated tickets is designed.
+`restrictedToUserId` starts as the buyer at mint time, used for the
+AR-visibility filter (§2), but it's a **live pointer, not a snapshot**:
+`confirmBuy`/`confirmBuyBatch` re-point it to whoever buys the token next
+on resale (§2b), so the visibility filter always tracks current ownership
+rather than freezing at first mint.
 
 Migration: `npx prisma migrate dev --name nft-unlock-rule-and-locked-media`
 — additive only, safe on existing data.
@@ -495,6 +536,98 @@ No changes needed to `pinRouter.createPin` itself — it's not called for
 this feature at all (see §3: point-picking happens in the NFT form, and
 the private per-token clone is created directly in `confirmBuyEdition`,
 not via `createPin`'s random-scatter path).
+
+### §2b. Resale for gated tickets — progress travels with the token
+
+✅ **Implemented** (steps 1-5 below; step 6 is a follow-up, not done).
+Supersedes the "resale hidden" decision above.
+No schema or contract changes needed — `LocationGroup.unlockForTokenId`
+(per-token, unique) and `.restrictedToUserId` already give each token its
+own independent pin set and its own "who can currently collect it" flag;
+this just stops blocking the sale and keeps those columns in sync with
+whoever owns the token at any moment, instead of freezing them at mint.
+
+1. **Stop blocking the listing.** Delete `requireResaleAllowed` (nft.ts:98)
+   and its two call sites in `getListXDR` (nft.ts:519) and
+   `getListBatchXDR` (nft.ts:600). A gated token can be listed exactly
+   like an ungated one — no new validation needed at listing time, since
+   nothing about listing itself needs to know the unlock state.
+
+2. **Transfer the pin set's ownership alongside the token, atomically, in
+   both purchase-confirmation transactions:**
+   - `confirmBuy` (nft.ts:753-771) — right next to the existing
+     `tx.nftToken.update({ where: { tokenId }, data: { ownerId: buyerId } })`,
+     add
+     ```ts
+     await tx.locationGroup.updateMany({
+       where: { unlockForTokenId: input.tokenId },
+       data: { restrictedToUserId: buyerId },
+     });
+     ```
+     (`updateMany` on purpose, not `update` — an ungated token has no
+     matching group, and `updateMany` is a no-op instead of throwing
+     `NOT_FOUND` in that case.)
+   - `confirmBuyBatch` (nft.ts:805-831) — same `updateMany`, once per
+     `listing.tokenId` inside the existing per-listing loop.
+   - Effect: the moment a resale confirms, the seller loses visibility
+     into (and the ability to collect for) that token's pins — they no
+     longer pass the `restrictedToUserId === userId` check in
+     `gameRouter.getPins`, `pages/api/game/locations`, or `consumePin` —
+     and the buyer immediately gains it, picking up wherever collection
+     was left off.
+
+3. **Stop scoping "collected" to whoever physically visited each pin —
+   scope it to the token's group instead**, so history from a previous
+   owner still counts. In `unlockStatus` (nft.ts:1165-1169), change
+   ```ts
+   const collected = group
+     ? await ctx.db.locationConsumer.count({
+         where: { userId, location: { locationGroupId: group.id } },
+       })
+     : 0;
+   ```
+   to drop the `userId` filter:
+   ```ts
+   const collected = group
+     ? await ctx.db.locationConsumer.count({
+         where: { location: { locationGroupId: group.id } },
+       })
+     : 0;
+   ```
+   Safe to do unconditionally: a restricted group only ever has one
+   `restrictedToUserId` valid at a time, so `consumePin`'s existing
+   ownership check already guarantees every `LocationConsumer` row under
+   this group was collected by whoever legitimately held the token at the
+   moment they collected it — counting all of them, not just the
+   *current* owner's own, is exactly what "progress isn't reset by a
+   sale" means in practice.
+
+4. **Already-unlocked tokens need no special-casing.** `unlocked =
+   collected >= required` is derived purely from the group's state, not
+   from who's asking — so a fully-collected token already reads as
+   `unlocked: true` (reward included) for whichever account owns it after
+   step 2 runs, automatically.
+
+5. **Remove the UI hard-block.** `ManagePriceCard`'s `resaleBlocked` prop
+   and its one caller, `resaleBlocked={hasLocationRule}` in
+   `src/pages/smart-contract/manage/[id].tsx`, go back to always `false`
+   (or drop the prop entirely if nothing else will ever need it) — list/
+   cancel controls render for gated tokens exactly like ordinary ones.
+
+6. **Recommended, not asked for but worth doing alongside this:** a buyer
+   evaluating a resale listing for a gated ticket currently has no way to
+   tell whether they're buying a fresh 0/N token or one already sitting at
+   4/10 (or already fully unlocked). Surface `unlockStatus`'s per-token
+   `collected`/`required`/`unlocked` as a small badge on `ResaleBuyCard`
+   (`src/components/nft/nft-detail-view.tsx`) next to each listed token's
+   price, so "already unlocked" or "6/10 collected" is visible before
+   purchase rather than a surprise after.
+
+7. **Docs/comments to fix once this lands:** `requireResaleAllowed`'s own
+   doc comment (nft.ts:90-97), the `restrictedToUserId`/`unlockForTokenId`
+   comments in `prisma/schema.prisma` and §1 above that describe it as "a
+   snapshot at mint time" (it's now a live pointer, updated on every
+   resale), and this file's "Confirmed use case" section (done above).
 
 ## 3. Frontend — creation flow (`src/components/modal/nft-create-modal.tsx`)
 

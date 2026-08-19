@@ -204,7 +204,7 @@ export default function HomeScreen() {
                 continue
             }
             try {
-                await consumePinM.mutateAsync({ location_id: pin.id.toString() })
+                await consumePinM.mutateAsync({ pinId: pin.id.toString() })
                 console.log("Collected pin:", pin.id)
                 setCollectedPinData(pin)
                 showPinCollectionAnimation()
