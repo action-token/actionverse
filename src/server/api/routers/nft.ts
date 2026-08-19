@@ -17,6 +17,7 @@ import {
   getEditionMeta,
   getEditionPrices,
   getOnChainListing,
+  getOnChainUnlockStatus,
   getPurchaseByRef,
   getRemainingSupply,
   getSaleBreakdown,
@@ -56,6 +57,17 @@ const PaymentTokenSchema = z.enum([...NFT_PAYMENT_TOKENS]);
  * silently reports zeroes forever. A not-sold-out edition's own primary
  * price comes from `NftPrice`, not this cache.
  */
+/** `paymentTokenAddress` throws for a currency without a SAC wired up yet
+ *  (e.g. "usdc") — insights display is best-effort, so swallow that instead
+ *  of failing the whole query over a link that just won't render. */
+function safePaymentTokenAddress(method: NftPaymentToken): string | null {
+  try {
+    return paymentTokenAddress(method);
+  } catch {
+    return null;
+  }
+}
+
 async function refreshListingAggregates(
   tx: Prisma.TransactionClient,
   nftId: string,
@@ -1143,6 +1155,7 @@ export const nftRouter = createTRPCRouter({
               unlocked: true,
               lockedMedia: nft.lockedMedia.map((m) => ({ url: m.url, type: m.type, label: m.label })),
               onChainUnlockTxHash: null,
+              onChainUnlocked: await getOnChainUnlockStatus(Number(t.tokenId)),
             };
           }
 
@@ -1177,6 +1190,11 @@ export const nftRouter = createTRPCRouter({
               })
             : 0;
           const unlocked = collected >= required;
+          // Live ground-truth read, independent of the cached DB flag — the
+          // unlock trigger in `consumePin` can in principle fail after the
+          // DB is updated (or vice versa if it's still in flight), so the
+          // UI can show both figures and flag if they've drifted.
+          const onChainUnlocked = unlocked ? await getOnChainUnlockStatus(Number(t.tokenId)) : null;
           return {
             nftTokenId: t.id,
             onChainTokenId: t.tokenId,
@@ -1187,6 +1205,7 @@ export const nftRouter = createTRPCRouter({
               ? nft.lockedMedia.map((m) => ({ url: m.url, type: m.type, label: m.label }))
               : [],
             onChainUnlockTxHash: group?.onChainUnlockTxHash ?? null,
+            onChainUnlocked,
           };
         }),
       );
@@ -1225,7 +1244,11 @@ export const nftRouter = createTRPCRouter({
           supply: nft.supply,
           mintedCount: nft.mintedCount,
           remainingSupply: nft.supply - nft.mintedCount,
-          prices: nft.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price })),
+          prices: nft.prices.map((p) => ({
+            paymentToken: p.paymentToken,
+            price: p.price,
+            tokenAddress: safePaymentTokenAddress(p.paymentToken as NftPaymentToken),
+          })),
           myTokenIds: myTokens.map((t) => t.tokenId),
         };
       }
@@ -1257,8 +1280,13 @@ export const nftRouter = createTRPCRouter({
           ? onChainPrices.map((p) => ({
               paymentToken: labelForPaymentTokenAddress(p.payment_token),
               price: rawPriceToHuman(p.price),
+              tokenAddress: p.payment_token,
             }))
-          : nft.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price })),
+          : nft.prices.map((p) => ({
+              paymentToken: p.paymentToken,
+              price: p.price,
+              tokenAddress: safePaymentTokenAddress(p.paymentToken as NftPaymentToken),
+            })),
         myTokenIds: myTokens.map((t) => t.tokenId),
         verified: meta !== null,
       };

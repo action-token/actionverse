@@ -496,6 +496,15 @@ export async function getOnChainOwner(tokenId: number): Promise<string | null> {
   }
 }
 
+export async function getOnChainUnlockStatus(tokenId: number): Promise<boolean | null> {
+  try {
+    const { result } = await getClient().is_unlocked({ token_id: tokenId });
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 export async function getOnChainArtMeta(tokenId: number): Promise<ArtMeta | null> {
   try {
     const { result } = await getClient().art_meta({ token_id: tokenId });

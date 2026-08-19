@@ -1,13 +1,15 @@
 "use client"
 
 import Link from "next/link"
-import { CheckCircle2, MapPin, Ticket } from "lucide-react"
+import { CheckCircle2, ExternalLink, MapPin, ShieldAlert, Ticket } from "lucide-react"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Button } from "~/components/shadcn/ui/button"
+import { Skeleton } from "~/components/shadcn/ui/skeleton"
 import { api } from "~/utils/api"
 import { cn } from "~/lib/utils"
 import { LockedMediaPanel } from "~/components/smart-contract/locked-media-panel"
+import { stellarExpertTxUrl } from "~/lib/stellar/explorer"
 
 const MAX_DOTS = 8
 
@@ -62,7 +64,36 @@ export function UnlockProgressList({
 }) {
     const { data, isLoading } = api.nft.unlockStatus.useQuery({ nftId })
 
-    if (isLoading || !data?.gated) return null
+    if (isLoading) {
+        return (
+            <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-24" />
+                </div>
+                <Card>
+                    <CardContent className="space-y-5 p-5">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+                                <div className="space-y-1.5">
+                                    <Skeleton className="h-4 w-20" />
+                                    <Skeleton className="h-3 w-12" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-5 w-14" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Skeleton className="h-3 w-full" />
+                            <Skeleton className="h-2.5 w-full rounded-full" />
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
+
+    if (!data?.gated) return null
 
     if (data.tokens.length === 0) {
         return (
@@ -147,12 +178,43 @@ export function UnlockProgressList({
                         )}
 
                         {token.unlocked && (
-                            <LockedMediaPanel
-                                items={token.lockedMedia}
-                                locked={false}
-                                ticketName={ticketName}
-                                ticketThumbnail={ticketThumbnail}
-                            />
+                            <>
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    {token.onChainUnlocked === true ? (
+                                        <Badge variant="outline" className="gap-1 border-green-500/40 text-green-600">
+                                            <CheckCircle2 className="h-3 w-3" />
+                                            Verified on-chain
+                                        </Badge>
+                                    ) : token.onChainUnlocked === false ? (
+                                        <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-600">
+                                            <ShieldAlert className="h-3 w-3" />
+                                            Not yet visible on-chain
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="gap-1 text-muted-foreground">
+                                            <ShieldAlert className="h-3 w-3" />
+                                            On-chain check unavailable
+                                        </Badge>
+                                    )}
+                                    {token.onChainUnlockTxHash && (
+                                        <a
+                                            href={stellarExpertTxUrl(token.onChainUnlockTxHash)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                                        >
+                                            View unlock tx
+                                            <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                    )}
+                                </div>
+                                <LockedMediaPanel
+                                    items={token.lockedMedia}
+                                    locked={false}
+                                    ticketName={ticketName}
+                                    ticketThumbnail={ticketThumbnail}
+                                />
+                            </>
                         )}
                     </CardContent>
                 </Card>

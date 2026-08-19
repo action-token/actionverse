@@ -150,15 +150,28 @@ export function BlockchainInsights({
       )}
 
       {insights.prices.length > 0 && (
-        <div className="rounded-2xl border bg-card p-4">
+        <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Price grid
           </p>
-          <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-3">
             {insights.prices.map((p) => (
-              <div key={p.paymentToken} className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{priceTokenLabel(p.paymentToken)}</span>
-                <span className="font-semibold tabular-nums">{p.price}</span>
+              <div key={p.paymentToken} className="rounded-xl border bg-card p-3">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs text-muted-foreground">{priceTokenLabel(p.paymentToken)}</span>
+                  {p.tokenAddress && (
+                    <a
+                      href={stellarExpertContractUrl(p.tokenAddress)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`View ${priceTokenLabel(p.paymentToken)} token on explorer`}
+                      className="text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+                <p className="text-lg font-bold tabular-nums">{p.price}</p>
               </div>
             ))}
           </div>

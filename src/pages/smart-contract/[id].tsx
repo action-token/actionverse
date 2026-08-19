@@ -17,6 +17,7 @@ import { type NftPaymentToken } from "~/lib/stellar/oz/nft"
 import { api } from "~/utils/api"
 import { LikeButton } from "~/components/nft/like-button"
 import { PrimaryBuyCard, ResaleBuyCard } from "~/components/nft/nft-detail-view"
+import { BlockchainInsights } from "~/components/nft/blockchain-insights"
 import { LockedMediaPanel, lockedMediaSummary } from "~/components/smart-contract/locked-media-panel"
 
 /**
@@ -269,6 +270,11 @@ export default function SmartContractTicketPage() {
                 isBuying={isBuyingPrimary}
               />
             )}
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-foreground">On-chain details</h3>
+              <BlockchainInsights insights={onChainInsights} isLoading={isLoadingOnChainInsights} />
+            </div>
           </div>
         </div>
       </div>

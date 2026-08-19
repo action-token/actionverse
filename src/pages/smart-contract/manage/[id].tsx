@@ -17,6 +17,7 @@ import { type NftPaymentToken } from "~/lib/stellar/oz/nft"
 import { api } from "~/utils/api"
 import { LikeButton } from "~/components/nft/like-button"
 import { ManagePriceCard } from "~/components/nft/nft-detail-view"
+import { BlockchainInsights } from "~/components/nft/blockchain-insights"
 import { UnlockProgressList } from "~/components/smart-contract/unlock-progress-list"
 import { LockedMediaPanel, lockedMediaSummary } from "~/components/smart-contract/locked-media-panel"
 
@@ -36,7 +37,7 @@ export default function SmartContractManagePage() {
   const { needSign } = useNeedSign()
 
   const { data: nft, isLoading } = api.nft.byId.useQuery({ id: id ?? "" }, { enabled: !!id })
-  const { data: onChainInsights } = api.nft.onChainInsights.useQuery({ id: id ?? "" }, { enabled: !!id })
+  const { data: onChainInsights, isLoading: isLoadingOnChainInsights } = api.nft.onChainInsights.useQuery({ id: id ?? "" }, { enabled: !!id })
   // `myOwned` groups every edition the caller holds copies of — filtered to
   // this one for the per-copy list/price/cancel controls, same pattern the
   // old `nft/manage/[id].tsx` used.
@@ -258,6 +259,11 @@ export default function SmartContractManagePage() {
             {isGated && (
               <UnlockProgressList nftId={nft.id} ticketName={nft.name} ticketThumbnail={nft.thumbnail} />
             )}
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-foreground">On-chain details</h3>
+              <BlockchainInsights insights={onChainInsights} isLoading={isLoadingOnChainInsights} />
+            </div>
           </div>
         </div>
       </div>
