@@ -394,24 +394,28 @@ export async function buildSetPlatformFeeXDR({
 }
 
 /**
- * Records a token's completed unlock rule on-chain — called by the backend
- * once it has independently verified (off-chain) that this specific token's
- * pin set was fully collected. No buyer signature involved: the unlock
- * authority keypair signs and submits in one step, same trust boundary as
- * `STORAGE_SECRET`'s pin-reward payouts. Idempotent on the contract side, so
- * a retried call for an already-unlocked token is a safe no-op.
+ * Records one locked-content item's completed unlock rule on-chain for one
+ * specific token — called by the backend once it has independently
+ * verified (off-chain) that this item's pin set was fully collected. No
+ * buyer signature involved: the unlock authority keypair signs and submits
+ * in one step, same trust boundary as `STORAGE_SECRET`'s pin-reward
+ * payouts. Idempotent on the contract side, so a retried call for an
+ * already-unlocked (token, item) pair is a safe no-op. `mediaIndex` is the
+ * item's stable `NftLockedMedia.chainIndex`, not its database id.
  */
-export async function unlockTokenFor({
+export async function unlockItemFor({
   unlockAuthoritySecret,
   tokenId,
+  mediaIndex,
 }: {
   unlockAuthoritySecret: string;
   tokenId: number;
+  mediaIndex: number;
 }): Promise<string> {
   const keypair = Keypair.fromSecret(unlockAuthoritySecret);
   const client = getClient(keypair.publicKey());
-  const tx = await client.unlock_token_for(
-    { caller: keypair.publicKey(), token_id: tokenId },
+  const tx = await client.unlock_item_for(
+    { caller: keypair.publicKey(), token_id: tokenId, media_index: mediaIndex },
     { fee: SOROBAN_INCLUSION_FEE },
   );
   const sent = await tx.signAndSend({
@@ -496,9 +500,15 @@ export async function getOnChainOwner(tokenId: number): Promise<string | null> {
   }
 }
 
-export async function getOnChainUnlockStatus(tokenId: number): Promise<boolean | null> {
+export async function getOnChainUnlockStatus(
+  tokenId: number,
+  mediaIndex: number,
+): Promise<boolean | null> {
   try {
-    const { result } = await getClient().is_unlocked({ token_id: tokenId });
+    const { result } = await getClient().is_item_unlocked({
+      token_id: tokenId,
+      media_index: mediaIndex,
+    });
     return result;
   } catch {
     return null;

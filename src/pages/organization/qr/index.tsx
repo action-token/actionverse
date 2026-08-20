@@ -20,6 +20,7 @@ import {
     Coins,
     MoreVertical,
     QrCode,
+    Package,
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Input } from "~/components/shadcn/ui/input"
@@ -52,7 +53,6 @@ import AlbumView from "~/components/music/album/album-item"
 import { addrShort } from "~/utils/utils"
 import AssetView from "~/components/common/asset"
 import { useCreatorStoredAssetModalStore } from "~/components/store/creator-stored-asset-modal-store"
-import { useSellPageAssetStore } from "~/components/store/sell-page-asset-store"
 import SellPageAssetList from "~/components/sell-page-asset-list"
 
 // Define our types
@@ -82,7 +82,6 @@ export default function StoredItemsView() {
     const [activeTab, setActiveTab] = useState<MainCategory>("STORED")
     const { setIsOpen: setIsOpenNFTModal } = useNFTCreateModalStore()
     const { setIsOpen: setIsAlbumModalOpen } = useCreateAlbumStore()
-    const { setIsOpen: setIsOpenSellPageAssetModal } = useSellPageAssetStore()
     const { setIsOpen: setIsOpenStoredModal, setData: setStoredModalData } = useCreatorStoredAssetModalStore()
     // Stored Items Tab State
     const [storedMediaType, setStoredMediaType] = useState<MediaType | "ALL">("ALL")
@@ -116,6 +115,11 @@ export default function StoredItemsView() {
             onClick: () => setIsOpenNFTModal(true),
         },
         {
+            label: "Non Stellar Item",
+            icon: Package,
+            onClick: () => void router.push("/organization/non-stellar-item/create"),
+        },
+        {
             label: "QR Code",
             icon: QrCode,
             onClick: () => setIsAlbumModalOpen(true),
@@ -123,7 +127,7 @@ export default function StoredItemsView() {
         {
             label: "Sell Page Assets",
             icon: Coins,
-            onClick: () => setIsOpenSellPageAssetModal(true),
+            onClick: () => void router.push("/organization/sell-page-asset/create"),
         },
     ]
 

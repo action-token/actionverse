@@ -1,14 +1,24 @@
 "use client"
 
-import { Music, Image as ImageIcon, Video as VideoIcon, Link as LinkIcon, Plus, X } from "lucide-react"
+import { Music, Image as ImageIcon, Video as VideoIcon, Link as LinkIcon, Plus, X, MapPin } from "lucide-react"
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
 import { Label } from "~/components/shadcn/ui/label"
+import { Switch } from "~/components/shadcn/ui/switch"
 import { MediaDropzone } from "~/components/smart-contract/media-dropzone"
+import { UnlockLocationPicker, type UnlockPoint } from "~/components/smart-contract/unlock-location-picker"
 import { cn } from "~/lib/utils"
 
 export type LockedMediaType = "SONG" | "IMAGE" | "VIDEO" | "OTHER"
-export type LockedMediaDraft = { url?: string; type: LockedMediaType; label: string }
+export type LockedMediaDraft = {
+    url?: string
+    type: LockedMediaType
+    label: string
+    // Optional per-item unlock condition — when set, this specific item
+    // stays hidden until the buyer's own copy has visited every point
+    // here; when absent, this item reveals the moment a copy is bought.
+    unlockRule?: { points: UnlockPoint[] }
+}
 
 const MAX_ITEMS = 20
 
@@ -145,6 +155,35 @@ export function LockedMediaEditor({
                                 )}
                             </div>
                         )}
+
+                        <div className="space-y-3 rounded-xl border border-dashed p-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <div>
+                                        <p className="text-xs font-medium text-foreground">Add unlock condition</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {item.unlockRule
+                                                ? "Buyer must visit these locations to reveal this item."
+                                                : "Off — this item reveals the moment a copy is bought."}
+                                        </p>
+                                    </div>
+                                </div>
+                                <Switch
+                                    checked={!!item.unlockRule}
+                                    onCheckedChange={(checked) =>
+                                        updateRow(i, { unlockRule: checked ? { points: [] } : undefined })
+                                    }
+                                />
+                            </div>
+
+                            {item.unlockRule && (
+                                <UnlockLocationPicker
+                                    points={item.unlockRule.points}
+                                    onChange={(points) => updateRow(i, { unlockRule: { points } })}
+                                />
+                            )}
+                        </div>
                     </div>
                 )
             })}

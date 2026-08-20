@@ -224,10 +224,13 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4",
-              "function_name": "unlock_token_for",
+              "function_name": "unlock_item_for",
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 0
                 },
                 {
                   "u32": 0
@@ -1039,6 +1042,9 @@
                 "vec": [
                   {
                     "symbol": "Unlocked"
+                  },
+                  {
+                    "u32": 0
                   },
                   {
                     "u32": 0

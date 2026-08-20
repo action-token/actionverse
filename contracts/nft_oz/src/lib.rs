@@ -52,7 +52,7 @@ const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// Bump this before building/deploying each new wasm so `version()` reflects
 /// what's actually running on-chain — paired with the `Upgradeable` impl
 /// below, this is how future changes ship without a redeploy (new address).
-const CONTRACT_VERSION: u32 = 4;
+const CONTRACT_VERSION: u32 = 5;
 
 /// Basis-points denominator for fee/royalty math (10_000 = 100%).
 const BPS_DENOM: i128 = 10_000;
@@ -213,16 +213,21 @@ pub enum DataKey {
     NextEditionId,
     PlatformFeeBps,
     Treasury,
-    /// The hot key allowed to call `unlock_token_for` — separate from the
+    /// The hot key allowed to call `unlock_item_for` — separate from the
     /// `Ownable` owner (which can pause/upgrade the whole contract) since
     /// this one gets called automatically by the backend on every pin
-    /// collection, not by a human operator. See `unlock_token_for`.
+    /// collection, not by a human operator. See `unlock_item_for`.
     UnlockAuthority,
-    /// (token_id) -> bool. Permanent once true — a token's unlock rule was
-    /// completed off-chain and the backend attested to it. Per-token, not
-    /// per-edition or per-owner: the rule ("visit N locations") applies to
-    /// one specific minted copy, not to the edition as a whole.
-    Unlocked(u32),
+    /// (token_id, media_index) -> bool. Permanent once true — one specific
+    /// locked-content item on one specific minted token had its own unlock
+    /// rule completed off-chain, attested by the backend. Keyed per item,
+    /// not per token: a token can carry several independently-gated reward
+    /// items (e.g. a free item plus two separately-gated ones), each with
+    /// its own rule and its own unlock moment. `media_index` is a stable,
+    /// permanent identifier assigned to a locked-content item at creation
+    /// time (see the app's `NftLockedMedia.chainIndex`) — never reused for
+    /// a different item once assigned.
+    Unlocked(u32, u32),
 }
 
 #[contracterror]
@@ -262,7 +267,7 @@ pub enum ArtError {
     /// the same purchase attempt.
     DuplicatePurchaseRef = 321,
     PurchaseRefTooLong = 322,
-    /// The caller of `unlock_token_for` isn't the registered unlock
+    /// The caller of `unlock_item_for` isn't the registered unlock
     /// authority (or none has been set yet).
     NotUnlockAuthority = 323,
 }
@@ -336,6 +341,9 @@ pub struct ContentUnlocked {
     pub token_id: u32,
     #[topic]
     pub owner: Address,
+    /// Which locked-content item on this token was just unlocked — see
+    /// `DataKey::Unlocked`'s doc comment.
+    pub media_index: u32,
 }
 
 // =============================================================================
@@ -912,23 +920,27 @@ impl ArtNft {
     }
 
     // -------------------------------------------------------------------------
-    // Unlock — a locked-content NFT's off-chain unlock rule (e.g. "visit N
+    // Unlock — a locked-content item's off-chain unlock rule (e.g. "visit N
     // AR pin locations"), attested by the backend once it verifies the rule
     // was completed. Soroban has no way to verify real-world location
     // itself, so the backend necessarily remains the party attesting that;
     // what moves on-chain is the permanent, publicly-verifiable *result* of
-    // that attestation, not the check itself.
+    // that attestation, not the check itself. Keyed per (token, item): a
+    // single token can carry several independently-gated reward items, each
+    // unlocking on its own as its own rule completes, not waiting on the
+    // token's other items.
     // -------------------------------------------------------------------------
 
     /// Called by the backend once it has independently verified (off-chain)
-    /// that this specific token's unlock rule was completed. Idempotent —
-    /// calling it again for an already-unlocked token is a no-op, not an
-    /// error, so a retried backend call after a dropped response is safe.
-    /// Keyed by `token_id` alone, not edition or owner: the rule applies to
-    /// one specific minted copy, decided once, regardless of who holds it
-    /// later.
+    /// that this specific token's specific locked-content item had its
+    /// unlock rule completed. Idempotent — calling it again for an
+    /// already-unlocked (token, item) pair is a no-op, not an error, so a
+    /// retried backend call after a dropped response is safe. Keyed by
+    /// `(token_id, media_index)` alone, not edition or owner: each item's
+    /// rule applies to one specific minted copy, decided once, regardless
+    /// of who holds it later.
     #[when_not_paused]
-    pub fn unlock_token_for(e: &Env, caller: Address, token_id: u32) {
+    pub fn unlock_item_for(e: &Env, caller: Address, token_id: u32, media_index: u32) {
         caller.require_auth();
         let authority: Address = e
             .storage()
@@ -939,7 +951,7 @@ impl ArtNft {
             panic_with_error!(e, ArtError::NotUnlockAuthority);
         }
 
-        let key = DataKey::Unlocked(token_id);
+        let key = DataKey::Unlocked(token_id, media_index);
         if e.storage().persistent().get::<_, bool>(&key).unwrap_or(false) {
             return; // already unlocked — idempotent
         }
@@ -947,14 +959,15 @@ impl ArtNft {
         e.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
 
         let owner = Consecutive::owner_of(e, token_id);
-        ContentUnlocked { token_id, owner }.publish(e);
+        ContentUnlocked { token_id, owner, media_index }.publish(e);
     }
 
     /// Public, permissionless read — anyone (the buyer, a marketplace UI,
-    /// an auditor) can verify on-chain whether a given token's unlock rule
-    /// was completed, without trusting the backend's word for it.
-    pub fn is_unlocked(e: &Env, token_id: u32) -> bool {
-        e.storage().persistent().get(&DataKey::Unlocked(token_id)).unwrap_or(false)
+    /// an auditor) can verify on-chain whether a given token's given
+    /// locked-content item was unlocked, without trusting the backend's
+    /// word for it.
+    pub fn is_item_unlocked(e: &Env, token_id: u32, media_index: u32) -> bool {
+        e.storage().persistent().get(&DataKey::Unlocked(token_id, media_index)).unwrap_or(false)
     }
 }
 

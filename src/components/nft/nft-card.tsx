@@ -58,10 +58,6 @@ export interface NftCardData {
   /** Edition supply, present on a primary "buy a new copy" card. */
   supply?: number;
   mintedCount?: number;
-  /** Set for a gated ("VIP ticket") edition — routes to
-   *  `/smart-contract/[id]` instead of the plain `/nft/[id]` page, which
-   *  has nothing to say about locked content or unlock progress. */
-  unlockRuleType?: string | null;
   /** Present when this card represents one specific resold copy rather than
    *  a fresh mint from the edition — its own browsable entry, not merged
    *  into the original edition's card. */
@@ -119,7 +115,6 @@ export function toNftCardData(item: MarketplaceListItem): NftCardData {
     prices: item.prices,
     supply: item.supply,
     mintedCount: item.mintedCount,
-    unlockRuleType: item.unlockRuleType,
   };
 }
 

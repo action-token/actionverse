@@ -1,7 +1,8 @@
 "use client"
 import { Card, CardContent, CardHeader } from "~/components/shadcn/ui/card"
 import { Button } from "../shadcn/ui/button"
-import { ImageIcon, Plus } from "lucide-react"
+import { ImageIcon, Package, Plus } from "lucide-react"
+import Link from "next/link"
 import { api } from "~/utils/api"
 import { useSession } from "next-auth/react"
 import { useNFTCreateModalStore } from "../store/nft-create-modal-store"
@@ -30,10 +31,16 @@ export default function NFTGalleryWidget({ editMode }: NFTGalleryWidgetProps) {
                     <h2 className="text-xl font-bold">Your NFT Collection</h2>
                     {
                         (creatorNFT.data?.pages[0]?.nfts?.length ?? 0) > 0 && (
-                            <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
                                 <Button size="sm" onClick={() => setIsNFTModalOpen(true)}>
                                     <Plus className="h-4 w-4 mr-2" />
                                     Create New NFT
+                                </Button>
+                                <Button size="sm" variant="outline" asChild>
+                                    <Link href="/organization/non-stellar-item/create">
+                                        <Package className="h-4 w-4 mr-2" />
+                                        Non Stellar Item
+                                    </Link>
                                 </Button>
                             </div>
                         )
@@ -54,10 +61,18 @@ export default function NFTGalleryWidget({ editMode }: NFTGalleryWidgetProps) {
                                 <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                                 <h3 className="text-lg font-medium mb-2">No NFTs Found</h3>
                                 <p className="text-muted-foreground mb-4">Start creating your NFT collection</p>
-                                <Button onClick={() => setIsNFTModalOpen(true)}>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Create Your First NFT
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button onClick={() => setIsNFTModalOpen(true)}>
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Create Your First NFT
+                                    </Button>
+                                    <Button variant="outline" asChild>
+                                        <Link href="/organization/non-stellar-item/create">
+                                            <Package className="h-4 w-4 mr-2" />
+                                            Non Stellar Item
+                                        </Link>
+                                    </Button>
+                                </div>
                             </div>
                         )}
 

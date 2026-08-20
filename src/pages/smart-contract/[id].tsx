@@ -104,9 +104,9 @@ export default function SmartContractTicketPage() {
       await confirmBuyEdition.mutateAsync({ nftId: nft.id, purchaseId, txHash })
       await invalidateAfterPurchase()
       toast.success(
-        nft.unlockRuleType
+        gatedItemCount > 0
           ? quantity > 1
-            ? `${quantity} tickets purchased! Each one has its own ${nft.unlockLocationRule?.points.length ?? 0}-pin set to collect.`
+            ? `${quantity} tickets purchased! Each one has its own pin sets to collect for ${gatedItemCount} reward item${gatedItemCount === 1 ? "" : "s"}.`
             : "Ticket purchased! Go collect its pins to unlock the reward."
           : quantity > 1
             ? `${quantity} copies purchased!`
@@ -164,11 +164,18 @@ export default function SmartContractTicketPage() {
   }
 
   // "Gated" mirrors `nft.unlockStatus`'s own definition: having locked
-  // content at all, not whether a location rule was added. A ticket with
-  // a reward but no rule still needs this section — it just unlocks
-  // immediately once owned instead of requiring pins first.
+  // content at all, not whether any item has a location rule. A ticket
+  // with reward items but no rules on any of them still needs this
+  // section — those items just unlock immediately once owned instead of
+  // requiring pins first.
   const isGated = nft.lockedMedia.length > 0
-  const requiredLocations = nft.unlockLocationRule?.points.length ?? 0
+  const gatedItemCount = nft.lockedMedia.filter((m) => m.unlockRule).length
+  // Summed across every gated item — a ticket with a 2-location song and a
+  // 3-location video reports 5, not one shared count.
+  const requiredLocations = nft.lockedMedia.reduce(
+    (sum, m) => sum + (m.unlockRule?.points.length ?? 0),
+    0,
+  )
   const mediaCounts = {
     songs: nft.lockedMedia.filter((m) => m.type === "SONG").length,
     images: nft.lockedMedia.filter((m) => m.type === "IMAGE").length,
@@ -224,15 +231,27 @@ export default function SmartContractTicketPage() {
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {requiredLocations > 0 ? (
-                        <>
-                          Every copy of this ticket unlocks its own reward independently — visit and collect{" "}
-                          <span className="font-medium text-foreground">
-                            {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
-                          </span>{" "}
-                          with that copy to reveal it.
-                        </>
+                        gatedItemCount === nft.lockedMedia.length ? (
+                          <>
+                            Every copy of this ticket unlocks its rewards independently — visit and
+                            collect{" "}
+                            <span className="font-medium text-foreground">
+                              {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
+                            </span>{" "}
+                            with that copy to reveal them.
+                          </>
+                        ) : (
+                          <>
+                            Some items unlock the moment you own a copy; the rest reveal once you visit
+                            and collect{" "}
+                            <span className="font-medium text-foreground">
+                              {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
+                            </span>{" "}
+                            with that copy.
+                          </>
+                        )
                       ) : (
-                        "Owning a copy unlocks its reward immediately — no extra requirement."
+                        "Owning a copy unlocks its rewards immediately — no extra requirement."
                       )}
                     </p>
                   </CardContent>
@@ -245,8 +264,7 @@ export default function SmartContractTicketPage() {
                   </h3>
                   <p className="text-xs text-muted-foreground">{lockedMediaSummary(mediaCounts)}</p>
                   <LockedMediaPanel
-                    items={nft.lockedMedia.map((m) => ({ url: "", type: m.type, label: m.label }))}
-                    locked
+                    items={nft.lockedMedia.map((m) => ({ url: null, type: m.type, label: m.label, locked: true }))}
                     ticketName={nft.name}
                     ticketThumbnail={nft.thumbnail}
                   />

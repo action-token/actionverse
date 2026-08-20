@@ -27,6 +27,7 @@ import {
     Copy,
     Check,
     Loader2,
+    Package,
 } from "lucide-react";
 import {
     Dialog,
@@ -1262,12 +1263,20 @@ export default function ArtistDashboard() {
 
                                     {/* NFTs Tab */}
                                     <TabsContent value="nfts">
-                                        <div className="mb-6 flex items-center justify-between">
+                                        <div className="mb-6 flex items-center justify-between gap-2">
                                             <h2 className="text-xl font-bold">Your NFT Collection</h2>
-                                            <Button onClick={() => setIsNFTModalOpen(true)}>
-                                                <Plus className="mr-2 h-4 w-4" />
-                                                Create New NFT
-                                            </Button>
+                                            <div className="flex items-center gap-2">
+                                                <Button onClick={() => setIsNFTModalOpen(true)}>
+                                                    <Plus className="mr-2 h-4 w-4" />
+                                                    Create New NFT
+                                                </Button>
+                                                <Button variant="outline" asChild>
+                                                    <Link href="/organization/non-stellar-item/create">
+                                                        <Package className="mr-2 h-4 w-4" />
+                                                        Non Stellar Item
+                                                    </Link>
+                                                </Button>
+                                            </div>
                                         </div>
 
                                         <div className="flex min-h-[calc(100vh-20vh)] flex-col gap-4 rounded-md bg-white/40 p-4 shadow-md">
@@ -1284,10 +1293,18 @@ export default function ArtistDashboard() {
                                                     <p className="mb-4 text-muted-foreground">
                                                         Start creating your NFT collection
                                                     </p>
-                                                    <Button onClick={() => setIsNFTModalOpen(true)}>
-                                                        <Plus className="mr-2 h-4 w-4" />
-                                                        Create Your First NFT
-                                                    </Button>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button onClick={() => setIsNFTModalOpen(true)}>
+                                                            <Plus className="mr-2 h-4 w-4" />
+                                                            Create Your First NFT
+                                                        </Button>
+                                                        <Button variant="outline" asChild>
+                                                            <Link href="/organization/non-stellar-item/create">
+                                                                <Package className="mr-2 h-4 w-4" />
+                                                                Non Stellar Item
+                                                            </Link>
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             )}
 

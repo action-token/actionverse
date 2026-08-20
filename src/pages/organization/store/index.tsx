@@ -24,6 +24,7 @@ import {
     Box,
     Calendar,
     Trash2,
+    Package,
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Input } from "~/components/shadcn/ui/input"
@@ -57,7 +58,6 @@ import { addrShort } from "~/utils/utils"
 import AssetView from "~/components/common/asset"
 import { priceTokenLabel } from "~/components/nft/nft-card"
 import { useCreatorStoredAssetModalStore } from "~/components/store/creator-stored-asset-modal-store"
-import { useSellPageAssetStore } from "~/components/store/sell-page-asset-store"
 import SellPageAssetList from "~/components/sell-page-asset-list"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
 import { useSession } from "next-auth/react"
@@ -92,7 +92,6 @@ export default function StoredItemsView() {
     const [activeTab, setActiveTab] = useState<MainCategory>("STORED")
     const { setIsOpen: setIsOpenNFTModal } = useNFTCreateModalStore()
     const { setIsOpen: setIsAlbumModalOpen } = useCreateAlbumStore()
-    const { setIsOpen: setIsOpenSellPageAssetModal } = useSellPageAssetStore()
     const { setIsOpen: setIsOpenStoredModal, setData: setStoredModalData } = useCreatorStoredAssetModalStore()
     // Stored Items Tab State
     const [storedMediaType, setStoredMediaType] = useState<MediaType | "ALL">("ALL")
@@ -115,6 +114,11 @@ export default function StoredItemsView() {
             icon: ShoppingBag,
             onClick: () => setIsOpenNFTModal(true),
         },
+        {
+            label: "Non Stellar Item",
+            icon: Package,
+            onClick: () => void router.push("/organization/non-stellar-item/create"),
+        },
         // {
         //     label: "Create QR Code",
         //     icon: QrCode,
@@ -123,7 +127,7 @@ export default function StoredItemsView() {
         {
             label: "Sell Page Assets",
             icon: Coins,
-            onClick: () => setIsOpenSellPageAssetModal(true),
+            onClick: () => void router.push("/organization/sell-page-asset/create"),
         },
     ]
     const qrItems = api.qr.getQRItems.useQuery(undefined, {

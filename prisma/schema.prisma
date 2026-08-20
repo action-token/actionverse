@@ -728,29 +728,35 @@ model LocationGroup {
   hotspotId         String?
   locationGroupTags LocationGroupTag[]
 
-  // ── Gated-NFT unlock pin set (see Nft.unlockLocationRule) ──────────────
-  // When set, this group is a private, single-token clone of a gated
-  // NFT's unlock rule — invisible to every user except `restrictedToUser`
-  // (enforced in gameRouter.getPins / pages/api/game/locations and
-  // consumePin), not a shared/public campaign. Null for every ordinary
-  // LocationGroup that exists today; nothing above this line changes
-  // behavior for those.
-  restrictedToUserId  String?
-  restrictedToUser    User?     @relation("RestrictedPinGroups", fields: [restrictedToUserId], references: [id])
-  // One private pin set per minted copy — not per edition, not per buyer,
-  // since each copy independently unlocks its own reward.
-  unlockForTokenId    String?   @unique
-  unlockForToken      NftToken? @relation(fields: [unlockForTokenId], references: [id], onDelete: Cascade)
+  // ── Gated-NFT unlock pin set (see NftLockedMedia.unlockRule) ────────────
+  // When set, this group is a private, single-token clone of one specific
+  // locked-content item's unlock rule — invisible to every user except
+  // `restrictedToUser` (enforced in gameRouter.getPins /
+  // pages/api/game/locations and consumePin), not a shared/public
+  // campaign. Null for every ordinary LocationGroup that exists today;
+  // nothing above this line changes behavior for those.
+  restrictedToUserId     String?
+  restrictedToUser       User?           @relation("RestrictedPinGroups", fields: [restrictedToUserId], references: [id])
+  // One private pin set per (minted token, gated locked-content item)
+  // pair — not per edition, not per buyer, not even per token, since a
+  // single token can carry several independently-gated reward items,
+  // each with its own pin set that unlocks on its own.
+  unlockForTokenId       String?
+  unlockForToken         NftToken?       @relation(fields: [unlockForTokenId], references: [id], onDelete: Cascade)
+  unlockForLockedMediaId String?
+  unlockForLockedMedia   NftLockedMedia? @relation(fields: [unlockForLockedMediaId], references: [id], onDelete: Cascade)
   // Denormalized for convenience queries ("how many pin sets exist for
   // this edition") without joining through NftToken; not itself a lookup
   // key.
-  unlockForNftId      String?
-  unlockForNft        Nft?      @relation(fields: [unlockForNftId], references: [id], onDelete: Cascade)
-  // Set once this token's collected pins meet its rule's requirement and
-  // the one-time call to the contract's `unlock_token_for` succeeds. Null
+  unlockForNftId         String?
+  unlockForNft           Nft?            @relation(fields: [unlockForNftId], references: [id], onDelete: Cascade)
+  // Set once this item's collected pins meet its rule's requirement and
+  // the one-time call to the contract's `unlock_item_for` succeeds. Null
   // until then; lets a retry/cron avoid double-submitting.
-  onChainUnlockedAt   DateTime?
-  onChainUnlockTxHash String?
+  onChainUnlockedAt      DateTime?
+  onChainUnlockTxHash    String?
+
+  @@unique([unlockForTokenId, unlockForLockedMediaId])
 }
 
 model Location {
@@ -1548,13 +1554,13 @@ model Nft {
   activeListingCount Int          @default(0)
   NftListing         NftListing[]
 
-  // ── Optional "VIP ticket" gating: locked reward content that only
-  // reveals once a copy's unlock rule is completed. Null/empty means an
-  // ordinary, ungated edition — every field below is additive. ──────────
-  unlockRuleType     NftUnlockRuleType?
-  unlockLocationRule NftUnlockLocationRule?
-  lockedMedia        NftLockedMedia[]
-  unlockPinGroups    LocationGroup[]
+  // ── Optional "VIP ticket" gating: locked reward content, each item
+  // optionally gated by its own unlock rule (see NftLockedMedia.unlockRule)
+  // — an item with no rule reveals the moment a copy is bought, an item
+  // with one reveals once that copy completes it. Empty `lockedMedia`
+  // means an ordinary, ungated edition. ──────────────────────────────────
+  lockedMedia     NftLockedMedia[]
+  unlockPinGroups LocationGroup[]
 
   @@index([creatorId])
   @@index([collectionId])
@@ -1563,8 +1569,10 @@ model Nft {
 
 // One reward item a creator attaches to a gated edition — a song, image,
 // video, or a plain external link (e.g. a SoundCloud page rather than a
-// file we host). Several can be attached; all reveal together once a
-// specific copy's unlock rule is completed.
+// file we host). Several can be attached, each optionally gated by its
+// own `unlockRule`: an item with no rule reveals the moment a copy is
+// bought; an item with one reveals independently once that specific
+// copy's own points are all collected.
 enum NftLockedMediaType {
   SONG
   IMAGE
@@ -1573,14 +1581,26 @@ enum NftLockedMediaType {
 }
 
 model NftLockedMedia {
-  id        String             @id @default(uuid())
-  nftId     String
-  nft       Nft                @relation(fields: [nftId], references: [id], onDelete: Cascade)
-  url       String
-  type      NftLockedMediaType
-  label     String?
-  sortOrder Int                @default(0)
-  createdAt DateTime           @default(now())
+  id         String             @id @default(uuid())
+  nftId      String
+  nft        Nft                @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  url        String
+  type       NftLockedMediaType
+  label      String?
+  // Display order only — purely a UI hint, safe to change later (e.g. if
+  // reordering is ever added). Contrast with `chainIndex` below.
+  sortOrder  Int                @default(0)
+  // This item's permanent identity for the on-chain `Unlocked(token_id,
+  // media_index)` key (see contracts/nft_oz's `unlock_item_for`) —
+  // assigned once at creation from the same index as the initial
+  // `sortOrder`, then **never reassigned**, even if display order changes
+  // later. Existing on-chain unlock records are keyed by this value, so
+  // reusing it for a different item would misattribute those records.
+  chainIndex Int
+  createdAt  DateTime           @default(now())
+
+  unlockRule      NftUnlockLocationRule?
+  unlockPinGroups LocationGroup[]
 
   @@index([nftId])
 }
@@ -1588,22 +1608,26 @@ model NftLockedMedia {
 // Only one rule kind exists today — visiting N creator-chosen locations.
 // A future rule kind (e.g. "hold X token") gets its own table the same way,
 // selected by a new value here, rather than a generic polymorphic rule
-// engine built ahead of a second kind actually existing.
+// engine built ahead of a second kind actually existing. This is currently
+// unused as a discriminator (every `NftUnlockLocationRule` row already
+// implies LOCATION_VISIT by construction) — kept for a future second kind.
 enum NftUnlockRuleType {
   LOCATION_VISIT
 }
 
-// The creator's *template* for a gated edition's unlock rule, set once per
-// edition. Every individually minted copy gets its own private clone of
-// these points as a `LocationGroup` (see `LocationGroup.unlockForTokenId`)
-// — this table itself never gets pins collected against it directly.
+// One locked-content item's unlock rule — set once per item, not once per
+// edition (see NftLockedMedia's doc comment: each item is gated
+// independently, or not at all). Every individually minted copy that owns
+// this item gets its own private clone of these points as a
+// `LocationGroup` (see `LocationGroup.unlockForLockedMediaId`) — this
+// table itself never gets pins collected against it directly.
 model NftUnlockLocationRule {
-  id        String                   @id @default(uuid())
-  nftId     String                   @unique
-  nft       Nft                      @relation(fields: [nftId], references: [id], onDelete: Cascade)
-  radius    Float                    @default(30) // meters — how close counts as "visiting" a point
-  points    NftUnlockLocationPoint[]
-  createdAt DateTime                 @default(now())
+  id            String                   @id @default(uuid())
+  lockedMediaId String                   @unique
+  lockedMedia   NftLockedMedia           @relation(fields: [lockedMediaId], references: [id], onDelete: Cascade)
+  radius        Float                    @default(30) // meters — how close counts as "visiting" a point
+  points        NftUnlockLocationPoint[]
+  createdAt     DateTime                 @default(now())
 }
 
 model NftUnlockLocationPoint {
@@ -1646,19 +1670,19 @@ model NftPrice {
 // rest of this router already uses for `Nft.status`/`NftListing` — not
 // re-verified against chain on every read.
 model NftToken {
-  id             String         @id @default(uuid())
-  nftId          String
-  nft            Nft            @relation(fields: [nftId], references: [id], onDelete: Cascade)
+  id              String          @id @default(uuid())
+  nftId           String
+  nft             Nft             @relation(fields: [nftId], references: [id], onDelete: Cascade)
   // The on-chain token_id.
-  tokenId        String         @unique
-  ownerId        String
-  owner          User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  listing        NftListing?
-  // This copy's own private AR pin set, if the edition is gated — see
-  // `LocationGroup.unlockForTokenId`.
-  unlockPinGroup LocationGroup?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  tokenId         String          @unique
+  ownerId         String
+  owner           User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  listing         NftListing?
+  // This copy's own private AR pin sets — one per gated locked-content
+  // item on the edition, if any — see `LocationGroup.unlockForTokenId`.
+  unlockPinGroups LocationGroup[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@index([nftId])
   @@index([ownerId])

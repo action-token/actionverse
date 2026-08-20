@@ -17,7 +17,7 @@ import type { ConsumedLocation } from "~/types/game/location";
 import { initAdmin } from "package/connect_wallet/src/lib/firebase/admin/config";
 import { generateRedeemCode } from "~/lib/utils";
 import { TRPCError } from "@trpc/server";
-import { unlockTokenFor } from "~/lib/stellar/oz/nft";
+import { unlockItemFor } from "~/lib/stellar/oz/nft";
 
 export const gameRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
@@ -336,28 +336,40 @@ export const gameRouter = createTRPCRouter({
                 data: { remaining: { decrement: 1 } },
               });
 
-              // This collection just completed a gated NFT token's unlock
-              // rule — record the result on-chain via the unlock authority
-              // (see VIP_TICKET_UNLOCK_PLAN.md §0/§2). Wrapped in try/catch
-              // so a transient RPC failure never breaks the pin-collection
-              // response the buyer is waiting on; `onChainUnlockedAt` simply
-              // stays null and a later collection attempt or retry sweep can
-              // pick it up — `unlock_token_for` is idempotent on-chain, so a
-              // retried call for an already-unlocked token is a safe no-op.
+              // This collection just completed one gated locked-content
+              // item's unlock rule for this token — record the result
+              // on-chain via the unlock authority (see
+              // VIP_TICKET_UNLOCK_PLAN.md §0/§2). Each item unlocks
+              // independently now, so this fires the moment *this* item's
+              // own pins are done, without waiting on the token's other
+              // gated items. Wrapped in try/catch so a transient RPC
+              // failure never breaks the pin-collection response the buyer
+              // is waiting on; `onChainUnlockedAt` simply stays null and a
+              // later collection attempt or retry sweep can pick it up —
+              // `unlock_item_for` is idempotent on-chain, so a retried call
+              // for an already-unlocked (token, item) pair is a safe no-op.
               if (
                 updatedGroup.unlockForTokenId &&
+                updatedGroup.unlockForLockedMediaId &&
                 updatedGroup.remaining <= 0 &&
                 !updatedGroup.onChainUnlockedAt
               ) {
                 try {
-                  const nftToken = await ctx.db.nftToken.findUnique({
-                    where: { id: updatedGroup.unlockForTokenId },
-                    select: { tokenId: true },
-                  });
-                  if (nftToken) {
-                    const txHash = await unlockTokenFor({
+                  const [nftToken, media] = await Promise.all([
+                    ctx.db.nftToken.findUnique({
+                      where: { id: updatedGroup.unlockForTokenId },
+                      select: { tokenId: true },
+                    }),
+                    ctx.db.nftLockedMedia.findUnique({
+                      where: { id: updatedGroup.unlockForLockedMediaId },
+                      select: { chainIndex: true },
+                    }),
+                  ]);
+                  if (nftToken && media) {
+                    const txHash = await unlockItemFor({
                       unlockAuthoritySecret: env.MOTHER_SECRET,
                       tokenId: Number(nftToken.tokenId),
+                      mediaIndex: media.chainIndex,
                     });
                     await ctx.db.locationGroup.update({
                       where: { id: updatedGroup.id },

@@ -14,7 +14,6 @@ import CreateSongModal from "../modal/create-song-modal";
 import ShareModal from "../modal/share-post-modal";
 import { CreatePostModal } from "../modal/create-post-modal";
 import AddSubscriptionModal from "../modal/create-subscription-modal";
-import SellPageAssetModal from "../modal/sell-page-asset-modal";
 import PinDetailAndActionsModal from "../modal/pin-detail-modal";
 
 const ModalProvider = () => {
@@ -44,7 +43,6 @@ const ModalProvider = () => {
       {/* <PinDetailAndActionsModal /> */}
       <CreatePostModal />
       <AddSubscriptionModal />
-      <SellPageAssetModal />
     </>
   );
 };

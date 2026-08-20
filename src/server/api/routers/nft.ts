@@ -100,36 +100,50 @@ async function requireOwnedToken(
 }
 
 /**
- * Gives one specific minted copy its own private AR pin set, cloned from
- * the edition's unlock rule template — see VIP_TICKET_UNLOCK_PLAN.md. Every
- * copy gets its own full set (buying 4 copies of a 4-location rule drops
- * 16 pins total, not 4), because each copy unlocks its reward
- * independently. Idempotent per `nftTokenId` — a retried transaction (or a
- * second call for a token that already has one) is a no-op, not a
+ * Gives one specific minted copy its own private AR pin set for one
+ * specific gated locked-content item, cloned from that item's own unlock
+ * rule. A token with several independently-gated items gets several
+ * independent pin sets (buying 1 copy of a ticket with a 2-location song
+ * and a 3-location video drops 5 pins total for that copy alone); each set
+ * unlocks its own item on its own, not waiting on the token's other items.
+ * Idempotent per `(nftTokenId, item.id)` — a retried transaction (or a
+ * second call for a pair that already has one) is a no-op, not a
  * duplicate.
- *
- * On-chain recording of the unlock itself (contracts/nft_oz's planned
- * `unlock_token_for`) isn't wired up yet — see the plan doc — this only
- * creates the off-chain pin set the buyer actually walks around collecting.
  */
 type Db = Prisma.TransactionClient | PrismaClient;
 
+function fallbackMediaLabel(type: string) {
+  switch (type) {
+    case "SONG":
+      return "Locked Track";
+    case "IMAGE":
+      return "Locked Image";
+    case "VIDEO":
+      return "Locked Video";
+    default:
+      return "Locked Content";
+  }
+}
+
 /**
- * Creates one token's private pin set — called with the edition's rule and
- * metadata already fetched *once* by the caller, not re-fetched per token,
- * and against a plain `db` handle rather than an interactive-transaction
- * `tx`. This used to run inside `confirmBuyEdition`'s `$transaction`, doing
- * 3-4 sequential round-trips per newly-minted token; for anything beyond a
- * tiny quantity that blew past Prisma's interactive-transaction timeout and
- * failed the whole purchase with "Transaction not found". Pin-set creation
- * doesn't need to be atomic with the mint — it's independently idempotent,
- * and `nft.unlockStatus` self-heals a missing one lazily (see below) — so
- * it now runs after the transaction commits instead.
+ * Creates one token's private pin set for one gated locked-content item —
+ * called with the item's rule and the edition's own metadata already
+ * fetched *once* by the caller, not re-fetched per token, and against a
+ * plain `db` handle rather than an interactive-transaction `tx`. This used
+ * to run inside `confirmBuyEdition`'s `$transaction`, doing several
+ * sequential round-trips per newly-minted token per gated item; for
+ * anything beyond a tiny quantity that blew past Prisma's
+ * interactive-transaction timeout and failed the whole purchase with
+ * "Transaction not found". Pin-set creation doesn't need to be atomic with
+ * the mint — it's independently idempotent, and `nft.unlockStatus`
+ * self-heals a missing one lazily (see below) — so it now runs after the
+ * transaction commits instead.
  */
 async function ensureTokenUnlockPinSet(
   db: Db,
   rule: { radius: number; points: { latitude: number; longitude: number }[] },
-  nftMeta: { name: string; description: string; thumbnail: string; creatorId: string },
+  item: { id: string; type: string; label: string | null },
+  nftMeta: { description: string; thumbnail: string; creatorId: string },
   nftId: string,
   nftTokenId: string,
   ownerId: string,
@@ -137,7 +151,12 @@ async function ensureTokenUnlockPinSet(
   if (rule.points.length === 0) return;
 
   const existing = await db.locationGroup.findUnique({
-    where: { unlockForTokenId: nftTokenId },
+    where: {
+      unlockForTokenId_unlockForLockedMediaId: {
+        unlockForTokenId: nftTokenId,
+        unlockForLockedMediaId: item.id,
+      },
+    },
     select: { id: true },
   });
   if (existing) return;
@@ -150,6 +169,7 @@ async function ensureTokenUnlockPinSet(
     data: {
       creatorId: nftMeta.creatorId,
       unlockForTokenId: nftTokenId,
+      unlockForLockedMediaId: item.id,
       unlockForNftId: nftId,
       restrictedToUserId: ownerId,
       // Not user-generated/public content needing moderation — the
@@ -159,7 +179,10 @@ async function ensureTokenUnlockPinSet(
       // `pages/api/game/locations` (both require `approved: true`) would
       // never surface it, not even to its own owner.
       approved: true,
-      title: nftMeta.name,
+      // Titled from this specific item, not the whole ticket, so a token
+      // with several gated items shows distinguishable pin sets on the
+      // map/AR view instead of several identically-named groups.
+      title: item.label?.trim() || fallbackMediaLabel(item.type),
       description: nftMeta.description,
       image: nftMeta.thumbnail,
       startDate: new Date(),
@@ -212,35 +235,37 @@ export const nftRouter = createTRPCRouter({
         collectionId: z.string().optional(),
         // Optional "VIP ticket" gating — see VIP_TICKET_UNLOCK_PLAN.md.
         // Reward content that stays hidden until a buyer's own copy
-        // completes the unlock rule below.
+        // completes that item's own unlock rule — an item with no rule
+        // reveals the moment a copy is bought.
         lockedMedia: z
           .array(
             z.object({
               url: z.string().url(),
               type: z.enum(["SONG", "IMAGE", "VIDEO", "OTHER"]),
               label: z.string().trim().max(80).optional(),
+              unlockRule: z
+                .object({
+                  points: z
+                    .array(
+                      z.object({
+                        lat: z.number().min(-90).max(90),
+                        lng: z.number().min(-180).max(180),
+                        label: z.string().trim().max(80).optional(),
+                      }),
+                    )
+                    .min(1)
+                    .max(20),
+                  radius: z.number().positive().max(1000).default(30),
+                })
+                .optional(),
             }),
           )
           .max(20)
           .default([]),
-        // When non-empty, every individually minted copy of this edition
-        // gets its own private clone of these points to visit before its
-        // locked media reveals — see `ensureTokenUnlockPinSet`.
-        unlockLocationPoints: z
-          .array(
-            z.object({
-              lat: z.number().min(-90).max(90),
-              lng: z.number().min(-180).max(180),
-              label: z.string().trim().max(80).optional(),
-            }),
-          )
-          .max(20)
-          .optional(),
-        unlockRadius: z.number().positive().max(1000).default(30),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const hasUnlockRule = !!input.unlockLocationPoints?.length;
+      const hasUnlockRule = input.lockedMedia.some((m) => m.unlockRule);
       if (hasUnlockRule) {
         // A gated edition's per-copy pin sets are LocationGroups, which are
         // owned by a Creator row, not a bare User — this NFT router doesn't
@@ -282,28 +307,34 @@ export const nftRouter = createTRPCRouter({
               type: m.type,
               label: m.label,
               sortOrder: i,
+              // Permanent on-chain key component (§0/contracts/nft_oz) —
+              // assigned once here from the same index as sortOrder, never
+              // reassigned afterward even if display order later changes.
+              chainIndex: i,
+              ...(m.unlockRule
+                ? {
+                    unlockRule: {
+                      create: {
+                        radius: m.unlockRule.radius,
+                        points: {
+                          create: m.unlockRule.points.map((p, j) => ({
+                            latitude: p.lat,
+                            longitude: p.lng,
+                            label: p.label,
+                            sortOrder: j,
+                          })),
+                        },
+                      },
+                    },
+                  }
+                : {}),
             })),
           },
-          ...(hasUnlockRule
-            ? {
-                unlockRuleType: "LOCATION_VISIT" as const,
-                unlockLocationRule: {
-                  create: {
-                    radius: input.unlockRadius,
-                    points: {
-                      create: input.unlockLocationPoints!.map((p, i) => ({
-                        latitude: p.lat,
-                        longitude: p.lng,
-                        label: p.label,
-                        sortOrder: i,
-                      })),
-                    },
-                  },
-                },
-              }
-            : {}),
         },
-        include: { prices: true, lockedMedia: true, unlockLocationRule: { include: { points: true } } },
+        include: {
+          prices: true,
+          lockedMedia: { include: { unlockRule: { include: { points: true } } } },
+        },
       });
     }),
 
@@ -458,20 +489,20 @@ export const nftRouter = createTRPCRouter({
         return result;
       });
 
-      // One private pin set per newly-minted copy, not per purchase — see
-      // `ensureTokenUnlockPinSet`'s doc comment. Deliberately outside the
-      // transaction above: doing this inside it, once per token, blew past
+      // One private pin set per (newly-minted copy, gated item), not per
+      // purchase — see `ensureTokenUnlockPinSet`'s doc comment. Deliberately
+      // outside the transaction above: doing this inside it blew past
       // Prisma's interactive-transaction timeout for anything beyond a
       // tiny quantity ("Transaction not found"). Not required to be atomic
       // with the mint — `nft.unlockStatus` self-heals a missing pin set.
-      const rule = await ctx.db.nftUnlockLocationRule.findUnique({
-        where: { nftId: purchase.nftId },
-        include: { points: true },
+      const gatedItems = await ctx.db.nftLockedMedia.findMany({
+        where: { nftId: purchase.nftId, unlockRule: { isNot: null } },
+        include: { unlockRule: { include: { points: true } } },
       });
-      if (rule && rule.points.length > 0) {
+      if (gatedItems.length > 0) {
         const nftMeta = await ctx.db.nft.findUniqueOrThrow({
           where: { id: purchase.nftId },
-          select: { name: true, description: true, thumbnail: true, creatorId: true },
+          select: { description: true, thumbnail: true, creatorId: true },
         });
         // createMany doesn't hand back the rows it inserted, so re-fetch
         // just the ids for this purchase's own token range.
@@ -480,7 +511,17 @@ export const nftRouter = createTRPCRouter({
           select: { id: true },
         });
         for (const t of newTokens) {
-          await ensureTokenUnlockPinSet(ctx.db, rule, nftMeta, purchase.nftId, t.id, purchase.buyerId);
+          for (const item of gatedItems) {
+            await ensureTokenUnlockPinSet(
+              ctx.db,
+              item.unlockRule!,
+              item,
+              nftMeta,
+              purchase.nftId,
+              t.id,
+              purchase.buyerId,
+            );
+          }
         }
       }
 
@@ -932,10 +973,6 @@ export const nftRouter = createTRPCRouter({
             likeCount: nft._count.likes,
             isLiked: nft.likes.length > 0,
             createdAt: nft.createdAt,
-            // Gated ("VIP ticket") editions route to `/smart-contract/[id]`
-            // instead of the plain `/nft/[id]` buy page — see `NftCard`'s
-            // href logic in `nft-card.tsx`.
-            unlockRuleType: nft.unlockRuleType,
           };
         })
         .filter(
@@ -1031,14 +1068,18 @@ export const nftRouter = createTRPCRouter({
           },
           _count: { select: { likes: true } },
           likes: { where: { userId: userId ?? NO_SUCH_USER }, select: { id: true } },
-          // Just the gate's shape (how many locations, is it gated at all)
-          // and the reward's *outline* (type/label only, e.g. "2 tracks, 1
-          // video") — never `url`, which stays out of this query and only
-          // ever comes back from `unlockStatus` once a specific copy is
-          // unlocked.
-          unlockLocationRule: { include: { points: true } },
+          // Just each item's gate shape (how many locations it requires, if
+          // any) and its reward *outline* (type/label only, e.g. "2 tracks,
+          // 1 video") — never `url`, which stays out of this query and only
+          // ever comes back from `unlockStatus` once a specific copy's
+          // specific item is unlocked.
           lockedMedia: {
-            select: { type: true, label: true, sortOrder: true },
+            select: {
+              type: true,
+              label: true,
+              sortOrder: true,
+              unlockRule: { select: { points: { select: { id: true } } } },
+            },
             orderBy: { sortOrder: "asc" },
           },
         },
@@ -1083,14 +1124,13 @@ export const nftRouter = createTRPCRouter({
     .input(z.object({ cursor: z.string().optional(), limit: z.number().min(1).max(50).default(20) }))
     .query(async ({ ctx, input }) => {
       const items = await ctx.db.nft.findMany({
-        where: { unlockRuleType: { not: null } },
+        where: { lockedMedia: { some: { unlockRule: { isNot: null } } } },
         take: input.limit + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
         orderBy: { createdAt: "desc" },
         include: {
           prices: true,
-          unlockLocationRule: { select: { points: { select: { id: true } } } },
-          _count: { select: { lockedMedia: true } },
+          lockedMedia: { select: { unlockRule: { select: { points: { select: { id: true } } } } } },
         },
       });
       let nextCursor: string | undefined;
@@ -1103,38 +1143,46 @@ export const nftRouter = createTRPCRouter({
           supply: nft.supply,
           mintedCount: nft.mintedCount,
           prices: nft.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price })),
-          requiredLocations: nft.unlockLocationRule?.points.length ?? 0,
-          lockedMediaCount: nft._count.lockedMedia,
+          // Summed across every gated item — a ticket with a 2-location song
+          // and a 3-location video reports 5, not one shared count.
+          requiredLocations: nft.lockedMedia.reduce(
+            (sum, m) => sum + (m.unlockRule?.points.length ?? 0),
+            0,
+          ),
+          lockedMediaCount: nft.lockedMedia.length,
         })),
         nextCursor,
       };
     }),
 
   // Per-copy unlock progress for a gated edition — each individually minted
-  // token unlocks its own reward independently (see
-  // VIP_TICKET_UNLOCK_PLAN.md), so this returns one entry per token the
-  // caller owns rather than a single aggregate.
+  // token unlocks its own reward independently, and now each locked-content
+  // item on that token unlocks independently *of the token's other items*
+  // too (see VIP_TICKET_UNLOCK_PLAN.md Phase 2), so this returns one entry
+  // per token the caller owns, each carrying one status per locked-media
+  // item rather than a single aggregate.
   unlockStatus: publicProcedure
     .input(z.object({ nftId: z.string() }))
     .query(async ({ ctx, input }) => {
       const nft = await ctx.db.nft.findUnique({
         where: { id: input.nftId },
         include: {
-          unlockLocationRule: { include: { points: true } },
-          lockedMedia: { orderBy: { sortOrder: "asc" } },
+          lockedMedia: {
+            orderBy: { sortOrder: "asc" },
+            include: { unlockRule: { include: { points: true } } },
+          },
         },
       });
       if (!nft) throw new TRPCError({ code: "NOT_FOUND" });
-      // "Gated" now means "has locked content" — the location rule is only
-      // an optional extra requirement on top of that. A ticket with reward
-      // content but no rule still counts as gated (content hidden from
-      // non-owners) but unlocks immediately for anyone who owns a copy,
-      // rather than never unlocking at all.
+      // "Gated" means "has locked content" — each item's own rule (if any)
+      // is an optional extra requirement on top of that. A ticket with
+      // reward content but no rule on a given item still counts as gated
+      // overall (content hidden from non-owners) but that item unlocks
+      // immediately for anyone who owns a copy.
       if (nft.lockedMedia.length === 0) return { gated: false as const };
 
-      const required = nft.unlockLocationRule?.points.length ?? 0;
       const userId = ctx.session?.user.id;
-      if (!userId) return { gated: true as const, required, tokens: [] };
+      if (!userId) return { gated: true as const, tokens: [] };
 
       const myTokens = await ctx.db.nftToken.findMany({
         where: { nftId: input.nftId, ownerId: userId },
@@ -1144,73 +1192,95 @@ export const nftRouter = createTRPCRouter({
 
       const tokens = await Promise.all(
         myTokens.map(async (t) => {
-          // No rule at all — owning a copy is the only requirement, so
-          // this token's reward is unlocked the moment it shows up here.
-          if (required === 0) {
-            return {
-              nftTokenId: t.id,
-              onChainTokenId: t.tokenId,
-              collected: 0,
-              required: 0,
-              unlocked: true,
-              lockedMedia: nft.lockedMedia.map((m) => ({ url: m.url, type: m.type, label: m.label })),
-              onChainUnlockTxHash: null,
-              onChainUnlocked: await getOnChainUnlockStatus(Number(t.tokenId)),
-            };
-          }
+          const items = await Promise.all(
+            nft.lockedMedia.map(async (media) => {
+              // No rule on this item — owning a copy is the only
+              // requirement, so it's revealed the moment it shows up here.
+              if (!media.unlockRule) {
+                return {
+                  lockedMediaId: media.id,
+                  type: media.type,
+                  label: media.label,
+                  requiresUnlock: false as const,
+                  unlocked: true as const,
+                  collected: 0,
+                  required: 0,
+                  url: media.url,
+                  onChainUnlockTxHash: null,
+                  onChainUnlocked: null,
+                };
+              }
 
-          let group = await ctx.db.locationGroup.findUnique({
-            where: { unlockForTokenId: t.id },
-            select: { id: true, onChainUnlockTxHash: true },
-          });
-          // Self-heal: normally already created by `confirmBuyEdition`
-          // right after mint, but that now runs outside its transaction
-          // (see the comment there) and could in principle fail to land —
-          // provision it here instead of leaving the buyer permanently
-          // stuck at 0 pins with nothing to collect.
-          if (!group) {
-            const nftMeta = { name: nft.name, description: nft.description, thumbnail: nft.thumbnail, creatorId: nft.creatorId };
-            await ensureTokenUnlockPinSet(ctx.db, nft.unlockLocationRule!, nftMeta, input.nftId, t.id, userId);
-            group = await ctx.db.locationGroup.findUnique({
-              where: { unlockForTokenId: t.id },
-              select: { id: true, onChainUnlockTxHash: true },
-            });
-          }
-          // Scoped to the group, not `userId` — a restricted group only
-          // ever belongs to one user at a time (enforced in `consumePin`),
-          // so every consumer row under it is legitimate progress toward
-          // this token's requirement regardless of who collected it. That
-          // makes a resale carry progress forward instead of resetting it:
-          // if the previous owner collected 4 of 10, the new owner (who
-          // `confirmBuy`/`confirmBuyBatch` re-point this group's
-          // `restrictedToUserId` to) still reads 4/10, not 0/10.
-          const collected = group
-            ? await ctx.db.locationConsumer.count({
-                where: { location: { locationGroupId: group.id } },
-              })
-            : 0;
-          const unlocked = collected >= required;
-          // Live ground-truth read, independent of the cached DB flag — the
-          // unlock trigger in `consumePin` can in principle fail after the
-          // DB is updated (or vice versa if it's still in flight), so the
-          // UI can show both figures and flag if they've drifted.
-          const onChainUnlocked = unlocked ? await getOnChainUnlockStatus(Number(t.tokenId)) : null;
-          return {
-            nftTokenId: t.id,
-            onChainTokenId: t.tokenId,
-            collected,
-            required,
-            unlocked,
-            lockedMedia: unlocked
-              ? nft.lockedMedia.map((m) => ({ url: m.url, type: m.type, label: m.label }))
-              : [],
-            onChainUnlockTxHash: group?.onChainUnlockTxHash ?? null,
-            onChainUnlocked,
-          };
+              const required = media.unlockRule.points.length;
+              let group = await ctx.db.locationGroup.findUnique({
+                where: {
+                  unlockForTokenId_unlockForLockedMediaId: {
+                    unlockForTokenId: t.id,
+                    unlockForLockedMediaId: media.id,
+                  },
+                },
+                select: { id: true, onChainUnlockTxHash: true },
+              });
+              // Self-heal: normally already created by `confirmBuyEdition`
+              // right after mint, but that now runs outside its transaction
+              // (see the comment there) and could in principle fail to
+              // land — provision it here instead of leaving the buyer
+              // permanently stuck at 0 pins with nothing to collect.
+              if (!group) {
+                const nftMeta = { description: nft.description, thumbnail: nft.thumbnail, creatorId: nft.creatorId };
+                await ensureTokenUnlockPinSet(ctx.db, media.unlockRule, media, nftMeta, input.nftId, t.id, userId);
+                group = await ctx.db.locationGroup.findUnique({
+                  where: {
+                    unlockForTokenId_unlockForLockedMediaId: {
+                      unlockForTokenId: t.id,
+                      unlockForLockedMediaId: media.id,
+                    },
+                  },
+                  select: { id: true, onChainUnlockTxHash: true },
+                });
+              }
+              // Scoped to the group, not `userId` — a restricted group only
+              // ever belongs to one user at a time (enforced in
+              // `consumePin`), so every consumer row under it is legitimate
+              // progress toward this item's requirement regardless of who
+              // collected it. That makes a resale carry progress forward
+              // instead of resetting it: if the previous owner collected 4
+              // of 10, the new owner (who `confirmBuy`/`confirmBuyBatch`
+              // re-point this group's `restrictedToUserId` to) still reads
+              // 4/10, not 0/10.
+              const collected = group
+                ? await ctx.db.locationConsumer.count({
+                    where: { location: { locationGroupId: group.id } },
+                  })
+                : 0;
+              const unlocked = collected >= required;
+              // Live ground-truth read, independent of the cached DB flag —
+              // the unlock trigger in `consumePin` can in principle fail
+              // after the DB is updated (or vice versa if still in
+              // flight), so the UI can show both figures and flag drift.
+              const onChainUnlocked = unlocked
+                ? await getOnChainUnlockStatus(Number(t.tokenId), media.chainIndex)
+                : null;
+              return {
+                lockedMediaId: media.id,
+                type: media.type,
+                label: media.label,
+                requiresUnlock: true as const,
+                unlocked,
+                collected,
+                required,
+                url: unlocked ? media.url : null,
+                onChainUnlockTxHash: group?.onChainUnlockTxHash ?? null,
+                onChainUnlocked,
+              };
+            }),
+          );
+
+          return { nftTokenId: t.id, onChainTokenId: t.tokenId, items };
         }),
       );
 
-      return { gated: true as const, required, tokens };
+      return { gated: true as const, tokens };
     }),
 
   // Ground-truth read straight from the contract, independent of the cached

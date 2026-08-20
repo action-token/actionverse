@@ -167,7 +167,13 @@ export default function SmartContractManagePage() {
   }
 
   const isGated = nft.lockedMedia.length > 0
-  const requiredLocations = nft.unlockLocationRule?.points.length ?? 0
+  const gatedItemCount = nft.lockedMedia.filter((m) => m.unlockRule).length
+  // Summed across every gated item — a ticket with a 2-location song and a
+  // 3-location video reports 5, not one shared count.
+  const requiredLocations = nft.lockedMedia.reduce(
+    (sum, m) => sum + (m.unlockRule?.points.length ?? 0),
+    0,
+  )
   const mediaCounts = {
     songs: nft.lockedMedia.filter((m) => m.type === "SONG").length,
     images: nft.lockedMedia.filter((m) => m.type === "IMAGE").length,
@@ -223,15 +229,27 @@ export default function SmartContractManagePage() {
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {requiredLocations > 0 ? (
-                        <>
-                          Every copy of this ticket unlocks its own reward independently — visit and collect{" "}
-                          <span className="font-medium text-foreground">
-                            {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
-                          </span>{" "}
-                          with that copy to reveal it.
-                        </>
+                        gatedItemCount === nft.lockedMedia.length ? (
+                          <>
+                            Every copy of this ticket unlocks its rewards independently — visit and
+                            collect{" "}
+                            <span className="font-medium text-foreground">
+                              {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
+                            </span>{" "}
+                            with that copy to reveal them.
+                          </>
+                        ) : (
+                          <>
+                            Some items unlock the moment you own a copy; the rest reveal once you visit
+                            and collect{" "}
+                            <span className="font-medium text-foreground">
+                              {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
+                            </span>{" "}
+                            with that copy.
+                          </>
+                        )
                       ) : (
-                        "Owning a copy unlocks its reward immediately — no extra requirement."
+                        "Owning a copy unlocks its rewards immediately — no extra requirement."
                       )}
                     </p>
                   </CardContent>

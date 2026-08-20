@@ -1087,11 +1087,11 @@ fn non_owner_cannot_upgrade() {
 
 // =============================================================================
 // Unlock — off-chain unlock-rule attestation (see the module doc on
-// `unlock_token_for`)
+// `unlock_item_for`)
 // =============================================================================
 
 #[test]
-fn unlock_token_for_marks_a_token_unlocked() {
+fn unlock_item_for_marks_an_item_unlocked() {
     let f = setup();
     let alice = Address::generate(&f.env); // creator
     let bob = Address::generate(&f.env); // buyer
@@ -1099,13 +1099,13 @@ fn unlock_token_for_marks_a_token_unlocked() {
 
     let (token_id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 1);
 
-    assert!(!f.client.is_unlocked(&token_id));
-    f.client.unlock_token_for(&f.unlock_authority, &token_id);
-    assert!(f.client.is_unlocked(&token_id));
+    assert!(!f.client.is_item_unlocked(&token_id, &0));
+    f.client.unlock_item_for(&f.unlock_authority, &token_id, &0);
+    assert!(f.client.is_item_unlocked(&token_id, &0));
 }
 
 #[test]
-fn unlock_token_for_is_idempotent() {
+fn unlock_item_for_is_idempotent() {
     let f = setup();
     let alice = Address::generate(&f.env);
     let bob = Address::generate(&f.env);
@@ -1113,9 +1113,9 @@ fn unlock_token_for_is_idempotent() {
 
     let (token_id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 1);
 
-    f.client.unlock_token_for(&f.unlock_authority, &token_id);
-    f.client.unlock_token_for(&f.unlock_authority, &token_id); // must not panic
-    assert!(f.client.is_unlocked(&token_id));
+    f.client.unlock_item_for(&f.unlock_authority, &token_id, &0);
+    f.client.unlock_item_for(&f.unlock_authority, &token_id, &0); // must not panic
+    assert!(f.client.is_item_unlocked(&token_id, &0));
 }
 
 #[test]
@@ -1129,7 +1129,25 @@ fn only_unlock_authority_can_unlock() {
 
     let (token_id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 1);
 
-    f.client.unlock_token_for(&mallory, &token_id);
+    f.client.unlock_item_for(&mallory, &token_id, &0);
+}
+
+#[test]
+fn unlocking_one_item_does_not_unlock_a_sibling_item_on_the_same_token() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    let (token_id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 1);
+
+    f.client.unlock_item_for(&f.unlock_authority, &token_id, &0);
+
+    assert!(f.client.is_item_unlocked(&token_id, &0));
+    assert!(
+        !f.client.is_item_unlocked(&token_id, &1),
+        "unlocking one locked-content item must not unlock a different item on the same token"
+    );
 }
 
 #[test]
@@ -1142,10 +1160,13 @@ fn unlocking_one_token_does_not_unlock_a_sibling_from_the_same_edition() {
     let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 2);
     assert_eq!(last, first + 1);
 
-    f.client.unlock_token_for(&f.unlock_authority, &first);
+    f.client.unlock_item_for(&f.unlock_authority, &first, &0);
 
-    assert!(f.client.is_unlocked(&first));
-    assert!(!f.client.is_unlocked(&last), "unlocking one copy must not unlock another");
+    assert!(f.client.is_item_unlocked(&first, &0));
+    assert!(
+        !f.client.is_item_unlocked(&last, &0),
+        "unlocking one copy must not unlock another"
+    );
 }
 
 #[test]
@@ -1161,13 +1182,14 @@ fn owner_can_rotate_the_unlock_authority() {
     f.client.set_unlock_authority(&new_authority);
 
     // The old authority is no longer recognized...
-    f.client
-        .try_unlock_token_for(&f.unlock_authority, &token_id)
+    let _ = f
+        .client
+        .try_unlock_item_for(&f.unlock_authority, &token_id, &0)
         .expect_err("the old unlock authority must be rejected after rotation");
 
     // ...while the new one works.
-    f.client.unlock_token_for(&new_authority, &token_id);
-    assert!(f.client.is_unlocked(&token_id));
+    f.client.unlock_item_for(&new_authority, &token_id, &0);
+    assert!(f.client.is_item_unlocked(&token_id, &0));
 }
 
 #[test]
