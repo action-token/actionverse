@@ -547,6 +547,62 @@ fn resale_pays_royalty_to_the_original_creator() {
     assert_eq!(f.token.balance(&bob), PRICE - platform_fee - royalty);
 }
 
+/// The inclusion fee is additive on top of the price, not carved out of
+/// it — the creator must still receive exactly what they'd get without one
+/// configured, and the buyer pays the extra amount on top.
+#[test]
+fn primary_purchase_adds_inclusion_fee_on_top_without_diluting_creator() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer
+    let inclusion_fee: i128 = 2_000_0000000; // 2000 units at 7 decimals
+    fund(&f, &bob, PRICE + inclusion_fee);
+
+    f.client.set_inclusion_fee(&f.payment, &inclusion_fee);
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", ROYALTY_BPS, 1, PRICE, 1);
+
+    let platform_fee = PRICE * FEE_BPS as i128 / 10_000;
+
+    assert_eq!(f.client.owner_of(&id), bob);
+    assert_eq!(f.token.balance(&alice), PRICE - platform_fee, "creator's share must be unaffected by the fee");
+    assert_eq!(f.token.balance(&f.treasury), platform_fee + inclusion_fee);
+    assert_eq!(f.token.balance(&bob), 0, "buyer pays price + inclusion fee, nothing left over");
+}
+
+/// Same additivity guarantee on the resale path — neither the reseller nor
+/// the original creator's royalty is affected by the inclusion fee.
+#[test]
+fn resale_adds_inclusion_fee_on_top_without_diluting_seller_or_royalty() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // first buyer, then reseller
+    let carol = Address::generate(&f.env); // second buyer
+    let inclusion_fee: i128 = 2_000_0000000;
+    fund(&f, &bob, PRICE);
+    fund(&f, &carol, PRICE + inclusion_fee);
+
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", ROYALTY_BPS, 1, PRICE, 1);
+    let alice_after_primary = f.token.balance(&alice);
+    let treasury_after_primary = f.token.balance(&f.treasury);
+
+    f.client.set_inclusion_fee(&f.payment, &inclusion_fee);
+    f.client.list(&bob, &id, &single_price(&f, PRICE));
+    f.client.buy(&carol, &id, &f.payment);
+
+    let platform_fee = PRICE * FEE_BPS as i128 / 10_000;
+    let royalty = PRICE * ROYALTY_BPS as i128 / 10_000;
+
+    assert_eq!(f.client.owner_of(&id), carol);
+    assert_eq!(f.token.balance(&alice) - alice_after_primary, royalty, "royalty must be unaffected by the fee");
+    assert_eq!(
+        f.token.balance(&bob),
+        PRICE - platform_fee - royalty,
+        "seller's share must be unaffected by the fee"
+    );
+    assert_eq!(f.token.balance(&f.treasury) - treasury_after_primary, platform_fee + inclusion_fee);
+    assert_eq!(f.token.balance(&carol), 0, "buyer pays price + inclusion fee, nothing left over");
+}
+
 /// A reseller isn't limited to whichever currencies the creator originally
 /// priced the edition in — they can offer their own copy in multiple
 /// currencies at once, and the buyer picks which one to pay with.
@@ -991,6 +1047,64 @@ fn non_owner_cannot_update_platform_fee() {
             },
         }])
         .set_platform_fee(&9, &treasury);
+}
+
+#[test]
+fn inclusion_fee_defaults_to_zero_for_an_unconfigured_token() {
+    let f = setup();
+    assert_eq!(f.client.inclusion_fee(&f.payment), 0);
+}
+
+#[test]
+fn owner_can_set_inclusion_fee() {
+    let f = setup();
+    f.client.set_inclusion_fee(&f.payment, &1_500_0000000);
+    assert_eq!(f.client.inclusion_fee(&f.payment), 1_500_0000000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #300)")]
+fn inclusion_fee_cannot_be_negative() {
+    let f = setup();
+    f.client.set_inclusion_fee(&f.payment, &-1);
+}
+
+#[test]
+#[should_panic]
+fn non_owner_cannot_set_inclusion_fee() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let unlock_authority = Address::generate(&env);
+    let mallory = Address::generate(&env);
+    let sac_admin = Address::generate(&env);
+    let payment = env.register_stellar_asset_contract_v2(sac_admin).address();
+
+    let contract_id = env.register(
+        ArtNft,
+        (
+            owner,
+            treasury,
+            FEE_BPS,
+            String::from_str(&env, "Actionverse Art"),
+            String::from_str(&env, "AVART"),
+            String::from_str(&env, "https://actionverse.test/nft/"),
+            unlock_authority,
+        ),
+    );
+    let client = ArtNftClient::new(&env, &contract_id);
+
+    client
+        .mock_auths(&[MockAuth {
+            address: &mallory,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_inclusion_fee",
+                args: (payment.clone(), 100i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .set_inclusion_fee(&payment, &100);
 }
 
 #[test]

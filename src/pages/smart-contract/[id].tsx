@@ -19,6 +19,7 @@ import { LikeButton } from "~/components/nft/like-button"
 import { PrimaryBuyCard, ResaleBuyCard } from "~/components/nft/nft-detail-view"
 import { BlockchainInsights } from "~/components/nft/blockchain-insights"
 import { LockedMediaPanel, lockedMediaSummary } from "~/components/smart-contract/locked-media-panel"
+import { BuyNftWithCard, BuyResaleWithCard } from "~/components/smart-contract/buy-nft-with-card"
 
 /**
  * The one **buy** page for every NFT — gated ("VIP ticket") or ordinary
@@ -49,6 +50,15 @@ export default function SmartContractTicketPage() {
   })
   const [isBuyingPrimary, setIsBuyingPrimary] = useState(false)
   const [isBuyingResale, setIsBuyingResale] = useState(false)
+  // Quantity of the pending card checkout, or null when the dialog is
+  // closed — the dialog itself owns the mutation/loading state once open.
+  const [cardCheckoutQuantity, setCardCheckoutQuantity] = useState<number | null>(null)
+  // Token ids of the pending resale card checkout, or null when closed.
+  const [resaleCardTokenIds, setResaleCardTokenIds] = useState<string[] | null>(null)
+  const resaleUsdQuote = api.nft.resaleUsdQuote.useQuery(
+    { tokenIds: resaleCardTokenIds ?? [] },
+    { enabled: !!resaleCardTokenIds },
+  )
 
   function handleLike() {
     if (!session?.user) {
@@ -117,6 +127,22 @@ export default function SmartContractTicketPage() {
     } finally {
       setIsBuyingPrimary(false)
     }
+  }
+
+  function handleBuyPrimaryWithCard({ quantity }: { quantity: number }) {
+    if (!session?.user) {
+      toast.error("Sign in first")
+      return
+    }
+    setCardCheckoutQuantity(quantity)
+  }
+
+  function handleBuyResaleWithCard(tokenIds: string[]) {
+    if (!session?.user) {
+      toast.error("Sign in first")
+      return
+    }
+    setResaleCardTokenIds(tokenIds)
   }
 
   async function handleBuyResaleBatch(tokenIds: string[], paymentToken: NftPaymentToken) {
@@ -278,6 +304,7 @@ export default function SmartContractTicketPage() {
                 viewerId={session?.user.id}
                 onBuy={handleBuyResaleBatch}
                 isBuying={isBuyingResale}
+                onBuyWithCard={handleBuyResaleWithCard}
               />
             ) : (
               <PrimaryBuyCard
@@ -286,6 +313,7 @@ export default function SmartContractTicketPage() {
                 isLoadingOnChainInsights={isLoadingOnChainInsights}
                 onBuy={handleBuyPrimary}
                 isBuying={isBuyingPrimary}
+                onBuyWithCard={handleBuyPrimaryWithCard}
               />
             )}
 
@@ -296,6 +324,27 @@ export default function SmartContractTicketPage() {
           </div>
         </div>
       </div>
+
+      {cardCheckoutQuantity !== null && (
+        <BuyNftWithCard
+          open
+          onClose={() => setCardCheckoutQuantity(null)}
+          onSuccess={() => void invalidateAfterPurchase()}
+          nftId={nft.id}
+          quantity={cardCheckoutQuantity}
+          totalLabel={`$${((nft.priceUSD ?? 0) * cardCheckoutQuantity).toFixed(2)}`}
+        />
+      )}
+
+      {resaleCardTokenIds !== null && (
+        <BuyResaleWithCard
+          open
+          onClose={() => setResaleCardTokenIds(null)}
+          onSuccess={() => void invalidateAfterPurchase()}
+          tokenIds={resaleCardTokenIds}
+          totalLabel={resaleUsdQuote.data ? `$${resaleUsdQuote.data.totalUSD.toFixed(2)}` : "…"}
+        />
+      )}
     </>
   )
 }

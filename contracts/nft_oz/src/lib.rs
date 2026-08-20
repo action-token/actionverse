@@ -187,6 +187,10 @@ pub struct SaleBreakdown {
     pub royalty: i128,
     pub royalty_receiver: Address,
     pub seller_amount: i128,
+    /// Additive on top of `total` — see `DataKey::InclusionFee`. Not part
+    /// of the seller/royalty/platform split; the buyer's full payment is
+    /// `total + inclusion_fee`.
+    pub inclusion_fee: i128,
 }
 
 /// Variant *names* are what land in the ledger for `#[contracttype]` enums, so
@@ -213,6 +217,14 @@ pub enum DataKey {
     NextEditionId,
     PlatformFeeBps,
     Treasury,
+    /// Flat amount, in `payment_token`'s own raw units, added on top of a
+    /// purchase's price and sent straight to `Treasury` — how the platform
+    /// recovers the real Stellar network fee it fronts via fee-bump
+    /// submission, without folding it into the price the creator/seller
+    /// split shares (see `buy_edition`/`do_buy`'s third transfer). Keyed
+    /// per `payment_token` since currencies aren't worth the same amount;
+    /// unset (0) for a token nobody's configured a fee for yet.
+    InclusionFee(Address),
     /// The hot key allowed to call `unlock_item_for` — separate from the
     /// `Ownable` owner (which can pause/upgrade the whole contract) since
     /// this one gets called automatically by the backend on every pin
@@ -333,6 +345,13 @@ pub struct ListingCancelled {
 pub struct PlatformFeeUpdated {
     pub fee_bps: u32,
     pub treasury: Address,
+}
+
+#[contractevent]
+pub struct InclusionFeeUpdated {
+    #[topic]
+    pub payment_token: Address,
+    pub fee: i128,
 }
 
 #[contractevent]
@@ -504,6 +523,14 @@ impl ArtNft {
             token.transfer(&buyer, &treasury, &platform_fee);
         }
         token.transfer(&buyer, &meta.creator, &(total - platform_fee));
+
+        // Additive, on top of `total` — never carved out of the creator's
+        // share, unlike `platform_fee`. See `DataKey::InclusionFee`.
+        let inclusion_fee = Self::inclusion_fee(e, payment_token.clone());
+        if inclusion_fee > 0 {
+            let treasury: Address = e.storage().instance().get(&DataKey::Treasury).unwrap();
+            token.transfer(&buyer, &treasury, &inclusion_fee);
+        }
 
         EditionMinted {
             edition_id,
@@ -772,7 +799,7 @@ impl ArtNft {
     pub fn sale_breakdown(e: &Env, token_id: u32, payment_token: Address) -> Option<SaleBreakdown> {
         let listing = Self::listing(e, token_id)?;
         let unit_price = Self::price_for(e, &listing.prices, &payment_token);
-        Some(Self::compute_breakdown(e, token_id, &listing, unit_price))
+        Some(Self::compute_breakdown(e, token_id, &listing, unit_price, &payment_token))
     }
 
     /// Buys a listed (already-minted) token in a single invocation: payment
@@ -821,7 +848,7 @@ impl ArtNft {
         }
 
         let unit_price = Self::price_for(e, &listing.prices, payment_token);
-        let split = Self::compute_breakdown(e, token_id, &listing, unit_price);
+        let split = Self::compute_breakdown(e, token_id, &listing, unit_price, payment_token);
 
         // --- effects: all contract state settles before any external call, so
         // a hostile `payment_token` can't reenter and observe a half-applied
@@ -843,6 +870,13 @@ impl ArtNft {
         }
         token.transfer(buyer, &listing.seller, &split.seller_amount);
 
+        // Additive, on top of `split.total` — never carved out of the
+        // seller's or royalty receiver's share. See `DataKey::InclusionFee`.
+        if split.inclusion_fee > 0 {
+            let treasury: Address = e.storage().instance().get(&DataKey::Treasury).unwrap();
+            token.transfer(buyer, &treasury, &split.inclusion_fee);
+        }
+
         Purchased {
             token_id,
             buyer: buyer.clone(),
@@ -855,7 +889,13 @@ impl ArtNft {
         .publish(e);
     }
 
-    fn compute_breakdown(e: &Env, token_id: u32, listing: &Listing, unit_price: i128) -> SaleBreakdown {
+    fn compute_breakdown(
+        e: &Env,
+        token_id: u32,
+        listing: &Listing,
+        unit_price: i128,
+        payment_token: &Address,
+    ) -> SaleBreakdown {
         let total = unit_price;
         let fee_bps = Self::platform_fee_bps(e) as i128;
         let platform_fee = total * fee_bps / BPS_DENOM;
@@ -874,6 +914,7 @@ impl ArtNft {
             royalty,
             royalty_receiver,
             seller_amount: total - platform_fee - royalty,
+            inclusion_fee: Self::inclusion_fee(e, payment_token.clone()),
         }
     }
 
@@ -899,6 +940,26 @@ impl ArtNft {
 
     pub fn treasury(e: &Env) -> Option<Address> {
         e.storage().instance().get(&DataKey::Treasury)
+    }
+
+    /// Sets the flat, additive inclusion-fee amount for one `payment_token`
+    /// — see `DataKey::InclusionFee`'s doc comment for why this exists
+    /// separately from `platform_fee_bps`. No cap: unlike a percentage,
+    /// there's no runaway-share-of-the-sale risk from an unbounded flat
+    /// amount, so this only guards against an outright negative value.
+    #[only_owner]
+    pub fn set_inclusion_fee(e: &Env, payment_token: Address, fee: i128) {
+        if fee < 0 {
+            panic_with_error!(e, ArtError::InvalidAmount);
+        }
+        e.storage().instance().set(&DataKey::InclusionFee(payment_token.clone()), &fee);
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+
+        InclusionFeeUpdated { payment_token, fee }.publish(e);
+    }
+
+    pub fn inclusion_fee(e: &Env, payment_token: Address) -> i128 {
+        e.storage().instance().get(&DataKey::InclusionFee(payment_token)).unwrap_or(0)
     }
 
     /// Rotates the unlock authority's hot key without a full upgrade — the

@@ -9,6 +9,7 @@ import {
 import { MOTHER_SECRET, STORAGE_SECRET } from "../SECRET";
 import { STELLAR_URL, PLATFORM_ASSET, networkPassphrase } from "../../constant";
 import { StellarAccount } from "../test/Account";
+import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g";
 
 async function checkSiteAssetTrustLine(accPub: string) {
   const server = new Horizon.Server(STELLAR_URL);
@@ -92,6 +93,96 @@ export async function sendSiteAsset2pub(
   builTx.sign(motherAcc);
 
   return builTx.toXDR();
+}
+
+/**
+ * Funds a custodial buyer for a card-initiated purchase: establishes a
+ * Platform Asset trustline if they don't have one yet, tops up their
+ * balance by `assetAmount`, and — since fee-bump submission doesn't exist
+ * yet — also ensures they hold a small XLM buffer, because a card-paying
+ * buyer may never have held any XLM at all (unlike a wallet-paying buyer,
+ * who already needed some to transact). Once fee-bump lands this XLM
+ * top-up goes away entirely; the buyer will never need to hold XLM.
+ *
+ * Needs `buyerSecret` (not just the public key) because establishing a new
+ * trustline requires the trustor's own signature on `changeTrust` — the
+ * caller already has this for a custodial account via
+ * `getAccSecretFromRubyApi`.
+ */
+export async function fundBuyerForCardPurchase({
+  buyerPubKey,
+  buyerSecret,
+  assetAmount,
+}: {
+  buyerPubKey: string;
+  buyerSecret: string;
+  assetAmount: number;
+}) {
+  const server = new Horizon.Server(STELLAR_URL);
+  const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
+  const buyerKeypair = Keypair.fromSecret(buyerSecret);
+
+  const transactionInitializer = await server.loadAccount(motherAcc.publicKey());
+  const buyerAcc = await StellarAccount.create(buyerPubKey);
+  const hasTrust = buyerAcc.hasTrustline(PLATFORM_ASSET.code, PLATFORM_ASSET.issuer);
+  const xlmBalance = buyerAcc.getNativeBalance();
+
+  const Tx = new TransactionBuilder(transactionInitializer, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  });
+
+  if (!hasTrust) {
+    // Sends 0.5 XLM (trustline reserve) + the changeTrust op.
+    Tx.addOperation(
+      Operation.payment({
+        destination: buyerPubKey,
+        amount: "0.5",
+        asset: Asset.native(),
+        source: motherAcc.publicKey(),
+      }),
+    ).addOperation(
+      Operation.changeTrust({
+        asset: PLATFORM_ASSET,
+        source: buyerPubKey,
+      }),
+    );
+    if (Number(xlmBalance) < 1.5) {
+      Tx.addOperation(
+        Operation.payment({
+          destination: buyerPubKey,
+          amount: "1.5",
+          asset: Asset.native(),
+          source: motherAcc.publicKey(),
+        }),
+      );
+    }
+  } else if (Number(xlmBalance) < 2) {
+    Tx.addOperation(
+      Operation.payment({
+        destination: buyerPubKey,
+        amount: "2",
+        asset: Asset.native(),
+        source: motherAcc.publicKey(),
+      }),
+    );
+  }
+
+  const builtTx = Tx.addOperation(
+    Operation.payment({
+      destination: buyerPubKey,
+      amount: assetAmount.toFixed(7),
+      asset: PLATFORM_ASSET,
+      source: motherAcc.publicKey(),
+    }),
+  )
+    .setTimeout(0)
+    .build();
+
+  builtTx.sign(motherAcc);
+  if (!hasTrust) builtTx.sign(buyerKeypair);
+
+  return submitSignedXDRToServer4User(builtTx.toXDR());
 }
 
 export async function sendXLM_SiteAsset(props: {

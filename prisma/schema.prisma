@@ -1530,6 +1530,12 @@ model Nft {
   contractAddress  String?
   onChainEditionId String?
   royaltyBps       Int           @default(0)
+  // Creator-set USD sticker price for the card/Square checkout path. Set
+  // independently of the `NftPrice` "asset" row rather than derived from
+  // it — same sibling-field pattern as `MarketAsset.priceUSD`. Never
+  // becomes an on-chain `payment_token`; it only ever drives the Square
+  // charge amount.
+  priceUSD         Float?
   // Total copies this edition will ever mint (>= 1, default 1).
   supply           Int           @default(1)
   // Cached from the contract's `EditionMeta.minted`, refreshed on every

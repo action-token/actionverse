@@ -46,10 +46,12 @@ export default function CreateSmartContractNftPage() {
   const [description, setDescription] = useState("")
   const [royaltyPercent, setRoyaltyPercent] = useState(0)
   const [supply, setSupply] = useState(1)
-  // Empty string means "not offered in this currency" — at least one of
-  // the two must end up positive.
-  const [priceXlm, setPriceXlm] = useState("1")
+  // Both currencies are required now — Platform Asset settles on-chain
+  // purchases, USD drives the card/Square checkout total. XLM dropped from
+  // this form; `xlm` stays a valid `NftPrice.paymentToken` value in the
+  // schema/contract, just not offered here for now.
   const [priceAsset, setPriceAsset] = useState("")
+  const [priceUSD, setPriceUSD] = useState("")
 
   // The thumbnail *is* the item's own visible content here — there's no
   // separate "media" upload step. `contentMimeType` is the thumbnail
@@ -95,8 +97,8 @@ export default function CreateSmartContractNftPage() {
     void uploadThumbnail(file)
   }
 
-  const parsedPriceXlm = Number(priceXlm) || 0
   const parsedPriceAsset = Number(priceAsset) || 0
+  const parsedPriceUSD = Number(priceUSD) || 0
 
   const completeLockedMedia = lockedMedia.filter(
     (m): m is LockedMediaDraft & { url: string } => !!m.url && isValidHttpUrl(m.url),
@@ -108,7 +110,8 @@ export default function CreateSmartContractNftPage() {
     !!thumbnailUrl &&
     !!contentMimeType &&
     supply >= 1 &&
-    (parsedPriceXlm > 0 || parsedPriceAsset > 0) &&
+    parsedPriceAsset > 0 &&
+    parsedPriceUSD > 0 &&
     completeLockedMedia.length > 0 &&
     !incompleteUnlockRule
 
@@ -123,9 +126,9 @@ export default function CreateSmartContractNftPage() {
     if (!thumbnailUrl || !contentMimeType) return
     setSubmitLoading(true)
     try {
-      const prices: { paymentToken: "xlm" | "asset"; price: number }[] = []
-      if (parsedPriceXlm > 0) prices.push({ paymentToken: "xlm", price: parsedPriceXlm })
-      if (parsedPriceAsset > 0) prices.push({ paymentToken: "asset", price: parsedPriceAsset })
+      const prices: { paymentToken: "asset"; price: number }[] = [
+        { paymentToken: "asset", price: parsedPriceAsset },
+      ]
 
       const created = await createNft.mutateAsync({
         name: name.trim(),
@@ -137,6 +140,7 @@ export default function CreateSmartContractNftPage() {
         mediaType: contentMimeType,
         royaltyBps: Math.round(royaltyPercent * 100),
         supply,
+        priceUSD: parsedPriceUSD,
         prices,
         lockedMedia: completeLockedMedia.map((m) => ({
           url: m.url,
@@ -294,26 +298,11 @@ export default function CreateSmartContractNftPage() {
               <div className="space-y-2">
                 <p className="text-sm font-medium">Price per copy</p>
                 <p className="text-xs text-muted-foreground">
-                  Buyers pick whichever currency they want to pay with — leave a field empty to not
-                  offer that currency. More currencies (like USDC) can be added later without
-                  changing anything about this item.
+                  Buyers choose Platform Asset or USD at checkout — set both prices below. USD
+                  purchases still settle on-chain in {PLATFORM_ASSET.code} behind the scenes, so the
+                  Platform Asset price is what's actually registered on-chain.
                 </p>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="sc-price-xlm" className="flex items-center gap-2">
-                      <Coins className="h-4 w-4 text-muted-foreground" />
-                      Price (XLM)
-                    </Label>
-                    <Input
-                      id="sc-price-xlm"
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={priceXlm}
-                      onChange={(e) => setPriceXlm(e.target.value)}
-                      placeholder="e.g. 5"
-                    />
-                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="sc-price-asset" className="flex items-center gap-2">
                       <Coins className="h-4 w-4 text-muted-foreground" />
@@ -326,12 +315,27 @@ export default function CreateSmartContractNftPage() {
                       step="any"
                       value={priceAsset}
                       onChange={(e) => setPriceAsset(e.target.value)}
-                      placeholder="Optional"
+                      placeholder="e.g. 100"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sc-price-usd" className="flex items-center gap-2">
+                      <Coins className="h-4 w-4 text-muted-foreground" />
+                      Price (USD)
+                    </Label>
+                    <Input
+                      id="sc-price-usd"
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={priceUSD}
+                      onChange={(e) => setPriceUSD(e.target.value)}
+                      placeholder="e.g. 10"
                     />
                   </div>
                 </div>
-                {parsedPriceXlm <= 0 && parsedPriceAsset <= 0 && (
-                  <p className="text-sm text-destructive">Set a price in at least one currency.</p>
+                {(parsedPriceAsset <= 0 || parsedPriceUSD <= 0) && (
+                  <p className="text-sm text-destructive">Set a price in both currencies.</p>
                 )}
               </div>
 

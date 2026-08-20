@@ -1,11 +1,13 @@
-import { Loader2, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
+import { Loader2, Lock, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
+import { WalletType } from "package/connect_wallet";
 import { useEffect, useState } from "react";
 import { BlockchainInsights } from "~/components/nft/blockchain-insights";
 import { PlaceholderArt } from "~/components/nft/placeholder-art";
 import { priceTokenLabel } from "~/components/nft/nft-card";
 import { cn } from "~/lib/utils";
-import { DEFAULT_PLATFORM_FEE_BPS, PAYMENT_TOKEN_SCALE, SOROBAN_INCLUSION_FEE } from "~/lib/stellar/constant";
+import { DEFAULT_PLATFORM_FEE_BPS, NETWORK_FEE_IN_USD, PAYMENT_TOKEN_SCALE, SOROBAN_INCLUSION_FEE } from "~/lib/stellar/constant";
 import { Button } from "~/components/shadcn/ui/button";
 import { Input } from "~/components/shadcn/ui/input";
 import {
@@ -15,7 +17,29 @@ import {
   TabsTrigger,
 } from "~/components/shadcn/ui/tabs";
 import { type NftPaymentToken } from "~/lib/stellar/oz/nft";
-import { type RouterOutputs } from "~/utils/api";
+import { api, type RouterOutputs } from "~/utils/api";
+
+// Buyer-facing checkout currency — a superset of `NftPaymentToken` for
+// display purposes only. "usd" is never an on-chain `payment_token`; it
+// drives a Square card charge instead (see `buyEditionWithCard`/
+// `buyBatchWithCard`, not yet wired up — the card tabs below currently
+// call `onBuyWithCard` which the parent page still needs to implement).
+type CheckoutCurrency = "asset" | "usd";
+
+// Only custodial (server-held-key) accounts can complete a card purchase
+// end to end with no wallet interaction — an externally-connected wallet
+// still has to authorize the on-chain leg itself, which a card payment has
+// no mechanism to collect. Same gate `payment-process.tsx` already uses for
+// its own card option.
+function useIsCustodialWallet(): boolean {
+  const { data: session } = useSession();
+  const walletType = session?.user.walletType;
+  return (
+    walletType === WalletType.emailPass ||
+    walletType === WalletType.google ||
+    walletType === WalletType.facebook
+  );
+}
 
 type ByIdNft = RouterOutputs["nft"]["byId"];
 type OnChainInsights = RouterOutputs["nft"]["onChainInsights"];
@@ -106,6 +130,24 @@ function BuyButton({
   );
 }
 
+/** Shown instead of `BuyButton` on the USD tab for a non-custodial (external
+ *  wallet) buyer — the breakdown above it stays visible, only the action
+ *  itself is unavailable, so the buyer can see why rather than not knowing
+ *  card payment exists at all. */
+function LockedCardBuyButton() {
+  return (
+    <div className="mt-4 space-y-1.5">
+      <Button disabled className="h-12 w-full gap-2 rounded-full text-base font-bold">
+        <Lock className="h-4 w-4" />
+        Card payment unavailable
+      </Button>
+      <p className="text-center text-xs text-muted-foreground">
+        Card payment requires an email or social sign-in account.
+      </p>
+    </div>
+  );
+}
+
 function ListButton({
   isSaving,
   disabled = false,
@@ -154,9 +196,13 @@ export function NftDetailView({
   // buy mode — primary (a fresh copy from the edition)
   onBuyPrimary,
   isBuyingPrimary = false,
+  onBuyPrimaryWithCard,
+  isBuyingPrimaryWithCard = false,
   // buy mode — secondary (one or more resold copies, picked from the pool)
   onBuyResaleBatch,
   isBuyingResale = false,
+  onBuyResaleWithCard,
+  isBuyingResaleWithCard = false,
   onChainInsights,
   isLoadingOnChainInsights = false,
 }: {
@@ -173,8 +219,15 @@ export function NftDetailView({
   isSavingListing?: boolean;
   onBuyPrimary?: (args: { paymentToken: NftPaymentToken; quantity: number }) => void | Promise<void>;
   isBuyingPrimary?: boolean;
+  // Card/USD checkout — only ever reachable from a custodial account (see
+  // `useIsCustodialWallet`), so the resulting purchase can be built, signed,
+  // and submitted entirely server-side with no wallet interaction.
+  onBuyPrimaryWithCard?: (args: { quantity: number }) => void | Promise<void>;
+  isBuyingPrimaryWithCard?: boolean;
   onBuyResaleBatch?: (tokenIds: string[], paymentToken: NftPaymentToken) => void | Promise<void>;
   isBuyingResale?: boolean;
+  onBuyResaleWithCard?: (tokenIds: string[]) => void | Promise<void>;
+  isBuyingResaleWithCard?: boolean;
   onChainInsights?: OnChainInsights;
   isLoadingOnChainInsights?: boolean;
 }) {
@@ -205,6 +258,8 @@ export function NftDetailView({
           viewerId={viewerId}
           onBuy={onBuyResaleBatch}
           isBuying={isBuyingResale}
+          onBuyWithCard={onBuyResaleWithCard}
+          isBuyingWithCard={isBuyingResaleWithCard}
         />
       ) : (
         <PrimaryBuyCard
@@ -213,6 +268,8 @@ export function NftDetailView({
           isLoadingOnChainInsights={isLoadingOnChainInsights}
           onBuy={onBuyPrimary}
           isBuying={isBuyingPrimary}
+          onBuyWithCard={onBuyPrimaryWithCard}
+          isBuyingWithCard={isBuyingPrimaryWithCard}
         />
       )}
 
@@ -674,29 +731,40 @@ export function ResaleBuyCard({
   viewerId,
   onBuy,
   isBuying,
+  onBuyWithCard,
+  isBuyingWithCard = false,
 }: {
   listings: ByIdNft["resaleListings"];
   viewerId?: string;
   onBuy?: (tokenIds: string[], paymentToken: NftPaymentToken) => void | Promise<void>;
   isBuying: boolean;
+  onBuyWithCard?: (tokenIds: string[]) => void | Promise<void>;
+  isBuyingWithCard?: boolean;
 }) {
+  const isCustodial = useIsCustodialWallet();
+
   // Each reseller can price their copy in more than one currency (just like
   // an edition's own price grid), so the same token can appear in more than
   // one currency's pool — flatten (token, currency) pairs before grouping.
+  // XLM listings are excluded from the buyer-facing pool for now, same as
+  // the primary buy card — a stale XLM-only listing just won't surface as
+  // purchasable here until the seller relists in Platform Asset.
   const allOptions = listings
     .filter((l) => l.sellerId !== viewerId)
     .flatMap((l) =>
-      l.prices.map((p) => ({
-        tokenId: l.tokenId,
-        sellerId: l.sellerId,
-        paymentToken: p.paymentToken,
-        price: p.price,
-      })),
+      l.prices
+        .filter((p) => p.paymentToken !== "xlm")
+        .map((p) => ({
+          tokenId: l.tokenId,
+          sellerId: l.sellerId,
+          paymentToken: p.paymentToken,
+          price: p.price,
+        })),
     );
   const allPurchasable = [...new Map(allOptions.map((o) => [o.tokenId, o])).values()];
   // "Cheapest N" only makes sense within one currency at a time — group into
-  // pools and let the buyer pick which pool (same toggle shape as the
-  // primary buy card).
+  // pools. Only ever "asset" survives the filter above; "usd" isn't a real
+  // pool of its own — it's the same asset-priced tokens, shown converted.
   const pools = new Map<string, typeof allOptions>();
   for (const o of allOptions) {
     const pool = pools.get(o.paymentToken) ?? [];
@@ -704,25 +772,36 @@ export function ResaleBuyCard({
     pools.set(o.paymentToken, pool);
   }
   for (const pool of pools.values()) pool.sort((a, b) => a.price - b.price);
-  const availableTokens = [...pools.keys()] as NftPaymentToken[];
+  const assetOffered = pools.has("asset");
+  const offered: CheckoutCurrency[] = [
+    ...(assetOffered ? (["asset"] as const) : []),
+    ...(assetOffered ? (["usd"] as const) : []),
+  ];
 
-  const [selectedToken, setSelectedToken] = useState<NftPaymentToken>("xlm");
+  const [selectedCurrency, setSelectedCurrency] = useState<CheckoutCurrency>("asset");
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
-    if (availableTokens.length === 0) return;
-    if (!availableTokens.includes(selectedToken)) {
-      setSelectedToken(availableTokens.includes("xlm") ? "xlm" : availableTokens[0]!);
+    if (offered.length === 0) return;
+    if (!offered.includes(selectedCurrency)) {
+      setSelectedCurrency(assetOffered ? "asset" : offered[0]!);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableTokens.join(",")]);
+  }, [offered.join(",")]);
 
-  const purchasable = pools.get(selectedToken) ?? [];
+  const purchasable = pools.get("asset") ?? [];
   const maxQuantity = Math.min(purchasable.length, MAX_BUY_BATCH);
 
   useEffect(() => {
     setQuantity((q) => Math.min(Math.max(q, 1), Math.max(maxQuantity, 1)));
   }, [maxQuantity]);
+
+  const selected = purchasable.slice(0, quantity);
+  const isUsd = selectedCurrency === "usd";
+  const usdQuote = api.nft.resaleUsdQuote.useQuery(
+    { tokenIds: selected.map((l) => l.tokenId) },
+    { enabled: isUsd && selected.length > 0 },
+  );
 
   if (allPurchasable.length === 0) {
     return (
@@ -732,9 +811,10 @@ export function ResaleBuyCard({
     );
   }
 
-  const selected = purchasable.slice(0, quantity);
-  const total = selected.reduce((sum, l) => sum + l.price, 0);
+  const totalAsset = selected.reduce((sum, l) => sum + l.price, 0);
+  const total = isUsd ? (usdQuote.data?.totalUSD ?? 0) : totalAsset;
   const cheapest = purchasable[0]?.price ?? 0;
+  const formatAmount = (n: number) => (isUsd ? `$${n.toFixed(2)}` : `${n.toFixed(2)} ${priceTokenLabel("asset")}`);
 
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -748,25 +828,25 @@ export function ResaleBuyCard({
       </div>
       <p className="mt-1 flex items-baseline gap-1.5 text-2xl font-black tabular-nums">
         {cheapest}
-        <span className="text-sm font-bold text-foreground">{priceTokenLabel(selectedToken)}</span>
+        <span className="text-sm font-bold text-foreground">{priceTokenLabel("asset")}</span>
         <span className="text-xs font-medium text-muted-foreground">cheapest available</span>
       </p>
 
-      {availableTokens.length > 1 && (
+      {offered.length > 1 && (
         <div className="mt-2 flex w-fit gap-1 rounded-full bg-muted p-1">
-          {availableTokens.map((tok) => (
+          {offered.map((currency) => (
             <button
-              key={tok}
+              key={currency}
               type="button"
-              onClick={() => setSelectedToken(tok)}
+              onClick={() => setSelectedCurrency(currency)}
               className={cn(
                 "rounded-full px-3 py-1.5 text-xs font-bold transition-colors",
-                tok === selectedToken
+                currency === selectedCurrency
                   ? "bg-foreground text-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {priceTokenLabel(tok)} ({pools.get(tok)?.length})
+              {currency === "usd" ? "USD" : `${priceTokenLabel("asset")} (${pools.get("asset")?.length})`}
             </button>
           ))}
         </div>
@@ -805,26 +885,38 @@ export function ResaleBuyCard({
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Price ({quantity} cop{quantity === 1 ? "y" : "ies"})</span>
           <span className="font-semibold tabular-nums">
-            {total.toFixed(2)} {priceTokenLabel(selectedToken)}
+            {isUsd && usdQuote.isLoading ? "…" : formatAmount(total)}
           </span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Network fee (Soroban)</span>
-          <span className="font-semibold tabular-nums">~{(NETWORK_FEE_XLM * quantity).toFixed(5)} XLM</span>
-        </div>
+        {!isUsd && (
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Network fee (Soroban)</span>
+            <span className="font-semibold tabular-nums">~{(NETWORK_FEE_XLM * quantity).toFixed(5)} XLM</span>
+          </div>
+        )}
         <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
           <span className="font-bold">Total</span>
           <span className="text-base font-black tabular-nums">
-            {total.toFixed(2)} {priceTokenLabel(selectedToken)}
+            {isUsd && usdQuote.isLoading ? "…" : formatAmount(total)}
           </span>
         </div>
       </div>
 
-      <BuyButton
-        isBuying={isBuying}
-        onClick={() => void onBuy?.(selected.map((l) => l.tokenId), selectedToken)}
-        idleLabel={`Buy ${quantity} for ${total.toFixed(2)} ${priceTokenLabel(selectedToken)}`}
-      />
+      {isUsd && !isCustodial ? (
+        <LockedCardBuyButton />
+      ) : isUsd ? (
+        <BuyButton
+          isBuying={isBuyingWithCard}
+          onClick={() => void onBuyWithCard?.(selected.map((l) => l.tokenId))}
+          idleLabel={usdQuote.data ? `Buy ${quantity} for ${formatAmount(total)}` : "Buy"}
+        />
+      ) : (
+        <BuyButton
+          isBuying={isBuying}
+          onClick={() => void onBuy?.(selected.map((l) => l.tokenId), "asset")}
+          idleLabel={`Buy ${quantity} for ${formatAmount(total)}`}
+        />
+      )}
     </div>
   );
 }
@@ -846,37 +938,48 @@ export function PrimaryBuyCard({
   isLoadingOnChainInsights,
   onBuy,
   isBuying,
+  onBuyWithCard,
+  isBuyingWithCard = false,
 }: {
   nft: ByIdNft;
   onChainInsights?: OnChainInsights;
   isLoadingOnChainInsights: boolean;
   onBuy?: (args: { paymentToken: NftPaymentToken; quantity: number }) => void | Promise<void>;
   isBuying: boolean;
+  onBuyWithCard?: (args: { quantity: number }) => void | Promise<void>;
+  isBuyingWithCard?: boolean;
 }) {
+  const isCustodial = useIsCustodialWallet();
+
   // Local to this card, not the app-wide payment-method store (that store
   // also drives the classic-NFT creation fee picker via a dialog, which is
   // its own separate popup flow) — the currency choice here always starts
-  // at XLM and lives entirely on this page, no dialog involved.
-  const [selectedToken, setSelectedToken] = useState<NftPaymentToken>("xlm");
+  // at Platform Asset and lives entirely on this page, no dialog involved.
+  const [selectedCurrency, setSelectedCurrency] = useState<CheckoutCurrency>("asset");
   const [quantity, setQuantity] = useState(1);
 
   // Ground truth once available (post-mint); the DB's price grid otherwise —
   // see `nft.onChainInsights` for why the on-chain read wins once it exists.
   const prices = onChainInsights?.prices ?? nft.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price }));
   const priceByToken = new Map(prices.map((p) => [p.paymentToken, p.price]));
-  const offered = [...priceByToken.keys()] as NftPaymentToken[];
+  const assetOffered = priceByToken.has("asset");
+  const usdOffered = nft.priceUSD != null && nft.priceUSD > 0;
+  const offered: CheckoutCurrency[] = [
+    ...(assetOffered ? (["asset"] as const) : []),
+    ...(usdOffered ? (["usd"] as const) : []),
+  ];
 
   const remaining = onChainInsights
     ? onChainInsights.remainingSupply
     : nft.supply - nft.mintedCount;
   const maxQuantity = Math.max(0, Math.min(remaining, MAX_QUANTITY_PER_BUY, MAX_BUY_BATCH));
 
-  // Default to XLM when offered; otherwise fall back to whatever currency
-  // this item is actually priced in.
+  // Default to Platform Asset when offered; otherwise fall back to whatever
+  // currency this item is actually priced in.
   useEffect(() => {
     if (offered.length === 0) return;
-    if (!offered.includes(selectedToken)) {
-      setSelectedToken(offered.includes("xlm") ? "xlm" : offered[0]!);
+    if (!offered.includes(selectedCurrency)) {
+      setSelectedCurrency(assetOffered ? "asset" : offered[0]!);
     }
     // Only re-run when the set of offered currencies actually changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -902,8 +1005,23 @@ export function PrimaryBuyCard({
     );
   }
 
-  const unitPrice = priceByToken.get(selectedToken) ?? 0;
+  const isUsd = selectedCurrency === "usd";
+  const currencyLabel = isUsd ? "USD" : priceTokenLabel("asset");
+  const unitPrice = isUsd ? (nft.priceUSD ?? 0) : (priceByToken.get("asset") ?? 0);
   const total = unitPrice * quantity;
+  const formatAmount = (n: number) => (isUsd ? `$${n.toFixed(2)}` : `${n.toFixed(2)} ${currencyLabel}`);
+
+  // Real, on-chain, admin-configured — additive on top of `total`, straight
+  // to the treasury (see `DataKey::InclusionFee`). USD purchases recover
+  // the same idea through `NETWORK_FEE_IN_USD` on the Square charge
+  // instead (see that constant's doc comment for why it has to work
+  // differently there), not this on-chain figure.
+  const inclusionFeeQuote = api.nft.inclusionFeeQuote.useQuery(
+    { paymentToken: "asset" },
+    { enabled: !isUsd },
+  );
+  const inclusionFee = isUsd ? NETWORK_FEE_IN_USD : (inclusionFeeQuote.data?.inclusionFee ?? 0);
+  const grandTotal = total + inclusionFee;
 
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -945,19 +1063,19 @@ export function PrimaryBuyCard({
 
         {offered.length > 1 && (
           <div className="flex shrink-0 gap-1 rounded-full bg-muted p-1">
-            {offered.map((token) => (
+            {offered.map((currency) => (
               <button
-                key={token}
+                key={currency}
                 type="button"
-                onClick={() => setSelectedToken(token)}
+                onClick={() => setSelectedCurrency(currency)}
                 className={cn(
                   "rounded-full px-3.5 py-2 text-sm font-bold transition-colors",
-                  token === selectedToken
+                  currency === selectedCurrency
                     ? "bg-foreground text-background shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {priceTokenLabel(token)}
+                {currency === "usd" ? "USD" : priceTokenLabel("asset")}
               </button>
             ))}
           </div>
@@ -969,28 +1087,23 @@ export function PrimaryBuyCard({
       <div className="mt-4 space-y-1.5 rounded-xl bg-muted p-4 text-sm">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Price per copy</span>
-          <span className="font-semibold tabular-nums">
-            {unitPrice} {priceTokenLabel(selectedToken)}
-          </span>
+          <span className="font-semibold tabular-nums">{formatAmount(unitPrice)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Quantity</span>
           <span className="font-semibold tabular-nums">×{quantity}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Network fee (Soroban)</span>
-          <span className="font-semibold tabular-nums">~{NETWORK_FEE_XLM} XLM</span>
+          <span className="text-muted-foreground">{isUsd ? "Network fee" : "Inclusion fee"}</span>
+          <span className="font-semibold tabular-nums">
+            {!isUsd && inclusionFeeQuote.isLoading ? "…" : formatAmount(inclusionFee)}
+          </span>
         </div>
         <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
           <span className="font-bold">Total</span>
-          <div className="text-right">
-            <span className="block text-base font-black tabular-nums">
-              {total.toFixed(2)} {priceTokenLabel(selectedToken)}
-            </span>
-            <span className="block text-xs font-medium text-muted-foreground">
-              + ~{NETWORK_FEE_XLM} XLM network fee
-            </span>
-          </div>
+          <span className="text-base font-black tabular-nums">
+            {!isUsd && inclusionFeeQuote.isLoading ? "…" : formatAmount(grandTotal)}
+          </span>
         </div>
 
         {/* This is the primary sale — there's no seller separate from the
@@ -1001,9 +1114,7 @@ export function PrimaryBuyCard({
         <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-xs text-muted-foreground">
           <div className="flex items-center justify-between">
             <span>↳ Platform fee ({(DEFAULT_PLATFORM_FEE_BPS / 100).toFixed(1)}%)</span>
-            <span className="tabular-nums">
-              {((total * DEFAULT_PLATFORM_FEE_BPS) / 10_000).toFixed(2)} {priceTokenLabel(selectedToken)}
-            </span>
+            <span className="tabular-nums">{formatAmount((total * DEFAULT_PLATFORM_FEE_BPS) / 10_000)}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>↳ Creator royalty</span>
@@ -1012,11 +1123,21 @@ export function PrimaryBuyCard({
         </div>
       </div>
 
-      <BuyButton
-        isBuying={isBuying}
-        onClick={() => void onBuy?.({ paymentToken: selectedToken, quantity })}
-        idleLabel={`Buy for ${total.toFixed(2)} ${priceTokenLabel(selectedToken)}`}
-      />
+      {isUsd && !isCustodial ? (
+        <LockedCardBuyButton />
+      ) : isUsd ? (
+        <BuyButton
+          isBuying={isBuyingWithCard}
+          onClick={() => void onBuyWithCard?.({ quantity })}
+          idleLabel={`Buy for ${formatAmount(total)}`}
+        />
+      ) : (
+        <BuyButton
+          isBuying={isBuying}
+          onClick={() => void onBuy?.({ paymentToken: "asset", quantity })}
+          idleLabel={`Buy for ${formatAmount(grandTotal)}`}
+        />
+      )}
     </div>
   );
 }

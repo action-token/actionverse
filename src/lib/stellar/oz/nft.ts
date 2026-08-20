@@ -476,6 +476,17 @@ export async function getRemainingSupply(editionId: number): Promise<number> {
   }
 }
 
+/** Raw units — convert with `rawPriceToHuman` before displaying. Falls back
+ *  to 0 (no fee) rather than failing the whole page if the read errors. */
+export async function getInclusionFee(paymentToken: string): Promise<bigint> {
+  try {
+    const { result } = await getClient().inclusion_fee({ payment_token: paymentToken });
+    return result;
+  } catch {
+    return 0n;
+  }
+}
+
 /**
  * Resolves what a specific purchase attempt actually minted. Retried the
  * same way `getEditionByRef` is — see `pollUntilVisible`.
