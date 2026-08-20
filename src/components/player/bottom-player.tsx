@@ -22,6 +22,19 @@ import {
 import { useBottomPlayer } from "./context/bottom-player-context"
 import { Waveform } from "./Waveform"
 
+/**
+ * Canvas fillStyle can't resolve `var(--primary)` the way a stylesheet
+ * can, so the waveform (drawn on a `<canvas>`, not styled with Tailwind
+ * classes) needs the theme's actual computed HSL value at draw time —
+ * this reads the same `--primary` custom property `bg-primary`/`text-primary`
+ * resolve to, so the waveform stays on-theme (light/dark) without
+ * hardcoding a color here.
+ */
+function primaryHsl(alpha = 1) {
+    if (typeof window === "undefined") return `hsl(158 64% 40% / ${alpha})`
+    const value = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()
+    return value ? `hsl(${value} / ${alpha})` : `hsl(158 64% 40% / ${alpha})`
+}
 
 interface AudioState {
     loaded: boolean
@@ -37,8 +50,8 @@ export function StemPlayer() {
     const [currentTime, setCurrentTime] = useState(0)
     const [duration, setDuration] = useState(0)
     const [masterVolume, setMasterVolume] = useState(1)
+    const [previousVolume, setPreviousVolume] = useState(1)
     const [showTracks, setShowTracks] = useState(false)
-    const [showVolumeSlider, setShowVolumeSlider] = useState(false)
     const [audioStates, setAudioStates] = useState<Record<string, AudioState>>({})
     const [isGlobalLoading, setIsGlobalLoading] = useState(false)
     const [autoplayEnabled, setAutoplayEnabled] = useState(true)
@@ -191,6 +204,15 @@ export function StemPlayer() {
 
 
 
+    const toggleMute = () => {
+        if (masterVolume > 0) {
+            setPreviousVolume(masterVolume)
+            setMasterVolume(0)
+        } else {
+            setMasterVolume(previousVolume || 1)
+        }
+    }
+
     const togglePlayPause = () => {
         if (isGlobalLoading) return
 
@@ -299,13 +321,13 @@ export function StemPlayer() {
 
 
                 {/* Main Player */}
-                <Card className="border shadow-2xl rounded-2xl overflow-hidden w-full">
+                <Card className="border border-primary/20 bg-background/60 backdrop-blur-xl shadow-2xl shadow-primary/20 rounded-2xl overflow-hidden w-full">
                     <div className="p-4">
                         {/* Song Info & Close Button */}
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center space-x-3 flex-1 min-w-0">
-                                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                                    <Music className="w-5 h-5 text-white" />
+                                <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/60 rounded-lg flex items-center justify-center flex-shrink-0 shadow-inner shadow-primary/40">
+                                    <Music className="w-5 h-5 text-primary-foreground" />
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <h3 className="font-semibold text-sm truncate">{currentSong.title}</h3>
@@ -315,7 +337,7 @@ export function StemPlayer() {
                                     </p>
                                 </div>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={handleClose} className="flex-shrink-0">
+                            <Button variant="ghost" size="sm" onClick={handleClose} className="flex-shrink-0 hover:bg-primary/10 hover:text-primary">
                                 <X className="w-4 h-4" />
                             </Button>
                         </div>
@@ -326,9 +348,9 @@ export function StemPlayer() {
                                 duration={duration}
                                 currentTime={currentTime}
                                 height={32}
-                                color="#8B5CF6"
-                                backgroundColor="#E5E7EB"
-                                progressColor="#10B981"
+                                color={primaryHsl(0.2)}
+                                backgroundColor={primaryHsl(0.1)}
+                                progressColor={primaryHsl(0.9)}
                                 onSeek={handleSeek}
                                 isPlaying={isPlaying && !isGlobalLoading}
                                 className="rounded-md"
@@ -342,16 +364,16 @@ export function StemPlayer() {
                         </div>
 
                         {/* Controls */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                             {/* Playback Controls */}
                             <div className="flex items-center space-x-1">
-                                <Button variant="ghost" size="sm" onClick={skipBackward} disabled={isGlobalLoading}>
+                                <Button variant="ghost" size="sm" onClick={skipBackward} disabled={isGlobalLoading} className="hover:bg-primary/10 hover:text-primary">
                                     <SkipBack className="w-4 h-4" />
                                 </Button>
                                 <Button
                                     onClick={togglePlayPause}
                                     size="sm"
-                                    className="w-10 h-10 rounded-full"
+                                    className="w-10 h-10 rounded-full shadow-lg shadow-primary/40"
                                     disabled={isGlobalLoading}
                                 >
                                     {isGlobalLoading ? (
@@ -362,60 +384,45 @@ export function StemPlayer() {
                                         <Play className="w-4 h-4" />
                                     )}
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={skipForward} disabled={isGlobalLoading}>
+                                <Button variant="ghost" size="sm" onClick={skipForward} disabled={isGlobalLoading} className="hover:bg-primary/10 hover:text-primary">
                                     <SkipForward className="w-4 h-4" />
                                 </Button>
                             </div>
 
-
-
-                            {/* Volume & Track Controls */}
-                            <div className="flex items-center space-x-1">
-                                <div className="relative">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onMouseEnter={() => setShowVolumeSlider(true)}
-                                        onMouseLeave={() => {
-                                            setTimeout(() => setShowVolumeSlider(false), 2000)
-                                        }}
-                                    >
-                                        <Volume2 className="w-4 h-4" />
-                                    </Button>
-                                    <div
-                                        className={`absolute bottom-full mb-2 left-0 transform -translate-x-1/2 bg-background border rounded-lg p-2 shadow-lg w-24 transition-all duration-200 ${showVolumeSlider
-                                            ? "opacity-100 translate-y-0 pointer-events-auto"
-                                            : "opacity-0 translate-y-2 pointer-events-none"
-                                            }`}
-
-                                    >
-                                        <Slider
-                                            value={[masterVolume]}
-                                            onValueChange={(value) => setMasterVolume(value[0] ?? 1)}
-                                            max={1}
-                                            step={0.01}
-                                            className="w-full"
-                                        />
-                                        <div className="text-xs text-center mt-1 text-muted-foreground">
-                                            {Math.round(masterVolume * 100)}%
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {!isMainSongMode && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setShowTracks(!showTracks)}
-                                        disabled={isGlobalLoading}
-                                        className="transition-transform duration-200 hover:scale-105"
-                                    >
-                                        <div className={`transition-transform duration-300 ${showTracks ? "rotate-180" : ""}`}>
-                                            <ChevronUp className="w-4 h-4" />
-                                        </div>
-                                    </Button>
-                                )}
+                            {/* Volume — always visible, not hover-revealed: a hover popover
+                                made the slider unreachable, since moving the mouse toward it
+                                closed the popover before the pointer arrived. */}
+                            <div className="flex items-center gap-1.5">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={toggleMute}
+                                    className="h-7 w-7 shrink-0 p-0 hover:bg-primary/10 hover:text-primary"
+                                >
+                                    {masterVolume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                                </Button>
+                                <Slider
+                                    value={[masterVolume]}
+                                    onValueChange={(value) => setMasterVolume(value[0] ?? 1)}
+                                    max={1}
+                                    step={0.01}
+                                    className="w-16"
+                                />
                             </div>
+
+                            {!isMainSongMode && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowTracks(!showTracks)}
+                                    disabled={isGlobalLoading}
+                                    className="shrink-0 transition-transform duration-200 hover:scale-105 hover:bg-primary/10 hover:text-primary"
+                                >
+                                    <div className={`transition-transform duration-300 ${showTracks ? "rotate-180" : ""}`}>
+                                        <ChevronUp className="w-4 h-4" />
+                                    </div>
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </Card>
