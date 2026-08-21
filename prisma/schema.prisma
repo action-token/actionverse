@@ -1715,6 +1715,11 @@ model NftListing {
   // SEP-41 token the price is denominated in, mirroring the contract's
   // per-listing `payment_token`. Null means the native XLM SAC.
   paymentToken String?
+  // Reseller-set USD sticker price for the card/Square checkout path,
+  // mirroring `Nft.priceUSD`. Null means no fixed price was set — the USD
+  // tab falls back to a live Platform-Asset-price-based conversion instead
+  // (see `resaleUsdQuote`), same as before this field existed.
+  priceUSD     Float?
   isActive     Boolean           @default(true)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt

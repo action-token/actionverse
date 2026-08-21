@@ -185,6 +185,92 @@ export async function fundBuyerForCardPurchase({
   return submitSignedXDRToServer4User(builtTx.toXDR());
 }
 
+/**
+ * Ensures a buyer can afford a DIRECT Platform Asset purchase's Soroban
+ * network fee — used before every `buy_edition`/`buy` build, for custodial
+ * and wallet-connected buyers alike, not just card checkout. Unlike
+ * `fundBuyerForCardPurchase`, this never sends extra Platform Asset: a
+ * direct-purchase buyer is already spending their own, so only the XLM
+ * side (reserve + fee buffer) needs help.
+ *
+ * A missing trustline is only fixable here for a custodial buyer
+ * (`buyerSecret` supplied) — only the account owner can authorize a new
+ * trustline on Stellar, so a wallet-connected buyer with no trustline gets
+ * `hasTrustline: false` back and nothing else happens; the caller walks
+ * them through `buildEstablishTrustlineXDR` once, then calls this again.
+ */
+export async function ensureBuyerXlmBuffer({
+  buyerPubKey,
+  buyerSecret,
+}: {
+  buyerPubKey: string;
+  buyerSecret?: string;
+}): Promise<{ hasTrustline: boolean }> {
+  const server = new Horizon.Server(STELLAR_URL);
+  const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
+  const buyerAcc = await StellarAccount.create(buyerPubKey);
+  const hasTrust = buyerAcc.hasTrustline(PLATFORM_ASSET.code, PLATFORM_ASSET.issuer);
+  const xlmBalance = buyerAcc.getNativeBalance();
+
+  if (!hasTrust && !buyerSecret) {
+    return { hasTrustline: false };
+  }
+
+  const transactionInitializer = await server.loadAccount(motherAcc.publicKey());
+  const Tx = new TransactionBuilder(transactionInitializer, { fee: BASE_FEE, networkPassphrase });
+  let needsSubmit = false;
+
+  if (!hasTrust) {
+    // buyerSecret is guaranteed set here (checked above).
+    Tx.addOperation(
+      Operation.payment({ destination: buyerPubKey, amount: "0.5", asset: Asset.native(), source: motherAcc.publicKey() }),
+    ).addOperation(Operation.changeTrust({ asset: PLATFORM_ASSET, source: buyerPubKey }));
+    needsSubmit = true;
+    if (Number(xlmBalance) < 2) {
+      Tx.addOperation(
+        Operation.payment({ destination: buyerPubKey, amount: "1.5", asset: Asset.native(), source: motherAcc.publicKey() }),
+      );
+    }
+  } else if (Number(xlmBalance) < 2) {
+    Tx.addOperation(
+      Operation.payment({ destination: buyerPubKey, amount: "2", asset: Asset.native(), source: motherAcc.publicKey() }),
+    );
+    needsSubmit = true;
+  }
+
+  if (!needsSubmit) return { hasTrustline: true };
+
+  const builtTx = Tx.setTimeout(30).build();
+  builtTx.sign(motherAcc);
+  if (!hasTrust) builtTx.sign(Keypair.fromSecret(buyerSecret!));
+  await submitSignedXDRToServer4User(builtTx.toXDR());
+  return { hasTrustline: true };
+}
+
+/**
+ * The one step treasury can't do for a wallet-connected buyer by itself:
+ * only the account owner can authorize a new trustline. Builds a
+ * transaction with treasury as the fee-paying source — so this costs the
+ * buyer nothing — carrying both a 2 XLM top-up and the `changeTrust` op
+ * (buyer as that op's source), pre-signed by treasury. The caller's wallet
+ * (Albedo etc.) adds the buyer's own signature and submits it: a one-time
+ * step before their first direct Platform Asset purchase.
+ */
+export async function buildEstablishTrustlineXDR(buyerPubKey: string): Promise<string> {
+  const server = new Horizon.Server(STELLAR_URL);
+  const motherAcc = Keypair.fromSecret(MOTHER_SECRET);
+  const transactionInitializer = await server.loadAccount(motherAcc.publicKey());
+  const builtTx = new TransactionBuilder(transactionInitializer, { fee: BASE_FEE, networkPassphrase })
+    .addOperation(
+      Operation.payment({ destination: buyerPubKey, amount: "2", asset: Asset.native(), source: motherAcc.publicKey() }),
+    )
+    .addOperation(Operation.changeTrust({ asset: PLATFORM_ASSET, source: buyerPubKey }))
+    .setTimeout(30)
+    .build();
+  builtTx.sign(motherAcc);
+  return builtTx.toXDR();
+}
+
 export async function sendXLM_SiteAsset(props: {
   siteAssetAmount: number;
   pubkey: string;

@@ -49,6 +49,7 @@ type MyToken = {
   listingPrice: number | null;
   listingPaymentToken: string | null;
   listingPrices: { paymentToken: string; price: number }[];
+  listingPriceUSD: number | null;
 };
 
 // Contract-side cap on how many copies one `buy_edition` call can mint —
@@ -398,11 +399,16 @@ export function ManagePriceCard({
   network,
 }: {
   myTokens: MyToken[];
-  onListToken?: (tokenId: string, prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
+  onListToken?: (
+    tokenId: string,
+    prices: { paymentToken: NftPaymentToken; price: number }[],
+    priceUSD?: number,
+  ) => void | Promise<void>;
   onCancelListing?: (tokenId: string) => void | Promise<void>;
   onListMultiple?: (
     tokenIds: string[],
     prices: { paymentToken: NftPaymentToken; price: number }[],
+    priceUSD?: number,
   ) => void | Promise<void>;
   isSaving: boolean;
   network?: string;
@@ -440,7 +446,7 @@ export function ManagePriceCard({
           key={token.tokenId}
           token={token}
           isSaving={isSaving}
-          onList={(prices) => onListToken?.(token.tokenId, prices)}
+          onList={(prices, priceUSD) => onListToken?.(token.tokenId, prices, priceUSD)}
           onCancel={() => onCancelListing?.(token.tokenId)}
         />
       ))}
@@ -467,6 +473,7 @@ function HoldAndListCard({
   onListMultiple?: (
     tokenIds: string[],
     prices: { paymentToken: NftPaymentToken; price: number }[],
+    priceUSD?: number,
   ) => void | Promise<void>;
   isSaving: boolean;
 }) {
@@ -475,20 +482,21 @@ function HoldAndListCard({
   // more than that — they just list again for the rest.
   const max = Math.min(heldCount, MAX_LIST_BATCH);
   const [count, setCount] = useState(1);
-  // A reseller sets their own price grid — one or both currencies at once —
-  // independent of whichever ones the creator originally priced the edition
-  // in. Empty means "not offered in that currency", same as the create form.
-  const [priceXlm, setPriceXlm] = useState("1");
+  // A reseller sets their own Platform Asset price — XLM isn't a
+  // buyer-facing currency anymore (kept in schema/types for easy revert,
+  // see the primary-sale create form for the same removal).
   const [priceAsset, setPriceAsset] = useState("");
-  const parsedXlm = Number(priceXlm) || 0;
+  // Optional fixed USD sticker price for the card checkout tab — leave blank
+  // to fall back to a live Platform-Asset-price conversion instead.
+  const [priceUSD, setPriceUSD] = useState("");
   const parsedAsset = Number(priceAsset) || 0;
-  const hasAnyPrice = parsedXlm > 0 || parsedAsset > 0;
+  const parsedUSD = Number(priceUSD) || 0;
+  const hasAnyPrice = parsedAsset > 0;
 
   function submit() {
     const prices: { paymentToken: NftPaymentToken; price: number }[] = [];
-    if (parsedXlm > 0) prices.push({ paymentToken: "xlm", price: parsedXlm });
     if (parsedAsset > 0) prices.push({ paymentToken: "asset", price: parsedAsset });
-    onListMultiple?.(tokens.slice(0, count).map((t) => t.tokenId), prices);
+    onListMultiple?.(tokens.slice(0, count).map((t) => t.tokenId), prices, parsedUSD > 0 ? parsedUSD : undefined);
   }
 
   return (
@@ -532,34 +540,36 @@ function HoldAndListCard({
       <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Price per copy
       </p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        Set one or both currencies — buyers pick which to pay with.
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <Input
+          type="number"
+          min={0}
+          step="any"
+          value={priceAsset}
+          onChange={(e) => setPriceAsset(e.target.value)}
+          placeholder="e.g. 5"
+          className="h-10 font-bold tabular-nums"
+        />
+        <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
+      </div>
+
+      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        USD price (optional)
       </p>
-      <div className="mt-1.5 grid grid-cols-2 gap-2">
-        <div className="flex items-center gap-1.5">
-          <Input
-            type="number"
-            min={0}
-            step="any"
-            value={priceXlm}
-            onChange={(e) => setPriceXlm(e.target.value)}
-            placeholder="e.g. 5"
-            className="h-10 font-bold tabular-nums"
-          />
-          <span className="text-xs font-bold text-foreground">XLM</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Input
-            type="number"
-            min={0}
-            step="any"
-            value={priceAsset}
-            onChange={(e) => setPriceAsset(e.target.value)}
-            placeholder="Optional"
-            className="h-10 font-bold tabular-nums"
-          />
-          <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
-        </div>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Fixes what the card checkout tab charges. Leave blank to use a live rate instead.
+      </p>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <Input
+          type="number"
+          min={0}
+          step="any"
+          value={priceUSD}
+          onChange={(e) => setPriceUSD(e.target.value)}
+          placeholder="Optional"
+          className="h-10 font-bold tabular-nums"
+        />
+        <span className="text-xs font-bold text-foreground">USD</span>
       </div>
 
       <ListButton
@@ -581,26 +591,25 @@ function TokenListingRow({
 }: {
   token: MyToken;
   isSaving: boolean;
-  onList: (prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
+  onList: (prices: { paymentToken: NftPaymentToken; price: number }[], priceUSD?: number) => void | Promise<void>;
   onCancel: () => void | Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
-  const [priceXlm, setPriceXlm] = useState("1");
   const [priceAsset, setPriceAsset] = useState("");
-  const parsedXlm = Number(priceXlm) || 0;
+  const [priceUSD, setPriceUSD] = useState("");
   const parsedAsset = Number(priceAsset) || 0;
+  const parsedUSD = Number(priceUSD) || 0;
 
   function startEditing() {
-    setPriceXlm(String(token.listingPrices.find((p) => p.paymentToken === "xlm")?.price ?? 1));
     setPriceAsset(String(token.listingPrices.find((p) => p.paymentToken === "asset")?.price ?? ""));
+    setPriceUSD(token.listingPriceUSD != null ? String(token.listingPriceUSD) : "");
     setEditing(true);
   }
 
   function submit() {
     const prices: { paymentToken: NftPaymentToken; price: number }[] = [];
-    if (parsedXlm > 0) prices.push({ paymentToken: "xlm", price: parsedXlm });
     if (parsedAsset > 0) prices.push({ paymentToken: "asset", price: parsedAsset });
-    return onList(prices);
+    return onList(prices, parsedUSD > 0 ? parsedUSD : undefined);
   }
 
   return (
@@ -618,31 +627,29 @@ function TokenListingRow({
 
       {editing ? (
         <>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div className="flex items-center gap-1.5">
-              <Input
-                type="number"
-                min={0}
-                step="any"
-                autoFocus
-                value={priceXlm}
-                onChange={(e) => setPriceXlm(e.target.value)}
-                className="h-10 font-bold tabular-nums"
-              />
-              <span className="text-xs font-bold text-foreground">XLM</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Input
-                type="number"
-                min={0}
-                step="any"
-                value={priceAsset}
-                onChange={(e) => setPriceAsset(e.target.value)}
-                placeholder="Optional"
-                className="h-10 font-bold tabular-nums"
-              />
-              <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
-            </div>
+          <div className="mt-2 flex items-center gap-1.5">
+            <Input
+              type="number"
+              min={0}
+              step="any"
+              autoFocus
+              value={priceAsset}
+              onChange={(e) => setPriceAsset(e.target.value)}
+              className="h-10 font-bold tabular-nums"
+            />
+            <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
+          </div>
+          <div className="mt-2 flex items-center gap-1.5">
+            <Input
+              type="number"
+              min={0}
+              step="any"
+              value={priceUSD}
+              onChange={(e) => setPriceUSD(e.target.value)}
+              placeholder="USD price — optional, otherwise a live rate is used"
+              className="h-10 font-bold tabular-nums"
+            />
+            <span className="text-xs font-bold text-foreground">USD</span>
           </div>
           <div className="mt-3 flex gap-2">
             <Button
@@ -657,7 +664,7 @@ function TokenListingRow({
             <ListButton
               size="sm"
               isSaving={isSaving}
-              disabled={parsedXlm <= 0 && parsedAsset <= 0}
+              disabled={parsedAsset <= 0}
               onClick={async () => {
                 await submit();
                 setEditing(false);

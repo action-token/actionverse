@@ -45,6 +45,7 @@ export default function SmartContractTicketPage() {
   const confirmBuyEdition = api.nft.confirmBuyEdition.useMutation()
   const getBuyBatchXDR = api.nft.getBuyBatchXDR.useMutation()
   const confirmBuyBatch = api.nft.confirmBuyBatch.useMutation()
+  const getEstablishTrustlineXDR = api.nft.getEstablishTrustlineXDR.useMutation()
   const toggleLike = api.nft.toggleLike.useMutation({
     onSuccess: () => void utils.nft.byId.invalidate({ id }),
   })
@@ -81,6 +82,26 @@ export default function SmartContractTicketPage() {
     return extractTxHash(clientResponse)
   }
 
+  // A wallet-connected buyer with no Platform Asset trustline yet can't be
+  // fixed up server-side (only they can authorize their own trustline) —
+  // `getBuyEditionXDR`/`getBuyBatchXDR` signal that with this specific
+  // message. Runs the one-time treasury-funded setup transaction (costs the
+  // buyer no XLM, just one extra wallet approval) and lets the caller retry.
+  async function establishTrustlineIfNeeded(e: unknown) {
+    if (!(e instanceof Error) || e.message !== "NEEDS_TRUSTLINE_SETUP") throw e
+    toast("One-time setup: approve holding the Platform Asset in your wallet")
+    const { xdr } = await getEstablishTrustlineXDR.mutateAsync()
+    const signed = await clientsign({
+      presignedxdr: xdr,
+      walletType: session!.user.walletType,
+      pubkey: session!.user.id,
+      test: clientSelect(),
+    })
+    if (!extractTxHash(signed)) {
+      throw new Error("Wallet setup step failed — try again")
+    }
+  }
+
   async function invalidateAfterPurchase() {
     await Promise.all([
       utils.nft.byId.invalidate({ id: nft!.id }),
@@ -98,12 +119,15 @@ export default function SmartContractTicketPage() {
     }
     setIsBuyingPrimary(true)
     try {
-      const { xdr, fullySignedByServer, purchaseId } = await getBuyEditionXDR.mutateAsync({
-        nftId: nft.id,
-        paymentToken,
-        quantity,
-        signWith: needSign(),
-      })
+      const buyInput = { nftId: nft.id, paymentToken, quantity, signWith: needSign() }
+      let result
+      try {
+        result = await getBuyEditionXDR.mutateAsync(buyInput)
+      } catch (e) {
+        await establishTrustlineIfNeeded(e)
+        result = await getBuyEditionXDR.mutateAsync(buyInput)
+      }
+      const { xdr, fullySignedByServer, purchaseId } = result
 
       const txHash = await signAndSubmit(xdr, fullySignedByServer)
       if (!txHash) {
@@ -152,11 +176,15 @@ export default function SmartContractTicketPage() {
     }
     setIsBuyingResale(true)
     try {
-      const { xdr, fullySignedByServer } = await getBuyBatchXDR.mutateAsync({
-        tokenIds,
-        paymentToken,
-        signWith: needSign(),
-      })
+      const buyInput = { tokenIds, paymentToken, signWith: needSign() }
+      let result
+      try {
+        result = await getBuyBatchXDR.mutateAsync(buyInput)
+      } catch (e) {
+        await establishTrustlineIfNeeded(e)
+        result = await getBuyBatchXDR.mutateAsync(buyInput)
+      }
+      const { xdr, fullySignedByServer } = result
 
       const txHash = await signAndSubmit(xdr, fullySignedByServer)
       if (!txHash) {

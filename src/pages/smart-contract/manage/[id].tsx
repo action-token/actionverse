@@ -87,7 +87,11 @@ export default function SmartContractManagePage() {
     ])
   }
 
-  async function handleListToken(tokenId: string, prices: { paymentToken: NftPaymentToken; price: number }[]) {
+  async function handleListToken(
+    tokenId: string,
+    prices: { paymentToken: NftPaymentToken; price: number }[],
+    priceUSD?: number,
+  ) {
     if (!session?.user) return
     setIsSavingListing(true)
     try {
@@ -97,7 +101,7 @@ export default function SmartContractManagePage() {
         toast.error("Listing transaction could not be confirmed.")
         return
       }
-      await confirmListing.mutateAsync({ tokenId, txHash })
+      await confirmListing.mutateAsync({ tokenId, txHash, priceUSD })
       await invalidateAfterListingChange()
       toast.success("Listed for sale")
     } catch (e) {
@@ -111,7 +115,11 @@ export default function SmartContractManagePage() {
    * Lists N held copies at once via the contract's `list_batch` — one
    * signature for the whole batch, not one `list` transaction per token.
    */
-  async function handleListMultiple(tokenIds: string[], prices: { paymentToken: NftPaymentToken; price: number }[]) {
+  async function handleListMultiple(
+    tokenIds: string[],
+    prices: { paymentToken: NftPaymentToken; price: number }[],
+    priceUSD?: number,
+  ) {
     if (!session?.user || tokenIds.length === 0) return
     setIsSavingListing(true)
     try {
@@ -121,7 +129,7 @@ export default function SmartContractManagePage() {
         toast.error("Listing transaction could not be confirmed.")
         return
       }
-      await confirmListBatch.mutateAsync({ tokenIds, txHash })
+      await confirmListBatch.mutateAsync({ tokenIds, txHash, priceUSD })
       await invalidateAfterListingChange()
       toast.success(tokenIds.length > 1 ? `${tokenIds.length} copies listed for sale` : "Listed for sale")
     } catch (e) {

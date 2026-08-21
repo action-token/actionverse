@@ -12,7 +12,11 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
-import { fundBuyerForCardPurchase } from "~/lib/stellar/marketplace/trx/site_asset_recharge";
+import {
+  buildEstablishTrustlineXDR,
+  ensureBuyerXlmBuffer,
+  fundBuyerForCardPurchase,
+} from "~/lib/stellar/marketplace/trx/site_asset_recharge";
 import { getPlatformAssetPrice } from "~/lib/stellar/fan/get_token_price";
 import {
   buildBuyBatchXDR,
@@ -130,6 +134,28 @@ async function getResaleAssetTotal(db: Db, tokenIds: string[]) {
     total += assetPrice.price;
   }
   return { listings, total };
+}
+
+/**
+ * USD total for a resale purchase — per listing, a reseller-set
+ * `priceUSD` (set at list time, same idea as `Nft.priceUSD`) wins; falling
+ * back to a live Platform-Asset-price conversion only for listings that
+ * never had one set. Mixing is intentional: each listing is independent,
+ * so one reseller having a fixed opinion on their own price shouldn't force
+ * every other listing in the same batch onto the same method.
+ */
+async function getResaleUsdTotal(listings: { priceUSD: number | null; prices: { paymentToken: string; price: number }[] }[]) {
+  const assetPriceUSD = await getPlatformAssetPrice();
+  let total = 0;
+  for (const listing of listings) {
+    if (listing.priceUSD != null) {
+      total += listing.priceUSD;
+    } else {
+      const assetPrice = listing.prices.find((p) => p.paymentToken === "asset");
+      total += (assetPrice?.price ?? 0) * assetPriceUSD;
+    }
+  }
+  return total;
 }
 
 /**
@@ -565,6 +591,29 @@ export const nftRouter = createTRPCRouter({
         });
       }
 
+      // Treasury covers the buyer's Soroban network fee (and, for a
+      // custodial buyer, sets up a missing trustline too) before we build
+      // anything — same funding step every direct Platform Asset purchase
+      // goes through now, not just card checkout. Only relevant when
+      // they're actually paying in the Platform Asset (XLM needs no
+      // trustline at all, and isn't a buyer-facing option currently
+      // anyway). A wallet-connected buyer with no trustline yet can't be
+      // fixed up here (only they can authorize their own trustline); the
+      // client is expected to run `getEstablishTrustlineXDR` once and retry.
+      if (input.paymentToken === "asset") {
+        const buyerSecret =
+          input.signWith && "email" in input.signWith
+            ? await getAccSecretFromRubyApi(input.signWith.email)
+            : undefined;
+        const { hasTrustline } = await ensureBuyerXlmBuffer({
+          buyerPubKey: ctx.session.user.id,
+          buyerSecret,
+        });
+        if (!hasTrustline) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NEEDS_TRUSTLINE_SETUP" });
+        }
+      }
+
       // Pre-created so its id can be handed to the contract as `purchase_ref`
       // — the buyer hasn't signed anything yet, same shape as `Nft.create`
       // pre-creating a row before a mint used to happen.
@@ -604,6 +653,17 @@ export const nftRouter = createTRPCRouter({
       const signed = await signArtXdr({ xdr, signWith: input.signWith });
       return { ...signed, contractAddress, purchaseId: purchase.id };
     }),
+
+  // The one-time step a wallet-connected buyer (Albedo etc.) runs when
+  // `getBuyEditionXDR`/`getBuyBatchXDR` come back with "NEEDS_TRUSTLINE_SETUP"
+  // — treasury pre-signs a transaction that funds a 2 XLM buffer and adds
+  // the Platform Asset trustline, and the buyer's wallet only needs to add
+  // its own signature to authorize the trustline on their account (the fee
+  // is already covered by treasury as the transaction's source). Once
+  // submitted, a retry of the original buy call proceeds normally.
+  getEstablishTrustlineXDR: protectedProcedure.mutation(async ({ ctx }) => {
+    return { xdr: await buildEstablishTrustlineXDR(ctx.session.user.id) };
+  }),
 
   // Confirms against the chain rather than trusting the client: the minted
   // token range is read back from `purchase_by_ref`, so a client that lies
@@ -794,9 +854,13 @@ export const nftRouter = createTRPCRouter({
     }),
 
   // Mirrors the listing the contract actually recorded rather than echoing
-  // the client's numbers back into the database.
+  // the client's numbers back into the database. `priceUSD` is the one
+  // exception — it never touches the contract (only Platform Asset/XLM
+  // prices are on-chain), so it's taken from the client here and trusted:
+  // there's no "on-chain" copy to verify it against, same as `Nft.priceUSD`
+  // at create time.
   confirmListing: protectedProcedure
-    .input(z.object({ tokenId: z.string(), txHash: z.string().min(1) }))
+    .input(z.object({ tokenId: z.string(), txHash: z.string().min(1), priceUSD: z.number().positive().optional() }))
     .mutation(async ({ ctx, input }) => {
       const token = await requireOwnedToken(ctx.db, input.tokenId, ctx.session.user.id);
 
@@ -815,6 +879,11 @@ export const nftRouter = createTRPCRouter({
       const cheapest = onChain.prices.reduce((min, p) => (p.price < min.price ? p : min));
       const price = rawPriceToHuman(cheapest.price);
       const paymentToken = cheapest.payment_token;
+      // Explicit null (not omitted) when unset — this mirrors the price
+      // grid below, which fully replaces itself each time rather than
+      // merging: whatever the form currently shows (including "cleared") is
+      // what ends up stored, not whatever was there from a previous list.
+      const priceUSD = input.priceUSD ?? null;
 
       return ctx.db.$transaction(async (tx) => {
         const listing = await tx.nftListing.upsert({
@@ -825,9 +894,10 @@ export const nftRouter = createTRPCRouter({
             sellerId: ctx.session.user.id,
             price,
             paymentToken,
+            priceUSD,
             isActive: true,
           },
-          update: { sellerId: ctx.session.user.id, price, paymentToken, isActive: true },
+          update: { sellerId: ctx.session.user.id, price, paymentToken, priceUSD, isActive: true },
         });
         await tx.nftListingPrice.deleteMany({ where: { listingId: listing.id } });
         await tx.nftListingPrice.createMany({
@@ -878,8 +948,18 @@ export const nftRouter = createTRPCRouter({
   // token id, resolved individually exactly like `confirmListing` does for a
   // single token.
   confirmListBatch: protectedProcedure
-    .input(z.object({ tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY), txHash: z.string().min(1) }))
+    .input(
+      z.object({
+        tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY),
+        txHash: z.string().min(1),
+        // Same USD sticker price applied to every token in the batch — they
+        // all share one price grid, same as the Platform Asset/XLM prices
+        // passed to `getListBatchXDR` do.
+        priceUSD: z.number().positive().optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
+      const priceUSD = input.priceUSD ?? null;
       const tokens = await Promise.all(
         input.tokenIds.map((tokenId) => requireOwnedToken(ctx.db, tokenId, ctx.session.user.id)),
       );
@@ -915,12 +995,14 @@ export const nftRouter = createTRPCRouter({
               sellerId: ctx.session.user.id,
               price: rawPriceToHuman(cheapest.price),
               paymentToken: cheapest.payment_token,
+              priceUSD,
               isActive: true,
             },
             update: {
               sellerId: ctx.session.user.id,
               price: rawPriceToHuman(cheapest.price),
               paymentToken: cheapest.payment_token,
+              priceUSD,
               isActive: true,
             },
           });
@@ -1082,6 +1164,21 @@ export const nftRouter = createTRPCRouter({
         }
       }
 
+      // Same treasury funding step as `getBuyEditionXDR` — see its comment.
+      if (input.paymentToken === "asset") {
+        const buyerSecret =
+          input.signWith && "email" in input.signWith
+            ? await getAccSecretFromRubyApi(input.signWith.email)
+            : undefined;
+        const { hasTrustline } = await ensureBuyerXlmBuffer({
+          buyerPubKey: ctx.session.user.id,
+          buyerSecret,
+        });
+        if (!hasTrustline) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NEEDS_TRUSTLINE_SETUP" });
+        }
+      }
+
       const xdr = await buildBuyBatchXDR({
         buyerPubKey: ctx.session.user.id,
         tokenIds: input.tokenIds.map(Number),
@@ -1101,17 +1198,17 @@ export const nftRouter = createTRPCRouter({
       });
     }),
 
-  // Live Platform-Asset -> USD estimate for a pooled resale purchase — a
-  // reseller's price is their own live number (never a stored sticker
-  // price), so unlike primary sale's `Nft.priceUSD` this has to be quoted
-  // fresh rather than read off the row. `buyBatchWithCard` recomputes this
-  // itself at charge time rather than trusting whatever the client last saw.
+  // USD estimate for a pooled resale purchase — a reseller-set `priceUSD`
+  // (fixed at list time) is used where set; listings without one fall back
+  // to a live Platform-Asset-price conversion. `buyBatchWithCard` recomputes
+  // this itself at charge time rather than trusting whatever the client
+  // last saw.
   resaleUsdQuote: publicProcedure
     .input(z.object({ tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY) }))
     .query(async ({ ctx, input }) => {
-      const { total: totalAsset } = await getResaleAssetTotal(ctx.db, input.tokenIds);
-      const assetPriceUSD = await getPlatformAssetPrice();
-      return { totalAsset, totalUSD: totalAsset * assetPriceUSD + NETWORK_FEE_IN_USD };
+      const { listings, total: totalAsset } = await getResaleAssetTotal(ctx.db, input.tokenIds);
+      const totalUSD = (await getResaleUsdTotal(listings)) + NETWORK_FEE_IN_USD;
+      return { totalAsset, totalUSD };
     }),
 
   // Card/USD checkout for a pooled resale purchase — same shape as
@@ -1140,9 +1237,8 @@ export const nftRouter = createTRPCRouter({
           throw new TRPCError({ code: "BAD_REQUEST", message: "You can't buy your own listing" });
         }
       }
-      const assetPriceUSD = await getPlatformAssetPrice();
       // NETWORK_FEE_IN_USD added on top — same reasoning as buyEditionWithCard.
-      const totalUSD = totalAsset * assetPriceUSD + NETWORK_FEE_IN_USD;
+      const totalUSD = (await getResaleUsdTotal(listings)) + NETWORK_FEE_IN_USD;
 
       let paymentResult;
       try {
@@ -1713,6 +1809,7 @@ export const nftRouter = createTRPCRouter({
           listingPrice: number | null;
           listingPaymentToken: string | null;
           listingPrices: { paymentToken: string; price: number }[];
+          listingPriceUSD: number | null;
         }[];
       }
     >();
@@ -1732,6 +1829,7 @@ export const nftRouter = createTRPCRouter({
         listingPrices: t.listing?.isActive
           ? t.listing.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price }))
           : [],
+        listingPriceUSD: t.listing?.isActive ? t.listing.priceUSD : null,
       });
     }
 
