@@ -18,6 +18,7 @@ import { initAdmin } from "package/connect_wallet/src/lib/firebase/admin/config"
 import { generateRedeemCode } from "~/lib/utils";
 import { TRPCError } from "@trpc/server";
 import { unlockItemFor } from "~/lib/stellar/oz/nft";
+import { getTreasurySecret } from "~/lib/stellar/oz/treasury";
 
 export const gameRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
@@ -367,7 +368,7 @@ export const gameRouter = createTRPCRouter({
                   ]);
                   if (nftToken && media) {
                     const txHash = await unlockItemFor({
-                      unlockAuthoritySecret: env.MOTHER_SECRET,
+                      unlockAuthoritySecret: getTreasurySecret(),
                       tokenId: Number(nftToken.tokenId),
                       mediaIndex: media.chainIndex,
                     });

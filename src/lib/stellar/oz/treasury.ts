@@ -29,8 +29,27 @@ import { env } from "~/env";
  * treasury address distinct from MOTHER's key — `TREASURY_SECRET` must be
  * set to that account's real secret before any treasury-sponsored purchase
  * can be submitted on pubnet.
+ *
+ * Also reused as the `unlock_authority` signer (see `getTreasurySecret`
+ * below) — treasury and unlock-authority happen to be the same account on
+ * every environment this contract has been deployed to so far. A caller
+ * that signs `unlock_item_for` with `MOTHER_SECRET` directly instead is
+ * only correct on testnet (where treasury == MOTHER); on pubnet, where
+ * treasury is its own dedicated account, that signs with the wrong key and
+ * fails on-chain — `getTreasurySecret()` resolves the same way
+ * `getTreasuryKeypair()` does so both stay correct together.
  */
 export function getTreasuryKeypair(): Keypair {
-  const secret = env.TREASURY_SECRET ?? env.MOTHER_SECRET;
-  return Keypair.fromSecret(secret);
+  return Keypair.fromSecret(getTreasurySecret());
+}
+
+/**
+ * Raw secret behind {@link getTreasuryKeypair}, exported separately for
+ * callers that need the string rather than a `Keypair` — currently
+ * `unlockItemFor` (`src/lib/stellar/oz/nft.ts`), since `set_unlock_authority`
+ * on the shared nft_oz contract has always been called with this same
+ * treasury account.
+ */
+export function getTreasurySecret(): string {
+  return env.TREASURY_SECRET ?? env.MOTHER_SECRET;
 }

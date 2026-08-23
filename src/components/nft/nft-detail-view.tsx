@@ -23,6 +23,9 @@ import {
   TabsTrigger,
 } from "~/components/shadcn/ui/tabs";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
+import { InsufficientAssetBalance } from "~/components/payment/insufficient-asset-balance";
+import { AccountActivationRequired } from "~/components/payment/account-activation-required";
+import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 import { WalletType } from "~/types/wallet/wallet-types";
 import { type NftDisplayCurrency, type NftPaymentToken } from "~/lib/stellar/oz/nft";
 import { type RouterOutputs } from "~/utils/api";
@@ -327,7 +330,12 @@ export function NftDetailView({
         )}
 
         <TabsContent value="onchain" className="pt-4">
-          <BlockchainInsights insights={onChainInsights} isLoading={isLoadingOnChainInsights} />
+          <BlockchainInsights
+            insights={onChainInsights}
+            isLoading={isLoadingOnChainInsights}
+            nftName={nft.name}
+            nftThumbnail={nft.thumbnail}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -448,7 +456,7 @@ function HoldAndListCard({
   return (
     <div className="rounded-2xl border bg-card p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-bold">List copies for sale</span>
+        <span className="text-sm font-bold">List copies for Resale</span>
         <Tag className="h-4 w-4 text-muted-foreground" />
       </div>
 
@@ -698,6 +706,13 @@ export function ResaleBuyCard({
 }) {
   const { data: session } = useSession();
   const isCustodial = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
+  // Gates the Platform-Asset buy button only — a card/USD checkout is
+  // funded by the card, not this balance. `active` is false both for a
+  // genuinely unactivated account and before the balance query has
+  // answered, so it is only treated as "needs activation" once we know
+  // someone is actually signed in.
+  const { platformAssetBalance, active: isAccountActive } = useUserStellarAcc();
+  const needsActivation = !!session?.user && !isAccountActive;
 
   // Top-level currency choice, same shape as `PrimaryBuyCard`: Platform
   // Asset (the pooled "cheapest N" ACTION flow below) or USD (card,
@@ -849,11 +864,17 @@ export function ResaleBuyCard({
             </div>
           </div>
 
-          <BuyButton
-            isBuying={isBuying}
-            onClick={() => void onBuy?.(selected.map((l) => l.tokenId), "asset")}
-            idleLabel={`Buy ${quantity} for ${grandTotal.toFixed(2)} ${priceTokenLabel("asset")}`}
-          />
+          {needsActivation ? (
+            <AccountActivationRequired />
+          ) : platformAssetBalance >= grandTotal ? (
+            <BuyButton
+              isBuying={isBuying}
+              onClick={() => void onBuy?.(selected.map((l) => l.tokenId), "asset")}
+              idleLabel={`Buy ${quantity} for ${grandTotal.toFixed(2)} ${priceTokenLabel("asset")}`}
+            />
+          ) : (
+            <InsufficientAssetBalance required={grandTotal} balance={platformAssetBalance} />
+          )}
         </>
       ) : (
         cheapestUsdListing && (
@@ -877,7 +898,9 @@ export function ResaleBuyCard({
               </div>
             </div>
 
-            {isCustodial ? (
+            {needsActivation ? (
+              <AccountActivationRequired />
+            ) : isCustodial ? (
               <BuyNftWithCard
                 className="mt-3"
                 target={{ kind: "resale", tokenId: cheapestUsdListing.tokenId }}
@@ -930,6 +953,13 @@ export function PrimaryBuyCard({
 }) {
   const { data: session } = useSession();
   const isCustodial = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
+  // Gates the Platform-Asset buy button only — a card/USD checkout is
+  // funded by the card, not this balance. `active` is false both for a
+  // genuinely unactivated account and before the balance query has
+  // answered, so it is only treated as "needs activation" once we know
+  // someone is actually signed in.
+  const { platformAssetBalance, active: isAccountActive } = useUserStellarAcc();
+  const needsActivation = !!session?.user && !isAccountActive;
 
   // Top-level currency choice — Platform Asset (on-chain) or USD (card) —
   // always both, since a price in each is now mandatory (see
@@ -1093,11 +1123,17 @@ export function PrimaryBuyCard({
             </div>
           </div>
 
-          <BuyButton
-            isBuying={isBuying}
-            onClick={() => void onBuy?.({ paymentToken: "asset", quantity })}
-            idleLabel={`Buy for ${grandTotal.toFixed(2)} ${priceTokenLabel("asset")}`}
-          />
+          {needsActivation ? (
+            <AccountActivationRequired />
+          ) : platformAssetBalance >= grandTotal ? (
+            <BuyButton
+              isBuying={isBuying}
+              onClick={() => void onBuy?.({ paymentToken: "asset", quantity })}
+              idleLabel={`Buy for ${grandTotal.toFixed(2)} ${priceTokenLabel("asset")}`}
+            />
+          ) : (
+            <InsufficientAssetBalance required={grandTotal} balance={platformAssetBalance} />
+          )}
         </>
       ) : (
         <>
@@ -1120,7 +1156,9 @@ export function PrimaryBuyCard({
             </div>
           </div>
 
-          {isCustodial ? (
+          {needsActivation ? (
+            <AccountActivationRequired />
+          ) : isCustodial ? (
             <BuyNftWithCard
               className="mt-3"
               target={{ kind: "edition", nftId: nft.id, quantity }}

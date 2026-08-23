@@ -1,10 +1,22 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { MediaType } from "@prisma/client"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 export const BLANK_KEYWORD = "BLANK";
+
+// Smart-contract NFTs store their raw upload MIME type (e.g. "image/png",
+// "video/quicktime") on-chain and in the `Nft` table, unlike classic assets'
+// `MediaType` enum column — normalize to the same enum everywhere both kinds
+// of item share filtering, icons, or a card (store, my-collection, …).
+export function mimeTypeToMediaType(mediaType?: string): MediaType {
+  if (mediaType?.startsWith("image/")) return MediaType.IMAGE;
+  if (mediaType?.startsWith("video/")) return MediaType.VIDEO;
+  if (mediaType?.startsWith("audio/")) return MediaType.MUSIC;
+  return MediaType.THREE_D;
+}
 
 const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no 0/O/1/I to avoid confusion
 

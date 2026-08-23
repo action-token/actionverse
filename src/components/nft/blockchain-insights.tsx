@@ -1,12 +1,13 @@
 import { CheckCircle2, Copy, ExternalLink, ShieldAlert } from "lucide-react";
+import Image from "next/image";
 import toast from "react-hot-toast";
-import { priceTokenLabel } from "~/components/nft/nft-card";
 import { Skeleton } from "~/components/shadcn/ui/skeleton";
 import {
   stellarExpertAccountUrl,
   stellarExpertContractUrl,
 } from "~/lib/stellar/explorer";
 import { truncateString } from "~/utils/string";
+import { cn } from "~/lib/utils";
 import { type RouterOutputs } from "~/utils/api";
 
 type Insights = RouterOutputs["nft"]["onChainInsights"];
@@ -64,9 +65,17 @@ function Stat({ label, value }: { label: string; value: string }) {
 export function BlockchainInsights({
   insights,
   isLoading,
+  nftName,
+  nftThumbnail,
 }: {
   insights: Insights | undefined;
   isLoading: boolean;
+  /** Shown on each of "your tokens"' rows below its `Token #N` — every
+   *  token here is a copy of this same edition, so the name/thumbnail is
+   *  identical across rows, but still worth showing per row so the list
+   *  reads as a proper item list rather than bare ids. */
+  nftName?: string;
+  nftThumbnail?: string;
 }) {
   if (isLoading || !insights) {
     return (
@@ -131,51 +140,43 @@ export function BlockchainInsights({
 
           {insights.myTokenIds.length > 0 && (
             <div className="rounded-2xl border bg-card p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Your token IDs
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Your token{insights.myTokenIds.length === 1 ? "" : "s"} ({insights.myTokenIds.length})
               </p>
-              <div className="flex flex-wrap gap-1.5">
+              <div
+                className={cn(
+                  "divide-y divide-border/60",
+                  insights.myTokenIds.length > 6 && "max-h-64 overflow-y-auto pr-1",
+                )}
+              >
                 {insights.myTokenIds.map((id) => (
-                  <span
-                    key={id}
-                    className="rounded-full bg-muted px-2.5 py-1 font-mono text-xs font-semibold"
-                  >
-                    #{id}
-                  </span>
+                  <div key={id} className="flex items-center gap-3 py-2">
+                    <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-muted">
+                      {nftThumbnail && (
+                        <Image src={nftThumbnail} alt={nftName ?? "NFT thumbnail"} fill className="object-cover" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-mono text-sm font-semibold">Token #{id}</p>
+                      {nftName && <p className="truncate text-xs text-muted-foreground">{nftName}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(String(id));
+                        toast.success(`Token #${id} copied`);
+                      }}
+                      aria-label={`Copy token #${id}`}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
           )}
         </>
-      )}
-
-      {insights.prices.length > 0 && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Price grid
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            {insights.prices.map((p) => (
-              <div key={p.paymentToken} className="rounded-xl border bg-card p-3">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs text-muted-foreground">{priceTokenLabel(p.paymentToken)}</span>
-                  {p.tokenAddress && (
-                    <a
-                      href={stellarExpertContractUrl(p.tokenAddress)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={`View ${priceTokenLabel(p.paymentToken)} token on explorer`}
-                      className="text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-                <p className="text-lg font-bold tabular-nums">{p.price}</p>
-              </div>
-            ))}
-          </div>
-        </div>
       )}
 
       {insights.contractId && (

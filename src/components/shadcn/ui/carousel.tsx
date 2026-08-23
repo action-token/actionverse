@@ -16,6 +16,9 @@ type CarouselProps = {
   plugins?: CarouselPlugin;
   orientation?: "horizontal" | "vertical";
   setApi?: (api: CarouselApi) => void;
+  /** Set false when the caller renders its own slide indicator/nav (e.g. a
+   *  "1 of N" counter) — otherwise this bare dot row duplicates it. */
+  showDots?: boolean;
 };
 
 type CarouselContextProps = {
@@ -52,6 +55,7 @@ const Carousel = React.forwardRef<
       plugins,
       className,
       children,
+      showDots = true,
       ...props
     },
     ref,
@@ -66,6 +70,11 @@ const Carousel = React.forwardRef<
     const [canScrollPrev, setCanScrollPrev] = React.useState(false);
     const [canScrollNext, setCanScrollNext] = React.useState(false);
     const [activeSlide, setActiveSlide] = React.useState(0); // State to track active slide
+    // Real slide count, from Embla's own snap list — NOT the number of JSX
+    // children passed to <Carousel> (usually just <CarouselContent>, plus
+    // maybe <CarouselPrevious>/<CarouselNext>), which is what the dot row
+    // below used to (incorrectly) render one dot per.
+    const [slideCount, setSlideCount] = React.useState(0);
 
     const onSelect = React.useCallback((api: CarouselApi) => {
       if (!api) {
@@ -75,6 +84,7 @@ const Carousel = React.forwardRef<
       setCanScrollPrev(api.canScrollPrev());
       setCanScrollNext(api.canScrollNext());
       setActiveSlide(api.selectedScrollSnap()); // Update active slide index
+      setSlideCount(api.scrollSnapList().length);
     }, []);
 
     const scrollPrev = React.useCallback(() => {
@@ -144,16 +154,18 @@ const Carousel = React.forwardRef<
           {...props}
         >
           {children}
-          <div className="mt-4 flex justify-center space-x-2">
-            {React.Children.map(children, (child, index) => (
-              <Dot
-                key={index}
-                index={index}
-                isActive={index === activeSlide}
-                onClick={() => api?.scrollTo(index)}
-              />
-            ))}
-          </div>
+          {showDots && slideCount > 1 && (
+            <div className="mt-4 flex justify-center space-x-2">
+              {Array.from({ length: slideCount }).map((_, index) => (
+                <Dot
+                  key={index}
+                  index={index}
+                  isActive={index === activeSlide}
+                  onClick={() => api?.scrollTo(index)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </CarouselContext.Provider>
     );

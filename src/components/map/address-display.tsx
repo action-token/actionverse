@@ -1,5 +1,6 @@
 import { useGeolocation, useReverseGeolocation } from "~/hooks/use-geolocation";
 import { Badge } from "../shadcn/ui/badge";
+import { cn } from "~/lib/utils";
 
 interface LocationAddressDisplayProps {
     latitude: number;
@@ -14,7 +15,7 @@ export function LocationAddressDisplay({
 }: LocationAddressDisplayProps) {
     const { address, loading } = useReverseGeolocation(latitude, longitude);
     return (
-        <Badge className={className}>
+        <Badge className={cn("gap-1", className)}>
             <div className="flex items-center justify-between text-center">
                 <span className="text-sm font-bold ">{loading ? "Loading..." : address}</span>
             </div>

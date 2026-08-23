@@ -156,6 +156,10 @@ async function main() {
       name: COLLECTION_NAME,
       symbol: COLLECTION_SYMBOL,
       base_uri: COLLECTION_BASE_URI,
+      // Same account as treasury on every environment this contract has
+      // been deployed to so far — see `getTreasurySecret` in
+      // `src/lib/stellar/oz/treasury.ts`.
+      unlock_authority: TREASURY,
     },
     {
       wasmHash: nftWasmHash,

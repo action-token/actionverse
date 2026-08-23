@@ -564,7 +564,7 @@ export const nftRouter = createTRPCRouter({
                     )
                     .min(1)
                     .max(20),
-                  radius: z.number().positive().max(1000).default(30),
+                  radius: z.number().positive().max(1000).default(50),
                 })
                 .optional(),
             }),
@@ -1025,9 +1025,21 @@ export const nftRouter = createTRPCRouter({
         }),
       );
 
+      // Batched rather than four queries per token: the price rows for the
+      // whole batch are cleared and rewritten in single `deleteMany`/
+      // `createMany` calls keyed on every listing id at once. A 20-token
+      // relist went from ~84 sequential round trips to ~26, which both
+      // finishes far inside Prisma's 5s interactive-transaction budget and
+      // narrows the window in which a connection pooler can hand a later
+      // statement a different backend connection (the cause of the
+      // "Transaction not found ... refers to an old closed transaction"
+      // failures — see the pgbouncer note in the README).
       return ctx.db.$transaction(async (tx) => {
         const nftIds = new Set<string>();
-        for (const { token, onChain, cheapest } of resolved) {
+        const listingIds: string[] = [];
+        // Still one upsert per token — each needs its own generated id back
+        // to key the price rows below — but nothing else is per-token now.
+        for (const { token, cheapest } of resolved) {
           const listing = await tx.nftListing.upsert({
             where: { tokenId: token.tokenId },
             create: {
@@ -1045,23 +1057,31 @@ export const nftRouter = createTRPCRouter({
               isActive: true,
             },
           });
-          await tx.nftListingPrice.deleteMany({
-            where: { listingId: listing.id, paymentToken: { not: "usd" } },
-          });
-          await tx.nftListingPrice.createMany({
-            data: onChain.prices.map((p) => ({
-              listingId: listing.id,
-              paymentToken: labelForPaymentTokenAddress(p.payment_token),
-              price: rawPriceToHuman(p.price),
-            })),
-          });
-          await tx.nftListingPrice.upsert({
-            where: { listingId_paymentToken: { listingId: listing.id, paymentToken: "usd" } },
-            create: { listingId: listing.id, paymentToken: "usd", price: input.usdPrice },
-            update: { price: input.usdPrice },
-          });
+          listingIds.push(listing.id);
           nftIds.add(token.nftId);
         }
+
+        // Every price row for this batch, replaced wholesale. The "usd" row
+        // is rewritten the same way rather than upserted per listing — it
+        // has no on-chain counterpart, but it is still fully determined by
+        // `input.usdPrice`, so there is nothing to preserve.
+        await tx.nftListingPrice.deleteMany({ where: { listingId: { in: listingIds } } });
+        await tx.nftListingPrice.createMany({
+          data: [
+            ...resolved.flatMap(({ onChain }, i) =>
+              onChain.prices.map((p) => ({
+                listingId: listingIds[i]!,
+                paymentToken: labelForPaymentTokenAddress(p.payment_token),
+                price: rawPriceToHuman(p.price),
+              })),
+            ),
+            ...listingIds.map((listingId) => ({
+              listingId,
+              paymentToken: "usd",
+              price: input.usdPrice,
+            })),
+          ],
+        });
 
         for (const nftId of nftIds) {
           await refreshListingAggregates(tx, nftId);
@@ -1526,10 +1546,25 @@ export const nftRouter = createTRPCRouter({
           // specific item is unlocked.
           lockedMedia: {
             select: {
+              id: true,
               type: true,
               label: true,
               sortOrder: true,
-              unlockRule: { select: { points: { select: { id: true } } } },
+              // Names/coordinates, not just a count — shown on the buy page
+              // so a prospective buyer can see exactly which real-world
+              // places a gated item requires before paying, not just "N
+              // locations" (see `UnlockLocationsPreview`). Also matched
+              // against `unlockStatus`'s `lockedMediaId` by this same `id`
+              // so `UnlockProgressList` can show the names/map for a
+              // specific item's still-required locations, not just a count.
+              unlockRule: {
+                select: {
+                  points: {
+                    select: { id: true, label: true, latitude: true, longitude: true },
+                    orderBy: { sortOrder: "asc" },
+                  },
+                },
+              },
             },
             orderBy: { sortOrder: "asc" },
           },

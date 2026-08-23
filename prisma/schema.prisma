@@ -1625,7 +1625,7 @@ model NftUnlockLocationRule {
   id            String                   @id @default(uuid())
   lockedMediaId String                   @unique
   lockedMedia   NftLockedMedia           @relation(fields: [lockedMediaId], references: [id], onDelete: Cascade)
-  radius        Float                    @default(30) // meters — how close counts as "visiting" a point
+  radius        Float                    @default(50) // meters — how close counts as "visiting" a point
   points        NftUnlockLocationPoint[]
   createdAt     DateTime                 @default(now())
 }

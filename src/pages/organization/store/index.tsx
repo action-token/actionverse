@@ -1,6 +1,7 @@
 "use client"
 
 import { Album, MediaType } from "@prisma/client"
+import { mimeTypeToMediaType } from "~/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
 import {
     Music,
@@ -196,7 +197,7 @@ export default function StoredItemsView() {
                 id: item.id as unknown as number,
                 title: item.name ?? "Untitled",
                 image: item.thumbnail ?? "/placeholder.svg",
-                mediaType: item.mediaType as MediaType,
+                mediaType: mimeTypeToMediaType(item.mediaType),
                 // A resale (if any exists) is what's actually buyable right
                 // now; otherwise fall back to the edition's own cheapest
                 // primary price so a not-yet-sold item still shows something.
@@ -216,7 +217,7 @@ export default function StoredItemsView() {
                     issuer: "",
                     name: item.name,
                     thumbnail: item.thumbnail,
-                    mediaType: item.mediaType as MediaType,
+                    mediaType: mimeTypeToMediaType(item.mediaType),
                     creatorId: item.creatorId,
                     description: null,
                     limit: 0,

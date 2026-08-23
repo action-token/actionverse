@@ -6,7 +6,7 @@ import {
 } from "~/components/shadcn/ui/card";
 import { Button } from "~/components/shadcn/ui/button";
 import React, { useState } from "react";
-import { cn } from "~/lib/utils";
+import { cn, mimeTypeToMediaType } from "~/lib/utils";
 import { api } from "~/utils/api";
 import { MoreAssetsSkeleton } from "~/components/common/grid-loading";
 import MarketAssetComponent from "~/components/common/market-asset";
@@ -23,17 +23,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { CreateStorage } from "~/components/creator/create-creator";
 import { AssetType } from "~/types/market/market-asset-type";
-
-// Smart-contract NFTs store their raw upload MIME type (e.g. "image/png",
-// "video/quicktime"), unlike classic assets' MediaType enum — normalize to
-// the same short, uppercase label AssetView already shows for those.
-function mimeTypeToLabel(mediaType?: string): string | undefined {
-    if (!mediaType) return undefined;
-    if (mediaType.startsWith("image/")) return "IMAGE";
-    if (mediaType.startsWith("video/")) return "VIDEO";
-    if (mediaType.startsWith("audio/")) return "MUSIC";
-    return "3D";
-}
 
 // Smart-contract NFTs don't need a storage account for anything — minting,
 // listing, and buying all transact directly against the contract from the
@@ -73,7 +62,7 @@ function ScNftCard({
                 thumbnail={thumbnail}
                 isNFT={true}
                 creatorId={creatorId}
-                mediaType={mimeTypeToLabel(mediaType)}
+                mediaType={mimeTypeToMediaType(mediaType)}
                 price={price}
                 priceCurrency="XLM"
                 hideBuyButton

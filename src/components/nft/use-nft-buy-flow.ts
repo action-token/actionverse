@@ -11,7 +11,10 @@ import { api } from "~/utils/api";
  *  buy mutation throws for a wallet-connected buyer who needs to run
  *  `ActivationModal` or the "Trust & Buy" flow first — see
  *  `ensureBuyerReady` in `src/server/api/routers/nft.ts`. */
-function isPreconditionSignal(error: unknown, code: "NEEDS_ACTIVATION" | "NEEDS_TRUSTLINE_SETUP"): boolean {
+/** Recognises the server's precondition signals (see `ensureBuyerReady`).
+ *  Exported so the card checkout can react to `NEEDS_ACTIVATION` too —
+ *  it does not go through this hook, but hits the same guard. */
+export function isPreconditionSignal(error: unknown, code: "NEEDS_ACTIVATION" | "NEEDS_TRUSTLINE_SETUP"): boolean {
   return (
     error instanceof TRPCClientError &&
     (error.data as { code?: string } | undefined)?.code === "PRECONDITION_FAILED" &&
@@ -102,7 +105,7 @@ export function useNftBuyFlow() {
     /** Defaults to a plain "N copies purchased!" — pass a custom one for a
      *  page that wants to say more (e.g. mentioning gated reward items). */
     successMessage: string = quantity > 1 ? `${quantity} copies purchased!` : "Purchase complete!",
-  ): Promise<void> {
+  ): Promise<boolean> {
     setIsBuyingPrimary(true);
     try {
       await withPreconditionHandling(async () => {
@@ -113,14 +116,16 @@ export function useNftBuyFlow() {
         }
       });
       toast.success(successMessage);
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Purchase failed");
+      return false;
     } finally {
       setIsBuyingPrimary(false);
     }
   }
 
-  async function buyResale(tokenId: string, paymentToken: NftPaymentToken): Promise<void> {
+  async function buyResale(tokenId: string, paymentToken: NftPaymentToken): Promise<boolean> {
     setIsBuyingResale(true);
     try {
       await withPreconditionHandling(async () => {
@@ -131,15 +136,17 @@ export function useNftBuyFlow() {
         }
       });
       toast.success("Purchase complete!");
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Purchase failed");
+      return false;
     } finally {
       setIsBuyingResale(false);
     }
   }
 
-  async function buyResaleBatch(tokenIds: string[], paymentToken: NftPaymentToken): Promise<void> {
-    if (tokenIds.length === 0) return;
+  async function buyResaleBatch(tokenIds: string[], paymentToken: NftPaymentToken): Promise<boolean> {
+    if (tokenIds.length === 0) return false;
     setIsBuyingResale(true);
     try {
       await withPreconditionHandling(async () => {
@@ -150,8 +157,10 @@ export function useNftBuyFlow() {
         }
       });
       toast.success(tokenIds.length > 1 ? `${tokenIds.length} copies purchased!` : "Purchase complete!");
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Purchase failed");
+      return false;
     } finally {
       setIsBuyingResale(false);
     }

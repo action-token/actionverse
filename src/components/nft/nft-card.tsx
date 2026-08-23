@@ -11,6 +11,7 @@ import { Button } from "~/components/shadcn/ui/button";
 import { Card, CardContent } from "~/components/shadcn/ui/card";
 import { PlaceholderArt } from "~/components/nft/placeholder-art";
 import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { cn } from "~/lib/utils";
 import { api, type RouterOutputs } from "~/utils/api";
 
 export function priceTokenLabel(token?: string): string {
@@ -176,9 +177,14 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
   const price = nft.price;
   // `/smart-contract/[id]` is the one buy page for every NFT now — primary
   // or resold, gated or not — replacing the old `/nft/[id]`. It reads
-  // `nft.byId` itself and shows the resale card whenever `resaleListings`
-  // is non-empty, so no token id needs to travel in the URL.
-  const href = `/smart-contract/${nft.id}`;
+  // `nft.byId` itself, so no token id needs to travel in the URL. A resale
+  // card does carry `?resale=<sellerId>` though: without it the page can't
+  // tell which of the two cards for one edition was clicked, and would
+  // offer primary "buy new" pricing to someone who came in for a specific
+  // seller's resold copy.
+  const href = nft.listing
+    ? `/smart-contract/${nft.id}?resale=${encodeURIComponent(nft.listing.sellerId)}`
+    : `/smart-contract/${nft.id}`;
   const supplyBadge =
     nft.supply && nft.supply > 1 ? `${nft.mintedCount ?? 0}/${nft.supply}` : "1 of 1";
   const resaleBadge =
@@ -203,13 +209,6 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                 className="object-cover h-48 w-full transition-transform duration-500 group-hover:scale-105"
               />
 
-              <Badge
-                variant="secondary"
-                className="absolute top-3 right-3 bg-black/70 text-white backdrop-blur-sm border-0"
-              >
-                {nft.listing ? resaleBadge : supplyBadge}
-              </Badge>
-
               <Button
                 size="sm"
                 variant="secondary"
@@ -218,7 +217,10 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                 <Eye className="w-4 h-4" />
               </Button>
 
-              <div className="absolute top-3 right-3 flex items-center gap-2">
+              {/* Stacked, not both `top-3 right-3` — that had the NFT badge
+                  rendering directly on top of (and fully hiding) the
+                  resale/supply badge underneath it. */}
+              <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
                 <motion.div
                   animate={{
                     boxShadow: [
@@ -238,6 +240,16 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                     <span className="font-semibold">NFT</span>
                   </Badge>
                 </motion.div>
+
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "border-0 text-white backdrop-blur-sm",
+                    nft.listing ? "bg-amber-600/90" : "bg-black/70",
+                  )}
+                >
+                  {nft.listing ? resaleBadge : supplyBadge}
+                </Badge>
               </div>
             </div>
 

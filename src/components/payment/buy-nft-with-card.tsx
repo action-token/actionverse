@@ -3,6 +3,8 @@ import toast from "react-hot-toast";
 import { CreditCard, PaymentForm } from "react-square-web-payments-sdk";
 import { Loader2 } from "lucide-react";
 import { cn } from "~/lib/utils";
+import { isPreconditionSignal } from "~/components/nft/use-nft-buy-flow";
+import { ActivationModal } from "~/components/modal/activation-modal";
 import { env } from "~/env";
 import { api } from "~/utils/api";
 
@@ -27,6 +29,10 @@ export function BuyNftWithCard({
   className?: string;
 }) {
   const [loading, setLoading] = useState(false);
+  // The server checks activation *before* charging Square (see
+  // `buyEditionWithCard`), so this branch means the card was never
+  // billed — it is a "do this first" prompt, not a failed payment.
+  const [showActivation, setShowActivation] = useState(false);
 
   const buyEdition = api.nft.buyEditionWithCard.useMutation();
   const buyResale = api.nft.buyResaleWithCard.useMutation();
@@ -42,7 +48,14 @@ export function BuyNftWithCard({
       toast.success("Purchase complete!");
       await onSuccess();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Card payment failed");
+      if (isPreconditionSignal(e, "NEEDS_ACTIVATION")) {
+        // Raw signal names ("NEEDS_ACTIVATION") used to reach the buyer
+        // verbatim through the generic handler below.
+        toast.error("Activate your account to finish this purchase.");
+        setShowActivation(true);
+      } else {
+        toast.error(e instanceof Error ? e.message : "Card payment failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -50,6 +63,7 @@ export function BuyNftWithCard({
 
   return (
     <div className={cn("w-full", className)}>
+      <ActivationModal dialogOpen={showActivation} setDialogOpen={setShowActivation} />
       <PaymentForm
         applicationId={env.NEXT_PUBLIC_SQUARE_APP_ID}
         locationId={env.NEXT_PUBLIC_SQUARE_LOCATION}

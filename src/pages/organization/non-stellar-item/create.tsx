@@ -176,7 +176,7 @@ export default function CreateNonStellarItemPage() {
     }
 
     return (
-        <div className="mx-auto max-w-6xl p-4 md:p-6">
+        <div className="mx-auto max-w-6xl p-4 md:p-6 w-full">
             <Link
                 href="/organization/store"
                 className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
