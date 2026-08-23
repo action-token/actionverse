@@ -1,18 +1,15 @@
 import { useRouter } from "next/router"
 import { useSession } from "next-auth/react"
-import { clientsign, extractTxHash } from "package/connect_wallet"
-import { submitSignedXDRToServer4User } from "package/connect_wallet/src/lib/stellar/trx/payment_fb_g"
-import { useState } from "react"
 import toast from "react-hot-toast"
 import Head from "next/head"
 import Link from "next/link"
 import Image from "next/image"
 import { ChevronLeft, Music, Image as ImageIcon, Video as VideoIcon, Link as LinkIcon, MapPin, Sparkles } from "lucide-react"
+import { ActivationModal } from "~/components/modal/activation-modal"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import useNeedSign from "~/lib/hook"
-import { clientSelect } from "~/lib/stellar/fan/utils"
+import { useNftBuyFlow } from "~/components/nft/use-nft-buy-flow"
 import { type NftPaymentToken } from "~/lib/stellar/oz/nft"
 import { api } from "~/utils/api"
 import { LikeButton } from "~/components/nft/like-button"
@@ -32,23 +29,24 @@ export default function SmartContractTicketPage() {
   const router = useRouter()
   const id = typeof router.query.id === "string" ? router.query.id : undefined
   const { data: session } = useSession()
-  const utils = api.useContext()
-  const { needSign } = useNeedSign()
 
   const { data: nft, isLoading } = api.nft.byId.useQuery({ id: id ?? "" }, { enabled: !!id })
   const { data: onChainInsights, isLoading: isLoadingOnChainInsights } = api.nft.onChainInsights.useQuery(
     { id: id ?? "" },
     { enabled: !!id },
   )
-  const getBuyEditionXDR = api.nft.getBuyEditionXDR.useMutation()
-  const confirmBuyEdition = api.nft.confirmBuyEdition.useMutation()
-  const getBuyBatchXDR = api.nft.getBuyBatchXDR.useMutation()
-  const confirmBuyBatch = api.nft.confirmBuyBatch.useMutation()
+  const {
+    isBuyingPrimary,
+    isBuyingResale,
+    needsActivation,
+    setNeedsActivation,
+    buyEdition,
+    buyResaleBatch,
+    utils,
+  } = useNftBuyFlow()
   const toggleLike = api.nft.toggleLike.useMutation({
     onSuccess: () => void utils.nft.byId.invalidate({ id }),
   })
-  const [isBuyingPrimary, setIsBuyingPrimary] = useState(false)
-  const [isBuyingResale, setIsBuyingResale] = useState(false)
 
   function handleLike() {
     if (!session?.user) {
@@ -56,19 +54,6 @@ export default function SmartContractTicketPage() {
       return
     }
     toggleLike.mutate({ nftId: nft!.id })
-  }
-
-  async function signAndSubmit(xdr: string, fullySignedByServer: boolean) {
-    if (fullySignedByServer) {
-      return extractTxHash(await submitSignedXDRToServer4User(xdr))
-    }
-    const clientResponse = await clientsign({
-      presignedxdr: xdr,
-      walletType: session!.user.walletType,
-      pubkey: session!.user.id,
-      test: clientSelect(),
-    })
-    return extractTxHash(clientResponse)
   }
 
   async function invalidateAfterPurchase() {
@@ -86,37 +71,18 @@ export default function SmartContractTicketPage() {
       toast.error("Connect your wallet first")
       return
     }
-    setIsBuyingPrimary(true)
-    try {
-      const { xdr, fullySignedByServer, purchaseId } = await getBuyEditionXDR.mutateAsync({
-        nftId: nft.id,
-        paymentToken,
-        quantity,
-        signWith: needSign(),
-      })
-
-      const txHash = await signAndSubmit(xdr, fullySignedByServer)
-      if (!txHash) {
-        toast.error("Purchase transaction could not be confirmed.")
-        return
-      }
-
-      await confirmBuyEdition.mutateAsync({ nftId: nft.id, purchaseId, txHash })
-      await invalidateAfterPurchase()
-      toast.success(
-        gatedItemCount > 0
-          ? quantity > 1
-            ? `${quantity} tickets purchased! Each one has its own pin sets to collect for ${gatedItemCount} reward item${gatedItemCount === 1 ? "" : "s"}.`
-            : "Ticket purchased! Go collect its pins to unlock the reward."
-          : quantity > 1
-            ? `${quantity} copies purchased!`
-            : "Purchase complete!",
-      )
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Purchase failed")
-    } finally {
-      setIsBuyingPrimary(false)
-    }
+    await buyEdition(
+      nft.id,
+      { paymentToken, quantity },
+      gatedItemCount > 0
+        ? quantity > 1
+          ? `${quantity} tickets purchased! Each one has its own pin sets to collect for ${gatedItemCount} reward item${gatedItemCount === 1 ? "" : "s"}.`
+          : "Ticket purchased! Go collect its pins to unlock the reward."
+        : quantity > 1
+          ? `${quantity} copies purchased!`
+          : "Purchase complete!",
+    )
+    await invalidateAfterPurchase()
   }
 
   async function handleBuyResaleBatch(tokenIds: string[], paymentToken: NftPaymentToken) {
@@ -124,28 +90,8 @@ export default function SmartContractTicketPage() {
       toast.error("Connect your wallet first")
       return
     }
-    setIsBuyingResale(true)
-    try {
-      const { xdr, fullySignedByServer } = await getBuyBatchXDR.mutateAsync({
-        tokenIds,
-        paymentToken,
-        signWith: needSign(),
-      })
-
-      const txHash = await signAndSubmit(xdr, fullySignedByServer)
-      if (!txHash) {
-        toast.error("Purchase transaction could not be confirmed.")
-        return
-      }
-
-      await confirmBuyBatch.mutateAsync({ tokenIds, txHash })
-      await invalidateAfterPurchase()
-      toast.success(tokenIds.length > 1 ? `${tokenIds.length} copies purchased!` : "Purchase complete!")
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Purchase failed")
-    } finally {
-      setIsBuyingResale(false)
-    }
+    await buyResaleBatch(tokenIds, paymentToken)
+    await invalidateAfterPurchase()
   }
 
   if (isLoading || !nft) {
@@ -188,6 +134,7 @@ export default function SmartContractTicketPage() {
       <Head>
         <title>{`${nft.name} — Actionverse`}</title>
       </Head>
+      <ActivationModal dialogOpen={needsActivation} setDialogOpen={setNeedsActivation} />
       <div className="mx-auto max-w-6xl p-4 md:p-6">
         <div className="mb-6 flex items-center justify-between">
           <Link
@@ -278,6 +225,7 @@ export default function SmartContractTicketPage() {
                 viewerId={session?.user.id}
                 onBuy={handleBuyResaleBatch}
                 isBuying={isBuyingResale}
+                onCardPurchaseSuccess={invalidateAfterPurchase}
               />
             ) : (
               <PrimaryBuyCard
@@ -286,6 +234,7 @@ export default function SmartContractTicketPage() {
                 isLoadingOnChainInsights={isLoadingOnChainInsights}
                 onBuy={handleBuyPrimary}
                 isBuying={isBuyingPrimary}
+                onCardPurchaseSuccess={invalidateAfterPurchase}
               />
             )}
 

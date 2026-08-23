@@ -116,6 +116,8 @@ fn buy_ref(
         &String::from_str(&f.env, purchase_ref),
         &f.payment,
         &quantity,
+        &0,
+        &0,
     )
 }
 
@@ -300,6 +302,8 @@ fn buy_edition_rejects_empty_title() {
         &String::from_str(&f.env, "purchase-1"),
         &f.payment,
         &1,
+        &0,
+        &0,
     );
 }
 
@@ -316,6 +320,8 @@ fn buy_edition_rejects_empty_media_url() {
         &String::from_str(&f.env, "purchase-1"),
         &f.payment,
         &1,
+        &0,
+        &0,
     );
 }
 
@@ -332,6 +338,8 @@ fn buy_edition_rejects_zero_supply() {
         &String::from_str(&f.env, "purchase-1"),
         &f.payment,
         &1,
+        &0,
+        &0,
     );
 }
 
@@ -348,6 +356,8 @@ fn buy_edition_rejects_empty_price_grid() {
         &String::from_str(&f.env, "purchase-1"),
         &f.payment,
         &1,
+        &0,
+        &0,
     );
 }
 
@@ -367,6 +377,8 @@ fn buy_edition_rejects_duplicate_payment_token_in_price_grid() {
         &String::from_str(&f.env, "purchase-1"),
         &f.payment,
         &1,
+        &0,
+        &0,
     );
 }
 
@@ -383,6 +395,8 @@ fn buy_edition_rejects_zero_price() {
         &String::from_str(&f.env, "purchase-1"),
         &f.payment,
         &1,
+        &0,
+        &0,
     );
 }
 
@@ -403,6 +417,8 @@ fn buy_edition_rejects_unaccepted_payment_token() {
         &String::from_str(&f.env, "purchase-1"),
         &other_token,
         &1,
+        &0,
+        &0,
     );
 }
 
@@ -418,6 +434,8 @@ fn buy_edition_rejects_zero_quantity() {
         &edition_input(&f, &alice, 0, 1, PRICE),
         &String::from_str(&f.env, "purchase-1"),
         &f.payment,
+        &0,
+        &0,
         &0,
     );
 }
@@ -435,6 +453,8 @@ fn buy_edition_rejects_quantity_over_the_per_call_cap() {
         &String::from_str(&f.env, "purchase-1"),
         &f.payment,
         &21,
+        &0,
+        &0,
     );
 }
 
@@ -532,7 +552,7 @@ fn resale_pays_royalty_to_the_original_creator() {
     let alice_after_primary = f.token.balance(&alice);
 
     f.client.list(&bob, &id, &single_price(&f, PRICE));
-    f.client.buy(&carol, &id, &f.payment);
+    f.client.buy(&carol, &id, &f.payment, &0, &0);
 
     let platform_fee = PRICE * FEE_BPS as i128 / 10_000;
     let royalty = PRICE * ROYALTY_BPS as i128 / 10_000;
@@ -575,7 +595,7 @@ fn reseller_can_price_in_multiple_currencies() {
 
     // Carol pays in the *second* currency, not the one the edition itself
     // was originally priced in.
-    f.client.buy(&carol, &id, &other_token);
+    f.client.buy(&carol, &id, &other_token, &0, &0);
 
     assert_eq!(f.client.owner_of(&id), carol);
     assert_eq!(TokenClient::new(&f.env, &other_token).balance(&bob), PRICE - (PRICE * FEE_BPS as i128 / 10_000));
@@ -661,7 +681,7 @@ fn buy_batch_buys_every_token_and_pays_each_seller() {
     let alice_before = f.token.balance(&alice);
     let treasury_before = f.token.balance(&f.treasury);
 
-    f.client.buy_batch(&carol, &token_ids, &f.payment);
+    f.client.buy_batch(&carol, &token_ids, &f.payment, &0, &0);
 
     for id in first..=last {
         assert_eq!(f.client.owner_of(&id), carol);
@@ -685,7 +705,7 @@ fn buy_batch_rejects_an_empty_batch() {
     let carol = Address::generate(&f.env);
     fund(&f, &carol, PRICE);
 
-    f.client.buy_batch(&carol, &Vec::new(&f.env), &f.payment);
+    f.client.buy_batch(&carol, &Vec::new(&f.env), &f.payment, &0, &0);
 }
 
 #[test]
@@ -702,7 +722,7 @@ fn buy_batch_rejects_an_unlisted_token() {
     // `id` was never listed.
     let mut token_ids = Vec::new(&f.env);
     token_ids.push_back(id);
-    f.client.buy_batch(&carol, &token_ids, &f.payment);
+    f.client.buy_batch(&carol, &token_ids, &f.payment, &0, &0);
 }
 
 #[test]
@@ -723,7 +743,7 @@ fn sale_breakdown_matches_what_buy_actually_pays() {
     let creator_before = f.token.balance(&alice);
     let seller_before = f.token.balance(&bob);
 
-    f.client.buy(&carol, &id, &f.payment);
+    f.client.buy(&carol, &id, &f.payment, &0, &0);
 
     assert_eq!(f.token.balance(&f.treasury) - treasury_before, quoted.platform_fee);
     assert_eq!(f.token.balance(&alice) - creator_before, quoted.royalty);
@@ -819,12 +839,21 @@ fn buy_edition_requires_only_the_buyers_signature() {
             invoke: &MockAuthInvoke {
                 contract: &contract_id,
                 fn_name: "buy_edition",
-                args: (bob.clone(), edition_ref.clone(), edition.clone(), purchase_ref.clone(), payment.clone(), 1u32)
+                args: (
+                    bob.clone(),
+                    edition_ref.clone(),
+                    edition.clone(),
+                    purchase_ref.clone(),
+                    payment.clone(),
+                    1u32,
+                    0i128,
+                    0i128,
+                )
                     .into_val(&env),
                 sub_invokes: &[fee_leg, creator_leg],
             },
         }])
-        .buy_edition(&bob, &edition_ref, &edition, &purchase_ref, &payment, &1);
+        .buy_edition(&bob, &edition_ref, &edition, &purchase_ref, &payment, &1, &0, &0);
 
     assert_eq!(first, last);
     assert_eq!(client.owner_of(&first), bob);
@@ -840,7 +869,7 @@ fn cannot_buy_your_own_listing() {
 
     let id = buy_one(&f, &alice, &alice, 0);
     f.client.list(&alice, &id, &single_price(&f, PRICE));
-    f.client.buy(&alice, &id, &f.payment);
+    f.client.buy(&alice, &id, &f.payment, &0, &0);
 }
 
 #[test]
@@ -871,7 +900,7 @@ fn buying_a_stale_listing_is_rejected() {
     f.client.list(&alice, &id, &single_price(&f, PRICE));
     f.client.transfer(&alice, &bob, &id);
 
-    f.client.buy(&carol, &id, &f.payment);
+    f.client.buy(&carol, &id, &f.payment, &0, &0);
 }
 
 #[test]
@@ -1007,7 +1036,7 @@ fn pause_blocks_buy_edition_list_and_buy_but_not_exits() {
     f.client.pause(&f.owner);
     assert!(f.client.paused());
 
-    assert!(f.client.try_buy(&bob, &id, &f.payment).is_err());
+    assert!(f.client.try_buy(&bob, &id, &f.payment, &0, &0).is_err());
     assert!(f.client.try_list(&alice, &id, &single_price(&f, PRICE)).is_err());
     assert!(f
         .client
@@ -1018,6 +1047,8 @@ fn pause_blocks_buy_edition_list_and_buy_but_not_exits() {
             &String::from_str(&f.env, "purchase-2"),
             &f.payment,
             &1,
+            &0,
+            &0,
         )
         .is_err());
 
@@ -1227,4 +1258,158 @@ fn non_owner_cannot_set_unlock_authority() {
             },
         }])
         .set_unlock_authority(&new_authority);
+}
+
+// =============================================================================
+// Fee-bump reimbursement — inclusion_fee / network_fee
+// =============================================================================
+// These two fields let treasury recover what it spends to fee-bump the
+// buyer's transaction (see src/lib/stellar/oz/nft.ts) — charged to the
+// buyer alongside the item's own price, capped so the reimbursement can
+// never exceed what the item itself is worth.
+
+#[test]
+fn buy_edition_charges_inclusion_and_network_fee_to_treasury() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer
+    let inclusion_fee = 100_0000000i128;
+    let network_fee = 50_0000000i128;
+    fund(&f, &bob, PRICE + inclusion_fee + network_fee);
+
+    let treasury_before = f.token.balance(&f.treasury);
+    let creator_before = f.token.balance(&alice);
+
+    f.client.buy_edition(
+        &bob,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input(&f, &alice, 0, 1, PRICE),
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &1,
+        &inclusion_fee,
+        &network_fee,
+    );
+
+    let platform_fee = PRICE * FEE_BPS as i128 / 10_000;
+    assert_eq!(
+        f.token.balance(&f.treasury) - treasury_before,
+        platform_fee + inclusion_fee + network_fee,
+    );
+    assert_eq!(f.token.balance(&alice) - creator_before, PRICE - platform_fee);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #300)")]
+fn buy_edition_rejects_a_fee_reimbursement_over_the_items_total() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    fund(&f, &bob, PRICE * 2);
+
+    f.client.buy_edition(
+        &bob,
+        &String::from_str(&f.env, "row-1"),
+        &edition_input(&f, &alice, 0, 1, PRICE),
+        &String::from_str(&f.env, "purchase-1"),
+        &f.payment,
+        &1,
+        &PRICE,
+        &1,
+    );
+}
+
+#[test]
+fn buy_charges_inclusion_and_network_fee_to_treasury() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // first buyer, then reseller
+    let carol = Address::generate(&f.env); // second buyer
+    let inclusion_fee = 100_0000000i128;
+    let network_fee = 50_0000000i128;
+    fund(&f, &bob, PRICE);
+    fund(&f, &carol, PRICE + inclusion_fee + network_fee);
+
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 1, PRICE, 1);
+    f.client.list(&bob, &id, &single_price(&f, PRICE));
+
+    let treasury_before = f.token.balance(&f.treasury);
+    let seller_before = f.token.balance(&bob);
+
+    f.client.buy(&carol, &id, &f.payment, &inclusion_fee, &network_fee);
+
+    let platform_fee = PRICE * FEE_BPS as i128 / 10_000;
+    assert_eq!(
+        f.token.balance(&f.treasury) - treasury_before,
+        platform_fee + inclusion_fee + network_fee,
+    );
+    assert_eq!(f.token.balance(&bob) - seller_before, PRICE - platform_fee);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #300)")]
+fn buy_rejects_a_fee_reimbursement_over_the_items_total() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let carol = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+    fund(&f, &carol, PRICE * 2);
+
+    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 1, PRICE, 1);
+    f.client.list(&bob, &id, &single_price(&f, PRICE));
+
+    f.client.buy(&carol, &id, &f.payment, &PRICE, &1);
+}
+
+#[test]
+fn buy_batch_charges_the_fee_once_for_the_whole_batch_not_per_token() {
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer, then reseller of all 5
+    let carol = Address::generate(&f.env); // batch buyer
+    let inclusion_fee = 100_0000000i128;
+    let network_fee = 50_0000000i128;
+    fund(&f, &bob, PRICE * 5);
+    fund(&f, &carol, PRICE * 5 + inclusion_fee + network_fee);
+
+    let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 5, PRICE, 5);
+    let mut token_ids = Vec::new(&f.env);
+    for id in first..=last {
+        token_ids.push_back(id);
+    }
+    f.client.list_batch(&bob, &token_ids, &single_price(&f, PRICE));
+
+    let treasury_before = f.token.balance(&f.treasury);
+
+    f.client.buy_batch(&carol, &token_ids, &f.payment, &inclusion_fee, &network_fee);
+
+    let platform_fee_per = PRICE * FEE_BPS as i128 / 10_000;
+    assert_eq!(
+        f.token.balance(&f.treasury) - treasury_before,
+        platform_fee_per * 5 + inclusion_fee + network_fee,
+        "the fee is charged once for the whole batch, not once per token",
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #300)")]
+fn buy_batch_rejects_a_fee_reimbursement_over_the_batch_total() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let carol = Address::generate(&f.env);
+    fund(&f, &bob, PRICE * 2);
+    fund(&f, &carol, PRICE * 4);
+
+    let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 2, PRICE, 2);
+    let mut token_ids = Vec::new(&f.env);
+    for id in first..=last {
+        token_ids.push_back(id);
+    }
+    f.client.list_batch(&bob, &token_ids, &single_price(&f, PRICE));
+
+    // Batch total is PRICE * 2 — a fee reimbursement bigger than that must
+    // be rejected even though it fits under any *one* token's own price.
+    f.client.buy_batch(&carol, &token_ids, &f.payment, &(PRICE * 2 + 1), &0);
 }

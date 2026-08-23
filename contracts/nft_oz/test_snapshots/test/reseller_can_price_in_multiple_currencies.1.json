@@ -210,6 +210,12 @@
                 },
                 {
                   "u32": 1
+                },
+                {
+                  "i128": "0"
+                },
+                {
+                  "i128": "0"
                 }
               ]
             }
@@ -343,6 +349,12 @@
                 },
                 {
                   "address": "CCVQTUQIJR624NNEI5TORM2BHEXTSDMY5ZB3CYJKAATGJQCY7LU2MD45"
+                },
+                {
+                  "i128": "0"
+                },
+                {
+                  "i128": "0"
                 }
               ]
             }

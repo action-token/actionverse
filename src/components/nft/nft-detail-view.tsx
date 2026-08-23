@@ -1,11 +1,19 @@
-import { Loader2, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
+import { Loader2, Lock, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { BlockchainInsights } from "~/components/nft/blockchain-insights";
 import { PlaceholderArt } from "~/components/nft/placeholder-art";
 import { priceTokenLabel } from "~/components/nft/nft-card";
+import { BuyNftWithCard } from "~/components/payment/buy-nft-with-card";
 import { cn } from "~/lib/utils";
-import { DEFAULT_PLATFORM_FEE_BPS, PAYMENT_TOKEN_SCALE, SOROBAN_INCLUSION_FEE } from "~/lib/stellar/constant";
+import {
+  DEFAULT_PLATFORM_FEE_BPS,
+  INCLUSION_FEE_IN_PLATFORM_ASSET,
+  INCLUSION_FEE_IN_USD,
+  NETWORK_FEE_IN_PLATFORM_ASSET,
+  NETWORK_FEE_IN_USD,
+} from "~/lib/stellar/constant";
 import { Button } from "~/components/shadcn/ui/button";
 import { Input } from "~/components/shadcn/ui/input";
 import {
@@ -14,7 +22,9 @@ import {
   TabsList,
   TabsTrigger,
 } from "~/components/shadcn/ui/tabs";
-import { type NftPaymentToken } from "~/lib/stellar/oz/nft";
+import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
+import { WalletType } from "~/types/wallet/wallet-types";
+import { type NftDisplayCurrency, type NftPaymentToken } from "~/lib/stellar/oz/nft";
 import { type RouterOutputs } from "~/utils/api";
 
 type ByIdNft = RouterOutputs["nft"]["byId"];
@@ -41,11 +51,6 @@ const MAX_LIST_BATCH = 5;
 // to both a fresh primary purchase and a pooled resale purchase, well under
 // the contract's own `buy_edition`/`buy_batch` limits.
 const MAX_BUY_BATCH = 5;
-
-// The Soroban network fee is a separate charge from the NFT's own price —
-// paid in XLM by the source account regardless of which currency the price
-// itself is denominated in — and bid once per transaction, not per copy.
-const NETWORK_FEE_XLM = Number(SOROBAN_INCLUSION_FEE) / PAYMENT_TOKEN_SCALE;
 
 // A signed transaction can take a few seconds to land, and a flat "disabled +
 // dimmed" button reads as broken rather than working — so buy/list buttons
@@ -157,6 +162,7 @@ export function NftDetailView({
   // buy mode — secondary (one or more resold copies, picked from the pool)
   onBuyResaleBatch,
   isBuyingResale = false,
+  onCardPurchaseSuccess,
   onChainInsights,
   isLoadingOnChainInsights = false,
 }: {
@@ -164,17 +170,19 @@ export function NftDetailView({
   mode: "manage" | "buy";
   viewerId?: string;
   myTokens?: MyToken[];
-  onListToken?: (tokenId: string, prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
+  onListToken?: (tokenId: string, prices: { paymentToken: NftDisplayCurrency; price: number }[]) => void | Promise<void>;
   onCancelListing?: (tokenId: string) => void | Promise<void>;
   onListMultiple?: (
     tokenIds: string[],
-    prices: { paymentToken: NftPaymentToken; price: number }[],
+    prices: { paymentToken: NftDisplayCurrency; price: number }[],
   ) => void | Promise<void>;
   isSavingListing?: boolean;
   onBuyPrimary?: (args: { paymentToken: NftPaymentToken; quantity: number }) => void | Promise<void>;
   isBuyingPrimary?: boolean;
   onBuyResaleBatch?: (tokenIds: string[], paymentToken: NftPaymentToken) => void | Promise<void>;
   isBuyingResale?: boolean;
+  /** See `PrimaryBuyCard`'s prop of the same name. */
+  onCardPurchaseSuccess?: () => void | Promise<void>;
   onChainInsights?: OnChainInsights;
   isLoadingOnChainInsights?: boolean;
 }) {
@@ -205,6 +213,7 @@ export function NftDetailView({
           viewerId={viewerId}
           onBuy={onBuyResaleBatch}
           isBuying={isBuyingResale}
+          onCardPurchaseSuccess={onCardPurchaseSuccess}
         />
       ) : (
         <PrimaryBuyCard
@@ -213,6 +222,7 @@ export function NftDetailView({
           isLoadingOnChainInsights={isLoadingOnChainInsights}
           onBuy={onBuyPrimary}
           isBuying={isBuyingPrimary}
+          onCardPurchaseSuccess={onCardPurchaseSuccess}
         />
       )}
 
@@ -341,11 +351,11 @@ export function ManagePriceCard({
   network,
 }: {
   myTokens: MyToken[];
-  onListToken?: (tokenId: string, prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
+  onListToken?: (tokenId: string, prices: { paymentToken: NftDisplayCurrency; price: number }[]) => void | Promise<void>;
   onCancelListing?: (tokenId: string) => void | Promise<void>;
   onListMultiple?: (
     tokenIds: string[],
-    prices: { paymentToken: NftPaymentToken; price: number }[],
+    prices: { paymentToken: NftDisplayCurrency; price: number }[],
   ) => void | Promise<void>;
   isSaving: boolean;
   network?: string;
@@ -409,7 +419,7 @@ function HoldAndListCard({
   tokens: MyToken[];
   onListMultiple?: (
     tokenIds: string[],
-    prices: { paymentToken: NftPaymentToken; price: number }[],
+    prices: { paymentToken: NftDisplayCurrency; price: number }[],
   ) => void | Promise<void>;
   isSaving: boolean;
 }) {
@@ -418,20 +428,21 @@ function HoldAndListCard({
   // more than that — they just list again for the rest.
   const max = Math.min(heldCount, MAX_LIST_BATCH);
   const [count, setCount] = useState(1);
-  // A reseller sets their own price grid — one or both currencies at once —
-  // independent of whichever ones the creator originally priced the edition
-  // in. Empty means "not offered in that currency", same as the create form.
-  const [priceXlm, setPriceXlm] = useState("1");
-  const [priceAsset, setPriceAsset] = useState("");
-  const parsedXlm = Number(priceXlm) || 0;
+  // A reseller sets their own prices — ACTION (on-chain) and USD (a
+  // Square-charged card sticker price, off-chain only), both required —
+  // independent of whichever ones the creator originally priced the
+  // edition in.
+  const [priceAsset, setPriceAsset] = useState("1");
+  const [priceUsd, setPriceUsd] = useState("");
   const parsedAsset = Number(priceAsset) || 0;
-  const hasAnyPrice = parsedXlm > 0 || parsedAsset > 0;
+  const parsedUsd = Number(priceUsd) || 0;
+  const hasBothPrices = parsedAsset > 0 && parsedUsd > 0;
 
   function submit() {
-    const prices: { paymentToken: NftPaymentToken; price: number }[] = [];
-    if (parsedXlm > 0) prices.push({ paymentToken: "xlm", price: parsedXlm });
-    if (parsedAsset > 0) prices.push({ paymentToken: "asset", price: parsedAsset });
-    onListMultiple?.(tokens.slice(0, count).map((t) => t.tokenId), prices);
+    onListMultiple?.(tokens.slice(0, count).map((t) => t.tokenId), [
+      { paymentToken: "asset", price: parsedAsset },
+      { paymentToken: "usd", price: parsedUsd },
+    ]);
   }
 
   return (
@@ -476,38 +487,38 @@ function HoldAndListCard({
         Price per copy
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Set one or both currencies — buyers pick which to pay with.
+        Both currencies are required — buyers pick which to pay with.
       </p>
       <div className="mt-1.5 grid grid-cols-2 gap-2">
         <div className="flex items-center gap-1.5">
-          <Input
-            type="number"
-            min={0}
-            step="any"
-            value={priceXlm}
-            onChange={(e) => setPriceXlm(e.target.value)}
-            placeholder="e.g. 5"
-            className="h-10 font-bold tabular-nums"
-          />
-          <span className="text-xs font-bold text-foreground">XLM</span>
-        </div>
-        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
           <Input
             type="number"
             min={0}
             step="any"
             value={priceAsset}
             onChange={(e) => setPriceAsset(e.target.value)}
-            placeholder="Optional"
+            placeholder="e.g. 5"
             className="h-10 font-bold tabular-nums"
           />
-          <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-bold text-foreground">USD</span>
+          <Input
+            type="number"
+            min={0}
+            step="any"
+            value={priceUsd}
+            onChange={(e) => setPriceUsd(e.target.value)}
+            placeholder="e.g. 10"
+            className="h-10 font-bold tabular-nums"
+          />
         </div>
       </div>
 
       <ListButton
         isSaving={isSaving}
-        disabled={!hasAnyPrice}
+        disabled={!hasBothPrices}
         onClick={submit}
         idleLabel={`List ${count} for sale`}
         className="mt-4 h-11 w-full"
@@ -524,26 +535,26 @@ function TokenListingRow({
 }: {
   token: MyToken;
   isSaving: boolean;
-  onList: (prices: { paymentToken: NftPaymentToken; price: number }[]) => void | Promise<void>;
+  onList: (prices: { paymentToken: NftDisplayCurrency; price: number }[]) => void | Promise<void>;
   onCancel: () => void | Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
-  const [priceXlm, setPriceXlm] = useState("1");
-  const [priceAsset, setPriceAsset] = useState("");
-  const parsedXlm = Number(priceXlm) || 0;
+  const [priceAsset, setPriceAsset] = useState("1");
+  const [priceUsd, setPriceUsd] = useState("");
   const parsedAsset = Number(priceAsset) || 0;
+  const parsedUsd = Number(priceUsd) || 0;
 
   function startEditing() {
-    setPriceXlm(String(token.listingPrices.find((p) => p.paymentToken === "xlm")?.price ?? 1));
-    setPriceAsset(String(token.listingPrices.find((p) => p.paymentToken === "asset")?.price ?? ""));
+    setPriceAsset(String(token.listingPrices.find((p) => p.paymentToken === "asset")?.price ?? 1));
+    setPriceUsd(String(token.listingPrices.find((p) => p.paymentToken === "usd")?.price ?? ""));
     setEditing(true);
   }
 
   function submit() {
-    const prices: { paymentToken: NftPaymentToken; price: number }[] = [];
-    if (parsedXlm > 0) prices.push({ paymentToken: "xlm", price: parsedXlm });
-    if (parsedAsset > 0) prices.push({ paymentToken: "asset", price: parsedAsset });
-    return onList(prices);
+    return onList([
+      { paymentToken: "asset", price: parsedAsset },
+      { paymentToken: "usd", price: parsedUsd },
+    ]);
   }
 
   return (
@@ -563,28 +574,28 @@ function TokenListingRow({
         <>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
               <Input
                 type="number"
                 min={0}
                 step="any"
                 autoFocus
-                value={priceXlm}
-                onChange={(e) => setPriceXlm(e.target.value)}
+                value={priceAsset}
+                onChange={(e) => setPriceAsset(e.target.value)}
                 className="h-10 font-bold tabular-nums"
               />
-              <span className="text-xs font-bold text-foreground">XLM</span>
             </div>
             <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-foreground">USD</span>
               <Input
                 type="number"
                 min={0}
                 step="any"
-                value={priceAsset}
-                onChange={(e) => setPriceAsset(e.target.value)}
-                placeholder="Optional"
+                value={priceUsd}
+                onChange={(e) => setPriceUsd(e.target.value)}
+                placeholder="e.g. 10"
                 className="h-10 font-bold tabular-nums"
               />
-              <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
             </div>
           </div>
           <div className="mt-3 flex gap-2">
@@ -600,7 +611,7 @@ function TokenListingRow({
             <ListButton
               size="sm"
               isSaving={isSaving}
-              disabled={parsedXlm <= 0 && parsedAsset <= 0}
+              disabled={parsedAsset <= 0 || parsedUsd <= 0}
               onClick={async () => {
                 await submit();
                 setEditing(false);
@@ -674,57 +685,49 @@ export function ResaleBuyCard({
   viewerId,
   onBuy,
   isBuying,
+  onCardPurchaseSuccess,
 }: {
   listings: ByIdNft["resaleListings"];
   viewerId?: string;
   onBuy?: (tokenIds: string[], paymentToken: NftPaymentToken) => void | Promise<void>;
   isBuying: boolean;
+  /** See `PrimaryBuyCard`'s prop of the same name — called after a
+   *  successful "Pay with card" purchase of the cheapest USD-priced
+   *  resale listing (see below). */
+  onCardPurchaseSuccess?: () => void | Promise<void>;
 }) {
-  // Each reseller can price their copy in more than one currency (just like
-  // an edition's own price grid), so the same token can appear in more than
-  // one currency's pool — flatten (token, currency) pairs before grouping.
-  const allOptions = listings
+  const { data: session } = useSession();
+  const isCustodial = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
+
+  // Top-level currency choice, same shape as `PrimaryBuyCard`: Platform
+  // Asset (the pooled "cheapest N" ACTION flow below) or USD (card,
+  // settles one specific token at a time via `buyResaleWithCard` — there's
+  // no batch card entry point, so this surfaces just the single cheapest
+  // USD-priced listing instead of a quantity picker).
+  const [selectedCurrency, setSelectedCurrency] = useState<"asset" | "usd">("asset");
+
+  const cheapestUsdListing = listings
     .filter((l) => l.sellerId !== viewerId)
-    .flatMap((l) =>
-      l.prices.map((p) => ({
-        tokenId: l.tokenId,
-        sellerId: l.sellerId,
-        paymentToken: p.paymentToken,
-        price: p.price,
-      })),
-    );
-  const allPurchasable = [...new Map(allOptions.map((o) => [o.tokenId, o])).values()];
-  // "Cheapest N" only makes sense within one currency at a time — group into
-  // pools and let the buyer pick which pool (same toggle shape as the
-  // primary buy card).
-  const pools = new Map<string, typeof allOptions>();
-  for (const o of allOptions) {
-    const pool = pools.get(o.paymentToken) ?? [];
-    pool.push(o);
-    pools.set(o.paymentToken, pool);
-  }
-  for (const pool of pools.values()) pool.sort((a, b) => a.price - b.price);
-  const availableTokens = [...pools.keys()] as NftPaymentToken[];
+    .flatMap((l) => l.prices.filter((p) => p.paymentToken === "usd").map((p) => ({ tokenId: l.tokenId, price: p.price })))
+    .sort((a, b) => a.price - b.price)[0];
 
-  const [selectedToken, setSelectedToken] = useState<NftPaymentToken>("xlm");
+  const allPurchasable = [
+    ...new Map(
+      listings
+        .filter((l) => l.sellerId !== viewerId)
+        .flatMap((l) => l.prices.filter((p) => p.paymentToken === "asset").map((p) => ({ tokenId: l.tokenId, price: p.price })))
+        .map((o) => [o.tokenId, o]),
+    ).values(),
+  ].sort((a, b) => a.price - b.price);
+
   const [quantity, setQuantity] = useState(1);
-
-  useEffect(() => {
-    if (availableTokens.length === 0) return;
-    if (!availableTokens.includes(selectedToken)) {
-      setSelectedToken(availableTokens.includes("xlm") ? "xlm" : availableTokens[0]!);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableTokens.join(",")]);
-
-  const purchasable = pools.get(selectedToken) ?? [];
-  const maxQuantity = Math.min(purchasable.length, MAX_BUY_BATCH);
+  const maxQuantity = Math.min(allPurchasable.length, MAX_BUY_BATCH);
 
   useEffect(() => {
     setQuantity((q) => Math.min(Math.max(q, 1), Math.max(maxQuantity, 1)));
   }, [maxQuantity]);
 
-  if (allPurchasable.length === 0) {
+  if (allPurchasable.length === 0 && !cheapestUsdListing) {
     return (
       <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
         {listings.length > 0 ? "These resales are all your own listings." : "No resold copies for sale right now."}
@@ -732,9 +735,15 @@ export function ResaleBuyCard({
     );
   }
 
-  const selected = purchasable.slice(0, quantity);
+  const selected = allPurchasable.slice(0, quantity);
   const total = selected.reduce((sum, l) => sum + l.price, 0);
-  const cheapest = purchasable[0]?.price ?? 0;
+  // `buy_batch` is one fee-bumped transaction regardless of how many
+  // tokens it settles, so the fee is charged once for the whole batch, not
+  // once per token — see `buy_batch`'s doc comment in
+  // `contracts/nft_oz/src/lib.rs`.
+  const grandTotal = total + INCLUSION_FEE_IN_PLATFORM_ASSET + NETWORK_FEE_IN_PLATFORM_ASSET;
+  const cheapest = allPurchasable[0]?.price ?? 0;
+  const usdTotal = cheapestUsdListing ? cheapestUsdListing.price + INCLUSION_FEE_IN_USD + NETWORK_FEE_IN_USD : 0;
 
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -746,85 +755,145 @@ export function ResaleBuyCard({
           {allPurchasable.length} for resale
         </span>
       </div>
-      <p className="mt-1 flex items-baseline gap-1.5 text-2xl font-black tabular-nums">
-        {cheapest}
-        <span className="text-sm font-bold text-foreground">{priceTokenLabel(selectedToken)}</span>
-        <span className="text-xs font-medium text-muted-foreground">cheapest available</span>
-      </p>
 
-      {availableTokens.length > 1 && (
-        <div className="mt-2 flex w-fit gap-1 rounded-full bg-muted p-1">
-          {availableTokens.map((tok) => (
-            <button
-              key={tok}
-              type="button"
-              onClick={() => setSelectedToken(tok)}
-              className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-bold transition-colors",
-                tok === selectedToken
-                  ? "bg-foreground text-background shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {priceTokenLabel(tok)} ({pools.get(tok)?.length})
-            </button>
-          ))}
-        </div>
-      )}
-
-      {maxQuantity > 1 && (
-        <div className="mt-2 flex w-fit items-center gap-1 rounded-full border pl-3">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="h-9 w-9 rounded-full"
-            disabled={quantity <= 1}
-            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-          >
-            <Minus className="h-4 w-4" />
-          </Button>
-          <span className="w-7 text-center text-sm font-bold tabular-nums">{quantity}</span>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="h-9 w-9 rounded-full"
-            disabled={quantity >= maxQuantity}
-            onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-          <span className="pr-3 text-xs font-semibold text-muted-foreground">
-            / {maxQuantity}
-          </span>
-        </div>
-      )}
-
-      <div className="mt-4 space-y-1.5 rounded-xl bg-muted p-4 text-sm">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Price ({quantity} cop{quantity === 1 ? "y" : "ies"})</span>
-          <span className="font-semibold tabular-nums">
-            {total.toFixed(2)} {priceTokenLabel(selectedToken)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Network fee (Soroban)</span>
-          <span className="font-semibold tabular-nums">~{(NETWORK_FEE_XLM * quantity).toFixed(5)} XLM</span>
-        </div>
-        <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
-          <span className="font-bold">Total</span>
-          <span className="text-base font-black tabular-nums">
-            {total.toFixed(2)} {priceTokenLabel(selectedToken)}
-          </span>
-        </div>
+      <div className="mt-2 flex w-fit gap-1 rounded-full bg-muted p-1">
+        <button
+          type="button"
+          onClick={() => setSelectedCurrency("asset")}
+          disabled={allPurchasable.length === 0}
+          className={cn(
+            "rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+            selectedCurrency === "asset"
+              ? "bg-foreground text-background shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {priceTokenLabel("asset")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSelectedCurrency("usd")}
+          disabled={!cheapestUsdListing}
+          className={cn(
+            "rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+            selectedCurrency === "usd"
+              ? "bg-foreground text-background shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          USD
+        </button>
       </div>
 
-      <BuyButton
-        isBuying={isBuying}
-        onClick={() => void onBuy?.(selected.map((l) => l.tokenId), selectedToken)}
-        idleLabel={`Buy ${quantity} for ${total.toFixed(2)} ${priceTokenLabel(selectedToken)}`}
-      />
+      {selectedCurrency === "asset" ? (
+        <>
+          <p className="mt-2 flex items-baseline gap-1.5 text-2xl font-black tabular-nums">
+            {cheapest}
+            <span className="text-sm font-bold text-foreground">{priceTokenLabel("asset")}</span>
+            <span className="text-xs font-medium text-muted-foreground">cheapest available</span>
+          </p>
+
+          {maxQuantity > 1 && (
+            <div className="mt-2 flex w-fit items-center gap-1 rounded-full border pl-3">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-9 w-9 rounded-full"
+                disabled={quantity <= 1}
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <span className="w-7 text-center text-sm font-bold tabular-nums">{quantity}</span>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-9 w-9 rounded-full"
+                disabled={quantity >= maxQuantity}
+                onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <span className="pr-3 text-xs font-semibold text-muted-foreground">
+                / {maxQuantity}
+              </span>
+            </div>
+          )}
+
+          <div className="mt-4 space-y-1.5 rounded-xl bg-muted p-4 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Price ({quantity} cop{quantity === 1 ? "y" : "ies"})</span>
+              <span className="font-semibold tabular-nums">
+                {total.toFixed(2)} {priceTokenLabel("asset")}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Inclusion fee</span>
+              <span className="font-semibold tabular-nums">
+                {INCLUSION_FEE_IN_PLATFORM_ASSET.toFixed(2)} {priceTokenLabel("asset")}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Network fee</span>
+              <span className="font-semibold tabular-nums">
+                {NETWORK_FEE_IN_PLATFORM_ASSET.toFixed(2)} {priceTokenLabel("asset")}
+              </span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
+              <span className="font-bold">Total</span>
+              <span className="text-base font-black tabular-nums">
+                {grandTotal.toFixed(2)} {priceTokenLabel("asset")}
+              </span>
+            </div>
+          </div>
+
+          <BuyButton
+            isBuying={isBuying}
+            onClick={() => void onBuy?.(selected.map((l) => l.tokenId), "asset")}
+            idleLabel={`Buy ${quantity} for ${grandTotal.toFixed(2)} ${priceTokenLabel("asset")}`}
+          />
+        </>
+      ) : (
+        cheapestUsdListing && (
+          <>
+            <div className="mt-4 space-y-1.5 rounded-xl bg-muted p-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Item price</span>
+                <span className="font-semibold tabular-nums">${cheapestUsdListing.price.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Inclusion fee</span>
+                <span className="font-semibold tabular-nums">${INCLUSION_FEE_IN_USD.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Network fee</span>
+                <span className="font-semibold tabular-nums">${NETWORK_FEE_IN_USD.toFixed(2)}</span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
+                <span className="font-bold">Total</span>
+                <span className="text-base font-black tabular-nums">${usdTotal.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {isCustodial ? (
+              <BuyNftWithCard
+                className="mt-3"
+                target={{ kind: "resale", tokenId: cheapestUsdListing.tokenId }}
+                onSuccess={async () => {
+                  await onCardPurchaseSuccess?.();
+                }}
+              />
+            ) : (
+              <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                <Lock className="h-4 w-4 shrink-0" />
+                Card payment isn&apos;t available for connected wallets — pay with {priceTokenLabel("asset")} instead.
+              </div>
+            )}
+          </>
+        )
+      )}
     </div>
   );
 }
@@ -846,41 +915,40 @@ export function PrimaryBuyCard({
   isLoadingOnChainInsights,
   onBuy,
   isBuying,
+  onCardPurchaseSuccess,
 }: {
   nft: ByIdNft;
   onChainInsights?: OnChainInsights;
   isLoadingOnChainInsights: boolean;
   onBuy?: (args: { paymentToken: NftPaymentToken; quantity: number }) => void | Promise<void>;
   isBuying: boolean;
+  /** Called after a successful "Pay with card" purchase (see
+   *  `BuyNftWithCard`) — the card mutation is self-contained, so this is
+   *  the hook for the page to invalidate/refetch, same effect `onBuy`'s
+   *  caller has after its own promise resolves. */
+  onCardPurchaseSuccess?: () => void | Promise<void>;
 }) {
-  // Local to this card, not the app-wide payment-method store (that store
-  // also drives the classic-NFT creation fee picker via a dialog, which is
-  // its own separate popup flow) — the currency choice here always starts
-  // at XLM and lives entirely on this page, no dialog involved.
-  const [selectedToken, setSelectedToken] = useState<NftPaymentToken>("xlm");
+  const { data: session } = useSession();
+  const isCustodial = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
+
+  // Top-level currency choice — Platform Asset (on-chain) or USD (card) —
+  // always both, since a price in each is now mandatory (see
+  // `DisplayPricesSchema`). Defaults to ACTION.
+  const [selectedCurrency, setSelectedCurrency] = useState<"asset" | "usd">("asset");
   const [quantity, setQuantity] = useState(1);
 
   // Ground truth once available (post-mint); the DB's price grid otherwise —
   // see `nft.onChainInsights` for why the on-chain read wins once it exists.
-  const prices = onChainInsights?.prices ?? nft.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price }));
-  const priceByToken = new Map(prices.map((p) => [p.paymentToken, p.price]));
-  const offered = [...priceByToken.keys()] as NftPaymentToken[];
+  const allPrices = onChainInsights?.prices ?? nft.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price }));
+  const assetPrice = allPrices.find((p) => p.paymentToken === "asset")?.price ?? 0;
+  // "usd" never has an on-chain counterpart (see `NFT_DISPLAY_CURRENCIES`'s
+  // doc comment), so it only ever comes from the DB's own price grid.
+  const usdPrice = nft.prices.find((p) => p.paymentToken === "usd")?.price;
 
   const remaining = onChainInsights
     ? onChainInsights.remainingSupply
     : nft.supply - nft.mintedCount;
   const maxQuantity = Math.max(0, Math.min(remaining, MAX_QUANTITY_PER_BUY, MAX_BUY_BATCH));
-
-  // Default to XLM when offered; otherwise fall back to whatever currency
-  // this item is actually priced in.
-  useEffect(() => {
-    if (offered.length === 0) return;
-    if (!offered.includes(selectedToken)) {
-      setSelectedToken(offered.includes("xlm") ? "xlm" : offered[0]!);
-    }
-    // Only re-run when the set of offered currencies actually changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offered.join(",")]);
 
   useEffect(() => {
     setQuantity((q) => Math.min(Math.max(q, 1), Math.max(maxQuantity, 1)));
@@ -894,7 +962,7 @@ export function PrimaryBuyCard({
     );
   }
 
-  if (maxQuantity <= 0 || offered.length === 0) {
+  if (maxQuantity <= 0 || assetPrice <= 0) {
     return (
       <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
         Sold out — no copies left to buy.
@@ -902,8 +970,9 @@ export function PrimaryBuyCard({
     );
   }
 
-  const unitPrice = priceByToken.get(selectedToken) ?? 0;
-  const total = unitPrice * quantity;
+  const total = assetPrice * quantity;
+  const grandTotal = total + INCLUSION_FEE_IN_PLATFORM_ASSET + NETWORK_FEE_IN_PLATFORM_ASSET;
+  const usdTotal = usdPrice !== undefined ? usdPrice * quantity + INCLUSION_FEE_IN_USD + NETWORK_FEE_IN_USD : 0;
 
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -943,80 +1012,130 @@ export function PrimaryBuyCard({
           <span />
         )}
 
-        {offered.length > 1 && (
-          <div className="flex shrink-0 gap-1 rounded-full bg-muted p-1">
-            {offered.map((token) => (
-              <button
-                key={token}
-                type="button"
-                onClick={() => setSelectedToken(token)}
-                className={cn(
-                  "rounded-full px-3.5 py-2 text-sm font-bold transition-colors",
-                  token === selectedToken
-                    ? "bg-foreground text-background shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {priceTokenLabel(token)}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Cost breakdown — same idea as the PaymentChoose dialog's itemized
-          list, just laid out inline instead of behind a popup. */}
-      <div className="mt-4 space-y-1.5 rounded-xl bg-muted p-4 text-sm">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Price per copy</span>
-          <span className="font-semibold tabular-nums">
-            {unitPrice} {priceTokenLabel(selectedToken)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Quantity</span>
-          <span className="font-semibold tabular-nums">×{quantity}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Network fee (Soroban)</span>
-          <span className="font-semibold tabular-nums">~{NETWORK_FEE_XLM} XLM</span>
-        </div>
-        <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
-          <span className="font-bold">Total</span>
-          <div className="text-right">
-            <span className="block text-base font-black tabular-nums">
-              {total.toFixed(2)} {priceTokenLabel(selectedToken)}
-            </span>
-            <span className="block text-xs font-medium text-muted-foreground">
-              + ~{NETWORK_FEE_XLM} XLM network fee
-            </span>
-          </div>
-        </div>
-
-        {/* This is the primary sale — there's no seller separate from the
-            creator, so no royalty leg (a creator isn't charged a royalty on
-            their own sale). Informational only: it doesn't change the total
-            above, it's how the contract splits it between the platform and
-            the creator once you pay it. */}
-        <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-xs text-muted-foreground">
-          <div className="flex items-center justify-between">
-            <span>↳ Platform fee ({(DEFAULT_PLATFORM_FEE_BPS / 100).toFixed(1)}%)</span>
-            <span className="tabular-nums">
-              {((total * DEFAULT_PLATFORM_FEE_BPS) / 10_000).toFixed(2)} {priceTokenLabel(selectedToken)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>↳ Creator royalty</span>
-            <span className="tabular-nums">0 (primary sale)</span>
-          </div>
+        <div className="flex shrink-0 gap-1 rounded-full bg-muted p-1">
+          <button
+            type="button"
+            onClick={() => setSelectedCurrency("asset")}
+            className={cn(
+              "rounded-full px-3.5 py-2 text-sm font-bold transition-colors",
+              selectedCurrency === "asset"
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {priceTokenLabel("asset")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedCurrency("usd")}
+            disabled={usdPrice === undefined}
+            className={cn(
+              "rounded-full px-3.5 py-2 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+              selectedCurrency === "usd"
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            USD
+          </button>
         </div>
       </div>
 
-      <BuyButton
-        isBuying={isBuying}
-        onClick={() => void onBuy?.({ paymentToken: selectedToken, quantity })}
-        idleLabel={`Buy for ${total.toFixed(2)} ${priceTokenLabel(selectedToken)}`}
-      />
+      {selectedCurrency === "asset" ? (
+        <>
+          {/* Cost breakdown — laid out inline, no popup. */}
+          <div className="mt-4 space-y-1.5 rounded-xl bg-muted p-4 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Price per copy</span>
+              <span className="font-semibold tabular-nums">
+                {assetPrice} {priceTokenLabel("asset")}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Quantity</span>
+              <span className="font-semibold tabular-nums">×{quantity}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Inclusion fee</span>
+              <span className="font-semibold tabular-nums">
+                {INCLUSION_FEE_IN_PLATFORM_ASSET} {priceTokenLabel("asset")}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Network fee</span>
+              <span className="font-semibold tabular-nums">
+                {NETWORK_FEE_IN_PLATFORM_ASSET} {priceTokenLabel("asset")}
+              </span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
+              <span className="font-bold">Total</span>
+              <span className="text-base font-black tabular-nums">
+                {grandTotal.toFixed(2)} {priceTokenLabel("asset")}
+              </span>
+            </div>
+
+            {/* This is the primary sale — there's no seller separate from
+                the creator, so no royalty leg (a creator isn't charged a
+                royalty on their own sale). Informational only: it doesn't
+                change the total above, it's how the contract splits it
+                between the platform and the creator once you pay it. */}
+            <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+              <div className="flex items-center justify-between">
+                <span>↳ Platform fee ({(DEFAULT_PLATFORM_FEE_BPS / 100).toFixed(1)}%)</span>
+                <span className="tabular-nums">
+                  {((total * DEFAULT_PLATFORM_FEE_BPS) / 10_000).toFixed(2)} {priceTokenLabel("asset")}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>↳ Creator royalty</span>
+                <span className="tabular-nums">0 (primary sale)</span>
+              </div>
+            </div>
+          </div>
+
+          <BuyButton
+            isBuying={isBuying}
+            onClick={() => void onBuy?.({ paymentToken: "asset", quantity })}
+            idleLabel={`Buy for ${grandTotal.toFixed(2)} ${priceTokenLabel("asset")}`}
+          />
+        </>
+      ) : (
+        <>
+          <div className="mt-4 space-y-1.5 rounded-xl bg-muted p-4 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Item price ({quantity}×)</span>
+              <span className="font-semibold tabular-nums">${((usdPrice ?? 0) * quantity).toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Inclusion fee</span>
+              <span className="font-semibold tabular-nums">${INCLUSION_FEE_IN_USD.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Network fee</span>
+              <span className="font-semibold tabular-nums">${NETWORK_FEE_IN_USD.toFixed(2)}</span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
+              <span className="font-bold">Total</span>
+              <span className="text-base font-black tabular-nums">${usdTotal.toFixed(2)}</span>
+            </div>
+          </div>
+
+          {isCustodial ? (
+            <BuyNftWithCard
+              className="mt-3"
+              target={{ kind: "edition", nftId: nft.id, quantity }}
+              onSuccess={async () => {
+                await onCardPurchaseSuccess?.();
+              }}
+            />
+          ) : (
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+              <Lock className="h-4 w-4 shrink-0" />
+              Card payment isn&apos;t available for connected wallets — pay with {priceTokenLabel("asset")} instead.
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -19,19 +19,23 @@ export function priceTokenLabel(token?: string): string {
       return PLATFORM_ASSET.code;
     case "usdc":
       return "USDC";
+    case "usd":
+      return "USD";
     default:
       return "XLM";
   }
 }
 
 /** Row label for a price-grid entry, e.g. on `AssetView`'s card —
- *  "XLM PRICE", "PLATFORM PRICE", "USDC PRICE". */
+ *  "XLM PRICE", "PLATFORM PRICE", "USDC PRICE", "USD PRICE". */
 export function priceRowLabel(token?: string): string {
   switch (token) {
     case "asset":
       return "PLATFORM PRICE";
     case "usdc":
       return "USDC PRICE";
+    case "usd":
+      return "USD PRICE";
     default:
       return "XLM PRICE";
   }

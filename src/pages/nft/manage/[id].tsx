@@ -12,7 +12,7 @@ import { NftMediaViewer } from "~/components/nft/nft-media-viewer";
 import { Skeleton } from "~/components/shadcn/ui/skeleton";
 import useNeedSign from "~/lib/hook";
 import { clientSelect } from "~/lib/stellar/fan/utils";
-import { type NftPaymentToken } from "~/lib/stellar/oz/nft";
+import { type NftDisplayCurrency } from "~/lib/stellar/oz/nft";
 import { api } from "~/utils/api";
 
 export default function ManageNftPage() {
@@ -88,22 +88,28 @@ export default function ManageNftPage() {
   }
 
   /** Lists one specific token, without the loading-state/invalidate/toast
-   *  wrapper — shared by both the single- and batch-listing flows below. */
+   *  wrapper — shared by both the single- and batch-listing flows below.
+   *  `prices` always has both an "asset" and a "usd" entry now (see
+   *  `DisplayPricesSchema`) — only the "asset" one goes into the on-chain
+   *  XDR (`getListXDR` itself filters that out), but `confirmListing` needs
+   *  the "usd" one passed through explicitly since it has no on-chain
+   *  counterpart to read back. */
   async function listOneToken(
     tokenId: string,
-    prices: { paymentToken: NftPaymentToken; price: number }[],
+    prices: { paymentToken: NftDisplayCurrency; price: number }[],
   ): Promise<boolean> {
     const txHash = await signAndSubmit(() =>
       getListXDR.mutateAsync({ tokenId, prices, signWith: needSign() }),
     );
     if (!txHash) return false;
-    await confirmListing.mutateAsync({ tokenId, txHash });
+    const usdPrice = prices.find((p) => p.paymentToken === "usd")!.price;
+    await confirmListing.mutateAsync({ tokenId, txHash, usdPrice });
     return true;
   }
 
   async function handleListToken(
     tokenId: string,
-    prices: { paymentToken: NftPaymentToken; price: number }[],
+    prices: { paymentToken: NftDisplayCurrency; price: number }[],
   ) {
     if (!session?.user) return;
     setIsSavingListing(true);
@@ -129,7 +135,7 @@ export default function ManageNftPage() {
    */
   async function handleListMultiple(
     tokenIds: string[],
-    prices: { paymentToken: NftPaymentToken; price: number }[],
+    prices: { paymentToken: NftDisplayCurrency; price: number }[],
   ) {
     if (!session?.user || tokenIds.length === 0) return;
     setIsSavingListing(true);
@@ -141,7 +147,8 @@ export default function ManageNftPage() {
         toast.error("Listing transaction could not be confirmed.");
         return;
       }
-      await confirmListBatch.mutateAsync({ tokenIds, txHash });
+      const usdPrice = prices.find((p) => p.paymentToken === "usd")!.price;
+      await confirmListBatch.mutateAsync({ tokenIds, txHash, usdPrice });
       await invalidateAfterListingChange();
       toast.success(tokenIds.length > 1 ? `${tokenIds.length} copies listed for sale` : "Listed for sale");
     } catch (e) {

@@ -1,5 +1,7 @@
+import { randomUUID } from "crypto";
 import { TRPCError } from "@trpc/server";
-import { type Prisma, type PrismaClient } from "@prisma/client";
+import { type NftPurchase, type Prisma, type PrismaClient } from "@prisma/client";
+import { Client as SquareClient, type Environment as SquareEnvironment } from "square";
 import { z } from "zod";
 
 import {
@@ -12,31 +14,103 @@ import {
   buildBuyEditionXDR,
   buildBuyXDR,
   buildCancelListingXDR,
+  buildEstablishTrustlineXDR,
   buildListBatchXDR,
   buildListXDR,
+  ensureBuyerTrustline,
+  feeBumpAsCustodialBuyer,
+  fundBuyerForCardPurchase,
   getEditionMeta,
   getEditionPrices,
+  getOnChainBalance,
   getOnChainListing,
   getOnChainUnlockStatus,
   getPurchaseByRef,
   getRemainingSupply,
   getSaleBreakdown,
+  hasPlatformAssetTrustline,
+  isStellarAccountActivated,
   labelForPaymentTokenAddress,
+  NFT_DISPLAY_CURRENCIES,
   NFT_PAYMENT_TOKENS,
   paymentTokenAddress,
   pollUntilVisible,
   signArtXdr,
+  submitFeeBumpedPurchase,
   verifyContractTransaction,
   type NftPaymentToken,
 } from "~/lib/stellar/oz/nft";
 import { ART_NFT_CONTRACT_ID } from "~/lib/common";
 import {
+  INCLUSION_FEE_IN_PLATFORM_ASSET,
+  INCLUSION_FEE_IN_USD,
   MAX_ROYALTY_BPS,
+  NETWORK_FEE_IN_PLATFORM_ASSET,
+  NETWORK_FEE_IN_USD,
   humanPriceToRaw,
   rawPriceToHuman,
 } from "~/lib/stellar/constant";
 import { STELLAR_NETWORK_LABEL } from "~/lib/stellar/explorer";
 import { SignUser } from "~/lib/stellar/utils";
+import { env } from "~/env";
+import { getAccSecretFromRubyApi } from "package/connect_wallet/src/lib/stellar/get-acc-secret";
+import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
+import { WalletType } from "~/types/wallet/wallet-types";
+
+// Same Square client shape as `src/server/api/routers/marketplace/pay.ts`
+// (`buyAsset`) — this is nft_oz's own card-checkout entry point (Part D of
+// the nft_oz payment design), kept in this router rather than `pay.ts`
+// since it needs deep nft_oz-specific delivery logic
+// (`deliverCardFundedEditionPurchase`/`fundBuyerForCardPurchase`).
+const squarePaymentsApi = new SquareClient({
+  accessToken: env.SQUARE_ACCESS_TOKEN,
+  environment: env.SQUARE_ENVIRONMENT as SquareEnvironment,
+}).paymentsApi;
+
+/**
+ * Splits every buy flow into the two shapes the fee-bump design needs (see
+ * the plan's Part B/C): a custodial buyer can be signed for entirely
+ * server-side in one call, while an external wallet has to sign its own
+ * XDR client-side and round-trip it back. Derived from the session's own
+ * `walletType`, not a client-supplied flag — the client can't misreport
+ * which path it gets.
+ */
+type BuyerAuth =
+  | { kind: "custodial"; signWith: { email: string }; email: string }
+  | { kind: "external" };
+
+function resolveBuyerAuth(user: { walletType: WalletType; email?: string | null }): BuyerAuth {
+  if (isRechargeAbleClient(user.walletType)) {
+    if (!user.email) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Missing account email" });
+    }
+    return { kind: "custodial", signWith: { email: user.email }, email: user.email };
+  }
+  return { kind: "external" };
+}
+
+/**
+ * Run ahead of any buy flow for a custodial buyer: makes sure they're not
+ * still short a Platform Asset trustline (silently fixed, folded into the
+ * same server-side flow, no client-visible step — see the plan's Part E)
+ * and that their account actually exists on-chain (a custodial sign-up
+ * does *not* create one — see `isStellarAccountActivated`'s doc comment).
+ * An external wallet gets `NEEDS_ACTIVATION`/`NEEDS_TRUSTLINE_SETUP`
+ * instead — those cases need the buyer's own wallet/the existing
+ * `ActivationModal`, which only the client can drive.
+ */
+async function ensureBuyerReady(auth: BuyerAuth, buyerId: string): Promise<void> {
+  if (!(await isStellarAccountActivated(buyerId))) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NEEDS_ACTIVATION" });
+  }
+  if (!(await hasPlatformAssetTrustline(buyerId))) {
+    if (auth.kind !== "custodial") {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NEEDS_TRUSTLINE_SETUP" });
+    }
+    const secret = await getAccSecretFromRubyApi(auth.email);
+    await ensureBuyerTrustline({ buyerPubKey: buyerId, buyerSecret: secret });
+  }
+}
 
 // User ids are Stellar public keys (56-char strkeys) — never a valid match,
 // used so the `likes` include can stay an unconditional array shape for
@@ -49,6 +123,25 @@ const NO_SUCH_USER = "__anonymous__";
 const MAX_QUANTITY_PER_BUY = 20;
 
 const PaymentTokenSchema = z.enum([...NFT_PAYMENT_TOKENS]);
+// Broader than `PaymentTokenSchema` — anywhere a creator/reseller *sets* a
+// price (not where a buy/list XDR gets built) also accepts "usd", a
+// creator/reseller-set sticker price charged via Square, never an on-chain
+// `PriceEntry`. See `NFT_DISPLAY_CURRENCIES`'s doc comment.
+const DisplayCurrencySchema = z.enum([...NFT_DISPLAY_CURRENCIES]);
+// Both currencies are mandatory now — a creator/reseller can no longer
+// offer just one. Buyers always get to choose ACTION or USD/card.
+const DisplayPricesSchema = z
+  .array(z.object({ paymentToken: DisplayCurrencySchema, price: z.number().positive() }))
+  .min(2)
+  .max(5)
+  .refine(
+    (prices) => prices.some((p) => p.paymentToken === "asset"),
+    "A price in ACTION is required",
+  )
+  .refine(
+    (prices) => prices.some((p) => p.paymentToken === "usd"),
+    "A price in USD is required",
+  );
 
 /**
  * `lowestActivePrice`/`activeListingCount` are read by the marketplace grid,
@@ -206,6 +299,230 @@ async function ensureTokenUnlockPinSet(
   });
 }
 
+/**
+ * Shared tail for every primary-purchase path once the on-chain
+ * `buy_edition` call itself has already succeeded (fee-bumped, custodial or
+ * external — see `getBuyEditionXDR`/`confirmBuyEdition` — or via
+ * `deliverCardFundedEditionPurchase` below): reads back what actually
+ * minted from `purchase_by_ref` (never trusted from the client) and updates
+ * the DB from that.
+ */
+async function finalizeEditionPurchase(
+  db: PrismaClient,
+  purchase: NftPurchase,
+  txHash: string,
+) {
+  const receipt = await pollUntilVisible(() => getPurchaseByRef(purchase.id));
+  if (!receipt) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Purchase did not register on-chain",
+    });
+  }
+
+  const tokenIds: string[] = [];
+  for (let id = receipt.first_token_id; id <= receipt.last_token_id; id++) {
+    tokenIds.push(String(id));
+  }
+
+  const updated = await db.$transaction(async (tx) => {
+    await tx.nftToken.createMany({
+      data: tokenIds.map((tokenId) => ({
+        nftId: purchase.nftId,
+        tokenId,
+        ownerId: purchase.buyerId,
+      })),
+    });
+    const result = await tx.nft.update({
+      where: { id: purchase.nftId },
+      data: {
+        status: "MINTED",
+        onChainEditionId: String(receipt.edition_id),
+        mintedCount: { increment: tokenIds.length },
+      },
+    });
+    await tx.nftPurchase.update({
+      where: { id: purchase.id },
+      data: {
+        status: "CONFIRMED",
+        txHash,
+        firstTokenId: String(receipt.first_token_id),
+        lastTokenId: String(receipt.last_token_id),
+      },
+    });
+    return result;
+  });
+
+  // One private pin set per (newly-minted copy, gated item), not per
+  // purchase — see `ensureTokenUnlockPinSet`'s doc comment. Deliberately
+  // outside the transaction above: doing this inside it blew past Prisma's
+  // interactive-transaction timeout for anything beyond a tiny quantity
+  // ("Transaction not found"). Not required to be atomic with the mint —
+  // `nft.unlockStatus` self-heals a missing pin set.
+  const gatedItems = await db.nftLockedMedia.findMany({
+    where: { nftId: purchase.nftId, unlockRule: { isNot: null } },
+    include: { unlockRule: { include: { points: true } } },
+  });
+  if (gatedItems.length > 0) {
+    const nftMeta = await db.nft.findUniqueOrThrow({
+      where: { id: purchase.nftId },
+      select: { description: true, thumbnail: true, creatorId: true },
+    });
+    // createMany doesn't hand back the rows it inserted, so re-fetch just
+    // the ids for this purchase's own token range.
+    const newTokens = await db.nftToken.findMany({
+      where: { tokenId: { in: tokenIds } },
+      select: { id: true },
+    });
+    for (const t of newTokens) {
+      for (const item of gatedItems) {
+        await ensureTokenUnlockPinSet(
+          db,
+          item.unlockRule!,
+          item,
+          nftMeta,
+          purchase.nftId,
+          t.id,
+          purchase.buyerId,
+        );
+      }
+    }
+  }
+
+  return updated;
+}
+
+/**
+ * Card/USD checkout's delivery step (Part D of the nft_oz payment design) —
+ * called from `buyEditionWithCard` once Square has already charged the
+ * card. Funds the buyer's own custodial account with the ACTION they're
+ * about to spend (skipped if they already hold enough — a repeat card buyer
+ * with leftover balance is a no-op here), then converges on the exact same
+ * fee-bumped `buy_edition` call a direct purchase uses — see
+ * `fundBuyerForCardPurchase`'s doc comment in `src/lib/stellar/oz/nft.ts`
+ * for why this needs no XLM top-up. `purchase` must already be at
+ * `STEP1_CONFIRMED` (Square already charged) before this runs. If this
+ * step fails, there's no automatic retry (removed for now) — the row just
+ * stays at `STEP1_CONFIRMED` for manual follow-up.
+ */
+export async function deliverCardFundedEditionPurchase(
+  db: PrismaClient,
+  purchase: NftPurchase,
+  buyerEmail: string,
+) {
+  const nft = await db.nft.findUniqueOrThrow({
+    where: { id: purchase.nftId },
+    include: { prices: true },
+  });
+  const onChainPrices = nft.prices.filter((p) => p.paymentToken !== "usd");
+  const assetRow = nft.prices.find((p) => p.paymentToken === "asset");
+  if (!assetRow) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "This item has no on-chain price to settle with" });
+  }
+  const inclusionFeeRaw = humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET);
+  const networkFeeRaw = humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET);
+  const totalAssetRaw =
+    humanPriceToRaw(assetRow.price * purchase.quantity) + inclusionFeeRaw + networkFeeRaw;
+
+  let txHash: string;
+  try {
+    const buyerSecret = await getAccSecretFromRubyApi(buyerEmail);
+    const currentBalanceRaw = humanPriceToRaw(await getOnChainBalance(purchase.buyerId));
+    if (currentBalanceRaw < totalAssetRaw) {
+      await fundBuyerForCardPurchase({
+        buyerPubKey: purchase.buyerId,
+        buyerSecret,
+        assetAmountRaw: totalAssetRaw,
+      });
+    }
+
+    const xdr = await buildBuyEditionXDR({
+      buyerPubKey: purchase.buyerId,
+      editionRef: nft.id,
+      title: nft.name,
+      description: nft.description,
+      thumbnailUrl: nft.thumbnail,
+      mediaUrl: nft.contentUrl,
+      mediaType: nft.mediaType,
+      creatorPubKey: nft.creatorId,
+      royaltyBps: nft.royaltyBps,
+      supply: nft.supply,
+      prices: onChainPrices.map((p) => ({
+        paymentToken: paymentTokenAddress(p.paymentToken as NftPaymentToken),
+        priceRaw: humanPriceToRaw(p.price),
+      })),
+      purchaseRef: purchase.id,
+      paymentToken: paymentTokenAddress("asset"),
+      quantity: purchase.quantity,
+      inclusionFeeRaw,
+      networkFeeRaw,
+    });
+    txHash = await feeBumpAsCustodialBuyer({ xdr, signWith: { email: buyerEmail } });
+  } catch (e) {
+    // Square already charged the card — every failure from here on is
+    // "money received, delivery owed" with no automatic retry (removed for
+    // now): the row stays at `STEP1_CONFIRMED`, visible to a manual query
+    // (`SELECT * FROM "NftPurchase" WHERE status = 'STEP1_CONFIRMED'`) for
+    // someone to follow up on by hand.
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Payment received, but minting failed. Please contact support.",
+      cause: e,
+    });
+  }
+
+  return finalizeEditionPurchase(db, purchase, txHash);
+}
+
+/** Shared tail for a single-token resale purchase — used by both `confirmBuy`
+ *  (external-wallet fee-bump) and `buyResaleWithCard`. */
+async function finalizeResalePurchase(
+  db: PrismaClient,
+  listing: { tokenId: string; nftId: string },
+  buyerId: string,
+) {
+  return db.$transaction(async (tx) => {
+    await tx.nftToken.update({ where: { tokenId: listing.tokenId }, data: { ownerId: buyerId } });
+    await tx.nftListing.update({ where: { tokenId: listing.tokenId }, data: { isActive: false } });
+    // Hands this token's private pin set (if it's a gated ticket) to the
+    // new owner without resetting unlock progress already collected —
+    // filtered through the `unlockForToken` relation, not a bare
+    // `unlockForTokenId: listing.tokenId` (on-chain id vs. internal id).
+    await tx.locationGroup.updateMany({
+      where: { unlockForToken: { tokenId: listing.tokenId } },
+      data: { restrictedToUserId: buyerId },
+    });
+    await refreshListingAggregates(tx, listing.nftId);
+    return tx.nft.findUniqueOrThrow({ where: { id: listing.nftId } });
+  });
+}
+
+/** Shared tail for a pooled batch resale purchase — one settlement per
+ *  listing, same as `finalizeResalePurchase`, just for every token the
+ *  single fee-bumped `buy_batch` call just settled. */
+async function finalizeBatchResalePurchase(
+  db: PrismaClient,
+  listings: { tokenId: string; nftId: string }[],
+  buyerId: string,
+): Promise<number> {
+  return db.$transaction(async (tx) => {
+    const nftIds = new Set<string>();
+    for (const listing of listings) {
+      await tx.nftToken.update({ where: { tokenId: listing.tokenId }, data: { ownerId: buyerId } });
+      await tx.nftListing.update({ where: { tokenId: listing.tokenId }, data: { isActive: false } });
+      await tx.locationGroup.updateMany({
+        where: { unlockForToken: { tokenId: listing.tokenId } },
+        data: { restrictedToUserId: buyerId },
+      });
+      nftIds.add(listing.nftId);
+    }
+    for (const nftId of nftIds) {
+      await refreshListingAggregates(tx, nftId);
+    }
+    return listings.length;
+  });
+}
+
 export const nftRouter = createTRPCRouter({
   // Purely a database write — no chain call, no signature, nothing for the
   // creator to sign or pay for. The row is live on the marketplace the
@@ -223,15 +540,7 @@ export const nftRouter = createTRPCRouter({
         mediaType: z.string().min(1),
         royaltyBps: z.number().int().min(0).max(MAX_ROYALTY_BPS).default(0),
         supply: z.number().int().min(1).max(100_000).default(1),
-        prices: z
-          .array(
-            z.object({
-              paymentToken: PaymentTokenSchema,
-              price: z.number().positive(),
-            }),
-          )
-          .min(1, "At least one price is required")
-          .max(5),
+        prices: DisplayPricesSchema,
         collectionId: z.string().optional(),
         // Optional "VIP ticket" gating — see VIP_TICKET_UNLOCK_PLAN.md.
         // Reward content that stays hidden until a buyer's own copy
@@ -338,18 +647,20 @@ export const nftRouter = createTRPCRouter({
       });
     }),
 
-  // Build + sign here, return the (possibly already fully-signed) XDR to the
-  // client, which either submits it as-is (custodial) or signs it with the
-  // connected wallet via `clientsign`. Same shape as every other mutation
-  // here. The XDR both registers the edition on first purchase and mints —
-  // see `buildBuyEditionXDR`'s doc comment.
+  // Primary purchase, direct ACTION — fee-bumped (Part B/C of the nft_oz
+  // payment design). Custodial buyers get everything done in this one call
+  // (`submitted: true`, `txHash` already final); an external wallet gets an
+  // unsigned `buy_edition` XDR back to sign with its own sign-only function
+  // and hand to `confirmBuyEdition`. `NEEDS_ACTIVATION`/
+  // `NEEDS_TRUSTLINE_SETUP` (thrown via `ensureBuyerReady`) tell the client
+  // to run the existing `ActivationModal`/"Trust & Buy" flow first — see
+  // `buildEstablishTrustlineXDR`'s doc comment for the latter.
   getBuyEditionXDR: protectedProcedure
     .input(
       z.object({
         nftId: z.string(),
         paymentToken: PaymentTokenSchema,
         quantity: z.number().int().min(1).max(MAX_QUANTITY_PER_BUY).default(1),
-        signWith: SignUser,
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -374,21 +685,27 @@ export const nftRouter = createTRPCRouter({
         });
       }
 
+      const buyerId = ctx.session.user.id;
+      const auth = resolveBuyerAuth(ctx.session.user);
+      await ensureBuyerReady(auth, buyerId);
+
       // Pre-created so its id can be handed to the contract as `purchase_ref`
       // — the buyer hasn't signed anything yet, same shape as `Nft.create`
       // pre-creating a row before a mint used to happen.
       const purchase = await ctx.db.nftPurchase.create({
         data: {
           nftId: nft.id,
-          buyerId: ctx.session.user.id,
+          buyerId,
           quantity: input.quantity,
           paymentToken: input.paymentToken,
           unitPrice: priceRow.price,
         },
       });
+      const contractAddress = ART_NFT_CONTRACT_ID;
+      await ctx.db.nft.update({ where: { id: nft.id }, data: { contractAddress } });
 
       const xdr = await buildBuyEditionXDR({
-        buyerPubKey: ctx.session.user.id,
+        buyerPubKey: buyerId,
         editionRef: nft.id,
         title: nft.name,
         description: nft.description,
@@ -398,31 +715,37 @@ export const nftRouter = createTRPCRouter({
         creatorPubKey: nft.creatorId,
         royaltyBps: nft.royaltyBps,
         supply: nft.supply,
-        prices: nft.prices.map((p) => ({
-          paymentToken: paymentTokenAddress(p.paymentToken as NftPaymentToken),
-          priceRaw: humanPriceToRaw(p.price),
-        })),
+        prices: nft.prices
+          .filter((p) => p.paymentToken !== "usd")
+          .map((p) => ({
+            paymentToken: paymentTokenAddress(p.paymentToken as NftPaymentToken),
+            priceRaw: humanPriceToRaw(p.price),
+          })),
         purchaseRef: purchase.id,
         paymentToken: paymentTokenAddress(input.paymentToken),
         quantity: input.quantity,
+        inclusionFeeRaw: humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET),
+        networkFeeRaw: humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET),
       });
-      const contractAddress = ART_NFT_CONTRACT_ID;
 
-      await ctx.db.nft.update({ where: { id: nft.id }, data: { contractAddress } });
-
-      const signed = await signArtXdr({ xdr, signWith: input.signWith });
-      return { ...signed, contractAddress, purchaseId: purchase.id };
+      if (auth.kind === "custodial") {
+        const txHash = await feeBumpAsCustodialBuyer({ xdr, signWith: auth.signWith });
+        const nftResult = await finalizeEditionPurchase(ctx.db, purchase, txHash);
+        return { submitted: true as const, txHash, contractAddress, purchaseId: purchase.id, nft: nftResult };
+      }
+      return { submitted: false as const, xdr, contractAddress, purchaseId: purchase.id };
     }),
 
-  // Confirms against the chain rather than trusting the client: the minted
-  // token range is read back from `purchase_by_ref`, so a client that lies
-  // about its txHash can't fabricate copies it never paid for.
+  // The external-wallet second call: the client already signed the XDR
+  // `getBuyEditionXDR` returned with that wallet's own sign-only function.
+  // Fee-bumps, submits, and finalizes the same way the custodial path does
+  // inline.
   confirmBuyEdition: protectedProcedure
     .input(
       z.object({
         nftId: z.string(),
         purchaseId: z.string(),
-        txHash: z.string().min(1),
+        signedXdr: z.string().min(1),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -440,92 +763,94 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "CONFLICT", message: "Already confirmed" });
       }
 
-      const ok = await verifyContractTransaction(input.txHash);
-      if (!ok) {
+      const txHash = await submitFeeBumpedPurchase(input.signedXdr);
+      return finalizeEditionPurchase(ctx.db, purchase, txHash);
+    }),
+
+  // USD/card checkout for a primary edition purchase (Part D of the nft_oz
+  // payment design): Square charges the card for the item's own USD sticker
+  // price (`NftPrice{paymentToken: "usd"}`, set independently by the
+  // creator — not converted live from the ACTION price), then
+  // `deliverCardFundedEditionPurchase` funds and delivers. Custodial
+  // accounts only — the buyer's own custodial secret has to sign the actual
+  // on-chain `buy_edition` call (see that function's doc comment); an
+  // unactivated account is sent to the existing `ActivationModal` instead
+  // of silently having its account created here.
+  buyEditionWithCard: protectedProcedure
+    .input(
+      z.object({
+        nftId: z.string(),
+        quantity: z.number().int().min(1).max(MAX_QUANTITY_PER_BUY).default(1),
+        sourceId: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { walletType, email, id: buyerId } = ctx.session.user;
+      if (!isRechargeAbleClient(walletType) || !email) {
         throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Transaction did not succeed on-chain",
+          code: "FORBIDDEN",
+          message: "Card checkout is only available for email or social sign-in accounts",
         });
       }
+      if (!(await isStellarAccountActivated(buyerId))) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NEEDS_ACTIVATION" });
+      }
 
-      const receipt = await pollUntilVisible(() => getPurchaseByRef(purchase.id));
-      if (!receipt) {
+      const nft = await ctx.db.nft.findUnique({
+        where: { id: input.nftId },
+        include: { prices: true },
+      });
+      if (!nft) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const remaining = nft.supply - nft.mintedCount;
+      if (input.quantity > remaining) {
         throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Purchase did not register on-chain",
+          code: "CONFLICT",
+          message: `Only ${remaining} cop${remaining === 1 ? "y" : "ies"} left`,
         });
       }
-
-      const tokenIds: string[] = [];
-      for (let id = receipt.first_token_id; id <= receipt.last_token_id; id++) {
-        tokenIds.push(String(id));
+      const usdRow = nft.prices.find((p) => p.paymentToken === "usd");
+      if (!usdRow) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This item isn't priced in USD" });
+      }
+      // The on-chain leg still settles in ACTION — the USD price Square
+      // charges and the ACTION price the buyer's funded account pays the
+      // creator in are two independent numbers, not derived from each
+      // other, but an ACTION entry has to exist for the on-chain leg.
+      if (!nft.prices.some((p) => p.paymentToken === "asset")) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This item has no on-chain price to settle with" });
       }
 
-      const updated = await ctx.db.$transaction(async (tx) => {
-        await tx.nftToken.createMany({
-          data: tokenIds.map((tokenId) => ({
-            nftId: purchase.nftId,
-            tokenId,
-            ownerId: purchase.buyerId,
-          })),
-        });
-        const result = await tx.nft.update({
-          where: { id: purchase.nftId },
-          data: {
-            status: "MINTED",
-            onChainEditionId: String(receipt.edition_id),
-            mintedCount: { increment: tokenIds.length },
-          },
-        });
-        await tx.nftPurchase.update({
-          where: { id: purchase.id },
-          data: {
-            status: "CONFIRMED",
-            txHash: input.txHash,
-            firstTokenId: String(receipt.first_token_id),
-            lastTokenId: String(receipt.last_token_id),
-          },
-        });
-        return result;
+      const totalUsd = usdRow.price * input.quantity + INCLUSION_FEE_IN_USD + NETWORK_FEE_IN_USD;
+
+      const purchase = await ctx.db.nftPurchase.create({
+        data: {
+          nftId: nft.id,
+          buyerId,
+          quantity: input.quantity,
+          paymentToken: "asset",
+          unitPrice: usdRow.price,
+        },
       });
 
-      // One private pin set per (newly-minted copy, gated item), not per
-      // purchase — see `ensureTokenUnlockPinSet`'s doc comment. Deliberately
-      // outside the transaction above: doing this inside it blew past
-      // Prisma's interactive-transaction timeout for anything beyond a
-      // tiny quantity ("Transaction not found"). Not required to be atomic
-      // with the mint — `nft.unlockStatus` self-heals a missing pin set.
-      const gatedItems = await ctx.db.nftLockedMedia.findMany({
-        where: { nftId: purchase.nftId, unlockRule: { isNot: null } },
-        include: { unlockRule: { include: { points: true } } },
+      const { result } = await squarePaymentsApi.createPayment({
+        idempotencyKey: randomUUID(),
+        sourceId: input.sourceId,
+        amountMoney: { currency: "USD", amount: BigInt(Math.round(totalUsd * 100)) },
       });
-      if (gatedItems.length > 0) {
-        const nftMeta = await ctx.db.nft.findUniqueOrThrow({
-          where: { id: purchase.nftId },
-          select: { description: true, thumbnail: true, creatorId: true },
-        });
-        // createMany doesn't hand back the rows it inserted, so re-fetch
-        // just the ids for this purchase's own token range.
-        const newTokens = await ctx.db.nftToken.findMany({
-          where: { tokenId: { in: tokenIds } },
-          select: { id: true },
-        });
-        for (const t of newTokens) {
-          for (const item of gatedItems) {
-            await ensureTokenUnlockPinSet(
-              ctx.db,
-              item.unlockRule!,
-              item,
-              nftMeta,
-              purchase.nftId,
-              t.id,
-              purchase.buyerId,
-            );
-          }
-        }
+      if (result.errors || result.payment?.status !== "COMPLETED") {
+        await ctx.db.nftPurchase.update({ where: { id: purchase.id }, data: { status: "FAILED" } });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
       }
+      // Square already has the money — mark this checkpoint so a delivery
+      // failure from here is "money received, delivery owed" for the
+      // reconciliation job, not "never happened".
+      await ctx.db.nftPurchase.update({
+        where: { id: purchase.id },
+        data: { status: "STEP1_CONFIRMED", step1TxHash: result.payment.id },
+      });
 
-      return updated;
+      return deliverCardFundedEditionPurchase(ctx.db, purchase, email);
     }),
 
   // -------------------------------------------------------------------------
@@ -542,20 +867,25 @@ export const nftRouter = createTRPCRouter({
     .input(
       z.object({
         tokenId: z.string(),
-        prices: z
-          .array(z.object({ paymentToken: PaymentTokenSchema, price: z.number().positive() }))
-          .min(1)
-          .max(5),
+        prices: DisplayPricesSchema,
         signWith: SignUser,
       }),
     )
     .mutation(async ({ ctx, input }) => {
       await requireOwnedToken(ctx.db, input.tokenId, ctx.session.user.id);
 
+      // Only "asset" entries become on-chain `PriceEntry`s — "usd" is a
+      // creator/reseller sticker price with no on-chain representation
+      // (see `DisplayPricesSchema`/`NFT_DISPLAY_CURRENCIES`); it's carried
+      // through to `confirmListing` below instead, alongside this XDR.
+      const onChainPrices = input.prices.filter(
+        (p): p is { paymentToken: NftPaymentToken; price: number } => p.paymentToken !== "usd",
+      );
+
       const xdr = await buildListXDR({
         sellerPubKey: ctx.session.user.id,
         tokenId: Number(input.tokenId),
-        prices: input.prices.map((p) => ({
+        prices: onChainPrices.map((p) => ({
           paymentToken: paymentTokenAddress(p.paymentToken),
           priceRaw: humanPriceToRaw(p.price),
         })),
@@ -565,9 +895,12 @@ export const nftRouter = createTRPCRouter({
     }),
 
   // Mirrors the listing the contract actually recorded rather than echoing
-  // the client's numbers back into the database.
+  // the client's numbers back into the database — except for the USD
+  // sticker price, which has no on-chain representation at all and so has
+  // no ground truth to mirror; it's trusted from the caller the same way
+  // `create`'s own USD price already is.
   confirmListing: protectedProcedure
-    .input(z.object({ tokenId: z.string(), txHash: z.string().min(1) }))
+    .input(z.object({ tokenId: z.string(), txHash: z.string().min(1), usdPrice: z.number().positive() }))
     .mutation(async ({ ctx, input }) => {
       const token = await requireOwnedToken(ctx.db, input.tokenId, ctx.session.user.id);
 
@@ -600,13 +933,22 @@ export const nftRouter = createTRPCRouter({
           },
           update: { sellerId: ctx.session.user.id, price, paymentToken, isActive: true },
         });
-        await tx.nftListingPrice.deleteMany({ where: { listingId: listing.id } });
+        // Leave any "usd" row alone — it has no on-chain counterpart to
+        // resync from, so only the on-chain-derived rows get replaced here.
+        await tx.nftListingPrice.deleteMany({
+          where: { listingId: listing.id, paymentToken: { not: "usd" } },
+        });
         await tx.nftListingPrice.createMany({
           data: onChain.prices.map((p) => ({
             listingId: listing.id,
             paymentToken: labelForPaymentTokenAddress(p.payment_token),
             price: rawPriceToHuman(p.price),
           })),
+        });
+        await tx.nftListingPrice.upsert({
+          where: { listingId_paymentToken: { listingId: listing.id, paymentToken: "usd" } },
+          create: { listingId: listing.id, paymentToken: "usd", price: input.usdPrice },
+          update: { price: input.usdPrice },
         });
         await refreshListingAggregates(tx, token.nftId);
         return tx.nft.findUniqueOrThrow({ where: { id: token.nftId } });
@@ -621,10 +963,7 @@ export const nftRouter = createTRPCRouter({
     .input(
       z.object({
         tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY),
-        prices: z
-          .array(z.object({ paymentToken: PaymentTokenSchema, price: z.number().positive() }))
-          .min(1)
-          .max(5),
+        prices: DisplayPricesSchema,
         signWith: SignUser,
       }),
     )
@@ -633,10 +972,14 @@ export const nftRouter = createTRPCRouter({
         await requireOwnedToken(ctx.db, tokenId, ctx.session.user.id);
       }
 
+      const onChainPrices = input.prices.filter(
+        (p): p is { paymentToken: NftPaymentToken; price: number } => p.paymentToken !== "usd",
+      );
+
       const xdr = await buildListBatchXDR({
         sellerPubKey: ctx.session.user.id,
         tokenIds: input.tokenIds.map(Number),
-        prices: input.prices.map((p) => ({
+        prices: onChainPrices.map((p) => ({
           paymentToken: paymentTokenAddress(p.paymentToken),
           priceRaw: humanPriceToRaw(p.price),
         })),
@@ -647,9 +990,16 @@ export const nftRouter = createTRPCRouter({
 
   // Mirrors what `list_batch` actually recorded on-chain — one `Listing` per
   // token id, resolved individually exactly like `confirmListing` does for a
-  // single token.
+  // single token. `usdPrice` has the same "no on-chain ground truth, trusted
+  // from the caller" treatment as `confirmListing`'s.
   confirmListBatch: protectedProcedure
-    .input(z.object({ tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY), txHash: z.string().min(1) }))
+    .input(
+      z.object({
+        tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY),
+        txHash: z.string().min(1),
+        usdPrice: z.number().positive(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const tokens = await Promise.all(
         input.tokenIds.map((tokenId) => requireOwnedToken(ctx.db, tokenId, ctx.session.user.id)),
@@ -695,13 +1045,20 @@ export const nftRouter = createTRPCRouter({
               isActive: true,
             },
           });
-          await tx.nftListingPrice.deleteMany({ where: { listingId: listing.id } });
+          await tx.nftListingPrice.deleteMany({
+            where: { listingId: listing.id, paymentToken: { not: "usd" } },
+          });
           await tx.nftListingPrice.createMany({
             data: onChain.prices.map((p) => ({
               listingId: listing.id,
               paymentToken: labelForPaymentTokenAddress(p.payment_token),
               price: rawPriceToHuman(p.price),
             })),
+          });
+          await tx.nftListingPrice.upsert({
+            where: { listingId_paymentToken: { listingId: listing.id, paymentToken: "usd" } },
+            create: { listingId: listing.id, paymentToken: "usd", price: input.usdPrice },
+            update: { price: input.usdPrice },
           });
           nftIds.add(token.nftId);
         }
@@ -761,70 +1118,152 @@ export const nftRouter = createTRPCRouter({
       };
     }),
 
-  // A single contract call settles payment and delivery together, so there is
-  // no window where the buyer has paid but not received (or vice versa), and
-  // only the buyer signs. `paymentToken` picks which of the listing's
-  // currencies to pay in.
+  // USD/card checkout for a resale purchase — resale's counterpart to
+  // `buyEditionWithCard`. The reseller's own USD sticker price
+  // (`NftListingPrice{paymentToken: "usd"}`, set independently of their
+  // ACTION price) is what Square charges; the fee-bumped `buy` call still
+  // settles on-chain in ACTION, using whichever ACTION price the reseller
+  // listed at. Custodial buyers only.
+  buyResaleWithCard: protectedProcedure
+    .input(z.object({ tokenId: z.string(), sourceId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { walletType, email, id: buyerId } = ctx.session.user;
+      if (!isRechargeAbleClient(walletType) || !email) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Card checkout is only available for email or social sign-in accounts",
+        });
+      }
+      if (!(await isStellarAccountActivated(buyerId))) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NEEDS_ACTIVATION" });
+      }
+
+      const listing = await ctx.db.nftListing.findUnique({
+        where: { tokenId: input.tokenId },
+        include: { prices: true },
+      });
+      if (!listing?.isActive) throw new TRPCError({ code: "NOT_FOUND" });
+      if (listing.sellerId === buyerId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "You can't buy your own listing" });
+      }
+      const usdRow = listing.prices.find((p) => p.paymentToken === "usd");
+      if (!usdRow) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This listing isn't priced in USD" });
+      }
+      if (!listing.prices.some((p) => p.paymentToken === "asset")) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This listing has no on-chain price to settle with" });
+      }
+
+      const totalUsd = usdRow.price + INCLUSION_FEE_IN_USD + NETWORK_FEE_IN_USD;
+      const { result } = await squarePaymentsApi.createPayment({
+        idempotencyKey: randomUUID(),
+        sourceId: input.sourceId,
+        amountMoney: { currency: "USD", amount: BigInt(Math.round(totalUsd * 100)) },
+      });
+      if (result.errors || result.payment?.status !== "COMPLETED") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
+      }
+
+      const inclusionFeeRaw = humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET);
+      const networkFeeRaw = humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET);
+
+      try {
+        const breakdown = await getSaleBreakdown(Number(input.tokenId), paymentTokenAddress("asset"));
+        if (!breakdown) {
+          throw new Error("Listing isn't priced in ACTION");
+        }
+        const totalAssetRaw = breakdown.total + inclusionFeeRaw + networkFeeRaw;
+
+        const buyerSecret = await getAccSecretFromRubyApi(email);
+        const currentBalanceRaw = humanPriceToRaw(await getOnChainBalance(buyerId));
+        if (currentBalanceRaw < totalAssetRaw) {
+          await fundBuyerForCardPurchase({ buyerPubKey: buyerId, buyerSecret, assetAmountRaw: totalAssetRaw });
+        }
+
+        const xdr = await buildBuyXDR({
+          buyerPubKey: buyerId,
+          tokenId: Number(input.tokenId),
+          paymentToken: paymentTokenAddress("asset"),
+          inclusionFeeRaw,
+          networkFeeRaw,
+        });
+        await feeBumpAsCustodialBuyer({ xdr, signWith: { email } });
+      } catch (e) {
+        // Square already charged the card — resale has no `NftPurchase`-
+        // equivalent row to key an automatic retry off of yet (same known
+        // gap `deliverCardFundedEditionPurchase`'s doc comment flags for
+        // primary purchases), so this surfaces directly instead.
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Card charged, but delivery failed — please contact support.",
+          cause: e,
+        });
+      }
+
+      return finalizeResalePurchase(ctx.db, listing, buyerId);
+    }),
+
+  // Resale purchase, direct ACTION — fee-bumped, same shape as
+  // `getBuyEditionXDR`/`confirmBuyEdition`. Custodial buyers get everything
+  // done in this one call; an external wallet gets an unsigned `buy` XDR to
+  // sign itself and hand to `confirmBuy`.
   getBuyXDR: protectedProcedure
-    .input(z.object({ tokenId: z.string(), paymentToken: PaymentTokenSchema, signWith: SignUser }))
+    .input(z.object({ tokenId: z.string(), paymentToken: PaymentTokenSchema }))
     .mutation(async ({ ctx, input }) => {
       const listing = await ctx.db.nftListing.findUnique({ where: { tokenId: input.tokenId } });
       if (!listing?.isActive) throw new TRPCError({ code: "NOT_FOUND" });
-      if (listing.sellerId === ctx.session.user.id) {
+      const buyerId = ctx.session.user.id;
+      if (listing.sellerId === buyerId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "You can't buy your own listing" });
       }
 
+      const breakdown = await getSaleBreakdown(Number(input.tokenId), paymentTokenAddress(input.paymentToken));
+      if (!breakdown) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This item isn't priced in that currency" });
+      }
+
+      const auth = resolveBuyerAuth(ctx.session.user);
+      await ensureBuyerReady(auth, buyerId);
+
       const xdr = await buildBuyXDR({
-        buyerPubKey: ctx.session.user.id,
+        buyerPubKey: buyerId,
         tokenId: Number(input.tokenId),
         paymentToken: paymentTokenAddress(input.paymentToken),
+        inclusionFeeRaw: humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET),
+        networkFeeRaw: humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET),
       });
 
-      return signArtXdr({ xdr, signWith: input.signWith });
+      if (auth.kind === "custodial") {
+        const txHash = await feeBumpAsCustodialBuyer({ xdr, signWith: auth.signWith });
+        const nft = await finalizeResalePurchase(ctx.db, listing, buyerId);
+        return { submitted: true as const, txHash, nft };
+      }
+      return { submitted: false as const, xdr, tokenId: input.tokenId };
     }),
 
+  // The external-wallet second call for a resale purchase — mirrors
+  // `confirmBuyEdition`.
   confirmBuy: protectedProcedure
-    .input(z.object({ tokenId: z.string(), txHash: z.string().min(1) }))
+    .input(z.object({ tokenId: z.string(), signedXdr: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const listing = await ctx.db.nftListing.findUnique({ where: { tokenId: input.tokenId } });
       if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
 
-      const ok = await verifyContractTransaction(input.txHash);
-      if (!ok) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
-      }
-
-      const buyerId = ctx.session.user.id;
-      return ctx.db.$transaction(async (tx) => {
-        await tx.nftToken.update({ where: { tokenId: input.tokenId }, data: { ownerId: buyerId } });
-        await tx.nftListing.update({ where: { tokenId: input.tokenId }, data: { isActive: false } });
-        // Hands this token's private pin set (if it's a gated ticket) to
-        // the new owner — a no-op for an ungated token, which has none.
-        // Unlock progress already collected stays counted (see
-        // `unlockStatus`'s group-scoped count below), so a resale never
-        // resets it; it just changes who can add to it going forward.
-        // Filtered through the `unlockForToken` relation, not a bare
-        // `unlockForTokenId: input.tokenId` — `input.tokenId` is the
-        // on-chain numeric id, while `unlockForTokenId` is a foreign key to
-        // `NftToken.id` (the internal row id); the two are different values.
-        await tx.locationGroup.updateMany({
-          where: { unlockForToken: { tokenId: input.tokenId } },
-          data: { restrictedToUserId: buyerId },
-        });
-        await refreshListingAggregates(tx, listing.nftId);
-        return tx.nft.findUniqueOrThrow({ where: { id: listing.nftId } });
-      });
+      await submitFeeBumpedPurchase(input.signedXdr);
+      return finalizeResalePurchase(ctx.db, listing, ctx.session.user.id);
     }),
 
-  // Buys several pooled resale listings at once via the contract's
-  // `buy_batch` — one signature instead of one `buy` call per token. Backs
-  // the buy page's quantity stepper over pooled resale listings.
+  // Batch resale purchase, direct ACTION — fee-bumped, one `buy_batch`
+  // transaction settling every token at once. `INCLUSION_FEE_IN_PLATFORM_
+  // ASSET`/`NETWORK_FEE_IN_PLATFORM_ASSET` are charged once for the whole
+  // batch, not once per token — see `buy_batch`'s doc comment in
+  // `contracts/nft_oz/src/lib.rs` — since there's only one real Soroban
+  // transaction underneath regardless of how many tokens it settles.
   getBuyBatchXDR: protectedProcedure
     .input(
       z.object({
         tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY),
         paymentToken: PaymentTokenSchema,
-        signWith: SignUser,
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -832,57 +1271,69 @@ export const nftRouter = createTRPCRouter({
       if (listings.length !== input.tokenIds.length) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
+      const buyerId = ctx.session.user.id;
       for (const listing of listings) {
         if (!listing.isActive) throw new TRPCError({ code: "NOT_FOUND" });
-        if (listing.sellerId === ctx.session.user.id) {
+        if (listing.sellerId === buyerId) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "You can't buy your own listing" });
         }
       }
 
+      const paymentToken = paymentTokenAddress(input.paymentToken);
+      const breakdowns = await Promise.all(
+        input.tokenIds.map((tokenId) => getSaleBreakdown(Number(tokenId), paymentToken)),
+      );
+      if (breakdowns.some((b) => !b)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "One or more items aren't priced in that currency" });
+      }
+
+      const auth = resolveBuyerAuth(ctx.session.user);
+      await ensureBuyerReady(auth, buyerId);
+
       const xdr = await buildBuyBatchXDR({
-        buyerPubKey: ctx.session.user.id,
+        buyerPubKey: buyerId,
         tokenIds: input.tokenIds.map(Number),
-        paymentToken: paymentTokenAddress(input.paymentToken),
+        paymentToken,
+        inclusionFeeRaw: humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET),
+        networkFeeRaw: humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET),
       });
 
-      return signArtXdr({ xdr, signWith: input.signWith });
+      if (auth.kind === "custodial") {
+        const txHash = await feeBumpAsCustodialBuyer({ xdr, signWith: auth.signWith });
+        const count = await finalizeBatchResalePurchase(ctx.db, listings, buyerId);
+        return { submitted: true as const, txHash, count };
+      }
+      return { submitted: false as const, xdr, tokenIds: input.tokenIds };
     }),
 
+  // The external-wallet second call for a batch resale purchase — mirrors
+  // `confirmBuy`.
   confirmBuyBatch: protectedProcedure
-    .input(z.object({ tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY), txHash: z.string().min(1) }))
+    .input(
+      z.object({
+        tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY),
+        signedXdr: z.string().min(1),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const listings = await ctx.db.nftListing.findMany({ where: { tokenId: { in: input.tokenIds } } });
       if (listings.length !== input.tokenIds.length) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
-      const ok = await verifyContractTransaction(input.txHash);
-      if (!ok) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Transaction did not succeed on-chain" });
-      }
-
-      const buyerId = ctx.session.user.id;
-      return ctx.db.$transaction(async (tx) => {
-        const nftIds = new Set<string>();
-        for (const listing of listings) {
-          await tx.nftToken.update({ where: { tokenId: listing.tokenId }, data: { ownerId: buyerId } });
-          await tx.nftListing.update({ where: { tokenId: listing.tokenId }, data: { isActive: false } });
-          // See the equivalent comment and fix note in `confirmBuy` —
-          // hands over the token's private pin set, if it has one, without
-          // resetting it. Filtered through the relation, not a bare
-          // `unlockForTokenId: listing.tokenId` (on-chain id vs. internal id).
-          await tx.locationGroup.updateMany({
-            where: { unlockForToken: { tokenId: listing.tokenId } },
-            data: { restrictedToUserId: buyerId },
-          });
-          nftIds.add(listing.nftId);
-        }
-        for (const nftId of nftIds) {
-          await refreshListingAggregates(tx, nftId);
-        }
-        return { count: listings.length };
-      });
+      await submitFeeBumpedPurchase(input.signedXdr);
+      const count = await finalizeBatchResalePurchase(ctx.db, listings, ctx.session.user.id);
+      return { count };
     }),
+
+  // The client shows a "Trust & Buy" button in place of "Buy" when a
+  // wallet-connected buyer has no Platform Asset trustline yet (see
+  // `ensureBuyerReady`'s `NEEDS_TRUSTLINE_SETUP` signal and
+  // `buildEstablishTrustlineXDR`'s doc comment) — this is the XDR that
+  // button signs first, immediately followed by the regular buy flow.
+  getEstablishTrustlineXDR: protectedProcedure.mutation(async ({ ctx }) => {
+    return { xdr: await buildEstablishTrustlineXDR(ctx.session.user.id) };
+  }),
 
   // -------------------------------------------------------------------------
   // Browse
@@ -1022,7 +1473,7 @@ export const nftRouter = createTRPCRouter({
           status: nft.status,
           creator: nft.creator,
           price: listing.price,
-          priceToken: labelForPaymentTokenAddress(listing.paymentToken ?? paymentTokenAddress("xlm")),
+          priceToken: labelForPaymentTokenAddress(listing.paymentToken ?? paymentTokenAddress("asset")),
           prices: listing.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price })),
           sellerId: listing.sellerId,
           sellerName: listing.seller.name,
@@ -1100,7 +1551,7 @@ export const nftRouter = createTRPCRouter({
           sellerName: t.listing!.seller.name,
           sellerImage: t.listing!.seller.image,
           price: t.listing!.price,
-          paymentToken: labelForPaymentTokenAddress(t.listing!.paymentToken ?? paymentTokenAddress("xlm")),
+          paymentToken: labelForPaymentTokenAddress(t.listing!.paymentToken ?? paymentTokenAddress("asset")),
           prices: t.listing!.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price })),
         }))
         .sort((a, b) => a.price - b.price);
@@ -1424,7 +1875,7 @@ export const nftRouter = createTRPCRouter({
         isListed: t.listing?.isActive ?? false,
         listingPrice: t.listing?.isActive ? t.listing.price : null,
         listingPaymentToken: t.listing?.isActive
-          ? labelForPaymentTokenAddress(t.listing.paymentToken ?? paymentTokenAddress("xlm"))
+          ? labelForPaymentTokenAddress(t.listing.paymentToken ?? paymentTokenAddress("asset"))
           : null,
         listingPrices: t.listing?.isActive
           ? t.listing.prices.map((p) => ({ paymentToken: p.paymentToken, price: p.price }))

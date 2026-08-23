@@ -47,9 +47,11 @@ export default function CreateSmartContractNftPage() {
   const [royaltyPercent, setRoyaltyPercent] = useState(0)
   const [supply, setSupply] = useState(1)
   // Empty string means "not offered in this currency" — at least one of
-  // the two must end up positive.
-  const [priceXlm, setPriceXlm] = useState("1")
-  const [priceAsset, setPriceAsset] = useState("")
+  // the two must end up positive. USD is a creator-set sticker price
+  // (charged via Square), independent of the ACTION price, not derived
+  // from it.
+  const [priceAsset, setPriceAsset] = useState("1")
+  const [priceUsd, setPriceUsd] = useState("")
 
   // The thumbnail *is* the item's own visible content here — there's no
   // separate "media" upload step. `contentMimeType` is the thumbnail
@@ -95,8 +97,8 @@ export default function CreateSmartContractNftPage() {
     void uploadThumbnail(file)
   }
 
-  const parsedPriceXlm = Number(priceXlm) || 0
   const parsedPriceAsset = Number(priceAsset) || 0
+  const parsedPriceUsd = Number(priceUsd) || 0
 
   const completeLockedMedia = lockedMedia.filter(
     (m): m is LockedMediaDraft & { url: string } => !!m.url && isValidHttpUrl(m.url),
@@ -108,7 +110,8 @@ export default function CreateSmartContractNftPage() {
     !!thumbnailUrl &&
     !!contentMimeType &&
     supply >= 1 &&
-    (parsedPriceXlm > 0 || parsedPriceAsset > 0) &&
+    parsedPriceAsset > 0 &&
+    parsedPriceUsd > 0 &&
     completeLockedMedia.length > 0 &&
     !incompleteUnlockRule
 
@@ -123,9 +126,9 @@ export default function CreateSmartContractNftPage() {
     if (!thumbnailUrl || !contentMimeType) return
     setSubmitLoading(true)
     try {
-      const prices: { paymentToken: "xlm" | "asset"; price: number }[] = []
-      if (parsedPriceXlm > 0) prices.push({ paymentToken: "xlm", price: parsedPriceXlm })
+      const prices: { paymentToken: "asset" | "usd"; price: number }[] = []
       if (parsedPriceAsset > 0) prices.push({ paymentToken: "asset", price: parsedPriceAsset })
+      if (parsedPriceUsd > 0) prices.push({ paymentToken: "usd", price: parsedPriceUsd })
 
       const created = await createNft.mutateAsync({
         name: name.trim(),
@@ -294,26 +297,11 @@ export default function CreateSmartContractNftPage() {
               <div className="space-y-2">
                 <p className="text-sm font-medium">Price per copy</p>
                 <p className="text-xs text-muted-foreground">
-                  Buyers pick whichever currency they want to pay with — leave a field empty to not
-                  offer that currency. More currencies (like USDC) can be added later without
-                  changing anything about this item.
+                  Both prices are required — buyers pick which currency to pay with. The USD price is
+                  charged by card (Square); it&apos;s a sticker price you set, not converted live from
+                  the {PLATFORM_ASSET.code} price.
                 </p>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="sc-price-xlm" className="flex items-center gap-2">
-                      <Coins className="h-4 w-4 text-muted-foreground" />
-                      Price (XLM)
-                    </Label>
-                    <Input
-                      id="sc-price-xlm"
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={priceXlm}
-                      onChange={(e) => setPriceXlm(e.target.value)}
-                      placeholder="e.g. 5"
-                    />
-                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="sc-price-asset" className="flex items-center gap-2">
                       <Coins className="h-4 w-4 text-muted-foreground" />
@@ -326,12 +314,27 @@ export default function CreateSmartContractNftPage() {
                       step="any"
                       value={priceAsset}
                       onChange={(e) => setPriceAsset(e.target.value)}
-                      placeholder="Optional"
+                      placeholder="e.g. 5"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sc-price-usd" className="flex items-center gap-2">
+                      <Coins className="h-4 w-4 text-muted-foreground" />
+                      Price (USD)
+                    </Label>
+                    <Input
+                      id="sc-price-usd"
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={priceUsd}
+                      onChange={(e) => setPriceUsd(e.target.value)}
+                      placeholder="e.g. 10"
                     />
                   </div>
                 </div>
-                {parsedPriceXlm <= 0 && parsedPriceAsset <= 0 && (
-                  <p className="text-sm text-destructive">Set a price in at least one currency.</p>
+                {(parsedPriceAsset <= 0 || parsedPriceUsd <= 0) && (
+                  <p className="text-sm text-destructive">Set a price in both currencies.</p>
                 )}
               </div>
 

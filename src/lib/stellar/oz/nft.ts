@@ -1,5 +1,13 @@
-import { Asset, Horizon, Keypair, rpc } from "@stellar/stellar-sdk";
-import { basicNodeSigner } from "@stellar/stellar-sdk/contract";
+import {
+  Asset,
+  Horizon,
+  Keypair,
+  Operation,
+  Transaction,
+  TransactionBuilder,
+  rpc,
+} from "@stellar/stellar-sdk";
+import { basicNodeSigner, SentTransaction, type AssembledTransaction } from "@stellar/stellar-sdk/contract";
 import {
   Client as ArtNftClient,
   type ArtMeta,
@@ -11,6 +19,7 @@ import {
   type SaleBreakdown,
 } from "contracts/nft_oz/bindings/src/index";
 import { ART_NFT_CONTRACT_ID } from "~/lib/common";
+import { StellarAccount } from "../marketplace/test/Account";
 import {
   networkPassphrase,
   PLATFORM_ASSET,
@@ -18,19 +27,33 @@ import {
   SOROBAN_INCLUSION_FEE,
   SOROBAN_RPC_URL,
   STELLAR_URL,
+  TrxBaseFee,
 } from "../constant";
 import { WithSing, type SignUserType } from "../utils";
+import { getTreasuryKeypair } from "./treasury";
 
 /**
- * `xlm` and `asset` (the platform token) are live today; `usdc` is a valid
- * value already so a new `NftPrice` row/price-grid column is all a future
- * currency needs — no schema or contract change. Deliberately not imported
- * from `~/components/payment/payment-process`'s `PaymentMethodEnum` (which
- * this mirrors) so this server-safe module never pulls a client component
- * file into a server bundle; keep the two lists in sync by hand.
+ * The only on-chain currency this collection buys/sells/resells in — no
+ * native XLM leg. Deliberately not imported from `~/components/payment/
+ * payment-process`'s `PaymentMethodEnum` (which this mirrors for the
+ * "asset" case; that enum also carries "card"/"xlm" for unrelated,
+ * non-nft_oz payment flows) so this server-safe module never pulls a
+ * client component file into a server bundle; keep the two lists in sync
+ * by hand.
  */
-export const NFT_PAYMENT_TOKENS = ["xlm", "asset", "usdc"] as const;
+export const NFT_PAYMENT_TOKENS = ["asset"] as const;
 export type NftPaymentToken = (typeof NFT_PAYMENT_TOKENS)[number];
+
+/**
+ * Every currency an item can be *priced* in for display — a strict superset
+ * of `NFT_PAYMENT_TOKENS`. `"usd"` is deliberately not in
+ * `NFT_PAYMENT_TOKENS`: it never becomes an on-chain `PriceEntry` (Soroban
+ * has no fiat concept), it's a creator/reseller-set sticker price stored
+ * only in `NftPrice`/`NftListingPrice` (see `src/server/api/routers/nft.ts`)
+ * and charged via Square (see `fundBuyerForCardPurchase` below).
+ */
+export const NFT_DISPLAY_CURRENCIES = ["asset", "usd"] as const;
+export type NftDisplayCurrency = (typeof NFT_DISPLAY_CURRENCIES)[number];
 
 /**
  * `publicKey` becomes both the transaction source account and the identity
@@ -52,7 +75,10 @@ function getClient(publicKey?: string): ArtNftClient {
   });
 }
 
-/** The native XLM Stellar Asset Contract — the default settlement currency. */
+/** The native XLM Stellar Asset Contract. Not an offered item currency (see
+ *  `NFT_PAYMENT_TOKENS`) — kept only so `labelForPaymentTokenAddress` can
+ *  still label a pre-existing on-chain listing/edition that was priced in
+ *  XLM before it was dropped as an option. */
 export function nativeTokenAddress(): string {
   return Asset.native().contractId(networkPassphrase);
 }
@@ -64,26 +90,22 @@ export function platformAssetContractId(): string {
 
 /**
  * Resolves a `NftPaymentToken` to the SEP-41 contract address `buy_edition`/
- * `list`/`buy` actually deal in. The one place a new currency needs a real
- * address wired up once its SAC exists.
+ * `list`/`buy`/`buy_batch` actually deal in.
  */
 export function paymentTokenAddress(method: NftPaymentToken): string {
   switch (method) {
-    case "xlm":
-      return nativeTokenAddress();
     case "asset":
       return platformAssetContractId();
-    case "usdc":
-      throw new Error("USDC is not wired up yet — no SAC address configured");
   }
 }
 
 /** The inverse of `paymentTokenAddress`, for displaying an on-chain price
- *  entry's raw SAC address back as "xlm"/"asset". Falls back to the raw
- *  address for a currency this app doesn't have a label for yet. */
+ *  entry's raw SAC address back as "asset". Also recognizes the native XLM
+ *  SAC for a listing/edition priced before XLM was dropped as an offered
+ *  currency. Falls back to the raw address for anything else. */
 export function labelForPaymentTokenAddress(address: string): string {
-  if (address === nativeTokenAddress()) return "xlm";
   if (address === platformAssetContractId()) return "asset";
+  if (address === nativeTokenAddress()) return "xlm";
   return address;
 }
 
@@ -165,7 +187,315 @@ export async function pollUntilVisible<T>(
 }
 
 // =============================================================================
-// Writes
+// Fee-bump purchases — the app's own buy/resale-buy flows.
+//
+// The buyer signs the real `buy_edition`/`buy`/`buy_batch` call themselves
+// (the same call anyone paying their own gas would sign) and treasury wraps
+// that already-signed transaction in a fee-bump envelope instead of
+// submitting a second transaction — one ledger close per purchase, and the
+// buyer never spends XLM because treasury, not the buyer, is the fee-bump's
+// fee source. `inclusion_fee`/`network_fee` (now real params on
+// `buy_edition`/`buy`/`buy_batch` — see `contracts/nft_oz/src/lib.rs`) are
+// what let treasury recover the real cost of doing that.
+//
+// Two shapes, depending on who's holding the signing key:
+//   - Custodial: server holds the buyer's secret, so build → sign → fee-bump
+//     → submit all happen in one server-side call (`feeBumpAsCustodialBuyer`).
+//   - External wallet: server builds the call *unsigned* and hands back the
+//     XDR; the client signs it with that wallet's own sign-only function
+//     (never the sign-and-submit wrapper it normally uses) and posts the
+//     signed XDR back to `submitFeeBumpedPurchase`.
+//
+// USD/card checkout (see `fundBuyerForCardPurchase` below) funds the
+// custodial buyer's own account with the ACTION they're about to spend, then
+// converges on the exact same `feeBumpAsCustodialBuyer` path a direct
+// purchase uses — no separate treasury-pays-and-delivers entry point.
+// =============================================================================
+
+/**
+ * Wraps an already buyer-signed transaction (either a freshly-built inner
+ * tx, or one round-tripped from an external wallet) in a fee-bump envelope
+ * paid entirely by treasury, submits it, and confirms.
+ *
+ * Reuses the SDK's own `SentTransaction` (the exact class
+ * `AssembledTransaction.signAndSend()` delegates to internally) rather than
+ * hand-rolling a new confirmation poll — `SentTransaction.init` only reads
+ * `assembled.signed` and a handful of `assembled.options` fields, so a
+ * minimal object satisfying that shape gets the same exponential-backoff
+ * `getTransaction` polling `signAndSend()` already relies on elsewhere in
+ * this file, without needing an actual `AssembledTransaction` (which only
+ * knows how to build *unsigned* calls, not wrap an arbitrary already-signed
+ * one in a fee-bump).
+ */
+async function feeBumpAndSubmit(signedInnerTxXdr: string): Promise<string> {
+  const treasury = getTreasuryKeypair();
+  const server = new rpc.Server(SOROBAN_RPC_URL);
+
+  const innerTx = TransactionBuilder.fromXDR(signedInnerTxXdr, networkPassphrase);
+  if (!(innerTx instanceof Transaction)) {
+    throw new Error("Expected a signed Soroban transaction envelope, not a fee-bump envelope");
+  }
+
+  // Per-operation base fee for the wrapper; Stellar requires the fee-bump's
+  // total (baseFee * (innerOps + 1)) to be >= the inner transaction's own
+  // fee — reusing the inner fee as the per-op base gives at least 2x
+  // headroom for the common one- or two-operation case (buy, or
+  // trustline+buy folded together — see `getBuyEditionXDR`'s trustline
+  // handling in the router).
+  const feeBump = TransactionBuilder.buildFeeBumpTransaction(
+    treasury,
+    innerTx.fee,
+    innerTx,
+    networkPassphrase,
+  );
+  feeBump.sign(treasury);
+
+  const sent = await SentTransaction.init({
+    signed: feeBump,
+    options: { server, rpcUrl: SOROBAN_RPC_URL, parseResultXdr: (v: unknown) => v },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see doc comment above
+  } as any as AssembledTransaction<unknown>);
+
+  return requireSentTransactionSucceeded(sent);
+}
+
+/**
+ * `AssembledTransaction.signAndSend()` already polls Soroban RPC's own
+ * `getTransaction` internally (exponential backoff) until the transaction
+ * has a definitive SUCCESS/FAILED status — it does *not* return early on a
+ * merely-submitted-but-still-pending transaction. That means a *second*,
+ * separate confirmation poll after it returns (e.g. Horizon polling via
+ * `verifyContractTransaction`) is pure redundant latency, not an extra
+ * safety check. This helper is the real safety check: it reads the status
+ * already obtained, so a failed submission throws immediately instead of
+ * silently returning a hash for a transaction that never actually
+ * succeeded.
+ */
+function requireSentTransactionSucceeded(sent: {
+  sendTransactionResponse?: { hash: string };
+  getTransactionResponse?: { status: string };
+}): string {
+  const hash = sent.sendTransactionResponse?.hash ?? "";
+  if (sent.getTransactionResponse?.status !== "SUCCESS") {
+    throw new Error(
+      `Fee-bumped transaction ${hash || "(no hash)"} did not succeed on-chain (status: ${sent.getTransactionResponse?.status ?? "unknown"})`,
+    );
+  }
+  return hash;
+}
+
+/**
+ * The custodial one-call path: signs an unsigned `buy_edition`/`buy`/
+ * `buy_batch` XDR (built by `buildBuyEditionXDR`/`buildBuyXDR`/
+ * `buildBuyBatchXDR`) with the buyer's own custodial secret, then
+ * fee-bumps and submits it. `signWith` must resolve to a real custodial
+ * signer (an `{email}`/`{isAdmin}` `SignUserType`) — this is never the path
+ * for a wallet-connected buyer, who signs client-side instead (see
+ * `submitFeeBumpedPurchase`).
+ */
+export async function feeBumpAsCustodialBuyer({
+  xdr,
+  signWith,
+}: {
+  xdr: string;
+  signWith: SignUserType;
+}): Promise<string> {
+  const { xdr: signedXdr, fullySignedByServer } = await signArtXdr({ xdr, signWith });
+  if (!fullySignedByServer) {
+    throw new Error("feeBumpAsCustodialBuyer requires a custodial signer (signWith must be set)");
+  }
+  return feeBumpAndSubmit(signedXdr);
+}
+
+/**
+ * The external-wallet second call: the client already signed the XDR
+ * `buildBuyEditionXDR`/`buildBuyXDR`/`buildBuyBatchXDR` returned, using that
+ * wallet's own sign-only function — this just wraps it in treasury's
+ * fee-bump and submits.
+ */
+export async function submitFeeBumpedPurchase(signedInnerTxXdr: string): Promise<string> {
+  return feeBumpAndSubmit(signedInnerTxXdr);
+}
+
+// -----------------------------------------------------------------------------
+// Account activation / trustline — the preconditions a fee-bumped purchase
+// needs that a plain balance check doesn't cover. See the plan's Part D
+// (activation) and Part E (trustline) for the reasoning.
+// -----------------------------------------------------------------------------
+
+/**
+ * Whether `pubKey` is a real account on the ledger at all. A custodial
+ * sign-up does *not* create one — that only happens through the existing
+ * paid $2 flow (`ActivationModal`/`PayForActivation`,
+ * `src/lib/stellar/auth/account-activation.ts`). A purchase must never
+ * silently pay to create one on the buyer's behalf (see
+ * `fundBuyerForCardPurchase`'s doc comment) — the caller is expected to
+ * check this first and send an unactivated buyer to that existing flow
+ * instead.
+ */
+export async function isStellarAccountActivated(pubKey: string): Promise<boolean> {
+  try {
+    await StellarAccount.create(pubKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function hasPlatformAssetTrustline(pubKey: string): Promise<boolean> {
+  try {
+    const account = await StellarAccount.create(pubKey);
+    return account.hasTrustline(PLATFORM_ASSET.code, PLATFORM_ASSET.issuer);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The one step treasury can't do for a wallet-connected buyer by itself:
+ * only the account owner can authorize a new trustline. Builds a
+ * transaction with treasury as the fee-paying source — so this costs the
+ * buyer nothing — carrying the `changeTrust` op (buyer as that op's
+ * source), pre-signed by treasury. The caller's wallet adds just the
+ * buyer's own authorization signature (via that wallet's sign-only
+ * function, same as a purchase) and submits — a one-time step the client
+ * shows as "Trust & Buy" before the buyer's first direct Platform Asset
+ * purchase, immediately followed by the regular purchase flow.
+ */
+export async function buildEstablishTrustlineXDR(buyerPubKey: string): Promise<string> {
+  const treasury = getTreasuryKeypair();
+  const server = new Horizon.Server(STELLAR_URL);
+  const treasuryAccount = await server.loadAccount(treasury.publicKey());
+
+  const tx = new TransactionBuilder(treasuryAccount, { fee: TrxBaseFee, networkPassphrase })
+    .addOperation(Operation.changeTrust({ asset: PLATFORM_ASSET, source: buyerPubKey }))
+    .setTimeout(180)
+    .build();
+
+  tx.sign(treasury);
+  return tx.toXDR();
+}
+
+/**
+ * The custodial counterpart to {@link buildEstablishTrustlineXDR}: since
+ * the server already holds the buyer's own secret, it can just sign the
+ * `changeTrust` op itself instead of round-tripping an XDR to a wallet for
+ * authorization. Treasury still fronts the ~0.5 XLM reserve a new trustline
+ * needs; that cost is folded into `INCLUSION_FEE_IN_PLATFORM_ASSET`/
+ * `NETWORK_FEE_IN_PLATFORM_ASSET` (recouped from the buyer, not given
+ * away — see the fee constants' own doc comments), not eaten by treasury
+ * for free. Callers should run this (if `hasPlatformAssetTrustline` is
+ * false) immediately before the fee-bumped buy call, never combined with
+ * it into a single mutation the client waits differently on — the buyer
+ * never sees or signs anything extra either way, it just costs one
+ * additional server-side transaction on their very first purchase.
+ */
+export async function ensureBuyerTrustline({
+  buyerPubKey,
+  buyerSecret,
+}: {
+  buyerPubKey: string;
+  buyerSecret: string;
+}): Promise<void> {
+  const treasury = getTreasuryKeypair();
+  const server = new Horizon.Server(STELLAR_URL);
+  const treasuryAccount = await server.loadAccount(treasury.publicKey());
+  const buyerKeypair = Keypair.fromSecret(buyerSecret);
+
+  const tx = new TransactionBuilder(treasuryAccount, { fee: TrxBaseFee, networkPassphrase })
+    .addOperation(
+      Operation.payment({
+        source: treasury.publicKey(),
+        destination: buyerPubKey,
+        asset: Asset.native(),
+        amount: "0.5",
+      }),
+    )
+    .addOperation(Operation.changeTrust({ asset: PLATFORM_ASSET, source: buyerPubKey }))
+    .setTimeout(30)
+    .build();
+
+  tx.sign(treasury);
+  tx.sign(buyerKeypair);
+
+  const result = await server.submitTransaction(tx);
+  if (!result.successful) {
+    throw new Error(`ensureBuyerTrustline: trustline transaction ${result.hash} did not succeed`);
+  }
+}
+
+/**
+ * Card/USD checkout's funding step, ported from the `development` branch's
+ * `fundBuyerForCardPurchase` and trimmed for this branch's fee-bump design:
+ * that version also gave the buyer a small XLM buffer so their own account
+ * could pay its own network fee, because it predates fee-bump. Here the buy
+ * step itself is fee-bumped (see `feeBumpAsCustodialBuyer`), so the buyer
+ * never needs to hold any XLM at all — this only tops up what the *item*
+ * costs: establishes the Platform Asset trustline if missing (needs
+ * `buyerSecret` to countersign `changeTrust` — only the account owner can
+ * authorize a new trustline), then sends exactly `assetAmountRaw` (the full
+ * grand total: item price + inclusion fee + network fee, since the
+ * following `buy_edition`/`buy`/`buy_batch` call charges those on-chain the
+ * same as a direct purchase).
+ *
+ * Callers must check {@link isStellarAccountActivated} first — this never
+ * creates the account itself; see that function's doc comment for why.
+ */
+export async function fundBuyerForCardPurchase({
+  buyerPubKey,
+  buyerSecret,
+  assetAmountRaw,
+}: {
+  buyerPubKey: string;
+  buyerSecret: string;
+  /** Raw (stroop-scale) units — `total + inclusion_fee + network_fee`. */
+  assetAmountRaw: bigint;
+}): Promise<void> {
+  if (!(await hasPlatformAssetTrustline(buyerPubKey))) {
+    await ensureBuyerTrustline({ buyerPubKey, buyerSecret });
+  }
+
+  const treasury = getTreasuryKeypair();
+  const server = new Horizon.Server(STELLAR_URL);
+  const treasuryAccount = await server.loadAccount(treasury.publicKey());
+
+  const tx = new TransactionBuilder(treasuryAccount, { fee: TrxBaseFee, networkPassphrase })
+    .addOperation(
+      Operation.payment({
+        source: treasury.publicKey(),
+        destination: buyerPubKey,
+        asset: PLATFORM_ASSET,
+        amount: rawPriceToDecimalString(assetAmountRaw),
+      }),
+    )
+    .setTimeout(30)
+    .build();
+
+  tx.sign(treasury);
+
+  const result = await server.submitTransaction(tx);
+  if (!result.successful) {
+    throw new Error(`fundBuyerForCardPurchase: funding transaction ${result.hash} did not succeed`);
+  }
+}
+
+/** Classic Stellar payment amounts are decimal strings, not raw stroop
+ *  units — the inverse of `humanPriceToRaw`/`rawPriceToHuman`'s scale, kept
+ *  local since this is the only classic-payment amount left in this file. */
+function rawPriceToDecimalString(raw: bigint): string {
+  const scale = 10_000_000n;
+  const whole = raw / scale;
+  const frac = raw % scale;
+  return `${whole}.${frac.toString().padStart(7, "0")}`;
+}
+
+// =============================================================================
+// Writes — buy_edition/buy/buy_batch/list/list_batch. `buy_edition`/`buy`/
+// `buy_batch` are the app's own primary purchase path now (see the
+// fee-bump section above) — every build here is deliberately *unsigned*
+// (no `.sign()`/`.signAndSend()` call), so the same builder serves both the
+// custodial fee-bump path (server signs afterward) and the external-wallet
+// path (the client signs the returned XDR itself).
 // =============================================================================
 
 /**
@@ -193,6 +523,8 @@ export async function buildBuyEditionXDR({
   purchaseRef,
   paymentToken,
   quantity,
+  inclusionFeeRaw,
+  networkFeeRaw,
 }: {
   buyerPubKey: string;
   /** The `Nft` row id — lets `edition_by_ref` resolve the edition later. */
@@ -213,6 +545,12 @@ export async function buildBuyEditionXDR({
   purchaseRef: string;
   paymentToken: string;
   quantity: number;
+  /** Raw units, reimbursing treasury for fee-bumping this purchase — see
+   *  the fee-bump section above. `0n` for a call that isn't fee-bumped
+   *  (there isn't one in this app's own UI, but the contract itself allows
+   *  it for a self-sovereign caller paying their own gas). */
+  inclusionFeeRaw: bigint;
+  networkFeeRaw: bigint;
 }): Promise<string> {
   const client = getClient(buyerPubKey);
   const edition: EditionInput = {
@@ -236,6 +574,8 @@ export async function buildBuyEditionXDR({
       purchase_ref: purchaseRef,
       payment_token: paymentToken,
       quantity,
+      inclusion_fee: inclusionFeeRaw,
+      network_fee: networkFeeRaw,
     },
     { fee: SOROBAN_INCLUSION_FEE },
   );
@@ -322,14 +662,24 @@ export async function buildBuyXDR({
   buyerPubKey,
   tokenId,
   paymentToken,
+  inclusionFeeRaw,
+  networkFeeRaw,
 }: {
   buyerPubKey: string;
   tokenId: number;
   paymentToken: string;
+  inclusionFeeRaw: bigint;
+  networkFeeRaw: bigint;
 }): Promise<string> {
   const client = getClient(buyerPubKey);
   const tx = await client.buy(
-    { buyer: buyerPubKey, token_id: tokenId, payment_token: paymentToken },
+    {
+      buyer: buyerPubKey,
+      token_id: tokenId,
+      payment_token: paymentToken,
+      inclusion_fee: inclusionFeeRaw,
+      network_fee: networkFeeRaw,
+    },
     { fee: SOROBAN_INCLUSION_FEE },
   );
   return tx.toXDR();
@@ -346,14 +696,24 @@ export async function buildBuyBatchXDR({
   buyerPubKey,
   tokenIds,
   paymentToken,
+  inclusionFeeRaw,
+  networkFeeRaw,
 }: {
   buyerPubKey: string;
   tokenIds: number[];
   paymentToken: string;
+  inclusionFeeRaw: bigint;
+  networkFeeRaw: bigint;
 }): Promise<string> {
   const client = getClient(buyerPubKey);
   const tx = await client.buy_batch(
-    { buyer: buyerPubKey, token_ids: tokenIds, payment_token: paymentToken },
+    {
+      buyer: buyerPubKey,
+      token_ids: tokenIds,
+      payment_token: paymentToken,
+      inclusion_fee: inclusionFeeRaw,
+      network_fee: networkFeeRaw,
+    },
     { fee: SOROBAN_INCLUSION_FEE },
   );
   return tx.toXDR();

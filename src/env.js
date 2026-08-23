@@ -33,6 +33,17 @@ export const env = createEnv({
 
     STORAGE_SECRET: z.string(),
     MOTHER_SECRET: z.string(),
+    // The nft_oz contract's stored `Treasury` address needs its own signer
+    // to fee-bump every direct/card ACTION purchase and to fund a card
+    // buyer's account/trustline (see src/lib/stellar/oz/treasury.ts).
+    // Optional and falls back to MOTHER_SECRET, matching testnet's deploy
+    // (treasury == the MOTHER account there — see PLATFORM_TREASURY_ADDRESS
+    // in src/lib/common.ts). Pubnet uses a dedicated treasury address,
+    // distinct from MOTHER's own key — this must be set to that account's
+    // real secret before this feature can run on pubnet, or the on-chain
+    // `inclusion_fee`/`network_fee` reimbursement lands on an address this
+    // key can't spend from.
+    TREASURY_SECRET: z.string().optional(),
     PINATA_JWT: z.string(),
     // squire
     SQUARE_ACCESS_TOKEN: z.string(),
@@ -111,6 +122,7 @@ export const env = createEnv({
     NEXT_PUBLIC_HOME_DOMAIN: process.env.NEXT_PUBLIC_HOME_DOMAIN,
     NEXT_PUBLIC_URL: process.env.NEXT_PUBLIC_URL,
     MOTHER_SECRET: process.env.MOTHER_SECRET,
+    TREASURY_SECRET: process.env.TREASURY_SECRET,
     STORAGE_SECRET: process.env.STORAGE_SECRET,
     PINATA_JWT: process.env.PINATA_JWT,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,

@@ -52,7 +52,7 @@ const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// Bump this before building/deploying each new wasm so `version()` reflects
 /// what's actually running on-chain — paired with the `Upgradeable` impl
 /// below, this is how future changes ship without a redeploy (new address).
-const CONTRACT_VERSION: u32 = 5;
+const CONTRACT_VERSION: u32 = 7;
 
 /// Basis-points denominator for fee/royalty math (10_000 = 100%).
 const BPS_DENOM: i128 = 10_000;
@@ -297,6 +297,14 @@ pub struct EditionMinted {
     pub quantity: u32,
     pub payment_token: Address,
     pub unit_price: i128,
+    /// Reimbursement collected from the buyer alongside `unit_price *
+    /// quantity`, covering treasury's real cost of fee-bumping this buyer's
+    /// transaction (see `src/lib/stellar/oz/nft.ts`). Folded into the same
+    /// transfer as `unit_price * quantity`'s platform-fee cut rather than a
+    /// separate `TokenClient` call — recorded here so the buyer's true
+    /// total is auditable from this one event.
+    pub inclusion_fee_paid: i128,
+    pub network_fee_paid: i128,
 }
 
 #[contractevent]
@@ -319,6 +327,16 @@ pub struct Purchased {
     pub price: i128,
     pub royalty_paid: i128,
     pub platform_fee_paid: i128,
+    /// Reimbursement collected from the buyer on top of `price`, covering
+    /// treasury's real cost of fee-bumping this buyer's transaction (see
+    /// `src/lib/stellar/oz/nft.ts`). Folded into the same transfer as
+    /// `price`'s platform-fee cut rather than a separate `TokenClient` call
+    /// — recorded here so the buyer's true total is auditable from this one
+    /// event. Always 0 for a token settled via `buy_batch`'s per-token
+    /// `do_buy` call — that function charges the batch's fee once, in its
+    /// own aggregate transfer, not per token (see `Self::buy_batch`).
+    pub inclusion_fee_paid: i128,
+    pub network_fee_paid: i128,
 }
 
 #[contractevent]
@@ -422,6 +440,8 @@ impl ArtNft {
         purchase_ref: String,
         payment_token: Address,
         quantity: u32,
+        inclusion_fee: i128,
+        network_fee: i128,
     ) -> (u32, u32) {
         buyer.require_auth();
 
@@ -433,6 +453,9 @@ impl ArtNft {
         }
         if e.storage().persistent().has(&DataKey::PurchaseByRef(purchase_ref.clone())) {
             panic_with_error!(e, ArtError::DuplicatePurchaseRef);
+        }
+        if inclusion_fee < 0 || network_fee < 0 {
+            panic_with_error!(e, ArtError::InvalidAmount);
         }
 
         let edition_id = Self::resolve_or_create_edition(e, edition_ref, edition);
@@ -446,6 +469,13 @@ impl ArtNft {
         let prices: Vec<PriceEntry> =
             e.storage().persistent().get(&DataKey::EditionPrices(edition_id)).unwrap();
         let unit_price = Self::price_for(e, &prices, &payment_token);
+        let total = unit_price * quantity as i128;
+
+        // Same defensive cap `do_buy` uses below: the fee reimbursement
+        // can't exceed the item's own value.
+        if inclusion_fee + network_fee > total {
+            panic_with_error!(e, ArtError::InvalidAmount);
+        }
 
         // --- effects: mint, index and settle the edition's own state before
         // any external call, so a hostile `payment_token` can't reenter and
@@ -494,14 +524,17 @@ impl ArtNft {
         // straight to the creator — there's no separate seller to route
         // through, and no royalty leg (the creator would just be paying
         // themselves).
-        let total = unit_price * quantity as i128;
         let fee_bps = Self::platform_fee_bps(e) as i128;
         let platform_fee = total * fee_bps / BPS_DENOM;
 
         let token = TokenClient::new(e, &payment_token);
-        if platform_fee > 0 {
+        // Folded into one transfer rather than a separate call per fee —
+        // cheaper, and there's no reason treasury's two cuts need to move
+        // as two `TokenClient` invocations.
+        let treasury_amount = platform_fee + inclusion_fee + network_fee;
+        if treasury_amount > 0 {
             let treasury: Address = e.storage().instance().get(&DataKey::Treasury).unwrap();
-            token.transfer(&buyer, &treasury, &platform_fee);
+            token.transfer(&buyer, &treasury, &treasury_amount);
         }
         token.transfer(&buyer, &meta.creator, &(total - platform_fee));
 
@@ -513,6 +546,8 @@ impl ArtNft {
             quantity,
             payment_token,
             unit_price,
+            inclusion_fee_paid: inclusion_fee,
+            network_fee_paid: network_fee,
         }
         .publish(e);
 
@@ -784,9 +819,16 @@ impl ArtNft {
     /// low-level, no-auth path) rather than a full `transfer`, which would
     /// demand the seller's signature at purchase time.
     #[when_not_paused]
-    pub fn buy(e: &Env, buyer: Address, token_id: u32, payment_token: Address) {
+    pub fn buy(
+        e: &Env,
+        buyer: Address,
+        token_id: u32,
+        payment_token: Address,
+        inclusion_fee: i128,
+        network_fee: i128,
+    ) {
         buyer.require_auth();
-        Self::do_buy(e, &buyer, token_id, &payment_token);
+        Self::do_buy(e, &buyer, token_id, &payment_token, inclusion_fee, network_fee);
     }
 
     /// Buys several listed tokens at once, all paid in the same currency —
@@ -795,18 +837,62 @@ impl ArtNft {
     /// for the same edition. Listings can belong to different sellers; each
     /// token still settles (payment split, ownership transfer, `Purchased`
     /// event) exactly as an individual `buy` would, just in one invocation.
+    ///
+    /// `inclusion_fee`/`network_fee` are charged once for the whole batch
+    /// (there's only one real Soroban transaction underneath, regardless of
+    /// how many tokens it settles), not once per token — capped against the
+    /// sum of every token's own price, computed up front in a read-only
+    /// pass before any listing is touched.
     #[when_not_paused]
-    pub fn buy_batch(e: &Env, buyer: Address, token_ids: Vec<u32>, payment_token: Address) {
+    pub fn buy_batch(
+        e: &Env,
+        buyer: Address,
+        token_ids: Vec<u32>,
+        payment_token: Address,
+        inclusion_fee: i128,
+        network_fee: i128,
+    ) {
         buyer.require_auth();
         if token_ids.len() == 0 || token_ids.len() > MAX_QUANTITY_PER_BUY {
             panic_with_error!(e, ArtError::QuantityTooLarge);
         }
+        if inclusion_fee < 0 || network_fee < 0 {
+            panic_with_error!(e, ArtError::InvalidAmount);
+        }
+
+        let mut batch_total: i128 = 0;
         for i in 0..token_ids.len() {
-            Self::do_buy(e, &buyer, token_ids.get(i).unwrap(), &payment_token);
+            let listing = Self::listing(e, token_ids.get(i).unwrap())
+                .unwrap_or_else(|| panic_with_error!(e, ArtError::ListingNotFound));
+            batch_total += Self::price_for(e, &listing.prices, &payment_token);
+        }
+        if inclusion_fee + network_fee > batch_total {
+            panic_with_error!(e, ArtError::InvalidAmount);
+        }
+
+        for i in 0..token_ids.len() {
+            Self::do_buy(e, &buyer, token_ids.get(i).unwrap(), &payment_token, 0, 0);
+        }
+
+        let fee_total = inclusion_fee + network_fee;
+        if fee_total > 0 {
+            let treasury: Address = e.storage().instance().get(&DataKey::Treasury).unwrap();
+            TokenClient::new(e, &payment_token).transfer(&buyer, &treasury, &fee_total);
         }
     }
 
-    fn do_buy(e: &Env, buyer: &Address, token_id: u32, payment_token: &Address) {
+    fn do_buy(
+        e: &Env,
+        buyer: &Address,
+        token_id: u32,
+        payment_token: &Address,
+        inclusion_fee: i128,
+        network_fee: i128,
+    ) {
+        if inclusion_fee < 0 || network_fee < 0 {
+            panic_with_error!(e, ArtError::InvalidAmount);
+        }
+
         let listing = Self::listing(e, token_id)
             .unwrap_or_else(|| panic_with_error!(e, ArtError::ListingNotFound));
 
@@ -823,6 +909,12 @@ impl ArtNft {
         let unit_price = Self::price_for(e, &listing.prices, payment_token);
         let split = Self::compute_breakdown(e, token_id, &listing, unit_price);
 
+        // Same defensive cap `buy_edition` uses: the fee reimbursement can't
+        // exceed the item's own value.
+        if inclusion_fee + network_fee > split.total {
+            panic_with_error!(e, ArtError::InvalidAmount);
+        }
+
         // --- effects: all contract state settles before any external call, so
         // a hostile `payment_token` can't reenter and observe a half-applied
         // sale (checks-effects-interactions). Scoped per token, so a batch of
@@ -834,9 +926,11 @@ impl ArtNft {
 
         // --- interactions
         let token = TokenClient::new(e, payment_token);
-        if split.platform_fee > 0 {
+        // Folded into one transfer, same reasoning as `buy_edition`.
+        let treasury_amount = split.platform_fee + inclusion_fee + network_fee;
+        if treasury_amount > 0 {
             let treasury: Address = e.storage().instance().get(&DataKey::Treasury).unwrap();
-            token.transfer(buyer, &treasury, &split.platform_fee);
+            token.transfer(buyer, &treasury, &treasury_amount);
         }
         if split.royalty > 0 {
             token.transfer(buyer, &split.royalty_receiver, &split.royalty);
@@ -851,6 +945,8 @@ impl ArtNft {
             price: split.total,
             royalty_paid: split.royalty,
             platform_fee_paid: split.platform_fee,
+            inclusion_fee_paid: inclusion_fee,
+            network_fee_paid: network_fee,
         }
         .publish(e);
     }

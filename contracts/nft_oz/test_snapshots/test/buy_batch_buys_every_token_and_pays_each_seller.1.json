@@ -190,6 +190,12 @@
                 },
                 {
                   "u32": 5
+                },
+                {
+                  "i128": "0"
+                },
+                {
+                  "i128": "0"
                 }
               ]
             }
@@ -337,6 +343,12 @@
                 },
                 {
                   "address": "CDLDVFKHEZ2RVB3NG4UQA4VPD3TSHV6XMHXMHP2BSGCJ2IIWVTOHGDSG"
+                },
+                {
+                  "i128": "0"
+                },
+                {
+                  "i128": "0"
                 }
               ]
             }

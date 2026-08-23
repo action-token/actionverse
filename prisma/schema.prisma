@@ -1734,7 +1734,19 @@ model NftListingPrice {
 
 enum NftPurchaseStatus {
   PENDING
+  // Card checkout only (see `buyEditionWithCard`/`deliverCardFundedEditionPurchase`
+  // in `src/server/api/routers/nft.ts`): Square already charged the card,
+  // but funding the buyer's account and/or the fee-bumped `buy_edition`
+  // call hasn't succeeded yet. No automatic retry — a row stuck here needs
+  // manual follow-up (`SELECT * FROM "NftPurchase" WHERE status =
+  // 'STEP1_CONFIRMED'`). A direct ACTION purchase never passes through
+  // this state — the buyer's fee-bumped transaction either mints and pays
+  // atomically or doesn't happen at all.
+  STEP1_CONFIRMED
   CONFIRMED
+  // The Square charge itself didn't complete (declined, etc.) — nothing was
+  // ever collected, so there's nothing to retry or refund.
+  FAILED
 }
 
 // Tracks one attempted bulk purchase of an edition. This row's id *is* the
@@ -1757,10 +1769,15 @@ model NftPurchase {
   txHash       String?
   firstTokenId String?
   lastTokenId  String?
+  // The Square payment id for a card purchase, set once it's charged
+  // (`STEP1_CONFIRMED`) — see the enum's own doc comment. Null for a direct
+  // ACTION purchase, which has no equivalent intermediate step.
+  step1TxHash  String?
   createdAt    DateTime          @default(now())
 
   @@index([nftId])
   @@index([buyerId])
+  @@index([status])
 }
 
 // A named grouping of smart-contract NFTs owned by a creator. Optional — an
