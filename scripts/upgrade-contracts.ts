@@ -17,7 +17,7 @@ import { resolve } from "path";
 import { BASE_FEE, Keypair, Operation, TransactionBuilder, hash, rpc, xdr } from "@stellar/stellar-sdk";
 import { Client as ArtNftClient } from "contracts/nft_oz/bindings/src/index";
 import { networkPassphrase, SOROBAN_RPC_URL } from "~/lib/stellar/constant";
-import { ART_NFT_CONTRACT_ID } from "~/lib/common";
+import { ART_NFT_CONTRACT_ID, PLATFORM_TREASURY_ADDRESS } from "~/lib/common";
 
 const WASM_DIR = resolve(process.cwd(), "contracts/target/wasm32v1-none/release");
 const DEPLOYER_SECRET = process.env.CONTRACT_DEPLOYER_SECRET ?? process.env.MOTHER_SECRET;
@@ -27,6 +27,13 @@ if (!DEPLOYER_SECRET) {
 }
 if (!ART_NFT_CONTRACT_ID) {
   throw new Error("ART_NFT_CONTRACT_ID is empty in src/lib/common.ts for this network — nothing to upgrade");
+}
+
+const TREASURY = PLATFORM_TREASURY_ADDRESS;
+if (!TREASURY) {
+  throw new Error(
+    "Set PLATFORM_TREASURY_ADDRESS in src/lib/common.ts (for this network) before upgrading",
+  );
 }
 
 const server = new rpc.Server(SOROBAN_RPC_URL);
@@ -110,6 +117,23 @@ async function main() {
   });
 
   const after = await client.version();
+
+  console.log("\nEnsuring PriceAuthority is set...");
+  const currentAuthority = await client.price_authority();
+  if (currentAuthority.result) {
+    console.log(`  Already set: ${currentAuthority.result}`);
+  } else {
+    const setAuthority = await client.set_price_authority({ new_authority: TREASURY });
+    await setAuthority.signAndSend({
+      signTransaction: async (xdrStr: string) => {
+        const tx = TransactionBuilder.fromXDR(xdrStr, networkPassphrase);
+        tx.sign(deployer);
+        return { signedTxXdr: tx.toXDR(), signerAddress: deployer.publicKey() };
+      },
+    });
+    console.log(`  Set to ${TREASURY} (owner/treasury account)`);
+  }
+
   console.log(`\nUpgrade complete — now running version ${after.result}`);
 }
 
