@@ -1,19 +1,13 @@
 import { Loader2, Lock, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BlockchainInsights } from "~/components/nft/blockchain-insights";
 import { PlaceholderArt } from "~/components/nft/placeholder-art";
 import { priceTokenLabel } from "~/components/nft/nft-card";
 import { BuyNftWithCard } from "~/components/payment/buy-nft-with-card";
 import { cn } from "~/lib/utils";
-import {
-  DEFAULT_PLATFORM_FEE_BPS,
-  INCLUSION_FEE_IN_PLATFORM_ASSET,
-  INCLUSION_FEE_IN_USD,
-  NETWORK_FEE_IN_PLATFORM_ASSET,
-  NETWORK_FEE_IN_USD,
-} from "~/lib/stellar/constant";
+import { DEFAULT_PLATFORM_FEE_BPS } from "~/lib/stellar/constant";
 import { Button } from "~/components/shadcn/ui/button";
 import { Input } from "~/components/shadcn/ui/input";
 import {
@@ -24,11 +18,10 @@ import {
 } from "~/components/shadcn/ui/tabs";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
 import { InsufficientAssetBalance } from "~/components/payment/insufficient-asset-balance";
-import { AccountActivationRequired } from "~/components/payment/account-activation-required";
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 import { WalletType } from "~/types/wallet/wallet-types";
 import { type NftDisplayCurrency, type NftPaymentToken } from "~/lib/stellar/oz/nft";
-import { type RouterOutputs } from "~/utils/api";
+import { api, type RouterOutputs } from "~/utils/api";
 
 type ByIdNft = RouterOutputs["nft"]["byId"];
 type OnChainInsights = RouterOutputs["nft"]["onChainInsights"];
@@ -111,6 +104,34 @@ function BuyButton({
       {isBuying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingBag className="h-4 w-4" />}
       {isBuying ? statusText : idleLabel}
     </Button>
+  );
+}
+
+/** Shown while the live inclusion/network fee quote is still loading —
+ *  there is no fixed fallback fee, so purchasing has to wait for a real
+ *  number rather than risk charging a stale or made-up one. */
+function FeeLoadingButton() {
+  return (
+    <Button disabled className="mt-4 h-12 w-full gap-2 rounded-full text-base font-bold">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      Calculating live fee…
+    </Button>
+  );
+}
+
+/** Shown when the live fee quote fails outright (no live rate, and no
+ *  fallback to fall back to) — purchasing is blocked rather than silently
+ *  charging a guessed fee. */
+function FeeUnavailableButton() {
+  return (
+    <div className="mt-4 space-y-1.5">
+      <Button disabled className="h-12 w-full gap-2 rounded-full text-base font-bold">
+        Live fee unavailable
+      </Button>
+      <p className="text-center text-xs text-muted-foreground">
+        Couldn't fetch the current network fee — try again in a moment.
+      </p>
+    </div>
   );
 }
 
@@ -707,12 +728,13 @@ export function ResaleBuyCard({
   const { data: session } = useSession();
   const isCustodial = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
   // Gates the Platform-Asset buy button only — a card/USD checkout is
-  // funded by the card, not this balance. `active` is false both for a
-  // genuinely unactivated account and before the balance query has
-  // answered, so it is only treated as "needs activation" once we know
-  // someone is actually signed in.
-  const { platformAssetBalance, active: isAccountActive } = useUserStellarAcc();
-  const needsActivation = !!session?.user && !isAccountActive;
+  // funded by the card, not this balance. An inactive Platform-Asset
+  // account reads as a 0 balance here (see `useUserStellarAcc`), so it
+  // falls straight into the same `InsufficientAssetBalance` state as a
+  // genuinely low balance — no separate "activate your account" step on
+  // this tab. That component's "Recharge first" CTA covers both cases for
+  // a custodial buyer.
+  const { platformAssetBalance } = useUserStellarAcc();
 
   // Top-level currency choice, same shape as `PrimaryBuyCard`: Platform
   // Asset (the pooled "cheapest N" ACTION flow below) or USD (card,
@@ -734,6 +756,29 @@ export function ResaleBuyCard({
         .map((o) => [o.tokenId, o]),
     ).values(),
   ].sort((a, b) => a.price - b.price);
+  const assetAvailable = allPurchasable.length > 0;
+  const usdAvailable = !!cheapestUsdListing;
+
+  // A custodial buyer has no Platform Asset wallet of their own to pay
+  // from, so USD/card is the currency that actually works for them by
+  // default; an external-wallet buyer defaults to Platform Asset, same as
+  // before. `userChangedCurrency` stops this default from clobbering a
+  // buyer's own tap on the currency switcher below — including the case
+  // where `isCustodial` only resolves (from `useSession`) a moment after
+  // mount.
+  const preferredCurrency: "asset" | "usd" = isCustodial ? "usd" : "asset";
+  const userChangedCurrency = useRef(false);
+  useEffect(() => {
+    if (userChangedCurrency.current) return;
+    if (preferredCurrency === "usd" && usdAvailable) {
+      setSelectedCurrency("usd");
+    } else if (assetAvailable) {
+      setSelectedCurrency("asset");
+    } else if (usdAvailable) {
+      setSelectedCurrency("usd");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferredCurrency, assetAvailable, usdAvailable]);
 
   const [quantity, setQuantity] = useState(1);
   const maxQuantity = Math.min(allPurchasable.length, MAX_BUY_BATCH);
@@ -741,6 +786,15 @@ export function ResaleBuyCard({
   useEffect(() => {
     setQuantity((q) => Math.min(Math.max(q, 1), Math.max(maxQuantity, 1)));
   }, [maxQuantity]);
+
+  const liveFeeQuote = api.nft.getInclusionAndNetworkFeePreview.useQuery(
+    { quantity: Math.max(quantity, 1) },
+    { enabled: selectedCurrency === "asset" && assetAvailable },
+  );
+  const liveUsdFeeQuote = api.nft.getInclusionAndNetworkFeeInUsdPreview.useQuery(
+    { quantity: 1 },
+    { enabled: selectedCurrency === "usd" && usdAvailable },
+  );
 
   if (allPurchasable.length === 0 && !cheapestUsdListing) {
     return (
@@ -755,10 +809,32 @@ export function ResaleBuyCard({
   // `buy_batch` is one fee-bumped transaction regardless of how many
   // tokens it settles, so the fee is charged once for the whole batch, not
   // once per token — see `buy_batch`'s doc comment in
-  // `contracts/nft_oz/src/lib.rs`.
-  const grandTotal = total + INCLUSION_FEE_IN_PLATFORM_ASSET + NETWORK_FEE_IN_PLATFORM_ASSET;
+  // `contracts/nft_oz/src/lib.rs`. `liveFeeQuote` mirrors exactly what the
+  // server will actually charge (see `getInclusionAndNetworkFee` on the
+  // backend). No fixed fallback: until it resolves (or if it fails) these
+  // are `undefined`, not a stale guess.
+  const inclusionFee = liveFeeQuote.data?.inclusionFee;
+  const networkFee = liveFeeQuote.data?.networkFee;
+  const grandTotal =
+    inclusionFee !== undefined && networkFee !== undefined ? total + inclusionFee + networkFee : undefined;
+  const assetQuoteFailed = liveFeeQuote.isError;
   const cheapest = allPurchasable[0]?.price ?? 0;
-  const usdTotal = cheapestUsdListing ? cheapestUsdListing.price + INCLUSION_FEE_IN_USD + NETWORK_FEE_IN_USD : 0;
+  const formatAsset = (n: number) => `${n.toFixed(2)} ${priceTokenLabel("asset")}`;
+  const renderAsset = (n: number | undefined) => (n === undefined ? (assetQuoteFailed ? "—" : "…") : formatAsset(n));
+
+  // `liveUsdFeeQuote.data?.activationCost` is only ever non-zero when this
+  // signed-in buyer is a custodial account that still needs activating —
+  // see `activationCostUsdForSession` on the backend; `buyResaleWithCard`
+  // silently adds it to what it actually charges too.
+  const usdInclusionFee = liveUsdFeeQuote.data?.inclusionFee;
+  const usdNetworkFee = liveUsdFeeQuote.data?.networkFee;
+  const usdActivationCost = liveUsdFeeQuote.data?.activationCost;
+  const usdTotal =
+    cheapestUsdListing && usdInclusionFee !== undefined && usdNetworkFee !== undefined && usdActivationCost !== undefined
+      ? cheapestUsdListing.price + usdInclusionFee + usdNetworkFee + usdActivationCost
+      : undefined;
+  const usdQuoteFailed = liveUsdFeeQuote.isError;
+  const renderUsd = (n: number | undefined) => (n === undefined ? (usdQuoteFailed ? "—" : "…") : `$${n.toFixed(2)}`);
 
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -774,7 +850,10 @@ export function ResaleBuyCard({
       <div className="mt-2 flex w-fit gap-1 rounded-full bg-muted p-1">
         <button
           type="button"
-          onClick={() => setSelectedCurrency("asset")}
+          onClick={() => {
+            userChangedCurrency.current = true;
+            setSelectedCurrency("asset");
+          }}
           disabled={allPurchasable.length === 0}
           className={cn(
             "rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
@@ -787,7 +866,10 @@ export function ResaleBuyCard({
         </button>
         <button
           type="button"
-          onClick={() => setSelectedCurrency("usd")}
+          onClick={() => {
+            userChangedCurrency.current = true;
+            setSelectedCurrency("usd");
+          }}
           disabled={!cheapestUsdListing}
           className={cn(
             "rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
@@ -846,31 +928,27 @@ export function ResaleBuyCard({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Inclusion fee</span>
-              <span className="font-semibold tabular-nums">
-                {INCLUSION_FEE_IN_PLATFORM_ASSET.toFixed(2)} {priceTokenLabel("asset")}
-              </span>
+              <span className="font-semibold tabular-nums">{renderAsset(inclusionFee)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Network fee</span>
-              <span className="font-semibold tabular-nums">
-                {NETWORK_FEE_IN_PLATFORM_ASSET.toFixed(2)} {priceTokenLabel("asset")}
-              </span>
+              <span className="font-semibold tabular-nums">{renderAsset(networkFee)}</span>
             </div>
             <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
               <span className="font-bold">Total</span>
-              <span className="text-base font-black tabular-nums">
-                {grandTotal.toFixed(2)} {priceTokenLabel("asset")}
-              </span>
+              <span className="text-base font-black tabular-nums">{renderAsset(grandTotal)}</span>
             </div>
           </div>
 
-          {needsActivation ? (
-            <AccountActivationRequired />
+          {assetQuoteFailed ? (
+            <FeeUnavailableButton />
+          ) : grandTotal === undefined ? (
+            <FeeLoadingButton />
           ) : platformAssetBalance >= grandTotal ? (
             <BuyButton
               isBuying={isBuying}
               onClick={() => void onBuy?.(selected.map((l) => l.tokenId), "asset")}
-              idleLabel={`Buy ${quantity} for ${grandTotal.toFixed(2)} ${priceTokenLabel("asset")}`}
+              idleLabel={`Buy ${quantity} for ${formatAsset(grandTotal)}`}
             />
           ) : (
             <InsufficientAssetBalance required={grandTotal} balance={platformAssetBalance} />
@@ -886,21 +964,34 @@ export function ResaleBuyCard({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Inclusion fee</span>
-                <span className="font-semibold tabular-nums">${INCLUSION_FEE_IN_USD.toFixed(2)}</span>
+                <span className="font-semibold tabular-nums">{renderUsd(usdInclusionFee)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Network fee</span>
-                <span className="font-semibold tabular-nums">${NETWORK_FEE_IN_USD.toFixed(2)}</span>
+                <span className="font-semibold tabular-nums">{renderUsd(usdNetworkFee)}</span>
               </div>
+              {usdActivationCost !== undefined && usdActivationCost > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Account activation</span>
+                  <span className="font-semibold tabular-nums">{renderUsd(usdActivationCost)}</span>
+                </div>
+              )}
               <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
                 <span className="font-bold">Total</span>
-                <span className="text-base font-black tabular-nums">${usdTotal.toFixed(2)}</span>
+                <span className="text-base font-black tabular-nums">{renderUsd(usdTotal)}</span>
               </div>
             </div>
 
-            {needsActivation ? (
-              <AccountActivationRequired />
-            ) : isCustodial ? (
+            {usdQuoteFailed ? (
+              <FeeUnavailableButton />
+            ) : !isCustodial ? (
+              <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                <Lock className="h-4 w-4 shrink-0" />
+                Card payment isn&apos;t available for connected wallets — pay with {priceTokenLabel("asset")} instead.
+              </div>
+            ) : usdTotal === undefined ? (
+              <FeeLoadingButton />
+            ) : (
               <BuyNftWithCard
                 className="mt-3"
                 target={{ kind: "resale", tokenId: cheapestUsdListing.tokenId }}
@@ -908,11 +999,6 @@ export function ResaleBuyCard({
                   await onCardPurchaseSuccess?.();
                 }}
               />
-            ) : (
-              <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                <Lock className="h-4 w-4 shrink-0" />
-                Card payment isn&apos;t available for connected wallets — pay with {priceTokenLabel("asset")} instead.
-              </div>
             )}
           </>
         )
@@ -954,16 +1040,17 @@ export function PrimaryBuyCard({
   const { data: session } = useSession();
   const isCustodial = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
   // Gates the Platform-Asset buy button only — a card/USD checkout is
-  // funded by the card, not this balance. `active` is false both for a
-  // genuinely unactivated account and before the balance query has
-  // answered, so it is only treated as "needs activation" once we know
-  // someone is actually signed in.
-  const { platformAssetBalance, active: isAccountActive } = useUserStellarAcc();
-  const needsActivation = !!session?.user && !isAccountActive;
+  // funded by the card, not this balance. An inactive Platform-Asset
+  // account reads as a 0 balance here (see `useUserStellarAcc`), so it
+  // falls straight into the same `InsufficientAssetBalance` state as a
+  // genuinely low balance — no separate "activate your account" step on
+  // this tab. That component's "Recharge first" CTA covers both cases for
+  // a custodial buyer.
+  const { platformAssetBalance } = useUserStellarAcc();
 
   // Top-level currency choice — Platform Asset (on-chain) or USD (card) —
   // always both, since a price in each is now mandatory (see
-  // `DisplayPricesSchema`). Defaults to ACTION.
+  // `DisplayPricesSchema`). Default depends on `isCustodial`, set below.
   const [selectedCurrency, setSelectedCurrency] = useState<"asset" | "usd">("asset");
   const [quantity, setQuantity] = useState(1);
 
@@ -974,6 +1061,28 @@ export function PrimaryBuyCard({
   // "usd" never has an on-chain counterpart (see `NFT_DISPLAY_CURRENCIES`'s
   // doc comment), so it only ever comes from the DB's own price grid.
   const usdPrice = nft.prices.find((p) => p.paymentToken === "usd")?.price;
+  const assetAvailable = assetPrice > 0;
+  const usdAvailable = usdPrice !== undefined;
+
+  // A custodial buyer has no Platform Asset wallet of their own to pay
+  // from, so USD/card is the currency that actually works for them by
+  // default; an external-wallet buyer defaults to Platform Asset, same as
+  // before. `userChangedCurrency` stops this default from clobbering a
+  // buyer's own tap on the currency switcher — including the case where
+  // `isCustodial` only resolves (from `useSession`) a moment after mount.
+  const preferredCurrency: "asset" | "usd" = isCustodial ? "usd" : "asset";
+  const userChangedCurrency = useRef(false);
+  useEffect(() => {
+    if (userChangedCurrency.current) return;
+    if (preferredCurrency === "usd" && usdAvailable) {
+      setSelectedCurrency("usd");
+    } else if (assetAvailable) {
+      setSelectedCurrency("asset");
+    } else if (usdAvailable) {
+      setSelectedCurrency("usd");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferredCurrency, assetAvailable, usdAvailable]);
 
   const remaining = onChainInsights
     ? onChainInsights.remainingSupply
@@ -983,6 +1092,15 @@ export function PrimaryBuyCard({
   useEffect(() => {
     setQuantity((q) => Math.min(Math.max(q, 1), Math.max(maxQuantity, 1)));
   }, [maxQuantity]);
+
+  const liveFeeQuote = api.nft.getInclusionAndNetworkFeePreview.useQuery(
+    { quantity },
+    { enabled: selectedCurrency === "asset" && assetAvailable },
+  );
+  const liveUsdFeeQuote = api.nft.getInclusionAndNetworkFeeInUsdPreview.useQuery(
+    { quantity },
+    { enabled: selectedCurrency === "usd" && usdAvailable },
+  );
 
   if (isLoadingOnChainInsights && !onChainInsights) {
     return (
@@ -1001,8 +1119,32 @@ export function PrimaryBuyCard({
   }
 
   const total = assetPrice * quantity;
-  const grandTotal = total + INCLUSION_FEE_IN_PLATFORM_ASSET + NETWORK_FEE_IN_PLATFORM_ASSET;
-  const usdTotal = usdPrice !== undefined ? usdPrice * quantity + INCLUSION_FEE_IN_USD + NETWORK_FEE_IN_USD : 0;
+  // `liveFeeQuote`/`liveUsdFeeQuote` mirror exactly what the server will
+  // actually charge (see `getInclusionAndNetworkFee`/
+  // `getInclusionAndNetworkFeeInUsd` on the backend). No fixed fallback:
+  // until the live quote resolves (or if it fails) these are `undefined`,
+  // not a stale guess.
+  const inclusionFee = liveFeeQuote.data?.inclusionFee;
+  const networkFee = liveFeeQuote.data?.networkFee;
+  const grandTotal =
+    inclusionFee !== undefined && networkFee !== undefined ? total + inclusionFee + networkFee : undefined;
+  const assetQuoteFailed = liveFeeQuote.isError;
+  const formatAsset = (n: number) => `${n.toFixed(2)} ${priceTokenLabel("asset")}`;
+  const renderAsset = (n: number | undefined) => (n === undefined ? (assetQuoteFailed ? "—" : "…") : formatAsset(n));
+
+  // `usdActivationCost` is only ever non-zero when this signed-in buyer is
+  // a custodial account that still needs activating — see
+  // `activationCostUsdForSession` on the backend; `buyEditionWithCard`
+  // silently adds it to what it actually charges too.
+  const usdInclusionFee = liveUsdFeeQuote.data?.inclusionFee;
+  const usdNetworkFee = liveUsdFeeQuote.data?.networkFee;
+  const usdActivationCost = liveUsdFeeQuote.data?.activationCost;
+  const usdTotal =
+    usdPrice !== undefined && usdInclusionFee !== undefined && usdNetworkFee !== undefined && usdActivationCost !== undefined
+      ? usdPrice * quantity + usdInclusionFee + usdNetworkFee + usdActivationCost
+      : undefined;
+  const usdQuoteFailed = liveUsdFeeQuote.isError;
+  const renderUsd = (n: number | undefined) => (n === undefined ? (usdQuoteFailed ? "—" : "…") : `$${n.toFixed(2)}`);
 
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -1045,7 +1187,10 @@ export function PrimaryBuyCard({
         <div className="flex shrink-0 gap-1 rounded-full bg-muted p-1">
           <button
             type="button"
-            onClick={() => setSelectedCurrency("asset")}
+            onClick={() => {
+              userChangedCurrency.current = true;
+              setSelectedCurrency("asset");
+            }}
             className={cn(
               "rounded-full px-3.5 py-2 text-sm font-bold transition-colors",
               selectedCurrency === "asset"
@@ -1057,7 +1202,10 @@ export function PrimaryBuyCard({
           </button>
           <button
             type="button"
-            onClick={() => setSelectedCurrency("usd")}
+            onClick={() => {
+              userChangedCurrency.current = true;
+              setSelectedCurrency("usd");
+            }}
             disabled={usdPrice === undefined}
             className={cn(
               "rounded-full px-3.5 py-2 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
@@ -1087,21 +1235,15 @@ export function PrimaryBuyCard({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Inclusion fee</span>
-              <span className="font-semibold tabular-nums">
-                {INCLUSION_FEE_IN_PLATFORM_ASSET} {priceTokenLabel("asset")}
-              </span>
+              <span className="font-semibold tabular-nums">{renderAsset(inclusionFee)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Network fee</span>
-              <span className="font-semibold tabular-nums">
-                {NETWORK_FEE_IN_PLATFORM_ASSET} {priceTokenLabel("asset")}
-              </span>
+              <span className="font-semibold tabular-nums">{renderAsset(networkFee)}</span>
             </div>
             <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
               <span className="font-bold">Total</span>
-              <span className="text-base font-black tabular-nums">
-                {grandTotal.toFixed(2)} {priceTokenLabel("asset")}
-              </span>
+              <span className="text-base font-black tabular-nums">{renderAsset(grandTotal)}</span>
             </div>
 
             {/* This is the primary sale — there's no seller separate from
@@ -1123,13 +1265,15 @@ export function PrimaryBuyCard({
             </div>
           </div>
 
-          {needsActivation ? (
-            <AccountActivationRequired />
+          {assetQuoteFailed ? (
+            <FeeUnavailableButton />
+          ) : grandTotal === undefined ? (
+            <FeeLoadingButton />
           ) : platformAssetBalance >= grandTotal ? (
             <BuyButton
               isBuying={isBuying}
               onClick={() => void onBuy?.({ paymentToken: "asset", quantity })}
-              idleLabel={`Buy for ${grandTotal.toFixed(2)} ${priceTokenLabel("asset")}`}
+              idleLabel={`Buy for ${formatAsset(grandTotal)}`}
             />
           ) : (
             <InsufficientAssetBalance required={grandTotal} balance={platformAssetBalance} />
@@ -1144,21 +1288,34 @@ export function PrimaryBuyCard({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Inclusion fee</span>
-              <span className="font-semibold tabular-nums">${INCLUSION_FEE_IN_USD.toFixed(2)}</span>
+              <span className="font-semibold tabular-nums">{renderUsd(usdInclusionFee)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Network fee</span>
-              <span className="font-semibold tabular-nums">${NETWORK_FEE_IN_USD.toFixed(2)}</span>
+              <span className="font-semibold tabular-nums">{renderUsd(usdNetworkFee)}</span>
             </div>
+            {usdActivationCost !== undefined && usdActivationCost > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Account activation</span>
+                <span className="font-semibold tabular-nums">{renderUsd(usdActivationCost)}</span>
+              </div>
+            )}
             <div className="mt-1.5 flex items-center justify-between border-t border-border/60 pt-1.5">
               <span className="font-bold">Total</span>
-              <span className="text-base font-black tabular-nums">${usdTotal.toFixed(2)}</span>
+              <span className="text-base font-black tabular-nums">{renderUsd(usdTotal)}</span>
             </div>
           </div>
 
-          {needsActivation ? (
-            <AccountActivationRequired />
-          ) : isCustodial ? (
+          {usdQuoteFailed ? (
+            <FeeUnavailableButton />
+          ) : !isCustodial ? (
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+              <Lock className="h-4 w-4 shrink-0" />
+              Card payment isn&apos;t available for connected wallets — pay with {priceTokenLabel("asset")} instead.
+            </div>
+          ) : usdTotal === undefined ? (
+            <FeeLoadingButton />
+          ) : (
             <BuyNftWithCard
               className="mt-3"
               target={{ kind: "edition", nftId: nft.id, quantity }}
@@ -1166,11 +1323,6 @@ export function PrimaryBuyCard({
                 await onCardPurchaseSuccess?.();
               }}
             />
-          ) : (
-            <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-              <Lock className="h-4 w-4 shrink-0" />
-              Card payment isn&apos;t available for connected wallets — pay with {priceTokenLabel("asset")} instead.
-            </div>
           )}
         </>
       )}

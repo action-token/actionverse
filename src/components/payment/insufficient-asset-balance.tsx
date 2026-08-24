@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { WalletType } from "~/types/wallet/wallet-types";
-import { AlertTriangle, ArrowRight, Mail, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, ArrowRight, Mail, Wallet } from "lucide-react";
 import { Button } from "~/components/shadcn/ui/button";
-import { PLATFORM_ASSET } from "~/lib/stellar/constant";
+import { PLATFORM_ASSET, stellarTermSwapUrl } from "~/lib/stellar/constant";
 import { SUPPORT_EMAIL } from "~/lib/defaults";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
 
@@ -22,10 +22,10 @@ import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
  * - **Custodial** (Google/Facebook sign-in — `isRechargeAbleClient`): they
  *   top up inside the app, so they get a "Recharge first" call to action to
  *   `/recharge`.
- * - **External wallet**: there is no in-app top-up path for them at all —
- *   `RechargeLink` renders nothing for this case, which used to leave them
- *   staring at "insufficient balance" with no next step. They get told to
- *   fund the wallet themselves, plus a support address as a fallback.
+ * - **External wallet**: there is no in-app top-up path for them — they get
+ *   sent to trade for it themselves on StellarTerm's DEX UI
+ *   (`stellarTermSwapUrl`), which works with any wallet, plus a support
+ *   address as a fallback for anyone who'd rather not.
  */
 export function InsufficientAssetBalance({
   required,
@@ -40,6 +40,7 @@ export function InsufficientAssetBalance({
   const canRechargeInApp = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
   const shortfall = Math.max(0, required - balance);
   const fmt = (n: number) => `${n.toFixed(2)} ${PLATFORM_ASSET.code}`;
+  const swapUrl = stellarTermSwapUrl();
 
   return (
     // `mt-4` mirrors the `BuyButton` this stands in for, so swapping between
@@ -86,8 +87,19 @@ export function InsufficientAssetBalance({
         </Link>
       ) : (
         <div className="space-y-2">
+          {swapUrl && (
+            <a href={swapUrl} target="_blank" rel="noopener noreferrer" className="block">
+              <Button className="w-full gap-2 bg-emerald-500 text-white hover:bg-emerald-500/80">
+                <ArrowLeftRight className="h-4 w-4" />
+                Trade on StellarTerm
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </a>
+          )}
           <p className="text-xs text-muted-foreground">
-            Add {PLATFORM_ASSET.code} to your connected wallet and try again. Need a hand?
+            {swapUrl
+              ? `Swap XLM for ${PLATFORM_ASSET.code} on the Stellar DEX, then come back and try again. Need a hand?`
+              : `Add ${PLATFORM_ASSET.code} to your connected wallet and try again. Need a hand?`}
           </p>
           <a href={`mailto:${SUPPORT_EMAIL}`} className="block">
             <Button variant="outline" className="w-full gap-2">
