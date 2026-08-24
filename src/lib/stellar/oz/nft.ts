@@ -853,6 +853,46 @@ export async function updateEditionOnChain({
   return requireSentTransactionSucceeded(sent);
 }
 
+/**
+ * Refreshes this contract's own TTL, plus the given editions'/tokens'
+ * on-chain data — signed and submitted by treasury alone, same
+ * fire-and-forget shape as `unlockItemFor`/`updateEditionOnChain`. Meant to
+ * be called on a fixed schedule (see the keep-alive cron in
+ * `package/express-wadzzo`) so a long-dormant edition or token never
+ * actually reaches Soroban's TTL/state-archival expiry — a copy that never
+ * trades again would otherwise see no further transaction to trigger that
+ * renewal on its own. `editionIds`/`tokenIds` must each stay at or under
+ * the contract's `MAX_KEEP_ALIVE_IDS` (200) — the caller is responsible for
+ * chunking a longer list across several calls.
+ *
+ * `force: true` on `signAndSend`, unlike its siblings: unlike
+ * `update_edition`/`unlock_item_for` (which always write something),
+ * `keep_alive`'s `extend_ttl` calls are no-ops whenever an entry isn't yet
+ * near its threshold — a legitimate, expected outcome (most calls on a
+ * healthy schedule land before anything actually needs renewing) that
+ * simulation reports as a footprint-free "read," which the SDK otherwise
+ * refuses to sign and submit.
+ */
+export async function keepAliveOnChain({
+  editionIds,
+  tokenIds,
+}: {
+  editionIds: number[];
+  tokenIds: number[];
+}): Promise<string> {
+  const keypair = getTreasuryKeypair();
+  const client = getClient(keypair.publicKey());
+  const tx = await client.keep_alive(
+    { edition_ids: editionIds, token_ids: tokenIds },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
+  const sent = await tx.signAndSend({
+    force: true,
+    signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,
+  });
+  return requireSentTransactionSucceeded(sent);
+}
+
 // =============================================================================
 // Reads
 //

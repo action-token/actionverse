@@ -52,7 +52,7 @@ const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// Bump this before building/deploying each new wasm so `version()` reflects
 /// what's actually running on-chain — paired with the `Upgradeable` impl
 /// below, this is how future changes ship without a redeploy (new address).
-const CONTRACT_VERSION: u32 = 8;
+const CONTRACT_VERSION: u32 = 9;
 
 /// Basis-points denominator for fee/royalty math (10_000 = 100%).
 const BPS_DENOM: i128 = 10_000;
@@ -78,6 +78,11 @@ const MAX_PRICE_ENTRIES: u32 = 5;
 /// compute/storage footprint predictable; a buyer wanting more just buys
 /// again.
 const MAX_QUANTITY_PER_BUY: u32 = 20;
+/// Ceiling on how many edition/token ids `keep_alive` touches in one call —
+/// bounds one keeper transaction's compute/storage footprint the same way
+/// `MAX_QUANTITY_PER_BUY` bounds a purchase. A scheduler with more ids than
+/// this just splits them across several calls.
+const MAX_KEEP_ALIVE_IDS: u32 = 200;
 
 // =============================================================================
 // Data
@@ -280,6 +285,9 @@ pub enum ArtError {
     /// `set_price_authority` must be called once after every upgrade that
     /// introduces this key, since `__constructor` only runs at deploy).
     NotPriceAuthority = 324,
+    /// `keep_alive` was given more edition or token ids than
+    /// `MAX_KEEP_ALIVE_IDS` in one call.
+    TooManyKeepAliveIds = 325,
 }
 
 // =============================================================================
@@ -1197,6 +1205,61 @@ impl ArtNft {
     /// word for it.
     pub fn is_item_unlocked(e: &Env, token_id: u32, media_index: u32) -> bool {
         e.storage().persistent().get(&DataKey::Unlocked(token_id, media_index)).unwrap_or(false)
+    }
+
+    // -------------------------------------------------------------------------
+    // Keep-alive — Soroban archives (never deletes) a persistent or instance
+    // entry once its TTL runs out; the next real transaction that touches it
+    // pays a bit more to restore it, but a copy that never trades again (a
+    // one-and-done buyer, a sold-out limited edition) would otherwise never
+    // see another transaction to trigger that restore. This lets an
+    // off-chain scheduler manufacture that touch on a fixed cadence instead
+    // of waiting on real trading activity, for the exact ids it already
+    // knows about from the app's own database — no on-chain enumeration
+    // needed.
+    // -------------------------------------------------------------------------
+
+    /// Refreshes this contract's own TTL, plus the `Edition`/`EditionPrices`
+    /// entries for every id in `edition_ids` and the ownership data for
+    /// every id in `token_ids`. Permissionless (no `require_auth` at all) —
+    /// it only ever extends TTLs, never reads a balance, moves a token, or
+    /// touches payment, so there's nothing here for an untrusted caller to
+    /// abuse; anyone (typically a scheduled off-chain job) can pay to keep
+    /// the collection warm.
+    ///
+    /// An `edition_ids` entry that doesn't resolve to anything (never
+    /// registered, wrong id) is silently skipped. `token_ids` entries are
+    /// not — same as everywhere else `Consecutive::owner_of` is called in
+    /// this contract, an id that was never minted or was since burned
+    /// panics the whole call, so callers (the off-chain scheduler) should
+    /// only pass ids their own records show as actually minted.
+    pub fn keep_alive(e: &Env, edition_ids: Vec<u32>, token_ids: Vec<u32>) {
+        if edition_ids.len() > MAX_KEEP_ALIVE_IDS || token_ids.len() > MAX_KEEP_ALIVE_IDS {
+            panic_with_error!(e, ArtError::TooManyKeepAliveIds);
+        }
+
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+
+        for i in 0..edition_ids.len() {
+            let edition_id = edition_ids.get(i).unwrap();
+
+            let edition_key = DataKey::Edition(edition_id);
+            if e.storage().persistent().has(&edition_key) {
+                e.storage().persistent().extend_ttl(&edition_key, BUMP_THRESHOLD, BUMP_TO);
+            }
+
+            let prices_key = DataKey::EditionPrices(edition_id);
+            if e.storage().persistent().has(&prices_key) {
+                e.storage().persistent().extend_ttl(&prices_key, BUMP_THRESHOLD, BUMP_TO);
+            }
+        }
+
+        for i in 0..token_ids.len() {
+            // Extends the token's `Owner`/`OwnershipBucket` TTL as a side
+            // effect (see `stellar-tokens`' `Consecutive` storage) — the
+            // returned owner itself is irrelevant here.
+            let _ = Consecutive::owner_of(e, token_ids.get(i).unwrap());
+        }
     }
 }
 

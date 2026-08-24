@@ -7,7 +7,7 @@ use soroban_sdk::{
     Address, BytesN, Env, IntoVal, String, Vec,
 };
 
-use crate::{ArtNft, ArtNftClient, EditionInput, PriceEntry, CONTRACT_VERSION};
+use crate::{ArtNft, ArtNftClient, DataKey, EditionInput, PriceEntry, CONTRACT_VERSION};
 
 const FEE_BPS: u32 = 250; // 2.5%
 const ROYALTY_BPS: u32 = 500; // 5%
@@ -1758,4 +1758,69 @@ fn buy_batch_rejects_a_fee_reimbursement_over_the_batch_total() {
     // Batch total is PRICE * 2 — a fee reimbursement bigger than that must
     // be rejected even though it fits under any *one* token's own price.
     f.client.buy_batch(&carol, &token_ids, &f.payment, &(PRICE * 2 + 1), &0);
+}
+
+// =============================================================================
+// Keep-alive
+// =============================================================================
+
+#[test]
+fn keep_alive_extends_instance_edition_and_token_ttl() {
+    use soroban_sdk::testutils::{
+        storage::{Instance as _, Persistent as _},
+        Ledger as _,
+    };
+
+    let f = setup();
+    let alice = Address::generate(&f.env); // creator
+    let bob = Address::generate(&f.env); // buyer
+    fund(&f, &bob, PRICE);
+
+    let id = buy_one(&f, &bob, &alice, 0);
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+
+    // Jump the ledger far enough forward that the 120-day extend from mint
+    // time has dropped under the 30-day renewal threshold (120 - 100 = 20
+    // days left, which is < 30), so `keep_alive`'s `extend_ttl` calls are
+    // guaranteed to actually bump something rather than no-op.
+    let sequence = f.env.ledger().sequence();
+    f.env.ledger().with_mut(|li| li.sequence_number = sequence + 100 * 17_280);
+
+    f.client.keep_alive(
+        &Vec::from_array(&f.env, [edition_id]),
+        &Vec::from_array(&f.env, [id]),
+    );
+
+    f.env.as_contract(&f.client.address, || {
+        let instance_ttl = f.env.storage().instance().get_ttl();
+        assert!(instance_ttl > 100 * 17_280, "instance TTL should be freshly bumped: {instance_ttl}");
+
+        let edition_ttl = f.env.storage().persistent().get_ttl(&DataKey::Edition(edition_id));
+        assert!(edition_ttl > 100 * 17_280, "Edition TTL should be freshly bumped: {edition_ttl}");
+
+        let prices_ttl = f.env.storage().persistent().get_ttl(&DataKey::EditionPrices(edition_id));
+        assert!(prices_ttl > 100 * 17_280, "EditionPrices TTL should be freshly bumped: {prices_ttl}");
+    });
+
+    // A plain client call still resolves the token's owner — proof the
+    // ownership entry survived (and was renewed), not left to expire.
+    assert_eq!(f.client.owner_of(&id), bob);
+}
+
+#[test]
+fn keep_alive_skips_edition_ids_that_do_not_exist() {
+    let f = setup();
+    // No editions registered at all yet — should be a silent no-op, not a panic.
+    f.client.keep_alive(&Vec::from_array(&f.env, [0, 1, 2]), &Vec::new(&f.env));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #325)")]
+fn keep_alive_rejects_too_many_edition_ids() {
+    let f = setup();
+    let mut edition_ids = Vec::new(&f.env);
+    for i in 0..201 {
+        edition_ids.push_back(i);
+    }
+    f.client.keep_alive(&edition_ids, &Vec::new(&f.env));
 }

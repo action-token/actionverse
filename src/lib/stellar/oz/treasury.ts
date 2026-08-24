@@ -67,5 +67,5 @@ export function getTreasurySecret(): string {
  * code change.
  */
 export function getPriceAuthoritySecret(): string {
-  return env.PRICE_AUTHORITY_SECRET ?? getTreasurySecret();
+  return getTreasurySecret();
 }
