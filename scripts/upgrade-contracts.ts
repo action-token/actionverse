@@ -121,7 +121,13 @@ async function main() {
   console.log("\nEnsuring PriceAuthority is set...");
   const currentAuthority = await client.price_authority();
   if (currentAuthority.result) {
-    console.log(`  Already set: ${currentAuthority.result}`);
+    if (currentAuthority.result !== TREASURY) {
+      console.warn(
+        `  WARNING: price_authority is set to ${currentAuthority.result}, which does not match this script's TREASURY (${TREASURY}). If the app's PRICE_AUTHORITY_SECRET doesn't correspond to this address, edits will fail.`,
+      );
+    } else {
+      console.log(`  Already set: ${currentAuthority.result}`);
+    }
   } else {
     const setAuthority = await client.set_price_authority({ new_authority: TREASURY });
     await setAuthority.signAndSend({

@@ -850,7 +850,7 @@ export async function updateEditionOnChain({
   const sent = await tx.signAndSend({
     signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,
   });
-  return sent.sendTransactionResponse?.hash ?? "";
+  return requireSentTransactionSucceeded(sent);
 }
 
 // =============================================================================

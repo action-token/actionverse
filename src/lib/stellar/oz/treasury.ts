@@ -45,10 +45,10 @@ export function getTreasuryKeypair(): Keypair {
 
 /**
  * Raw secret behind {@link getTreasuryKeypair}, exported separately for
- * callers that need the string rather than a `Keypair` — currently
- * `unlockItemFor` (`src/lib/stellar/oz/nft.ts`), since `set_unlock_authority`
- * on the shared nft_oz contract has always been called with this same
- * treasury account.
+ * callers that need the string rather than a `Keypair` — `unlockItemFor`
+ * (`src/lib/stellar/oz/nft.ts`) and this file's own `getPriceAuthoritySecret`,
+ * since `set_unlock_authority`/`set_price_authority` on the shared nft_oz
+ * contract have both always been called with this same treasury account.
  */
 export function getTreasurySecret(): string {
   return env.TREASURY_SECRET ?? env.MOTHER_SECRET;

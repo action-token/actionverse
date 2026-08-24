@@ -144,6 +144,10 @@ const DisplayPricesSchema = z
   .refine(
     (prices) => prices.some((p) => p.paymentToken === "usd"),
     "A price in USD is required",
+  )
+  .refine(
+    (prices) => new Set(prices.map((p) => p.paymentToken)).size === prices.length,
+    "Duplicate currency in price grid",
   );
 
 /**
@@ -187,7 +191,12 @@ async function refreshListingAggregates(
  * Shared database write for `nft.update` — called directly when nothing
  * is on-chain yet, or only after `updateEditionOnChain` has already
  * succeeded once the edition is registered (see `nft.update`'s own doc
- * comment for why that ordering is never reversed).
+ * comment for why that ordering is never reversed). `syncContentUrl`
+ * controls whether `contentUrl` is written alongside `thumbnail`:
+ * pre-sale, it stays in sync with `thumbnail` (mirroring what `create`
+ * does) since there's no buyer yet to protect from a content change;
+ * post-sale it must never be touched (that's the frozen `media_url`
+ * guarantee), so the post-sale call site must pass `false`.
  */
 async function writeEditionFields(
   db: PrismaClient,
@@ -199,6 +208,7 @@ async function writeEditionFields(
     supply: number;
     prices: { paymentToken: "asset" | "usd"; price: number }[];
   },
+  syncContentUrl: boolean,
 ) {
   return db.$transaction(async (tx) => {
     for (const p of input.prices) {
@@ -215,6 +225,7 @@ async function writeEditionFields(
         description: input.description,
         thumbnail: input.thumbnail,
         supply: input.supply,
+        ...(syncContentUrl ? { contentUrl: input.thumbnail } : {}),
       },
       include: { prices: true },
     });
@@ -460,6 +471,18 @@ export async function deliverCardFundedEditionPurchase(
   if (!assetRow) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "This item has no on-chain price to settle with" });
   }
+
+  if (nft.onChainEditionId !== null) {
+    const chainPrices = await getEditionPrices(Number(nft.onChainEditionId));
+    const paymentTokenAddr = paymentTokenAddress("asset");
+    if (!priceStillMatchesOnChain(humanPriceToRaw(assetRow.price), chainPrices, paymentTokenAddr)) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "Price changed since checkout — the charge will be refunded, contact support",
+      });
+    }
+  }
+
   const inclusionFeeRaw = humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET);
   const networkFeeRaw = humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET);
   const totalAssetRaw =
@@ -718,7 +741,7 @@ export const nftRouter = createTRPCRouter({
         // `create`. No mintedCount floor exists yet either. `input`
         // already carries name/description/thumbnail/supply/prices in
         // exactly the shape `writeEditionFields` expects.
-        return writeEditionFields(ctx.db, nft.id, input);
+        return writeEditionFields(ctx.db, nft.id, input, true);
       }
 
       // Already registered on-chain — the contract's own EditionPrices is
@@ -747,7 +770,7 @@ export const nftRouter = createTRPCRouter({
         ],
       });
 
-      return writeEditionFields(ctx.db, nft.id, input);
+      return writeEditionFields(ctx.db, nft.id, input, false);
     }),
 
   // Primary purchase, direct ACTION — fee-bumped (Part B/C of the nft_oz
