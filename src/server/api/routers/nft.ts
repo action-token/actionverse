@@ -37,10 +37,12 @@ import {
   pollUntilVisible,
   signArtXdr,
   submitFeeBumpedPurchase,
+  updateEditionOnChain,
   verifyContractTransaction,
   type NftPaymentToken,
 } from "~/lib/stellar/oz/nft";
 import { priceStillMatchesOnChain } from "~/lib/stellar/oz/price-guard";
+import { getPriceAuthoritySecret } from "~/lib/stellar/oz/treasury";
 import { ART_NFT_CONTRACT_ID } from "~/lib/common";
 import {
   INCLUSION_FEE_IN_PLATFORM_ASSET,
@@ -178,6 +180,44 @@ async function refreshListingAggregates(
         ? Math.min(...active.map((l) => l.price))
         : null,
     },
+  });
+}
+
+/**
+ * Shared database write for `nft.update` — called directly when nothing
+ * is on-chain yet, or only after `updateEditionOnChain` has already
+ * succeeded once the edition is registered (see `nft.update`'s own doc
+ * comment for why that ordering is never reversed).
+ */
+async function writeEditionFields(
+  db: PrismaClient,
+  nftId: string,
+  input: {
+    name: string;
+    description: string;
+    thumbnail: string;
+    supply: number;
+    prices: { paymentToken: "asset" | "usd"; price: number }[];
+  },
+) {
+  return db.$transaction(async (tx) => {
+    for (const p of input.prices) {
+      await tx.nftPrice.upsert({
+        where: { nftId_paymentToken: { nftId, paymentToken: p.paymentToken } },
+        create: { nftId, paymentToken: p.paymentToken, price: p.price },
+        update: { price: p.price },
+      });
+    }
+    return tx.nft.update({
+      where: { id: nftId },
+      data: {
+        name: input.name,
+        description: input.description,
+        thumbnail: input.thumbnail,
+        supply: input.supply,
+      },
+      include: { prices: true },
+    });
   });
 }
 
@@ -646,6 +686,68 @@ export const nftRouter = createTRPCRouter({
           lockedMedia: { include: { unlockRule: { include: { points: true } } } },
         },
       });
+    }),
+
+  // Editing — see docs/superpowers/specs/2026-08-24-edition-price-editing-design.md.
+  // Only name/description/thumbnail/supply/prices are ever writable here.
+  // royaltyBps, contentUrl (on-chain media_url), mediaType, and creatorId
+  // are not in this input at all — there is no code path in this
+  // procedure that can touch them.
+  update: protectedProcedure
+    .input(
+      z.object({
+        nftId: z.string(),
+        name: z.string().trim().min(1).max(128),
+        description: z.string().trim().max(2000),
+        thumbnail: z.string().url(),
+        supply: z.number().int().min(1).max(100_000),
+        prices: DisplayPricesSchema,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const nft = await ctx.db.nft.findUnique({ where: { id: input.nftId } });
+      if (!nft) throw new TRPCError({ code: "NOT_FOUND" });
+      if (nft.creatorId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+
+      const assetPrice = input.prices.find((p) => p.paymentToken === "asset")!.price;
+
+      if (nft.onChainEditionId === null) {
+        // Nothing on-chain yet — a plain database write, same cost as
+        // `create`. No mintedCount floor exists yet either. `input`
+        // already carries name/description/thumbnail/supply/prices in
+        // exactly the shape `writeEditionFields` expects.
+        return writeEditionFields(ctx.db, nft.id, input);
+      }
+
+      // Already registered on-chain — the contract's own EditionPrices is
+      // what buy_edition actually charges, so this real-world floor/
+      // ceiling is checked here too (defense in depth; the contract
+      // enforces the authoritative version against its own `minted`).
+      if (input.supply < nft.mintedCount || input.supply > nft.supply) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Supply must stay between ${nft.mintedCount} (already minted) and ${nft.supply} (current)`,
+        });
+      }
+
+      await updateEditionOnChain({
+        priceAuthoritySecret: getPriceAuthoritySecret(),
+        editionId: Number(nft.onChainEditionId),
+        title: input.name,
+        description: input.description,
+        thumbnailUrl: input.thumbnail,
+        supply: input.supply,
+        prices: [
+          {
+            paymentToken: paymentTokenAddress("asset"),
+            priceRaw: humanPriceToRaw(assetPrice),
+          },
+        ],
+      });
+
+      return writeEditionFields(ctx.db, nft.id, input);
     }),
 
   // Primary purchase, direct ACTION — fee-bumped (Part B/C of the nft_oz
