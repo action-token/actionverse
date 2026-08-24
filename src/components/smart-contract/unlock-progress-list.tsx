@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { AnimatePresence, motion } from "framer-motion"
 import {
     CheckCircle2,
     ChevronDown,
@@ -22,15 +23,6 @@ import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Button } from "~/components/shadcn/ui/button"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "~/components/shadcn/ui/dialog"
 import { api, type RouterOutputs } from "~/utils/api"
 import { cn } from "~/lib/utils"
 import { useBottomPlayer } from "~/components/player/context/bottom-player-context"
@@ -49,6 +41,10 @@ type GatedMediaItem = {
 }
 
 const MAX_DOTS = 8
+// Past this many held copies the dot strip stops being a position indicator
+// and turns into a dense row of targets — the "Ticket #N of M" label and the
+// arrows carry position on their own from there.
+const MAX_COPY_DOTS = 10
 
 /**
  * Collected/required as a row of filled dots for a small pin count (more
@@ -103,59 +99,76 @@ function actionForType(type: TokenItem["type"]) {
 }
 
 /**
- * One reward item, locked or unlocked. Locked: a dashed row with just the
- * label, its collected/required fraction, and a lock icon — tapping it
- * opens the same named-list-plus-map dialog used on the buy/manage pages'
- * Location Info tab, so "locked" isn't a dead end. Unlocked: an "Unlocked"
- * badge plus the matching action button for its type, which opens it via
- * `onOpen` (a song into the bottom player, a video/image into their
- * fullscreen viewers, a link in a new tab — see `TicketContentByType`).
+ * One reward item, locked or unlocked. Locked: a dashed row with the label,
+ * its collected/required fraction and a lock icon, expanding in place to
+ * that item's own pin names and map — per item rather than in a shared
+ * "Locations" tab, because a ticket's items each carry their own rule and a
+ * pooled list can't say which places unlock which reward. Collapsed by
+ * default when a copy has several locked items, since each expansion mounts
+ * its own Google Map; `defaultExpanded` opens the sole locked item outright,
+ * where there is nothing to disambiguate and hiding it is just a extra tap.
+ * Unlocked: an "Unlocked" badge plus the matching action button for its
+ * type, which opens it via `onOpen` (a song into the bottom player, a
+ * video/image into their fullscreen viewers, a link in a new tab — see
+ * `TicketContentByType`).
  */
 function TicketItemRow({
     item,
     points,
+    defaultExpanded = false,
     onOpen,
 }: {
     item: TokenItem
     points: UnlockLocationPoint[] | undefined
+    defaultExpanded?: boolean
     onOpen: () => void
 }) {
     const label = item.label ?? "Reward"
     const isLocked = item.requiresUnlock && !item.unlocked
+    const [expanded, setExpanded] = useState(defaultExpanded)
 
     if (isLocked) {
+        const hasPoints = !!points && points.length > 0
         return (
-            <Dialog>
-                <DialogTrigger asChild>
-                    <button
-                        type="button"
-                        className="flex w-full items-center gap-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 px-4 py-3.5 text-left text-muted-foreground transition-colors hover:bg-muted/50"
-                    >
-                        <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
-                        <span className="shrink-0 text-xs font-medium tabular-nums">
-                            {item.collected}/{item.required}
-                        </span>
-                        <Lock className="h-4 w-4 shrink-0" />
-                    </button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>{label}</DialogTitle>
-                        <DialogDescription>
-                            Get within 50 meters of each pin, in person, to collect it.
-                        </DialogDescription>
-                    </DialogHeader>
-                    {points && points.length > 0 && <UnlockLocationsPreview points={points} />}
-                    <DialogFooter>
-                        <Link href="/action/home" className="w-full">
-                            <Button type="button" className="w-full gap-2">
-                                <MapPin className="h-4 w-4" />
-                                Go collect pins
-                            </Button>
-                        </Link>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <div className="overflow-hidden rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30">
+                <button
+                    type="button"
+                    onClick={() => setExpanded((v) => !v)}
+                    disabled={!hasPoints}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-muted-foreground transition-colors hover:bg-muted/50 disabled:hover:bg-transparent"
+                >
+                    <Lock className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
+                    <span className="shrink-0 text-xs font-medium tabular-nums">
+                        {item.collected}/{item.required}
+                    </span>
+                    {hasPoints && (
+                        <ChevronDown
+                            className={cn("h-4 w-4 shrink-0 transition-transform", expanded && "rotate-180")}
+                        />
+                    )}
+                </button>
+
+                <AnimatePresence initial={false}>
+                    {hasPoints && expanded && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                        >
+                            <div className="space-y-2 border-t border-dashed border-muted-foreground/30 px-4 py-3">
+                                <p className="text-xs text-muted-foreground">
+                                    Get within{" "}
+                                    <span className="font-semibold text-foreground">50 meters</span> of each
+                                    pin, in person, to collect it.
+                                </p>
+                                <UnlockLocationsPreview points={points} />
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
         )
     }
 
@@ -181,9 +194,10 @@ function TicketItemRow({
  * A ticket's reward items grouped into Video/Music/Image/Link pills — only
  * the types this ticket actually has get a pill, and the first one present
  * (in that order) is selected by default. Selecting a type swaps in that
- * type's items, each rendered by `TicketItemRow` locked or unlocked; a
- * song/video/image opened from here plays through this same panel's
- * players so only one thing is ever open at a time across every type.
+ * type's items, each rendered by `TicketItemRow` locked or unlocked and
+ * ordered unlocked-first; a song/video/image opened from here plays through
+ * this same panel's players so only one thing is ever open at a time across
+ * every type.
  */
 function TicketContentByType({
     items,
@@ -205,7 +219,15 @@ function TicketContentByType({
 
     if (presentTypes.length === 0) return null
     const selected = presentTypes.some((t) => t.type === activeType) ? activeType : presentTypes[0]!.type
-    const itemsOfType = items.filter((i) => i.type === selected)
+    // Unlocked first: those are playable right now and are what an owner
+    // comes back to this page for, so they shouldn't sit below rewards that
+    // can't be opened yet. Stable within each group — `sort` keeps the
+    // server's order for items of the same lock state.
+    const isItemLocked = (i: TokenItem) => i.requiresUnlock && !i.unlocked
+    const itemsOfType = items
+        .filter((i) => i.type === selected)
+        .sort((a, b) => Number(isItemLocked(a)) - Number(isItemLocked(b)))
+    const lockedOfTypeCount = itemsOfType.filter(isItemLocked).length
 
     function handleOpen(item: TokenItem) {
         if (!item.url) return
@@ -249,6 +271,7 @@ function TicketContentByType({
                         key={item.lockedMediaId}
                         item={item}
                         points={lockedMedia.find((m) => m.id === item.lockedMediaId)?.unlockRule?.points}
+                        defaultExpanded={lockedOfTypeCount === 1}
                         onOpen={() => handleOpen(item)}
                     />
                 ))}
@@ -296,6 +319,11 @@ export function TicketVault({
     const { data, isLoading } = api.nft.unlockStatus.useQuery({ nftId })
     const [selectedIndex, setSelectedIndex] = useState(0)
     const [showHow, setShowHow] = useState(false)
+    // Which way the copies just moved, so the swap animates *toward* the
+    // arrow that was pressed. Copies otherwise look identical (same artwork,
+    // often the same rewards), so without the slide a press can read as
+    // "nothing happened" — the direction is the feedback.
+    const [direction, setDirection] = useState(0)
 
     if (isLoading) {
         return (
@@ -324,7 +352,12 @@ export function TicketVault({
 
     if (!data?.gated) return null
 
-    if (data.tokens.length === 0) {
+    // Bound once so `goTo` below can read it — TypeScript drops the
+    // `data?.gated` narrowing inside a nested function, but keeps it on a
+    // plain const captured from the narrowed scope.
+    const tokens = data.tokens
+
+    if (tokens.length === 0) {
         return (
             <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="flex items-center gap-3 p-4">
@@ -338,25 +371,33 @@ export function TicketVault({
         )
     }
 
-    const index = selectedIndex < data.tokens.length ? selectedIndex : 0
-    const token = data.tokens[index]!
+    const index = selectedIndex < tokens.length ? selectedIndex : 0
+    const token = tokens[index]!
     const fullyUnlocked = token.items.every((item) => item.unlocked)
     const revealedCount = token.items.filter((item) => item.unlocked).length
     const lockedItems = token.items.filter((item) => item.requiresUnlock && !item.unlocked)
     const hasLockedItems = lockedItems.length > 0
     // Pins across every still-locked item on *this* copy, summed into one
-    // bar — the per-item breakdown lives in each row's location dialog.
+    // bar — the per-item breakdown lives in each locked row's own expansion.
     const pinsCollected = lockedItems.reduce((sum, item) => sum + item.collected, 0)
     const pinsRequired = lockedItems.reduce((sum, item) => sum + item.required, 0)
-    const unlockedTokenCount = data.tokens.filter((t) => t.items.every((i) => i.unlocked)).length
+    const unlockedTokenCount = tokens.filter((t) => t.items.every((i) => i.unlocked)).length
+    const multiCopy = tokens.length > 1
+
+    function goTo(next: number) {
+        const clamped = Math.min(tokens.length - 1, Math.max(0, next))
+        if (clamped === index) return
+        setDirection(clamped > index ? 1 : -1)
+        setSelectedIndex(clamped)
+    }
 
     return (
         <section className="space-y-2">
             <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-foreground">Your rewards</h3>
-                {data.tokens.length > 1 && (
+                {tokens.length > 1 && (
                     <span className="text-xs font-medium text-muted-foreground">
-                        {unlockedTokenCount} of {data.tokens.length} copies fully unlocked
+                        {unlockedTokenCount} of {tokens.length} copies fully unlocked
                     </span>
                 )}
             </div>
@@ -382,10 +423,10 @@ export function TicketVault({
                         <div className="min-w-0">
                             <p className="text-sm font-semibold leading-none text-foreground">
                                 Ticket #{index + 1}
-                                {data.tokens.length > 1 && (
+                                {tokens.length > 1 && (
                                     <span className="font-normal text-muted-foreground">
                                         {" "}
-                                        of {data.tokens.length}
+                                        of {tokens.length}
                                     </span>
                                 )}
                             </p>
@@ -406,14 +447,14 @@ export function TicketVault({
                                 {revealedCount}/{token.items.length} revealed
                             </Badge>
                         )}
-                        {data.tokens.length > 1 && (
+                        {multiCopy && (
                             <div className="flex items-center gap-1">
                                 <Button
                                     type="button"
                                     variant="outline"
                                     size="icon"
                                     className="h-7 w-7"
-                                    onClick={() => setSelectedIndex((i) => Math.max(0, i - 1))}
+                                    onClick={() => goTo(index - 1)}
                                     disabled={index === 0}
                                 >
                                     <ChevronLeft className="h-4 w-4" />
@@ -424,10 +465,8 @@ export function TicketVault({
                                     variant="outline"
                                     size="icon"
                                     className="h-7 w-7"
-                                    onClick={() =>
-                                        setSelectedIndex((i) => Math.min(data.tokens.length - 1, i + 1))
-                                    }
-                                    disabled={index === data.tokens.length - 1}
+                                    onClick={() => goTo(index + 1)}
+                                    disabled={index === tokens.length - 1}
                                 >
                                     <ChevronRight className="h-4 w-4" />
                                     <span className="sr-only">Next ticket</span>
@@ -437,26 +476,57 @@ export function TicketVault({
                     </div>
                 </div>
 
-                <CardContent className="space-y-4 p-4">
-                    {hasLockedItems && (
-                        <div className="space-y-1.5">
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>Pins collected</span>
-                                <span className="font-medium text-foreground">
-                                    {pinsCollected} of {pinsRequired}
-                                </span>
-                            </div>
-                            <CollectionMeter collected={pinsCollected} required={pinsRequired} />
-                        </div>
-                    )}
+                {multiCopy && tokens.length <= MAX_COPY_DOTS && (
+                    <div className="flex items-center justify-center gap-1.5 border-b bg-muted/10 py-2">
+                        {tokens.map((t, i) => (
+                            <button
+                                key={t.nftTokenId}
+                                type="button"
+                                onClick={() => goTo(i)}
+                                aria-current={i === index}
+                                className={cn(
+                                    "h-1.5 rounded-full transition-all duration-200",
+                                    i === index
+                                        ? "w-5 bg-primary"
+                                        : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60",
+                                )}
+                            >
+                                <span className="sr-only">Ticket {i + 1}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
 
-                    <TicketContentByType
-                        key={token.nftTokenId}
-                        items={token.items}
-                        lockedMedia={lockedMedia}
-                        ticketName={ticketName}
-                        ticketThumbnail={ticketThumbnail}
-                    />
+                <CardContent className="space-y-4 p-4">
+                    <AnimatePresence mode="wait" initial={false}>
+                        <motion.div
+                            key={token.nftTokenId}
+                            initial={{ opacity: 0, x: direction >= 0 ? 28 : -28 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: direction >= 0 ? -28 : 28 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className="space-y-4"
+                        >
+                            {hasLockedItems && (
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                        <span>Pins collected</span>
+                                        <span className="font-medium text-foreground">
+                                            {pinsCollected} of {pinsRequired}
+                                        </span>
+                                    </div>
+                                    <CollectionMeter collected={pinsCollected} required={pinsRequired} />
+                                </div>
+                            )}
+
+                            <TicketContentByType
+                                items={token.items}
+                                lockedMedia={lockedMedia}
+                                ticketName={ticketName}
+                                ticketThumbnail={ticketThumbnail}
+                            />
+                        </motion.div>
+                    </AnimatePresence>
 
                     {hasLockedItems && (
                         <div className="space-y-2 border-t border-border/60 pt-4">

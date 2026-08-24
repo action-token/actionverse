@@ -9,7 +9,6 @@ import Link from "next/link"
 import Image from "next/image"
 import { ChevronLeft, MapPin, Pencil, Sparkles, Ticket } from "lucide-react"
 import { Badge } from "~/components/shadcn/ui/badge"
-import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
 import useNeedSign from "~/lib/hook"
 import { clientSelect } from "~/lib/stellar/fan/utils"
@@ -19,9 +18,7 @@ import { LikeButton } from "~/components/nft/like-button"
 import { ManagePriceCard } from "~/components/nft/nft-detail-view"
 import { BlockchainInsights } from "~/components/nft/blockchain-insights"
 import { TicketVault } from "~/components/smart-contract/unlock-progress-list"
-import { UnlockLocationsPreview } from "~/components/smart-contract/unlock-locations-preview"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
-import { cn } from "~/lib/utils"
 
 /**
  * The **manage** page for a copy the caller already owns — resale listing
@@ -55,12 +52,15 @@ export default function SmartContractManagePage() {
   const getCancelListingXDR = api.nft.getCancelListingXDR.useMutation()
   const confirmCancelListing = api.nft.confirmCancelListing.useMutation()
   const [isSavingListing, setIsSavingListing] = useState(false)
-  // Which of the Your Tokens / Locations / On-Chain tabs is active —
-  // defaults to Your Tokens, the primary action on this page; the
-  // "N locations to visit" chip in the header forces this to "location"
-  // and scrolls the tab group into view when clicked.
-  const [infoTab, setInfoTab] = useState<"tokens" | "location" | "onchain">("tokens")
-  const infoTabsRef = useRef<HTMLDivElement>(null)
+  // Which of the Your Tokens / On-Chain tabs is active — defaults to Your
+  // Tokens, the primary action on this page. There is deliberately no
+  // Locations tab: a ticket's items each carry their own unlock rule, so
+  // pooling every item's pins into one page-level list couldn't say which
+  // places unlock which reward. Locations now live inside each locked item
+  // in `TicketVault`, and the "N locations to visit" chip below scrolls
+  // there rather than switching tabs.
+  const [infoTab, setInfoTab] = useState<"tokens" | "onchain">("tokens")
+  const vaultRef = useRef<HTMLDivElement>(null)
 
   const myEntry = myOwned?.find((o) => o.nft.id === id)
   const myTokens = myEntry?.tokens ?? []
@@ -177,7 +177,6 @@ export default function SmartContractManagePage() {
   }
 
   const isGated = nft.lockedMedia.length > 0
-  const gatedItemCount = nft.lockedMedia.filter((m) => m.unlockRule).length
   // Summed across every gated item — a ticket with a 2-location song and a
   // 3-location video reports 5, not one shared count.
   const requiredLocations = nft.lockedMedia.reduce(
@@ -247,10 +246,9 @@ export default function SmartContractManagePage() {
               {requiredLocations > 0 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setInfoTab("location")
-                    infoTabsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-                  }}
+                  onClick={() =>
+                    vaultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }
                   className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                 >
                   <MapPin className="h-3.5 w-3.5 text-primary" />
@@ -266,143 +264,46 @@ export default function SmartContractManagePage() {
             </div>
 
             {isGated && (
-              <TicketVault
-                nftId={nft.id}
-                ticketName={nft.name}
-                ticketThumbnail={nft.thumbnail}
-                lockedMedia={gatedMedia}
-              />
-            )}
-
-            {isGated ? (
-              <div ref={infoTabsRef}>
-                <Tabs value={infoTab} onValueChange={(v) => setInfoTab(v as "tokens" | "location" | "onchain")}>
-                  <TabsList className="w-full">
-                    <TabsTrigger value="tokens" className="flex-1">
-                      Your tokens ({myTokens.length})
-                    </TabsTrigger>
-                    <TabsTrigger value="location" className="flex-1">
-                      Locations
-                    </TabsTrigger>
-                    <TabsTrigger value="onchain" className="flex-1">
-                      On-Chain
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="tokens" className="mt-3">
-                    <ManagePriceCard
-                      myTokens={myTokens}
-                      onListToken={handleListToken}
-                      onListMultiple={handleListMultiple}
-                      onCancelListing={handleCancelListing}
-                      isSaving={isSavingListing}
-                      network={onChainInsights?.network}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="location" className="mt-3">
-                    <Card>
-                      <CardContent className="space-y-3 p-4">
-                        <p className="text-sm text-muted-foreground">
-                          {requiredLocations > 0 ? (
-                            gatedItemCount === nft.lockedMedia.length ? (
-                              <>
-                                Every copy of this ticket unlocks its rewards independently — visit and
-                                collect{" "}
-                                <span className="font-medium text-foreground">
-                                  {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
-                                </span>{" "}
-                                with that copy — you&apos;ll need to be within 50 meters of each pin to
-                                collect it.
-                              </>
-                            ) : (
-                              <>
-                                Some items unlock the moment you own a copy; the rest reveal once you
-                                visit and collect{" "}
-                                <span className="font-medium text-foreground">
-                                  {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
-                                </span>{" "}
-                                with that copy — you&apos;ll need to be within 50 meters of each pin to
-                                collect it.
-                              </>
-                            )
-                          ) : (
-                            "Owning a copy unlocks its rewards immediately — no extra requirement."
-                          )}
-                        </p>
-
-                        {requiredLocations > 0 && (
-                          <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
-                            <li>
-                              Go to the pin&apos;s location — get within{" "}
-                              <span className="font-medium text-foreground">50 meters</span>, in person,
-                              with this device.
-                            </li>
-                            <li>Open the AR camera once you&apos;re in range.</li>
-                            <li>Collect the pin — it unlocks the reward automatically from there.</li>
-                          </ul>
-                        )}
-
-                        {gatedMedia.map((m, i) => (
-                          <div
-                            key={m.label ?? i}
-                            className={cn("space-y-2", i > 0 && "border-t border-border/60 pt-3")}
-                          >
-                            {gatedMedia.length > 1 && (
-                              <p className="text-xs font-semibold text-foreground">Locations:</p>
-                            )}
-                            <UnlockLocationsPreview points={m.unlockRule!.points} />
-                          </div>
-                        ))}
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="onchain" className="mt-3">
-                    <BlockchainInsights
-                      insights={onChainInsights}
-                      isLoading={isLoadingOnChainInsights}
-                      nftName={nft.name}
-                      nftThumbnail={nft.thumbnail}
-                    />
-                  </TabsContent>
-                </Tabs>
+              <div ref={vaultRef}>
+                <TicketVault
+                  nftId={nft.id}
+                  ticketName={nft.name}
+                  ticketThumbnail={nft.thumbnail}
+                  lockedMedia={gatedMedia}
+                />
               </div>
-            ) : (
-              <Tabs
-                value={infoTab === "location" ? "tokens" : infoTab}
-                onValueChange={(v) => setInfoTab(v as "tokens" | "onchain")}
-              >
-                <TabsList className="w-full">
-                  <TabsTrigger value="tokens" className="flex-1">
-                    Your tokens ({myTokens.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="onchain" className="flex-1">
-                    On-Chain
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="tokens" className="mt-3">
-                  <ManagePriceCard
-                    myTokens={myTokens}
-                    onListToken={handleListToken}
-                    onListMultiple={handleListMultiple}
-                    onCancelListing={handleCancelListing}
-                    isSaving={isSavingListing}
-                    network={onChainInsights?.network}
-                  />
-                </TabsContent>
-
-                <TabsContent value="onchain" className="mt-3">
-                  <BlockchainInsights
-                    insights={onChainInsights}
-                    isLoading={isLoadingOnChainInsights}
-                    nftName={nft.name}
-                    nftThumbnail={nft.thumbnail}
-                  />
-                </TabsContent>
-              </Tabs>
             )}
+
+            <Tabs value={infoTab} onValueChange={(v) => setInfoTab(v as "tokens" | "onchain")}>
+              <TabsList className="w-full">
+                <TabsTrigger value="tokens" className="flex-1">
+                  Your tokens ({myTokens.length})
+                </TabsTrigger>
+                <TabsTrigger value="onchain" className="flex-1">
+                  On-Chain
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="tokens" className="mt-3">
+                <ManagePriceCard
+                  myTokens={myTokens}
+                  onListToken={handleListToken}
+                  onListMultiple={handleListMultiple}
+                  onCancelListing={handleCancelListing}
+                  isSaving={isSavingListing}
+                  network={onChainInsights?.network}
+                />
+              </TabsContent>
+
+              <TabsContent value="onchain" className="mt-3">
+                <BlockchainInsights
+                  insights={onChainInsights}
+                  isLoading={isLoadingOnChainInsights}
+                  nftName={nft.name}
+                  nftThumbnail={nft.thumbnail}
+                />
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>
