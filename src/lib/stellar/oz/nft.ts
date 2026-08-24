@@ -30,7 +30,7 @@ import {
   TrxBaseFee,
 } from "../constant";
 import { WithSing, type SignUserType } from "../utils";
-import { getTreasuryKeypair } from "./treasury";
+import { getTreasuryKeypair, getPriceAuthoritySecret } from "./treasury";
 
 /**
  * The only on-chain currency this collection buys/sells/resells in — no
@@ -778,6 +778,75 @@ export async function unlockItemFor({
     { caller: keypair.publicKey(), token_id: tokenId, media_index: mediaIndex },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  const sent = await tx.signAndSend({
+    signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,
+  });
+  return sent.sendTransactionResponse?.hash ?? "";
+}
+
+/**
+ * Records a creator's post-first-sale edit on-chain via `update_edition` —
+ * signed and submitted in one step by the price authority, same shape as
+ * `unlockItemFor`. No creator signature involved.
+ *
+ * Unlike every other write in this file, this one asserts the simulation
+ * actually succeeded before submitting. Every other builder here is
+ * deliberately unsigned XDR that a caller signs later (see this file's
+ * module doc — a failed simulation there just produces a malformed
+ * transaction that surfaces as an opaque `tx_malformed` at signing time,
+ * which is fine when a human is about to look at a wallet prompt anyway).
+ * This builder signs and submits itself with no human in the loop, so
+ * `nft.update`'s caller needs the *real* on-chain rejection reason (e.g.
+ * "supply can't go below what's already minted") surfaced as a thrown
+ * error here, not several layers of opaque failure down.
+ */
+export async function updateEditionOnChain({
+  priceAuthoritySecret,
+  editionId,
+  title,
+  description,
+  thumbnailUrl,
+  supply,
+  prices,
+}: {
+  priceAuthoritySecret: string;
+  editionId: number;
+  title: string;
+  description: string;
+  thumbnailUrl: string;
+  supply: number;
+  /** New price grid, raw units per currency. */
+  prices: { paymentToken: string; priceRaw: bigint }[];
+}): Promise<string> {
+  const keypair = Keypair.fromSecret(priceAuthoritySecret);
+  const client = getClient(keypair.publicKey());
+  const tx = await client.update_edition(
+    {
+      caller: keypair.publicKey(),
+      edition_id: editionId,
+      title,
+      description,
+      thumbnail_url: thumbnailUrl,
+      supply,
+      prices: prices.map(
+        (p): PriceEntry => ({ payment_token: p.paymentToken, price: p.priceRaw }),
+      ),
+    },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
+
+  try {
+    // Accessing this getter is what forces the SDK to inspect the
+    // simulation result — it throws with the real panic reason
+    // (`AssembledTransaction.Errors.SimulationFailed`) if the call would
+    // fail on-chain, before this ever reaches `signAndSend`.
+    void tx.simulationData;
+  } catch (e) {
+    throw new Error(
+      e instanceof Error ? e.message : "update_edition simulation failed",
+    );
+  }
+
   const sent = await tx.signAndSend({
     signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,
   });
