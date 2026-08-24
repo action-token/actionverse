@@ -52,7 +52,7 @@ const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// Bump this before building/deploying each new wasm so `version()` reflects
 /// what's actually running on-chain — paired with the `Upgradeable` impl
 /// below, this is how future changes ship without a redeploy (new address).
-const CONTRACT_VERSION: u32 = 7;
+const CONTRACT_VERSION: u32 = 8;
 
 /// Basis-points denominator for fee/royalty math (10_000 = 100%).
 const BPS_DENOM: i128 = 10_000;
@@ -364,6 +364,22 @@ pub struct PlatformFeeUpdated {
 }
 
 #[contractevent]
+pub struct EditionUpdated {
+    #[topic]
+    pub edition_id: u32,
+    pub old_title: String,
+    pub new_title: String,
+    pub old_description: String,
+    pub new_description: String,
+    pub old_thumbnail_url: String,
+    pub new_thumbnail_url: String,
+    pub old_supply: u32,
+    pub new_supply: u32,
+    pub old_prices: Vec<PriceEntry>,
+    pub new_prices: Vec<PriceEntry>,
+}
+
+#[contractevent]
 pub struct ContentUnlocked {
     #[topic]
     pub token_id: u32,
@@ -662,6 +678,99 @@ impl ArtNft {
             }
         }
         panic_with_error!(e, ArtError::PaymentTokenNotAccepted)
+    }
+
+    // -------------------------------------------------------------------------
+    // Editing — a creator's post-first-sale correction, gated by
+    // PriceAuthority (a backend hot key, not the creator's own signature —
+    // see contracts/nft_oz/README.md). Before the first sale, none of this
+    // is called at all: the app writes its own database row directly and
+    // this contract has no idea the edition exists yet.
+    // -------------------------------------------------------------------------
+
+    /// Rewrites an already-registered edition's title/description/
+    /// thumbnail/supply/prices. `media_url`, `media_type`, `creator`, and
+    /// `royalty_bps` are deliberately **not parameters** — they're read
+    /// from the existing `EditionMeta` and carried over untouched, so
+    /// there's no path, accidental or otherwise, that can alter them.
+    /// `supply` can only move down to `meta.minted` and never above the
+    /// edition's current `supply` — never diluting what existing holders
+    /// already bought into, never letting already-minted copies exceed
+    /// their own edition's cap.
+    #[when_not_paused]
+    pub fn update_edition(
+        e: &Env,
+        caller: Address,
+        edition_id: u32,
+        title: String,
+        description: String,
+        thumbnail_url: String,
+        supply: u32,
+        prices: Vec<PriceEntry>,
+    ) {
+        caller.require_auth();
+        let authority: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::PriceAuthority)
+            .unwrap_or_else(|| panic_with_error!(e, ArtError::NotPriceAuthority));
+        if caller != authority {
+            panic_with_error!(e, ArtError::NotPriceAuthority);
+        }
+
+        let edition_key = DataKey::Edition(edition_id);
+        let mut meta: EditionMeta = e
+            .storage()
+            .persistent()
+            .get(&edition_key)
+            .unwrap_or_else(|| panic_with_error!(e, ArtError::EditionNotFound));
+
+        if title.len() == 0 || title.len() > MAX_NAME_LEN {
+            panic_with_error!(e, ArtError::NameTooLong);
+        }
+        if description.len() > MAX_DESCRIPTION_LEN {
+            panic_with_error!(e, ArtError::DescriptionTooLong);
+        }
+        if thumbnail_url.len() == 0 || thumbnail_url.len() > MAX_URI_LEN {
+            panic_with_error!(e, ArtError::InvalidUri);
+        }
+        if supply < meta.minted || supply > meta.supply {
+            panic_with_error!(e, ArtError::InvalidSupply);
+        }
+        Self::validate_prices(e, &prices);
+
+        let old_title = meta.title.clone();
+        let old_description = meta.description.clone();
+        let old_thumbnail_url = meta.thumbnail_url.clone();
+        let old_supply = meta.supply;
+        let prices_key = DataKey::EditionPrices(edition_id);
+        let old_prices: Vec<PriceEntry> =
+            e.storage().persistent().get(&prices_key).unwrap_or(Vec::new(e));
+
+        meta.title = title.clone();
+        meta.description = description.clone();
+        meta.thumbnail_url = thumbnail_url.clone();
+        meta.supply = supply;
+        e.storage().persistent().set(&edition_key, &meta);
+        e.storage().persistent().extend_ttl(&edition_key, BUMP_THRESHOLD, BUMP_TO);
+
+        e.storage().persistent().set(&prices_key, &prices);
+        e.storage().persistent().extend_ttl(&prices_key, BUMP_THRESHOLD, BUMP_TO);
+
+        EditionUpdated {
+            edition_id,
+            old_title,
+            new_title: title,
+            old_description,
+            new_description: description,
+            old_thumbnail_url,
+            new_thumbnail_url: thumbnail_url,
+            old_supply,
+            new_supply: supply,
+            old_prices,
+            new_prices: prices,
+        }
+        .publish(e);
     }
 
     // -------------------------------------------------------------------------

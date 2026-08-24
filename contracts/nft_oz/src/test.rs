@@ -1030,8 +1030,12 @@ fn pause_blocks_buy_edition_list_and_buy_but_not_exits() {
     fund(&f, &alice, PRICE);
     fund(&f, &bob, PRICE);
 
+    let authority = Address::generate(&f.env);
+    f.client.set_price_authority(&authority);
+
     let id = buy_one(&f, &alice, &alice, 0);
     f.client.list(&alice, &id, &single_price(&f, PRICE));
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
 
     f.client.pause(&f.owner);
     assert!(f.client.paused());
@@ -1051,6 +1055,18 @@ fn pause_blocks_buy_edition_list_and_buy_but_not_exits() {
             &0,
         )
         .is_err());
+    assert!(f
+        .client
+        .try_update_edition(
+            &authority,
+            &edition_id,
+            &String::from_str(&f.env, "New title"),
+            &String::from_str(&f.env, "New description"),
+            &String::from_str(&f.env, "https://cdn.test/new-thumb.png"),
+            &1,
+            &single_price(&f, PRICE),
+        )
+        .is_err());
 
     // Holders must still be able to get out while the platform is halted.
     f.client.cancel_listing(&alice, &id);
@@ -1059,6 +1075,287 @@ fn pause_blocks_buy_edition_list_and_buy_but_not_exits() {
 
     f.client.unpause(&f.owner);
     assert!(!f.client.paused());
+}
+
+// =============================================================================
+// Editing — post-first-sale creator edits, gated by PriceAuthority (see
+// contracts/nft_oz/README.md and the price-editing design spec).
+// =============================================================================
+
+#[test]
+#[should_panic(expected = "Error(Contract, #324)")]
+fn update_edition_before_authority_set_panics() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    f.client
+        .buy_edition(
+            &bob,
+            &String::from_str(&f.env, "row-1"),
+            &edition_input(&f, &alice, 0, 10, PRICE),
+            &String::from_str(&f.env, "purchase-1"),
+            &f.payment,
+            &1,
+            &0,
+            &0,
+        );
+
+    // f.owner is a plausible-looking caller, but PriceAuthority was never
+    // set on this fresh fixture — must be rejected, not silently accepted.
+    f.client.update_edition(
+        &f.owner,
+        &0,
+        &String::from_str(&f.env, "New title"),
+        &String::from_str(&f.env, "New description"),
+        &String::from_str(&f.env, "https://cdn.test/new-thumb.png"),
+        &10,
+        &single_price(&f, PRICE),
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #324)")]
+fn only_price_authority_can_update_edition() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let authority = Address::generate(&f.env);
+    let mallory = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    f.client.set_price_authority(&authority);
+    let (_, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 10, PRICE, 1);
+
+    f.client.update_edition(
+        &mallory,
+        &0,
+        &String::from_str(&f.env, "New title"),
+        &String::from_str(&f.env, "New description"),
+        &String::from_str(&f.env, "https://cdn.test/new-thumb.png"),
+        &10,
+        &single_price(&f, PRICE),
+    );
+}
+
+#[test]
+fn update_edition_updates_title_description_thumbnail_supply_and_prices() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let authority = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    f.client.set_price_authority(&authority);
+    let (_, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 500, 10, PRICE, 1);
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+
+    let new_prices = single_price(&f, PRICE * 2);
+    f.client.update_edition(
+        &authority,
+        &edition_id,
+        &String::from_str(&f.env, "New title"),
+        &String::from_str(&f.env, "New description"),
+        &String::from_str(&f.env, "https://cdn.test/new-thumb.png"),
+        &6,
+        &new_prices,
+    );
+
+    let meta = f.client.edition_meta(&edition_id).unwrap();
+    assert_eq!(meta.title, String::from_str(&f.env, "New title"));
+    assert_eq!(meta.description, String::from_str(&f.env, "New description"));
+    assert_eq!(meta.thumbnail_url, String::from_str(&f.env, "https://cdn.test/new-thumb.png"));
+    assert_eq!(meta.supply, 6);
+    assert_eq!(f.client.edition_prices(&edition_id), new_prices);
+}
+
+#[test]
+fn update_edition_preserves_media_url_type_creator_and_royalty() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let authority = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    f.client.set_price_authority(&authority);
+    let (_, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 500, 10, PRICE, 1);
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+    let before = f.client.edition_meta(&edition_id).unwrap();
+
+    f.client.update_edition(
+        &authority,
+        &edition_id,
+        &String::from_str(&f.env, "New title"),
+        &String::from_str(&f.env, "New description"),
+        &String::from_str(&f.env, "https://cdn.test/new-thumb.png"),
+        &6,
+        &single_price(&f, PRICE),
+    );
+
+    let after = f.client.edition_meta(&edition_id).unwrap();
+    assert_eq!(after.media_url, before.media_url);
+    assert_eq!(after.media_type, before.media_type);
+    assert_eq!(after.creator, before.creator);
+    assert_eq!(after.royalty_bps, before.royalty_bps);
+    assert_eq!(after.royalty_bps, 500);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #313)")]
+fn update_edition_rejects_supply_above_current() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let authority = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    f.client.set_price_authority(&authority);
+    let (_, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 10, PRICE, 1);
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+
+    f.client.update_edition(
+        &authority,
+        &edition_id,
+        &String::from_str(&f.env, "Sunset"),
+        &String::from_str(&f.env, "A sunset over the bay"),
+        &String::from_str(&f.env, "https://cdn.test/thumb.png"),
+        &11, // above the registered supply of 10
+        &single_price(&f, PRICE),
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #313)")]
+fn update_edition_rejects_supply_below_minted() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let authority = Address::generate(&f.env);
+    fund(&f, &bob, PRICE * 3);
+
+    f.client.set_price_authority(&authority);
+    let (_, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 10, PRICE, 3);
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+
+    f.client.update_edition(
+        &authority,
+        &edition_id,
+        &String::from_str(&f.env, "Sunset"),
+        &String::from_str(&f.env, "A sunset over the bay"),
+        &String::from_str(&f.env, "https://cdn.test/thumb.png"),
+        &2, // below the 3 already minted
+        &single_price(&f, PRICE),
+    );
+}
+
+#[test]
+fn update_edition_allows_supply_down_to_exactly_minted() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let authority = Address::generate(&f.env);
+    fund(&f, &bob, PRICE * 3);
+
+    f.client.set_price_authority(&authority);
+    let (_, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 10, PRICE, 3);
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+
+    f.client.update_edition(
+        &authority,
+        &edition_id,
+        &String::from_str(&f.env, "Sunset"),
+        &String::from_str(&f.env, "A sunset over the bay"),
+        &String::from_str(&f.env, "https://cdn.test/thumb.png"),
+        &3,
+        &single_price(&f, PRICE),
+    );
+
+    assert_eq!(f.client.remaining_supply(&edition_id), 0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #314)")]
+fn update_edition_rejects_empty_price_grid() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let authority = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    f.client.set_price_authority(&authority);
+    let (_, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 10, PRICE, 1);
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+
+    f.client.update_edition(
+        &authority,
+        &edition_id,
+        &String::from_str(&f.env, "Sunset"),
+        &String::from_str(&f.env, "A sunset over the bay"),
+        &String::from_str(&f.env, "https://cdn.test/thumb.png"),
+        &10,
+        &Vec::new(&f.env),
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #320)")]
+fn update_edition_rejects_unknown_edition_id() {
+    let f = setup();
+    let authority = Address::generate(&f.env);
+    f.client.set_price_authority(&authority);
+
+    f.client.update_edition(
+        &authority,
+        &999,
+        &String::from_str(&f.env, "Sunset"),
+        &String::from_str(&f.env, "A sunset over the bay"),
+        &String::from_str(&f.env, "https://cdn.test/thumb.png"),
+        &10,
+        &single_price(&f, PRICE),
+    );
+}
+
+#[test]
+fn owner_can_rotate_the_price_authority() {
+    let f = setup();
+    let alice = Address::generate(&f.env);
+    let bob = Address::generate(&f.env);
+    let old_authority = Address::generate(&f.env);
+    let new_authority = Address::generate(&f.env);
+    fund(&f, &bob, PRICE);
+
+    f.client.set_price_authority(&old_authority);
+    let (_, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 10, PRICE, 1);
+    let edition_id = f.client.edition_by_ref(&String::from_str(&f.env, "row-1")).unwrap();
+
+    f.client.set_price_authority(&new_authority);
+
+    // The old authority is no longer recognized...
+    let _ = f
+        .client
+        .try_update_edition(
+            &old_authority,
+            &edition_id,
+            &String::from_str(&f.env, "New title"),
+            &String::from_str(&f.env, "New description"),
+            &String::from_str(&f.env, "https://cdn.test/new-thumb.png"),
+            &10,
+            &single_price(&f, PRICE),
+        )
+        .expect_err("the old price authority must be rejected after rotation");
+
+    // ...while the new one works.
+    f.client.update_edition(
+        &new_authority,
+        &edition_id,
+        &String::from_str(&f.env, "New title"),
+        &String::from_str(&f.env, "New description"),
+        &String::from_str(&f.env, "https://cdn.test/new-thumb.png"),
+        &10,
+        &single_price(&f, PRICE),
+    );
+    assert_eq!(f.client.edition_meta(&edition_id).unwrap().title, String::from_str(&f.env, "New title"));
 }
 
 // =============================================================================
