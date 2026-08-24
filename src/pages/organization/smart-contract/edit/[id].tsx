@@ -6,7 +6,20 @@ import { useSession } from "next-auth/react"
 import Image from "next/image"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronLeft, Upload, Check, X, Loader2, Coins, Lock } from "lucide-react"
+import {
+  ChevronLeft,
+  Upload,
+  Check,
+  X,
+  Loader2,
+  Coins,
+  Lock,
+  Sparkles,
+  Music,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Link as LinkIcon,
+} from "lucide-react"
 import toast from "react-hot-toast"
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
@@ -20,6 +33,16 @@ import { Skeleton } from "~/components/shadcn/ui/skeleton"
 import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 import { ipfsHashToPinataGatewayUrl } from "~/utils/ipfs"
 import { api } from "~/utils/api"
+import { UnlockLocationsPreview } from "~/components/smart-contract/unlock-locations-preview"
+
+/** Icon per locked-content item type, matching the icons the create page's
+ *  `LockedMediaEditor` and the buyer-facing `LockedMediaPanel` already use. */
+const LOCKED_MEDIA_ICONS = {
+  SONG: Music,
+  IMAGE: ImageIcon,
+  VIDEO: VideoIcon,
+  OTHER: LinkIcon,
+} as const
 
 /**
  * Edit page for a creator's own smart-contract NFT edition — mirrors
@@ -343,6 +366,52 @@ export default function EditSmartContractNftPage() {
                     : "nothing is on-chain yet, so this is just a database update."}
                 </AlertDescription>
               </Alert>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column — Locked Content, shown for visibility but not
+            editable here: a gated item's reward content and unlock rule
+            are fixed at creation, since editing them after buyers may
+            already be mid-unlock would desync their progress. */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Locked Content
+                <Badge variant="outline" className="ml-auto gap-1 text-xs font-normal text-muted-foreground">
+                  <Lock className="h-3 w-3" />
+                  Fixed at creation
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {nft.lockedMedia.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  This edition has no locked reward content.
+                </p>
+              ) : (
+                nft.lockedMedia.map((media, i) => {
+                  const TypeIcon = LOCKED_MEDIA_ICONS[media.type]
+                  return (
+                    <div key={media.id} className="space-y-2 rounded-lg border p-3 opacity-80">
+                      <div className="flex items-center gap-2">
+                        <TypeIcon className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">
+                          {media.label?.trim() || `Item ${i + 1}`}
+                        </span>
+                        <Badge variant="secondary" className="ml-auto text-xs">
+                          {media.type}
+                        </Badge>
+                      </div>
+                      {media.unlockRule && media.unlockRule.points.length > 0 && (
+                        <UnlockLocationsPreview points={media.unlockRule.points} />
+                      )}
+                    </div>
+                  )
+                })
+              )}
             </CardContent>
           </Card>
         </div>
