@@ -7,7 +7,7 @@ import toast from "react-hot-toast"
 import Head from "next/head"
 import Link from "next/link"
 import Image from "next/image"
-import { ChevronLeft, MapPin, Sparkles, Ticket } from "lucide-react"
+import { ChevronLeft, MapPin, Pencil, Sparkles, Ticket } from "lucide-react"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
@@ -202,7 +202,18 @@ export default function SmartContractManagePage() {
             <ChevronLeft className="h-4 w-4" />
             My Collection
           </Link>
-          <LikeButton isLiked={nft.isLiked} likeCount={nft.likeCount} onToggle={handleLike} variant="pill" />
+          <div className="flex items-center gap-3">
+            {session?.user?.id === nft.creatorId && (
+              <Link
+                href={`/organization/smart-contract/edit/${nft.id}`}
+                className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Link>
+            )}
+            <LikeButton isLiked={nft.isLiked} likeCount={nft.likeCount} onToggle={handleLike} variant="pill" />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
