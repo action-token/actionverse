@@ -30,7 +30,7 @@ import {
   TrxBaseFee,
 } from "../constant";
 import { WithSing, type SignUserType } from "../utils";
-import { getTreasuryKeypair, getPriceAuthoritySecret } from "./treasury";
+import { getTreasuryKeypair } from "./treasury";
 
 /**
  * The only on-chain currency this collection buys/sells/resells in — no
