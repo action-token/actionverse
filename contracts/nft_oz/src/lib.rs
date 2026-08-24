@@ -218,6 +218,11 @@ pub enum DataKey {
     /// this one gets called automatically by the backend on every pin
     /// collection, not by a human operator. See `unlock_item_for`.
     UnlockAuthority,
+    /// The hot key allowed to call `update_edition` — same rotation model
+    /// as `UnlockAuthority`. Unset after a fresh `upgrade` (constructors
+    /// only run at deploy), so `update_edition` must panic clearly rather
+    /// than fall back to `owner` until `set_price_authority` is called.
+    PriceAuthority,
     /// (token_id, media_index) -> bool. Permanent once true — one specific
     /// locked-content item on one specific minted token had its own unlock
     /// rule completed off-chain, attested by the backend. Keyed per item,
@@ -270,6 +275,11 @@ pub enum ArtError {
     /// The caller of `unlock_item_for` isn't the registered unlock
     /// authority (or none has been set yet).
     NotUnlockAuthority = 323,
+    /// The caller of `update_edition` isn't the registered price
+    /// authority (or none has been set yet since the last upgrade —
+    /// `set_price_authority` must be called once after every upgrade that
+    /// introduces this key, since `__constructor` only runs at deploy).
+    NotPriceAuthority = 324,
 }
 
 // =============================================================================
@@ -1006,6 +1016,20 @@ impl ArtNft {
     pub fn set_unlock_authority(e: &Env, new_authority: Address) {
         e.storage().instance().set(&DataKey::UnlockAuthority, &new_authority);
         e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+    }
+
+    /// Rotates the price authority's hot key — same rationale as
+    /// `set_unlock_authority`: this key gets called by the backend on
+    /// every creator edit, so being able to swap it without touching the
+    /// owner's cold key matters.
+    #[only_owner]
+    pub fn set_price_authority(e: &Env, new_authority: Address) {
+        e.storage().instance().set(&DataKey::PriceAuthority, &new_authority);
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+    }
+
+    pub fn price_authority(e: &Env) -> Option<Address> {
+        e.storage().instance().get(&DataKey::PriceAuthority)
     }
 
     /// The contract build currently running on-chain — bump

@@ -1072,6 +1072,55 @@ fn version_reports_current_contract_version() {
 }
 
 #[test]
+fn owner_can_set_and_read_price_authority() {
+    let f = setup();
+    let authority = Address::generate(&f.env);
+
+    assert_eq!(f.client.price_authority(), None);
+
+    f.client.set_price_authority(&authority);
+
+    assert_eq!(f.client.price_authority(), Some(authority));
+}
+
+#[test]
+#[should_panic]
+fn non_owner_cannot_set_price_authority() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let unlock_authority = Address::generate(&env);
+    let mallory = Address::generate(&env);
+
+    let contract_id = env.register(
+        ArtNft,
+        (
+            owner,
+            treasury,
+            FEE_BPS,
+            String::from_str(&env, "Actionverse Art"),
+            String::from_str(&env, "AVART"),
+            String::from_str(&env, "https://actionverse.test/nft/"),
+            unlock_authority,
+        ),
+    );
+    let client = ArtNftClient::new(&env, &contract_id);
+    let new_authority = Address::generate(&env);
+
+    client
+        .mock_auths(&[MockAuth {
+            address: &mallory,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_price_authority",
+                args: (new_authority.clone(),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .set_price_authority(&new_authority);
+}
+
+#[test]
 #[should_panic]
 fn upgrade_to_unknown_wasm_hash_panics() {
     let f = setup();
