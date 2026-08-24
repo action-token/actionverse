@@ -12,8 +12,13 @@ export const BOUNTY_ESCROW_CONTRACT_ID = IS_PUBNET
 
 // Shared art NFT collection contract — testnet for dev, mainnet for prod.
 // Fill these in from `pnpm contracts:deploy`, which prints the value.
+//
+// Pubnet redeployed 2026-08-24 as a fresh "Bandcoin NFT" collection
+// (CBLPHBNZ...), replacing the old CCOWJ2FV... instance — deliberate,
+// not a mistake: the old contract's minted tokens/listings are no longer
+// reachable through either app now that both point here.
 export const ART_NFT_CONTRACT_ID = IS_PUBNET
-  ? "CCOWJ2FVOQNOB3L6XS46EDWDKABRAUNEHVMALS35STOUMOND5SH4EIFZ"
+  ? "CBLPHBNZOYODKXYIVK2YZOLXR5AXYUVTEBZXTEYF4ANT7GPODPIDCIGX"
   : "CD3LMEHJG2AA5IZDGQB6O6HL2XPKU5WMXEGPRV25JY4Q4K2EBRK26N4S";
 
 // Account that collects the platform's cut of every sale. Testnet uses the
