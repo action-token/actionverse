@@ -40,6 +40,7 @@ import {
   verifyContractTransaction,
   type NftPaymentToken,
 } from "~/lib/stellar/oz/nft";
+import { priceStillMatchesOnChain } from "~/lib/stellar/oz/price-guard";
 import { ART_NFT_CONTRACT_ID } from "~/lib/common";
 import {
   INCLUSION_FEE_IN_PLATFORM_ASSET,
@@ -683,6 +684,28 @@ export const nftRouter = createTRPCRouter({
           code: "BAD_REQUEST",
           message: "This item isn't priced in that currency",
         });
+      }
+
+      // Once the edition is registered on-chain, `buy_edition` charges
+      // whatever EditionPrices holds right now — not this DB row — so a
+      // creator's `nft.update` landing between this build and the buyer's
+      // signature could otherwise silently charge something the UI never
+      // showed them. See src/lib/stellar/oz/price-guard.ts's doc comment.
+      if (nft.onChainEditionId !== null) {
+        const onChainPrices = await getEditionPrices(Number(nft.onChainEditionId));
+        const paymentTokenAddr = paymentTokenAddress(input.paymentToken);
+        if (
+          !priceStillMatchesOnChain(
+            humanPriceToRaw(priceRow.price),
+            onChainPrices,
+            paymentTokenAddr,
+          )
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Price changed, please refresh and try again",
+          });
+        }
       }
 
       const buyerId = ctx.session.user.id;
