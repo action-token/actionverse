@@ -327,11 +327,18 @@ export async function submitFeeBumpedPurchase(signedInnerTxXdr: string): Promise
  * Whether `pubKey` is a real account on the ledger at all. A custodial
  * sign-up does *not* create one — that only happens through the existing
  * paid $2 flow (`ActivationModal`/`PayForActivation`,
- * `src/lib/stellar/auth/account-activation.ts`). A purchase must never
- * silently pay to create one on the buyer's behalf (see
+ * `src/lib/stellar/auth/account-activation.ts`). A *direct* purchase (an
+ * external wallet, or a custodial buyer paying in Platform Asset) must
+ * never silently pay to create one on the buyer's behalf (see
  * `fundBuyerForCardPurchase`'s doc comment) — the caller is expected to
  * check this first and send an unactivated buyer to that existing flow
  * instead.
+ *
+ * The one deliberate exception is a custodial buyer's card/USD purchase
+ * (`buyEditionWithCard`/`buyBatchWithCard`): the server already holds
+ * their secret, so it activates the account itself
+ * (`ensureBuyerActivatedAndTrustedForCardPurchase`) and recoups the real
+ * XLM cost via the Square charge instead of turning the buyer away.
  */
 export async function isStellarAccountActivated(pubKey: string): Promise<boolean> {
   try {
@@ -477,6 +484,81 @@ export async function fundBuyerForCardPurchase({
   if (!result.successful) {
     throw new Error(`fundBuyerForCardPurchase: funding transaction ${result.hash} did not succeed`);
   }
+}
+
+/**
+ * Stellar's own minimum reserve for an account holding exactly one
+ * trustline: (2 base reserves + 1 trustline entry) * 0.5 XLM = 1.5 XLM.
+ * This is the real, exact cost of activating a brand-new account that's
+ * only ever going to hold the platform asset — not a padded estimate.
+ */
+export const ACCOUNT_ACTIVATION_RESERVE_XLM = "1.5";
+
+/**
+ * Activates a custodial card buyer's Stellar account and establishes its
+ * Platform Asset trustline in one step, entirely server-side — the
+ * card-checkout counterpart to the wallet-driven "Trust & Buy" flow
+ * (`buildEstablishTrustlineXDR`), which needs a connected wallet's own
+ * signature and so can't run silently. A custodial buyer's secret is
+ * already available here (the caller already has it via
+ * `getAccSecretFromRubyApi`), so this can fund a brand-new account
+ * (`Operation.createAccount` — unlike `ensureBuyerTrustline`'s plain
+ * payment, which requires the destination to already exist) and
+ * establish the trustline in the same transaction, signed by treasury
+ * (paying the real XLM) and the buyer (authorizing the trustline).
+ *
+ * Treasury fronts `ACCOUNT_ACTIVATION_RESERVE_XLM` for real — the caller
+ * (`buyEditionWithCard`/`buyBatchWithCard`) recoups it by adding its live
+ * USD-equivalent to the Square charge (see `getAccountActivationCostInUsd`
+ * in `~/lib/stellar/constant`) rather than treasury eating the cost.
+ *
+ * A no-op if the account is already active and already trusts the
+ * platform asset. Unlike `isStellarAccountActivated`'s doc comment above
+ * (which still holds for every *direct* purchase — wallet-connected or a
+ * custodial buyer paying in Platform Asset), this is the one deliberate
+ * exception: a custodial buyer's card/USD purchase can activate silently
+ * because the server already holds their secret and recoups the real
+ * cost through the Square charge instead of turning them away.
+ */
+export async function ensureBuyerActivatedAndTrustedForCardPurchase({
+  buyerPubKey,
+  buyerSecret,
+}: {
+  buyerPubKey: string;
+  buyerSecret: string;
+}): Promise<{ activated: boolean; trustlineEstablished: boolean }> {
+  const alreadyActive = await isStellarAccountActivated(buyerPubKey);
+  const alreadyTrusted = alreadyActive && (await hasPlatformAssetTrustline(buyerPubKey));
+  if (alreadyActive && alreadyTrusted) {
+    return { activated: false, trustlineEstablished: false };
+  }
+
+  const treasury = getTreasuryKeypair();
+  const server = new Horizon.Server(STELLAR_URL);
+  const treasuryAccount = await server.loadAccount(treasury.publicKey());
+  const buyerKeypair = Keypair.fromSecret(buyerSecret);
+
+  const builder = new TransactionBuilder(treasuryAccount, { fee: TrxBaseFee, networkPassphrase });
+  if (!alreadyActive) {
+    builder.addOperation(
+      Operation.createAccount({ destination: buyerPubKey, startingBalance: ACCOUNT_ACTIVATION_RESERVE_XLM }),
+    );
+  }
+  if (!alreadyTrusted) {
+    builder.addOperation(Operation.changeTrust({ asset: PLATFORM_ASSET, source: buyerPubKey }));
+  }
+  const tx = builder.setTimeout(30).build();
+
+  tx.sign(treasury);
+  if (!alreadyTrusted) tx.sign(buyerKeypair);
+
+  const result = await server.submitTransaction(tx);
+  if (!result.successful) {
+    throw new Error(
+      `ensureBuyerActivatedAndTrustedForCardPurchase: activation transaction ${result.hash} did not succeed`,
+    );
+  }
+  return { activated: !alreadyActive, trustlineEstablished: !alreadyTrusted };
 }
 
 /** Classic Stellar payment amounts are decimal strings, not raw stroop

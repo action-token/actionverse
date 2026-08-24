@@ -17,6 +17,7 @@ import {
   buildEstablishTrustlineXDR,
   buildListBatchXDR,
   buildListXDR,
+  ensureBuyerActivatedAndTrustedForCardPurchase,
   ensureBuyerTrustline,
   feeBumpAsCustodialBuyer,
   fundBuyerForCardPurchase,
@@ -45,11 +46,10 @@ import { priceStillMatchesOnChain } from "~/lib/stellar/oz/price-guard";
 import { getPriceAuthoritySecret } from "~/lib/stellar/oz/treasury";
 import { ART_NFT_CONTRACT_ID } from "~/lib/common";
 import {
-  INCLUSION_FEE_IN_PLATFORM_ASSET,
-  INCLUSION_FEE_IN_USD,
+  getAccountActivationCostInUsd,
+  getInclusionAndNetworkFee,
+  getInclusionAndNetworkFeeInUsd,
   MAX_ROYALTY_BPS,
-  NETWORK_FEE_IN_PLATFORM_ASSET,
-  NETWORK_FEE_IN_USD,
   humanPriceToRaw,
   rawPriceToHuman,
 } from "~/lib/stellar/constant";
@@ -113,6 +113,22 @@ async function ensureBuyerReady(auth: BuyerAuth, buyerId: string): Promise<void>
     const secret = await getAccSecretFromRubyApi(auth.email);
     await ensureBuyerTrustline({ buyerPubKey: buyerId, buyerSecret: secret });
   }
+}
+
+/**
+ * Preview-only mirror of the activation-cost gating inside
+ * `buyEditionWithCard`/`buyResaleWithCard` (see those for the real
+ * charge) — used by the USD fee preview query below so the total a
+ * signed-in custodial buyer sees before checking out matches what
+ * they'll actually be charged. Returns 0 for a logged-out viewer, an
+ * external-wallet buyer (card checkout isn't available to them at all),
+ * or an already-active account.
+ */
+async function activationCostUsdForSession(session: { user?: { id: string; walletType: WalletType } } | null): Promise<number> {
+  const user = session?.user;
+  if (!user || !isRechargeAbleClient(user.walletType)) return 0;
+  const active = await isStellarAccountActivated(user.id);
+  return active ? 0 : getAccountActivationCostInUsd();
 }
 
 // User ids are Stellar public keys (56-char strkeys) — never a valid match,
@@ -483,14 +499,20 @@ export async function deliverCardFundedEditionPurchase(
     }
   }
 
-  const inclusionFeeRaw = humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET);
-  const networkFeeRaw = humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET);
+  const liveFees = await getInclusionAndNetworkFee(purchase.quantity);
+  const inclusionFeeRaw = humanPriceToRaw(liveFees.inclusionFee);
+  const networkFeeRaw = humanPriceToRaw(liveFees.networkFee);
   const totalAssetRaw =
     humanPriceToRaw(assetRow.price * purchase.quantity) + inclusionFeeRaw + networkFeeRaw;
 
   let txHash: string;
   try {
     const buyerSecret = await getAccSecretFromRubyApi(buyerEmail);
+    // Silently activates the buyer's account + trustline if either is
+    // still missing — a no-op otherwise (see the function's own doc
+    // comment). Its real 1.5 XLM cost was already folded into the USD
+    // total Square charged in `buyEditionWithCard`.
+    await ensureBuyerActivatedAndTrustedForCardPurchase({ buyerPubKey: purchase.buyerId, buyerSecret });
     const currentBalanceRaw = humanPriceToRaw(await getOnChainBalance(purchase.buyerId));
     if (currentBalanceRaw < totalAssetRaw) {
       await fundBuyerForCardPurchase({
@@ -852,6 +874,7 @@ export const nftRouter = createTRPCRouter({
       const contractAddress = ART_NFT_CONTRACT_ID;
       await ctx.db.nft.update({ where: { id: nft.id }, data: { contractAddress } });
 
+      const liveFees = await getInclusionAndNetworkFee(input.quantity);
       const xdr = await buildBuyEditionXDR({
         buyerPubKey: buyerId,
         editionRef: nft.id,
@@ -872,8 +895,8 @@ export const nftRouter = createTRPCRouter({
         purchaseRef: purchase.id,
         paymentToken: paymentTokenAddress(input.paymentToken),
         quantity: input.quantity,
-        inclusionFeeRaw: humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET),
-        networkFeeRaw: humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET),
+        inclusionFeeRaw: humanPriceToRaw(liveFees.inclusionFee),
+        networkFeeRaw: humanPriceToRaw(liveFees.networkFee),
       });
 
       if (auth.kind === "custodial") {
@@ -921,9 +944,12 @@ export const nftRouter = createTRPCRouter({
   // creator — not converted live from the ACTION price), then
   // `deliverCardFundedEditionPurchase` funds and delivers. Custodial
   // accounts only — the buyer's own custodial secret has to sign the actual
-  // on-chain `buy_edition` call (see that function's doc comment); an
-  // unactivated account is sent to the existing `ActivationModal` instead
-  // of silently having its account created here.
+  // on-chain `buy_edition` call (see that function's doc comment). An
+  // unactivated account is no longer turned away: since the server already
+  // holds this buyer's secret, `deliverCardFundedEditionPurchase` activates
+  // it silently after the charge below
+  // (`ensureBuyerActivatedAndTrustedForCardPurchase`), and its real XLM
+  // cost is priced into `totalUsd` here instead.
   buyEditionWithCard: protectedProcedure
     .input(
       z.object({
@@ -940,9 +966,7 @@ export const nftRouter = createTRPCRouter({
           message: "Card checkout is only available for email or social sign-in accounts",
         });
       }
-      if (!(await isStellarAccountActivated(buyerId))) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NEEDS_ACTIVATION" });
-      }
+      const accountActive = await isStellarAccountActivated(buyerId);
 
       const nft = await ctx.db.nft.findUnique({
         where: { id: input.nftId },
@@ -969,7 +993,10 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "This item has no on-chain price to settle with" });
       }
 
-      const totalUsd = usdRow.price * input.quantity + INCLUSION_FEE_IN_USD + NETWORK_FEE_IN_USD;
+      const usdFees = await getInclusionAndNetworkFeeInUsd(input.quantity);
+      const activationCostUsd = accountActive ? 0 : await getAccountActivationCostInUsd();
+      const totalUsd =
+        usdRow.price * input.quantity + usdFees.inclusionFee + usdFees.networkFee + activationCostUsd;
 
       const purchase = await ctx.db.nftPurchase.create({
         data: {
@@ -1302,9 +1329,13 @@ export const nftRouter = createTRPCRouter({
           message: "Card checkout is only available for email or social sign-in accounts",
         });
       }
-      if (!(await isStellarAccountActivated(buyerId))) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NEEDS_ACTIVATION" });
-      }
+      // Unlike a direct/wallet purchase, a custodial card buyer's own
+      // secret is already available server-side (`getAccSecretFromRubyApi`
+      // below), so an inactive account doesn't have to be turned away —
+      // `ensureBuyerActivatedAndTrustedForCardPurchase` activates it
+      // silently after the charge succeeds, and its real XLM cost is
+      // priced into `totalUsd` below rather than blocking the purchase.
+      const accountActive = await isStellarAccountActivated(buyerId);
 
       const listing = await ctx.db.nftListing.findUnique({
         where: { tokenId: input.tokenId },
@@ -1322,7 +1353,9 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "This listing has no on-chain price to settle with" });
       }
 
-      const totalUsd = usdRow.price + INCLUSION_FEE_IN_USD + NETWORK_FEE_IN_USD;
+      const usdFees = await getInclusionAndNetworkFeeInUsd(1);
+      const activationCostUsd = accountActive ? 0 : await getAccountActivationCostInUsd();
+      const totalUsd = usdRow.price + usdFees.inclusionFee + usdFees.networkFee + activationCostUsd;
       const { result } = await squarePaymentsApi.createPayment({
         idempotencyKey: randomUUID(),
         sourceId: input.sourceId,
@@ -1332,8 +1365,9 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
       }
 
-      const inclusionFeeRaw = humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET);
-      const networkFeeRaw = humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET);
+      const liveFees = await getInclusionAndNetworkFee(1);
+      const inclusionFeeRaw = humanPriceToRaw(liveFees.inclusionFee);
+      const networkFeeRaw = humanPriceToRaw(liveFees.networkFee);
 
       try {
         const breakdown = await getSaleBreakdown(Number(input.tokenId), paymentTokenAddress("asset"));
@@ -1343,6 +1377,9 @@ export const nftRouter = createTRPCRouter({
         const totalAssetRaw = breakdown.total + inclusionFeeRaw + networkFeeRaw;
 
         const buyerSecret = await getAccSecretFromRubyApi(email);
+        if (!accountActive) {
+          await ensureBuyerActivatedAndTrustedForCardPurchase({ buyerPubKey: buyerId, buyerSecret });
+        }
         const currentBalanceRaw = humanPriceToRaw(await getOnChainBalance(buyerId));
         if (currentBalanceRaw < totalAssetRaw) {
           await fundBuyerForCardPurchase({ buyerPubKey: buyerId, buyerSecret, assetAmountRaw: totalAssetRaw });
@@ -1393,12 +1430,13 @@ export const nftRouter = createTRPCRouter({
       const auth = resolveBuyerAuth(ctx.session.user);
       await ensureBuyerReady(auth, buyerId);
 
+      const liveFees = await getInclusionAndNetworkFee(1);
       const xdr = await buildBuyXDR({
         buyerPubKey: buyerId,
         tokenId: Number(input.tokenId),
         paymentToken: paymentTokenAddress(input.paymentToken),
-        inclusionFeeRaw: humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET),
-        networkFeeRaw: humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET),
+        inclusionFeeRaw: humanPriceToRaw(liveFees.inclusionFee),
+        networkFeeRaw: humanPriceToRaw(liveFees.networkFee),
       });
 
       if (auth.kind === "custodial") {
@@ -1458,12 +1496,13 @@ export const nftRouter = createTRPCRouter({
       const auth = resolveBuyerAuth(ctx.session.user);
       await ensureBuyerReady(auth, buyerId);
 
+      const liveFees = await getInclusionAndNetworkFee(input.tokenIds.length);
       const xdr = await buildBuyBatchXDR({
         buyerPubKey: buyerId,
         tokenIds: input.tokenIds.map(Number),
         paymentToken,
-        inclusionFeeRaw: humanPriceToRaw(INCLUSION_FEE_IN_PLATFORM_ASSET),
-        networkFeeRaw: humanPriceToRaw(NETWORK_FEE_IN_PLATFORM_ASSET),
+        inclusionFeeRaw: humanPriceToRaw(liveFees.inclusionFee),
+        networkFeeRaw: humanPriceToRaw(liveFees.networkFee),
       });
 
       if (auth.kind === "custodial") {
@@ -1502,6 +1541,35 @@ export const nftRouter = createTRPCRouter({
   getEstablishTrustlineXDR: protectedProcedure.mutation(async ({ ctx }) => {
     return { xdr: await buildEstablishTrustlineXDR(ctx.session.user.id) };
   }),
+
+  // General-purpose live fee preview for the frontend — used wherever a
+  // buy card needs to show the inclusion/network fee before the buyer
+  // signs, for a purchase (primary or resale, single or batch) of
+  // `quantity` tokens. See `getInclusionAndNetworkFee`'s own doc comment
+  // for the formula. Throws (no fixed-constant fallback) when there's no
+  // live DEX rate yet — currently the case for bandcoin/action on both
+  // networks — which the frontend surfaces as a "fee unavailable" state.
+  getInclusionAndNetworkFeePreview: publicProcedure
+    .input(z.object({ quantity: z.number().int().min(1).max(MAX_QUANTITY_PER_BUY) }))
+    .query(async ({ input }) => {
+      return getInclusionAndNetworkFee(input.quantity);
+    }),
+
+  // USD counterpart to `getInclusionAndNetworkFeePreview` above, so the UI
+  // can show the same live-priced fee breakdown on the USD/card checkout
+  // tab that `buyEditionWithCard`/`buyResaleWithCard` actually charge,
+  // instead of the old flat constants. `activationCost` mirrors the same
+  // account-activation gating those mutations apply for a signed-in
+  // custodial viewer, so the preview total matches the real charge.
+  getInclusionAndNetworkFeeInUsdPreview: publicProcedure
+    .input(z.object({ quantity: z.number().int().min(1).max(MAX_QUANTITY_PER_BUY) }))
+    .query(async ({ ctx, input }) => {
+      const [fees, activationCost] = await Promise.all([
+        getInclusionAndNetworkFeeInUsd(input.quantity),
+        activationCostUsdForSession(ctx.session),
+      ]);
+      return { ...fees, activationCost };
+    }),
 
   // -------------------------------------------------------------------------
   // Browse
