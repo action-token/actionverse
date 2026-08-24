@@ -44,6 +44,12 @@ export const env = createEnv({
     // `inclusion_fee`/`network_fee` reimbursement lands on an address this
     // key can't spend from.
     TREASURY_SECRET: z.string().optional(),
+    // The secret behind `update_edition`'s PriceAuthority (see
+    // src/lib/stellar/oz/treasury.ts's getPriceAuthoritySecret). Optional
+    // and falls back to the treasury secret — every environment this
+    // contract has been deployed to so far sets PriceAuthority to the same
+    // account as Treasury/UnlockAuthority (see scripts/upgrade-contracts.ts).
+    PRICE_AUTHORITY_SECRET: z.string().optional(),
     PINATA_JWT: z.string(),
     // squire
     SQUARE_ACCESS_TOKEN: z.string(),
@@ -123,6 +129,7 @@ export const env = createEnv({
     NEXT_PUBLIC_URL: process.env.NEXT_PUBLIC_URL,
     MOTHER_SECRET: process.env.MOTHER_SECRET,
     TREASURY_SECRET: process.env.TREASURY_SECRET,
+    PRICE_AUTHORITY_SECRET: process.env.PRICE_AUTHORITY_SECRET,
     STORAGE_SECRET: process.env.STORAGE_SECRET,
     PINATA_JWT: process.env.PINATA_JWT,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,

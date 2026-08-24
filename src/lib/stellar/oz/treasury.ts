@@ -53,3 +53,19 @@ export function getTreasuryKeypair(): Keypair {
 export function getTreasurySecret(): string {
   return env.TREASURY_SECRET ?? env.MOTHER_SECRET;
 }
+
+/**
+ * The keypair `update_edition` (nft_oz's post-first-sale editor) signs
+ * with — must be the exact secret behind the contract's stored
+ * `PriceAuthority` address (`DataKey::PriceAuthority`, set via
+ * `set_price_authority` — see `scripts/upgrade-contracts.ts`). Falls back
+ * to the treasury secret because every environment this contract has been
+ * deployed to so far sets `PriceAuthority` to the same account as
+ * `Treasury`/`UnlockAuthority` — see `getTreasurySecret`'s doc comment for
+ * why that's true on testnet and must be arranged deliberately on pubnet.
+ * `PRICE_AUTHORITY_SECRET` lets a future environment diverge without a
+ * code change.
+ */
+export function getPriceAuthoritySecret(): string {
+  return env.PRICE_AUTHORITY_SECRET ?? getTreasurySecret();
+}
