@@ -236,15 +236,22 @@ async function feeBumpAndSubmit(signedInnerTxXdr: string): Promise<string> {
     throw new Error("Expected a signed Soroban transaction envelope, not a fee-bump envelope");
   }
 
-  // Per-operation base fee for the wrapper; Stellar requires the fee-bump's
-  // total (baseFee * (innerOps + 1)) to be >= the inner transaction's own
-  // fee — reusing the inner fee as the per-op base gives at least 2x
-  // headroom for the common one- or two-operation case (buy, or
-  // trustline+buy folded together — see `getBuyEditionXDR`'s trustline
-  // handling in the router).
+  // Per-operation base fee for the wrapper. `innerTx.fee` is the inner
+  // transaction's FULL fee — inclusion fee *plus* the Soroban resource fee
+  // already baked in by simulation/`prepareTransaction`. The SDK's
+  // `buildFeeBumpTransaction` separately re-extracts that same resource fee
+  // from the inner tx's Soroban extension and adds it again on top of
+  // `baseFee * (innerOps + 1)` (see the installed
+  // @stellar/stellar-base@14.1.0 source) — so passing `innerTx.fee` here
+  // double-counts the resource fee and inflates the inclusion portion
+  // several times over. Pass just the inclusion-fee-sized constant we
+  // originally built the inner tx's own `fee` field from instead; the SDK
+  // still validates baseFee >= the inner tx's actual per-op inclusion fee
+  // and throws if it's too low, so this stays safe while producing a
+  // correctly-sized (not bloated) fee-bump total.
   const feeBump = TransactionBuilder.buildFeeBumpTransaction(
     treasury,
-    innerTx.fee,
+    SOROBAN_INCLUSION_FEE,
     innerTx,
     networkPassphrase,
   );
