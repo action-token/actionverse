@@ -19,6 +19,7 @@ import {
   Image as ImageIcon,
   Video as VideoIcon,
   Link as LinkIcon,
+  Info,
 } from "lucide-react"
 import toast from "react-hot-toast"
 import { Button } from "~/components/shadcn/ui/button"
@@ -30,7 +31,8 @@ import { Badge } from "~/components/shadcn/ui/badge"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { Alert, AlertDescription } from "~/components/shadcn/ui/alert"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
-import { PLATFORM_ASSET } from "~/lib/stellar/constant"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
+import { LISTING_PRICE_FLOOR_MARGIN, PLATFORM_ASSET } from "~/lib/stellar/constant"
 import { ipfsHashToPinataGatewayUrl } from "~/utils/ipfs"
 import { api } from "~/utils/api"
 import { UnlockLocationsPreview } from "~/components/smart-contract/unlock-locations-preview"
@@ -62,6 +64,13 @@ export default function EditSmartContractNftPage() {
 
   const { data: nft, isLoading } = api.nft.byId.useQuery({ id: id ?? "" }, { enabled: !!id })
   const updateNft = api.nft.update.useMutation()
+
+  // Live floor for the Platform Asset price — see the matching comment in
+  // `smart-contract/create.tsx`.
+  const feePreview = api.nft.getInclusionAndNetworkFeePreview.useQuery({ quantity: 1 })
+  const minPriceAsset = feePreview.data
+    ? (feePreview.data.inclusionFee + feePreview.data.networkFee) * LISTING_PRICE_FLOOR_MARGIN
+    : null
 
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -128,6 +137,7 @@ export default function EditSmartContractNftPage() {
     supply >= minSupply &&
     supply <= maxSupply &&
     parsedPriceAsset > 0 &&
+    (minPriceAsset === null || parsedPriceAsset >= minPriceAsset) &&
     parsedPriceUsd > 0
 
   async function handleSave() {
@@ -329,15 +339,36 @@ export default function EditSmartContractNftPage() {
                     <Label htmlFor="edit-price-asset" className="flex items-center gap-2">
                       <Coins className="h-4 w-4 text-muted-foreground" />
                       Price ({PLATFORM_ASSET.code})
+                      {minPriceAsset !== null && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>
+                                Minimum right now: {minPriceAsset.toFixed(2)} {PLATFORM_ASSET.code} —
+                                below this, the network fee would cost more than the item itself and
+                                purchases would be rejected.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </Label>
                     <Input
                       id="edit-price-asset"
                       type="number"
-                      min={0}
+                      min={minPriceAsset ?? 0}
                       step="any"
                       value={priceAsset}
                       onChange={(e) => setPriceAsset(e.target.value)}
                     />
+                    {parsedPriceAsset > 0 && minPriceAsset !== null && parsedPriceAsset < minPriceAsset && (
+                      <p className="text-sm text-destructive">
+                        Price ({PLATFORM_ASSET.code}) is below the minimum.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-price-usd" className="flex items-center gap-2">
@@ -352,11 +383,11 @@ export default function EditSmartContractNftPage() {
                       value={priceUsd}
                       onChange={(e) => setPriceUsd(e.target.value)}
                     />
+                    {(parsedPriceAsset <= 0 || parsedPriceUsd <= 0) && (
+                      <p className="text-sm text-destructive">Set a price in both currencies.</p>
+                    )}
                   </div>
                 </div>
-                {(parsedPriceAsset <= 0 || parsedPriceUsd <= 0) && (
-                  <p className="text-sm text-destructive">Set a price in both currencies.</p>
-                )}
               </div>
 
               <Alert>
