@@ -1,4 +1,4 @@
-import { Info, Loader2, Lock, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
+import { Loader2, Lock, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
@@ -7,7 +7,7 @@ import { PlaceholderArt } from "~/components/nft/placeholder-art";
 import { priceTokenLabel } from "~/components/nft/nft-card";
 import { BuyNftWithCard } from "~/components/payment/buy-nft-with-card";
 import { cn } from "~/lib/utils";
-import { DEFAULT_PLATFORM_FEE_BPS, LISTING_PRICE_FLOOR_MARGIN } from "~/lib/stellar/constant";
+import { DEFAULT_PLATFORM_FEE_BPS } from "~/lib/stellar/constant";
 import { Button } from "~/components/shadcn/ui/button";
 import { Input } from "~/components/shadcn/ui/input";
 import {
@@ -16,7 +16,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "~/components/shadcn/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
 import { InsufficientAssetBalance } from "~/components/payment/insufficient-asset-balance";
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
@@ -390,14 +389,6 @@ export function ManagePriceCard({
   isSaving: boolean;
   network?: string;
 }) {
-  // Live floor for a resale listing's Platform Asset price — `buy`/
-  // `buy_batch` refuse any purchase where `inclusion_fee + network_fee >
-  // total` (see `contracts/nft_oz/src/lib.rs`'s `InvalidAmount` guard), same
-  // check as the primary-sale price form in `smart-contract/create.tsx`.
-  const feePreview = api.nft.getInclusionAndNetworkFeePreview.useQuery({ quantity: 1 });
-  const minPriceAsset = feePreview.data
-    ? (feePreview.data.inclusionFee + feePreview.data.networkFee) * LISTING_PRICE_FLOOR_MARGIN
-    : null;
 
   if (myTokens.length === 0) {
     return (
@@ -428,7 +419,6 @@ export function ManagePriceCard({
           tokens={unlisted}
           onListMultiple={onListMultiple}
           isSaving={isSaving}
-          minPriceAsset={minPriceAsset}
         />
       )}
 
@@ -439,7 +429,6 @@ export function ManagePriceCard({
           isSaving={isSaving}
           onList={(prices) => onListToken?.(token.tokenId, prices)}
           onCancel={() => onCancelListing?.(token.tokenId)}
-          minPriceAsset={minPriceAsset}
         />
       ))}
     </div>
@@ -460,7 +449,6 @@ function HoldAndListCard({
   tokens,
   onListMultiple,
   isSaving,
-  minPriceAsset,
 }: {
   tokens: MyToken[];
   onListMultiple?: (
@@ -468,7 +456,6 @@ function HoldAndListCard({
     prices: { paymentToken: NftDisplayCurrency; price: number }[],
   ) => void | Promise<void>;
   isSaving: boolean;
-  minPriceAsset: number | null;
 }) {
   const heldCount = tokens.length;
   // Listing is capped at MAX_LIST_BATCH per action even if the seller holds
@@ -483,17 +470,8 @@ function HoldAndListCard({
   const [priceUsd, setPriceUsd] = useState("");
   const parsedAsset = Number(priceAsset) || 0;
   const parsedUsd = Number(priceUsd) || 0;
-  const belowFloor = minPriceAsset !== null && parsedAsset > 0 && parsedAsset < minPriceAsset;
-  const hasBothPrices = parsedAsset > 0 && parsedUsd > 0 && !belowFloor;
+  const hasBothPrices = parsedAsset > 0 && parsedUsd > 0;
 
-  // Pre-fills with the live floor the moment it loads — this is a fresh
-  // listing, so there's no existing price to preserve yet.
-  useEffect(() => {
-    if (minPriceAsset !== null && priceAsset === "") {
-      setPriceAsset(minPriceAsset.toFixed(2));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minPriceAsset]);
 
   function submit() {
     onListMultiple?.(tokens.slice(0, count).map((t) => t.tokenId), [
@@ -542,22 +520,6 @@ function HoldAndListCard({
 
       <p className="mt-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Price per copy
-        {minPriceAsset !== null && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="h-3.5 w-3.5 cursor-help normal-case" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p>
-                  Minimum right now: {minPriceAsset.toFixed(2)} {priceTokenLabel("asset")} — below
-                  this, the network fee would cost more than the item itself and purchases would be
-                  rejected.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Both currencies are required — buyers pick which to pay with.
@@ -568,7 +530,7 @@ function HoldAndListCard({
             <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
             <Input
               type="number"
-              min={minPriceAsset ?? 0}
+              min={0}
               step="any"
               value={priceAsset}
               onChange={(e) => setPriceAsset(e.target.value)}
@@ -576,9 +538,6 @@ function HoldAndListCard({
               className="h-10 font-bold tabular-nums"
             />
           </div>
-          {belowFloor && (
-            <p className="mt-1 text-xs text-destructive">Price is below the minimum.</p>
-          )}
         </div>
         <div>
           <div className="flex items-center gap-1.5">
@@ -615,20 +574,17 @@ function TokenListingRow({
   isSaving,
   onList,
   onCancel,
-  minPriceAsset,
 }: {
   token: MyToken;
   isSaving: boolean;
   onList: (prices: { paymentToken: NftDisplayCurrency; price: number }[]) => void | Promise<void>;
   onCancel: () => void | Promise<void>;
-  minPriceAsset: number | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [priceAsset, setPriceAsset] = useState("1");
   const [priceUsd, setPriceUsd] = useState("");
   const parsedAsset = Number(priceAsset) || 0;
   const parsedUsd = Number(priceUsd) || 0;
-  const belowFloor = minPriceAsset !== null && parsedAsset > 0 && parsedAsset < minPriceAsset;
 
   function startEditing() {
     setPriceAsset(String(token.listingPrices.find((p) => p.paymentToken === "asset")?.price ?? 1));
@@ -663,26 +619,10 @@ function TokenListingRow({
               <div className="flex items-center gap-1.5">
                 <span className="flex items-center gap-1 text-xs font-bold text-foreground">
                   {priceTokenLabel("asset")}
-                  {minPriceAsset !== null && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 cursor-help font-normal text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p>
-                            Minimum right now: {minPriceAsset.toFixed(2)} {priceTokenLabel("asset")} —
-                            below this, the network fee would cost more than the item itself and
-                            purchases would be rejected.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
                 </span>
                 <Input
                   type="number"
-                  min={minPriceAsset ?? 0}
+                  min={0}
                   step="any"
                   autoFocus
                   value={priceAsset}
@@ -690,9 +630,6 @@ function TokenListingRow({
                   className="h-10 font-bold tabular-nums"
                 />
               </div>
-              {belowFloor && (
-                <p className="mt-1 text-xs text-destructive">Price is below the minimum.</p>
-              )}
             </div>
             <div>
               <div className="flex items-center gap-1.5">
@@ -725,7 +662,7 @@ function TokenListingRow({
             <ListButton
               size="sm"
               isSaving={isSaving}
-              disabled={parsedAsset <= 0 || parsedUsd <= 0 || belowFloor}
+              disabled={parsedAsset <= 0 || parsedUsd <= 0}
               onClick={async () => {
                 await submit();
                 setEditing(false);

@@ -1646,26 +1646,6 @@ fn buy_edition_charges_inclusion_and_network_fee_to_treasury() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #300)")]
-fn buy_edition_rejects_a_fee_reimbursement_over_the_items_total() {
-    let f = setup();
-    let alice = Address::generate(&f.env);
-    let bob = Address::generate(&f.env);
-    fund(&f, &bob, PRICE * 2);
-
-    f.client.buy_edition(
-        &bob,
-        &String::from_str(&f.env, "row-1"),
-        &edition_input(&f, &alice, 0, 1, PRICE),
-        &String::from_str(&f.env, "purchase-1"),
-        &f.payment,
-        &1,
-        &PRICE,
-        &1,
-    );
-}
-
-#[test]
 fn buy_charges_inclusion_and_network_fee_to_treasury() {
     let f = setup();
     let alice = Address::generate(&f.env); // creator
@@ -1690,22 +1670,6 @@ fn buy_charges_inclusion_and_network_fee_to_treasury() {
         platform_fee + inclusion_fee + network_fee,
     );
     assert_eq!(f.token.balance(&bob) - seller_before, PRICE - platform_fee);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #300)")]
-fn buy_rejects_a_fee_reimbursement_over_the_items_total() {
-    let f = setup();
-    let alice = Address::generate(&f.env);
-    let bob = Address::generate(&f.env);
-    let carol = Address::generate(&f.env);
-    fund(&f, &bob, PRICE);
-    fund(&f, &carol, PRICE * 2);
-
-    let (id, _) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 1, PRICE, 1);
-    f.client.list(&bob, &id, &single_price(&f, PRICE));
-
-    f.client.buy(&carol, &id, &f.payment, &PRICE, &1);
 }
 
 #[test]
@@ -1736,28 +1700,6 @@ fn buy_batch_charges_the_fee_once_for_the_whole_batch_not_per_token() {
         platform_fee_per * 5 + inclusion_fee + network_fee,
         "the fee is charged once for the whole batch, not once per token",
     );
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #300)")]
-fn buy_batch_rejects_a_fee_reimbursement_over_the_batch_total() {
-    let f = setup();
-    let alice = Address::generate(&f.env);
-    let bob = Address::generate(&f.env);
-    let carol = Address::generate(&f.env);
-    fund(&f, &bob, PRICE * 2);
-    fund(&f, &carol, PRICE * 4);
-
-    let (first, last) = buy_ref(&f, &bob, &alice, "row-1", "purchase-1", 0, 2, PRICE, 2);
-    let mut token_ids = Vec::new(&f.env);
-    for id in first..=last {
-        token_ids.push_back(id);
-    }
-    f.client.list_batch(&bob, &token_ids, &single_price(&f, PRICE));
-
-    // Batch total is PRICE * 2 — a fee reimbursement bigger than that must
-    // be rejected even though it fits under any *one* token's own price.
-    f.client.buy_batch(&carol, &token_ids, &f.payment, &(PRICE * 2 + 1), &0);
 }
 
 // =============================================================================

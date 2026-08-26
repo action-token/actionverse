@@ -1,11 +1,11 @@
 "use client"
 
-import { type ChangeEvent, useEffect, useState } from "react"
+import { type ChangeEvent, useState } from "react"
 import { useRouter } from "next/router"
 import Image from "next/image"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronLeft, Upload, Check, X, Loader2, Coins, Sparkles, Info } from "lucide-react"
+import { ChevronLeft, Upload, Check, X, Loader2, Coins, Sparkles } from "lucide-react"
 import toast from "react-hot-toast"
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
@@ -15,8 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { Alert, AlertDescription } from "~/components/shadcn/ui/alert"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
-import { LISTING_PRICE_FLOOR_MARGIN, PLATFORM_ASSET } from "~/lib/stellar/constant"
+import { PLATFORM_ASSET } from "~/lib/stellar/constant"
 import { ipfsHashToPinataGatewayUrl } from "~/utils/ipfs"
 import { api } from "~/utils/api"
 import { LockedMediaEditor, type LockedMediaDraft } from "~/components/smart-contract/locked-media-editor"
@@ -71,28 +70,6 @@ export default function CreateSmartContractNftPage() {
 
   const createNft = api.nft.create.useMutation()
 
-  // Live floor for the Platform Asset price: the contract refuses any
-  // `buy_edition` where `inclusion_fee + network_fee > price` (see
-  // `contracts/nft_oz/src/lib.rs`'s `InvalidAmount` guard) — treasury's
-  // real per-purchase reimbursement can't exceed the item's own value.
-  // Quantity is always 1 here since this is the *per-copy* price floor,
-  // not a specific buyer's cart total. Padded by LISTING_PRICE_FLOOR_MARGIN
-  // so ordinary rate drift between listing and purchase doesn't silently
-  // push a just-above-floor price back underwater.
-  const feePreview = api.nft.getInclusionAndNetworkFeePreview.useQuery({ quantity: 1 })
-  const minPriceAsset = feePreview.data
-    ? (feePreview.data.inclusionFee + feePreview.data.networkFee) * LISTING_PRICE_FLOOR_MARGIN
-    : null
-
-  // Pre-fills the field with the live floor the moment it loads, rather
-  // than leaving the creator to guess a number and get rejected — this is
-  // a brand-new listing, so there's no existing price to preserve yet.
-  useEffect(() => {
-    if (minPriceAsset !== null && priceAsset === "") {
-      setPriceAsset(minPriceAsset.toFixed(2))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minPriceAsset])
 
   async function uploadThumbnail(file: File) {
     try {
@@ -135,7 +112,6 @@ export default function CreateSmartContractNftPage() {
     !!contentMimeType &&
     supply >= 1 &&
     parsedPriceAsset > 0 &&
-    (minPriceAsset === null || parsedPriceAsset >= minPriceAsset) &&
     parsedPriceUsd > 0 &&
     completeLockedMedia.length > 0 &&
     !incompleteUnlockRule
@@ -331,37 +307,16 @@ export default function CreateSmartContractNftPage() {
                     <Label htmlFor="sc-price-asset" className="flex items-center gap-2">
                       <Coins className="h-4 w-4 text-muted-foreground" />
                       Price ({PLATFORM_ASSET.code})
-                      {minPriceAsset !== null && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs">
-                              <p>
-                                Minimum right now: {minPriceAsset.toFixed(2)} {PLATFORM_ASSET.code} —
-                                below this, the network fee would cost more than the item itself and
-                                purchases would be rejected.
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
                     </Label>
                     <Input
                       id="sc-price-asset"
                       type="number"
-                      min={minPriceAsset ?? 0}
+                      min={0}
                       step="any"
                       value={priceAsset}
                       onChange={(e) => setPriceAsset(e.target.value)}
                       placeholder="e.g. 5"
                     />
-                    {parsedPriceAsset > 0 && minPriceAsset !== null && parsedPriceAsset < minPriceAsset && (
-                      <p className="text-sm text-destructive">
-                        Price ({PLATFORM_ASSET.code}) is below the minimum.
-                      </p>
-                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="sc-price-usd" className="flex items-center gap-2">

@@ -505,12 +505,6 @@ impl ArtNft {
         let unit_price = Self::price_for(e, &prices, &payment_token);
         let total = unit_price * quantity as i128;
 
-        // Same defensive cap `do_buy` uses below: the fee reimbursement
-        // can't exceed the item's own value.
-        if inclusion_fee + network_fee > total {
-            panic_with_error!(e, ArtError::InvalidAmount);
-        }
-
         // --- effects: mint, index and settle the edition's own state before
         // any external call, so a hostile `payment_token` can't reenter and
         // observe a half-applied purchase (checks-effects-interactions).
@@ -987,16 +981,6 @@ impl ArtNft {
             panic_with_error!(e, ArtError::InvalidAmount);
         }
 
-        let mut batch_total: i128 = 0;
-        for i in 0..token_ids.len() {
-            let listing = Self::listing(e, token_ids.get(i).unwrap())
-                .unwrap_or_else(|| panic_with_error!(e, ArtError::ListingNotFound));
-            batch_total += Self::price_for(e, &listing.prices, &payment_token);
-        }
-        if inclusion_fee + network_fee > batch_total {
-            panic_with_error!(e, ArtError::InvalidAmount);
-        }
-
         for i in 0..token_ids.len() {
             Self::do_buy(e, &buyer, token_ids.get(i).unwrap(), &payment_token, 0, 0);
         }
@@ -1035,12 +1019,6 @@ impl ArtNft {
 
         let unit_price = Self::price_for(e, &listing.prices, payment_token);
         let split = Self::compute_breakdown(e, token_id, &listing, unit_price);
-
-        // Same defensive cap `buy_edition` uses: the fee reimbursement can't
-        // exceed the item's own value.
-        if inclusion_fee + network_fee > split.total {
-            panic_with_error!(e, ArtError::InvalidAmount);
-        }
 
         // --- effects: all contract state settles before any external call, so
         // a hostile `payment_token` can't reenter and observe a half-applied
