@@ -307,7 +307,7 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                             {priceTokenLabel(p.paymentToken)} PRICE
                           </span>
                           <span className="text-base font-bold text-green-600 dark:text-green-400">
-                            {p.price} {priceTokenLabel(p.paymentToken)}
+                            {p.price.toFixed(3)}
                           </span>
                         </div>
                       ))}
@@ -318,7 +318,7 @@ export function NftCard({ nft, index = 0 }: { nft: NftCardData; index?: number }
                         XLM Price
                       </span>
                       <span className="text-xl font-bold text-green-600 dark:text-green-400">
-                        {isForSale ? `${price} ${priceTokenLabel(nft.priceToken)}` : "Sold out"}
+                        {isForSale ? `${price?.toFixed(3)} ${priceTokenLabel(nft.priceToken)}` : "Sold out"}
                       </span>
                     </div>
                   )}

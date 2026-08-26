@@ -123,7 +123,11 @@ export function StemPlayer() {
             mainAudio.src = currentSong.url
             mainAudioRef.current = mainAudio
 
+            let settled = false
+
             const handleMainAudioReady = () => {
+                if (settled) return
+                settled = true
                 console.log("Main audio loaded, duration:", mainAudio.duration)
                 setDuration(mainAudio.duration || 180)
                 setMainAudioLoaded(true)
@@ -131,6 +135,8 @@ export function StemPlayer() {
             }
 
             const handleMainAudioError = (e: Event) => {
+                if (settled) return
+                settled = true
                 console.error("Error loading main audio:", e)
                 setMainAudioLoaded(false)
                 setIsGlobalLoading(false)
@@ -147,13 +153,28 @@ export function StemPlayer() {
                 setCurrentTime(mainAudio.duration || 0)
             }
 
-            mainAudio.addEventListener("canplaythrough", handleMainAudioReady)
+            // "canplay" (enough buffered to start) rather than
+            // "canplaythrough" (browser estimates the *entire remaining*
+            // file can play without pausing to buffer again) — the latter
+            // is a much stricter bar that fires almost instantly on a fast
+            // desktop connection but can take a very long time, or never
+            // fire at all, on a slow mobile connection, leaving the Play
+            // button (`disabled={isGlobalLoading}`) stuck indefinitely even
+            // though playback could already begin.
+            mainAudio.addEventListener("canplay", handleMainAudioReady)
             mainAudio.addEventListener("error", handleMainAudioError)
             mainAudio.addEventListener("timeupdate", handleMainAudioTimeUpdate)
             mainAudio.addEventListener("ended", handleMainAudioEnded)
 
+            // Defensive fallback: if neither "canplay" nor "error" ever
+            // fires (a flaky mobile connection/CDN response), stop blocking
+            // the Play button after a few seconds instead of leaving it
+            // disabled forever.
+            const readyFallback = setTimeout(handleMainAudioReady, 5000)
+
             return () => {
-                mainAudio.removeEventListener("canplaythrough", handleMainAudioReady)
+                clearTimeout(readyFallback)
+                mainAudio.removeEventListener("canplay", handleMainAudioReady)
                 mainAudio.removeEventListener("error", handleMainAudioError)
                 mainAudio.removeEventListener("timeupdate", handleMainAudioTimeUpdate)
                 mainAudio.removeEventListener("ended", handleMainAudioEnded)

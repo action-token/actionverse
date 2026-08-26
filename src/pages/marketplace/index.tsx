@@ -439,25 +439,30 @@ const FilterTabs = () => {
         { getNextPageParam: (lastPage) => lastPage.nextCursor },
     );
 
+    // `||`, not `??`: these are always real booleans (never null/undefined),
+    // so `??` short-circuited on the first one and silently ignored the
+    // other queries entirely — the skeleton disappeared the moment the
+    // admin-assets query alone finished, while the rest kept loading
+    // separately and popped in with no indicator.
     const isLoading =
 
-        adminAssets.isLoading ??
-        fanAssets.isLoading ??
-        artistAssets.isLoading ??
+        adminAssets.isLoading ||
+        fanAssets.isLoading ||
+        artistAssets.isLoading ||
         scNfts.isLoading
 
     const hasNextPage =
 
-        adminAssets.hasNextPage ??
-        fanAssets.hasNextPage ??
-        artistAssets.hasNextPage ??
+        adminAssets.hasNextPage ||
+        fanAssets.hasNextPage ||
+        artistAssets.hasNextPage ||
         scNfts.hasNextPage
 
     const isFetchingNextPage =
 
-        adminAssets.isFetchingNextPage ??
-        fanAssets.isFetchingNextPage ??
-        artistAssets.isFetchingNextPage ??
+        adminAssets.isFetchingNextPage ||
+        fanAssets.isFetchingNextPage ||
+        artistAssets.isFetchingNextPage ||
         scNfts.isFetchingNextPage
 
 

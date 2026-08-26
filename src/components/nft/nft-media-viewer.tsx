@@ -50,7 +50,7 @@ export function NftMediaViewer({
           <div className="relative h-40 w-40 overflow-hidden rounded-2xl shadow-lg">
             <Image src={thumbnail} alt={name} fill className="object-cover" />
           </div>
-          <audio src={contentUrl} controls className="w-full max-w-xs" />
+          <audio src={contentUrl} controls preload="metadata" className="w-full max-w-xs" />
         </div>
       ) : (
         <Image
