@@ -1,11 +1,11 @@
 "use client"
 
-import { type ChangeEvent, useEffect, useState } from "react"
+import { type ChangeEvent, useState } from "react"
 import { useRouter } from "next/router"
 import Image from "next/image"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronLeft, Upload, Check, X, Loader2, Coins, Sparkles, Info } from "lucide-react"
+import { ChevronLeft, Upload, Check, X, Loader2, Coins, Sparkles } from "lucide-react"
 import toast from "react-hot-toast"
 import { Button } from "~/components/shadcn/ui/button"
 import { Input } from "~/components/shadcn/ui/input"
@@ -15,8 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/shadcn/ui
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Separator } from "~/components/shadcn/ui/separator"
 import { Alert, AlertDescription } from "~/components/shadcn/ui/alert"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip"
-import { LISTING_PRICE_FLOOR_MARGIN, PLATFORM_ASSET } from "~/lib/stellar/constant"
+import { MAX_ROYALTY_BPS, PLATFORM_ASSET } from "~/lib/stellar/constant"
+import { cn } from "~/lib/utils"
 import { ipfsHashToPinataGatewayUrl } from "~/utils/ipfs"
 import { api } from "~/utils/api"
 import { LockedMediaEditor, type LockedMediaDraft } from "~/components/smart-contract/locked-media-editor"
@@ -39,6 +39,13 @@ function isValidHttpUrl(value: string) {
  * `organization/music`, etc. already do. See
  * VIP_TICKET_UNLOCK_PLAN.md Phase 2.
  */
+const MAX_NAME_LEN = 128
+const MAX_DESCRIPTION_LEN = 2000
+const MAX_SUPPLY = 100_000
+const MAX_ROYALTY_PERCENT = MAX_ROYALTY_BPS / 100 // 90%
+const MAX_PRICE_ASSET = 100_000_000 // 100M tokens max
+const MAX_PRICE_USD = 100_000 // $100k max
+
 export default function CreateSmartContractNftPage() {
   const router = useRouter()
   const utils = api.useContext()
@@ -71,28 +78,6 @@ export default function CreateSmartContractNftPage() {
 
   const createNft = api.nft.create.useMutation()
 
-  // Live floor for the Platform Asset price: the contract refuses any
-  // `buy_edition` where `inclusion_fee + network_fee > price` (see
-  // `contracts/nft_oz/src/lib.rs`'s `InvalidAmount` guard) — treasury's
-  // real per-purchase reimbursement can't exceed the item's own value.
-  // Quantity is always 1 here since this is the *per-copy* price floor,
-  // not a specific buyer's cart total. Padded by LISTING_PRICE_FLOOR_MARGIN
-  // so ordinary rate drift between listing and purchase doesn't silently
-  // push a just-above-floor price back underwater.
-  const feePreview = api.nft.getInclusionAndNetworkFeePreview.useQuery({ quantity: 1 })
-  const minPriceAsset = feePreview.data
-    ? (feePreview.data.inclusionFee + feePreview.data.networkFee) * LISTING_PRICE_FLOOR_MARGIN
-    : null
-
-  // Pre-fills the field with the live floor the moment it loads, rather
-  // than leaving the creator to guess a number and get rejected — this is
-  // a brand-new listing, so there's no existing price to preserve yet.
-  useEffect(() => {
-    if (minPriceAsset !== null && priceAsset === "") {
-      setPriceAsset(minPriceAsset.toFixed(2))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minPriceAsset])
 
   async function uploadThumbnail(file: File) {
     try {
@@ -129,14 +114,21 @@ export default function CreateSmartContractNftPage() {
   )
   const incompleteUnlockRule = lockedMedia.some((m) => m.unlockRule && m.unlockRule.points.length === 0)
 
+  const isPriceAssetValid = parsedPriceAsset > 0 && parsedPriceAsset <= MAX_PRICE_ASSET
+  const isPriceUsdValid = parsedPriceUsd > 0 && parsedPriceUsd <= MAX_PRICE_USD
+
   const canSubmit =
     name.trim().length > 0 &&
+    name.trim().length <= MAX_NAME_LEN &&
+    description.trim().length <= MAX_DESCRIPTION_LEN &&
     !!thumbnailUrl &&
     !!contentMimeType &&
     supply >= 1 &&
-    parsedPriceAsset > 0 &&
-    (minPriceAsset === null || parsedPriceAsset >= minPriceAsset) &&
-    parsedPriceUsd > 0 &&
+    supply <= MAX_SUPPLY &&
+    royaltyPercent >= 0 &&
+    royaltyPercent <= MAX_ROYALTY_PERCENT &&
+    isPriceAssetValid &&
+    isPriceUsdValid &&
     completeLockedMedia.length > 0 &&
     !incompleteUnlockRule
 
@@ -210,21 +202,51 @@ export default function CreateSmartContractNftPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="sc-name">Item name</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="sc-name">Item name</Label>
+                  <span
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      name.length >= MAX_NAME_LEN
+                        ? "font-semibold text-destructive"
+                        : name.length > MAX_NAME_LEN - 15
+                        ? "text-amber-500"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {name.length}/{MAX_NAME_LEN}
+                  </span>
+                </div>
                 <Input
                   id="sc-name"
+                  maxLength={MAX_NAME_LEN}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter a name for your item"
+                  placeholder="Enter a name for your item (max 128 chars)"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="sc-description">Description</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="sc-description">Description</Label>
+                  <span
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      description.length >= MAX_DESCRIPTION_LEN
+                        ? "font-semibold text-destructive"
+                        : description.length > MAX_DESCRIPTION_LEN - 100
+                        ? "text-amber-500"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {description.length}/{MAX_DESCRIPTION_LEN.toLocaleString()}
+                  </span>
+                </div>
                 <Textarea
                   id="sc-description"
+                  maxLength={MAX_DESCRIPTION_LEN}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe your NFT"
+                  placeholder="Describe your NFT (max 2,000 chars)"
                   className="min-h-24 resize-none"
                 />
               </div>
@@ -290,98 +312,138 @@ export default function CreateSmartContractNftPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="sc-royalty">Creator royalty (%)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="sc-royalty">Creator royalty (%)</Label>
+                    <span className="text-[11px] text-muted-foreground">Max {MAX_ROYALTY_PERCENT}%</span>
+                  </div>
                   <Input
                     id="sc-royalty"
                     type="number"
                     min={0}
-                    max={50}
+                    max={MAX_ROYALTY_PERCENT}
                     step="0.1"
                     value={royaltyPercent}
-                    onChange={(e) => setRoyaltyPercent(Number(e.target.value) || 0)}
+                    onChange={(e) =>
+                      setRoyaltyPercent(
+                        Math.min(MAX_ROYALTY_PERCENT, Math.max(0, Number(e.target.value) || 0)),
+                      )
+                    }
                   />
-                  <p className="text-xs text-muted-foreground">Earned on every resale</p>
+                  <p className="text-xs text-muted-foreground">Earned on every resale (0 - 90%)</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="sc-supply">Supply limit</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="sc-supply">Supply limit</Label>
+                    <span className="text-[11px] text-muted-foreground">Max {MAX_SUPPLY.toLocaleString()}</span>
+                  </div>
                   <Input
                     id="sc-supply"
                     type="number"
                     min={1}
+                    max={MAX_SUPPLY}
                     step="1"
                     value={supply}
-                    onChange={(e) => setSupply(Math.max(1, Math.round(Number(e.target.value) || 1)))}
+                    onChange={(e) =>
+                      setSupply(
+                        Math.min(MAX_SUPPLY, Math.max(1, Math.round(Number(e.target.value) || 1))),
+                      )
+                    }
                     placeholder="Default: 1"
                   />
-                  <p className="text-xs text-muted-foreground">Copies ever mintable</p>
+                  <p className="text-xs text-muted-foreground">Copies ever mintable (1 to 100,000)</p>
                 </div>
               </div>
 
               <Separator />
 
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Price per copy</p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Price per copy</p>
+                  <span className="text-[11px] text-muted-foreground">Both currencies required</span>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Both prices are required — buyers pick which currency to pay with. The USD price is
-                  charged by card (Square); it&apos;s a sticker price you set, not converted live from
-                  the {PLATFORM_ASSET.code} price.
+                  The USD price is charged by card (Square); it&apos;s a sticker price you set, not
+                  converted live from the {PLATFORM_ASSET.code} price (min 0.0000001, max 100M).
                 </p>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="sc-price-asset" className="flex items-center gap-2">
-                      <Coins className="h-4 w-4 text-muted-foreground" />
-                      Price ({PLATFORM_ASSET.code})
-                      {minPriceAsset !== null && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs">
-                              <p>
-                                Minimum right now: {minPriceAsset.toFixed(2)} {PLATFORM_ASSET.code} —
-                                below this, the network fee would cost more than the item itself and
-                                purchases would be rejected.
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </Label>
-                    <Input
-                      id="sc-price-asset"
-                      type="number"
-                      min={minPriceAsset ?? 0}
-                      step="any"
-                      value={priceAsset}
-                      onChange={(e) => setPriceAsset(e.target.value)}
-                      placeholder="e.g. 5"
-                    />
-                    {parsedPriceAsset > 0 && minPriceAsset !== null && parsedPriceAsset < minPriceAsset && (
-                      <p className="text-sm text-destructive">
-                        Price ({PLATFORM_ASSET.code}) is below the minimum.
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="sc-price-asset" className="flex items-center gap-1.5 text-xs font-medium">
+                        <Coins className="h-3.5 w-3.5 text-muted-foreground" />
+                        Price ({PLATFORM_ASSET.code})
+                      </Label>
+                      <span className="text-[10px] text-muted-foreground">Max 100M</span>
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="sc-price-asset"
+                        type="number"
+                        min={0.0000001}
+                        max={MAX_PRICE_ASSET}
+                        step="any"
+                        value={priceAsset}
+                        onChange={(e) => setPriceAsset(e.target.value)}
+                        placeholder="e.g. 5"
+                        className={cn(
+                          "pr-16",
+                          priceAsset && !isPriceAssetValid && "border-destructive focus-visible:ring-destructive",
+                        )}
+                      />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted-foreground">
+                        {PLATFORM_ASSET.code}
+                      </span>
+                    </div>
+                    {priceAsset && parsedPriceAsset <= 0 ? (
+                      <p className="text-[11px] text-destructive">Price must be greater than 0.</p>
+                    ) : priceAsset && parsedPriceAsset > MAX_PRICE_ASSET ? (
+                      <p className="text-[11px] text-destructive">
+                        Max price is {MAX_PRICE_ASSET.toLocaleString()} {PLATFORM_ASSET.code}.
                       </p>
-                    )}
+                    ) : null}
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="sc-price-usd" className="flex items-center gap-2">
-                      <Coins className="h-4 w-4 text-muted-foreground" />
-                      Price (USD)
-                    </Label>
-                    <Input
-                      id="sc-price-usd"
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={priceUsd}
-                      onChange={(e) => setPriceUsd(e.target.value)}
-                      placeholder="e.g. 10"
-                    />
-                    {(parsedPriceAsset <= 0 || parsedPriceUsd <= 0) && (
-                      <p className="text-sm text-destructive">Set a price in both currencies.</p>
-                    )}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="sc-price-usd" className="flex items-center gap-1.5 text-xs font-medium">
+                        <Coins className="h-3.5 w-3.5 text-muted-foreground" />
+                        Price (USD)
+                      </Label>
+                      <span className="text-[10px] text-muted-foreground">Max $100k</span>
+                    </div>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted-foreground">
+                        $
+                      </span>
+                      <Input
+                        id="sc-price-usd"
+                        type="number"
+                        min={0.01}
+                        max={MAX_PRICE_USD}
+                        step="0.01"
+                        value={priceUsd}
+                        onChange={(e) => setPriceUsd(e.target.value)}
+                        placeholder="e.g. 10"
+                        className={cn(
+                          "pl-7 pr-12",
+                          priceUsd && !isPriceUsdValid && "border-destructive focus-visible:ring-destructive",
+                        )}
+                      />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted-foreground">
+                        USD
+                      </span>
+                    </div>
+                    {priceUsd && parsedPriceUsd <= 0 ? (
+                      <p className="text-[11px] text-destructive">Price must be greater than 0.</p>
+                    ) : priceUsd && parsedPriceUsd > MAX_PRICE_USD ? (
+                      <p className="text-[11px] text-destructive">
+                        Max price is ${MAX_PRICE_USD.toLocaleString()} USD.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
+
+                {(!priceAsset || !priceUsd) && (
+                  <p className="text-xs text-destructive">Set a price in both currencies.</p>
+                )}
               </div>
 
               <Alert>

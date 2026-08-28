@@ -4,6 +4,7 @@ import { CreditCard, PaymentForm } from "react-square-web-payments-sdk";
 import { Loader2 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { isPreconditionSignal } from "~/components/nft/use-nft-buy-flow";
+import { fireConfetti } from "~/lib/ui/confetti";
 import { ActivationModal } from "~/components/modal/activation-modal";
 import { env } from "~/env";
 import { api } from "~/utils/api";
@@ -45,6 +46,7 @@ export function BuyNftWithCard({
       } else {
         await buyResale.mutateAsync({ tokenId: target.tokenId, sourceId });
       }
+      fireConfetti();
       toast.success("Purchase complete!");
       await onSuccess();
     } catch (e) {

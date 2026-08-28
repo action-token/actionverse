@@ -1,4 +1,5 @@
 import {
+  Address,
   Asset,
   Horizon,
   Keypair,
@@ -6,6 +7,8 @@ import {
   Transaction,
   TransactionBuilder,
   rpc,
+  scValToNative,
+  xdr,
 } from "@stellar/stellar-sdk";
 import { basicNodeSigner, SentTransaction, type AssembledTransaction } from "@stellar/stellar-sdk/contract";
 import {
@@ -20,6 +23,7 @@ import {
 } from "contracts/nft_oz/bindings/src/index";
 import { ART_NFT_CONTRACT_ID } from "~/lib/common";
 import { StellarAccount } from "../marketplace/test/Account";
+import { getPriceAuthoritySecret, getTreasuryKeypair } from "./treasury";
 import {
   networkPassphrase,
   PLATFORM_ASSET,
@@ -30,16 +34,19 @@ import {
   TrxBaseFee,
 } from "../constant";
 import { WithSing, type SignUserType } from "../utils";
-import { getTreasuryKeypair } from "./treasury";
 
 /**
  * The only on-chain currency this collection buys/sells/resells in — no
- * native XLM leg. Deliberately not imported from `~/components/payment/
- * payment-process`'s `PaymentMethodEnum` (which this mirrors for the
- * "asset" case; that enum also carries "card"/"xlm" for unrelated,
- * non-nft_oz payment flows) so this server-safe module never pulls a
- * client component file into a server bundle; keep the two lists in sync
- * by hand.
+ * native XLM leg. Removed as a buyer-facing option as part of the
+ * fee-bump payment redesign (see `contracts/nft_oz`'s `buy_edition`/`buy`/
+ * `buy_batch`): the whole premise of fee-bump — the buyer never spends
+ * XLM, not even for gas — doesn't compose with letting someone pay for
+ * the item itself in XLM directly. `usdc` stays reserved for a future
+ * currency (a new `NftPrice` row is all it would need, no schema/contract
+ * change) but isn't wired to a real SAC yet. Deliberately not imported
+ * from `~/components/payment/payment-process`'s `PaymentMethodEnum` (which
+ * this mirrors) so this server-safe module never pulls a client component
+ * file into a server bundle; keep the two lists in sync by hand.
  */
 export const NFT_PAYMENT_TOKENS = ["asset"] as const;
 export type NftPaymentToken = (typeof NFT_PAYMENT_TOKENS)[number];
@@ -49,8 +56,11 @@ export type NftPaymentToken = (typeof NFT_PAYMENT_TOKENS)[number];
  * of `NFT_PAYMENT_TOKENS`. `"usd"` is deliberately not in
  * `NFT_PAYMENT_TOKENS`: it never becomes an on-chain `PriceEntry` (Soroban
  * has no fiat concept), it's a creator/reseller-set sticker price stored
- * only in `NftPrice`/`NftListingPrice` (see `src/server/api/routers/nft.ts`)
- * and charged via Square (see `fundBuyerForCardPurchase` below).
+ * only in `NftPrice`/`NftListingPrice` (see
+ * `src/server/api/routers/nft.ts`) and charged via Square
+ * (`fundBuyerForCardPurchase`). Both currencies are mandatory — a creator
+ * or reseller sets a price in each, never just one; a buyer picks which to
+ * pay with.
  */
 export const NFT_DISPLAY_CURRENCIES = ["asset", "usd"] as const;
 export type NftDisplayCurrency = (typeof NFT_DISPLAY_CURRENCIES)[number];
@@ -75,10 +85,7 @@ function getClient(publicKey?: string): ArtNftClient {
   });
 }
 
-/** The native XLM Stellar Asset Contract. Not an offered item currency (see
- *  `NFT_PAYMENT_TOKENS`) — kept only so `labelForPaymentTokenAddress` can
- *  still label a pre-existing on-chain listing/edition that was priced in
- *  XLM before it was dropped as an option. */
+/** The native XLM Stellar Asset Contract — the default settlement currency. */
 export function nativeTokenAddress(): string {
   return Asset.native().contractId(networkPassphrase);
 }
@@ -191,12 +198,15 @@ export async function pollUntilVisible<T>(
 //
 // The buyer signs the real `buy_edition`/`buy`/`buy_batch` call themselves
 // (the same call anyone paying their own gas would sign) and treasury wraps
-// that already-signed transaction in a fee-bump envelope instead of
-// submitting a second transaction — one ledger close per purchase, and the
-// buyer never spends XLM because treasury, not the buyer, is the fee-bump's
-// fee source. `inclusion_fee`/`network_fee` (now real params on
-// `buy_edition`/`buy`/`buy_batch` — see `contracts/nft_oz/src/lib.rs`) are
-// what let treasury recover the real cost of doing that.
+// that already-signed transaction in a fee-bump envelope instead of the
+// buyer's own account paying the transaction's fee — one ledger close per
+// purchase, and the buyer never spends XLM because treasury, not the buyer,
+// is the fee-bump's fee source. `inclusion_fee`/`network_fee` (real params
+// on `buy_edition`/`buy`/`buy_batch` — see `contracts/nft_oz/src/lib.rs`)
+// are what let treasury recover the real cost of doing that; they replace
+// this contract's old on-chain `inclusion_fee()` lookup (`getInclusionFee`,
+// removed) with a flat app-side constant
+// (`INCLUSION_FEE_IN_PLATFORM_ASSET`/`NETWORK_FEE_IN_PLATFORM_ASSET`).
 //
 // Two shapes, depending on who's holding the signing key:
 //   - Custodial: server holds the buyer's secret, so build → sign → fee-bump
@@ -206,10 +216,10 @@ export async function pollUntilVisible<T>(
 //     (never the sign-and-submit wrapper it normally uses) and posts the
 //     signed XDR back to `submitFeeBumpedPurchase`.
 //
-// USD/card checkout (see `fundBuyerForCardPurchase` below) funds the
-// custodial buyer's own account with the ACTION they're about to spend, then
-// converges on the exact same `feeBumpAsCustodialBuyer` path a direct
-// purchase uses — no separate treasury-pays-and-delivers entry point.
+// USD/card checkout (see `fundBuyerForCardPurchase` in
+// `../marketplace/trx/site-asset-recharge`) funds the custodial buyer's own
+// account with the ACTION they're about to spend, then converges on the
+// exact same `feeBumpAsCustodialBuyer` path a direct purchase uses.
 // =============================================================================
 
 /**
@@ -222,10 +232,10 @@ export async function pollUntilVisible<T>(
  * hand-rolling a new confirmation poll — `SentTransaction.init` only reads
  * `assembled.signed` and a handful of `assembled.options` fields, so a
  * minimal object satisfying that shape gets the same exponential-backoff
- * `getTransaction` polling `signAndSend()` already relies on elsewhere in
- * this file, without needing an actual `AssembledTransaction` (which only
- * knows how to build *unsigned* calls, not wrap an arbitrary already-signed
- * one in a fee-bump).
+ * `getTransaction` polling `signAndSend()` already relies on elsewhere,
+ * without needing an actual `AssembledTransaction` (which only knows how to
+ * build *unsigned* calls, not wrap an arbitrary already-signed one in a
+ * fee-bump).
  */
 async function feeBumpAndSubmit(signedInnerTxXdr: string): Promise<string> {
   const treasury = getTreasuryKeypair();
@@ -271,12 +281,11 @@ async function feeBumpAndSubmit(signedInnerTxXdr: string): Promise<string> {
  * `getTransaction` internally (exponential backoff) until the transaction
  * has a definitive SUCCESS/FAILED status — it does *not* return early on a
  * merely-submitted-but-still-pending transaction. That means a *second*,
- * separate confirmation poll after it returns (e.g. Horizon polling via
- * `verifyContractTransaction`) is pure redundant latency, not an extra
- * safety check. This helper is the real safety check: it reads the status
- * already obtained, so a failed submission throws immediately instead of
- * silently returning a hash for a transaction that never actually
- * succeeded.
+ * separate confirmation poll after it returns is pure redundant latency,
+ * not an extra safety check. This helper is the real safety check: it
+ * reads the status already obtained, so a failed submission throws
+ * immediately instead of silently returning a hash for a transaction that
+ * never actually succeeded.
  */
 function requireSentTransactionSucceeded(sent: {
   sendTransactionResponse?: { hash: string };
@@ -299,14 +308,27 @@ function requireSentTransactionSucceeded(sent: {
  * signer (an `{email}`/`{isAdmin}` `SignUserType`) — this is never the path
  * for a wallet-connected buyer, who signs client-side instead (see
  * `submitFeeBumpedPurchase`).
+ *
+ * `expect` is required even though every current caller builds `xdr` itself a
+ * few lines earlier, so nothing attacker-controlled reaches here today. That
+ * safety is a convention, not a rule the types enforce — and the failure mode
+ * if a later call site passes a client-supplied envelope is treasury paying
+ * that envelope's fee, the same drain `assertIsExpectedPurchaseCall` exists to
+ * stop on the wallet path. Making the expectation an argument turns the
+ * convention into something a new caller has to answer for.
  */
 export async function feeBumpAsCustodialBuyer({
   xdr,
   signWith,
+  expect,
 }: {
   xdr: string;
   signWith: SignUserType;
+  expect: ExpectedPurchaseCall;
 }): Promise<string> {
+  // Checked before signing, not after: there is no reason to spend the
+  // buyer's custodial signature on an envelope this would then refuse.
+  assertIsExpectedPurchaseCall(xdr, expect);
   const { xdr: signedXdr, fullySignedByServer } = await signArtXdr({ xdr, signWith });
   if (!fullySignedByServer) {
     throw new Error("feeBumpAsCustodialBuyer requires a custodial signer (signWith must be set)");
@@ -314,32 +336,121 @@ export async function feeBumpAsCustodialBuyer({
   return feeBumpAndSubmit(signedXdr);
 }
 
+/** What a client-supplied envelope has to prove it is before treasury will
+ *  pay its fee. See `assertIsExpectedPurchaseCall`. */
+export type ExpectedPurchaseCall = {
+  /** The signed-in user. The call's own `buyer` argument must be this account
+   *  — nobody gets treasury's fee-bump for someone else's purchase. */
+  buyerPubKey: string;
+  /** Which contract functions are legitimate here, e.g. `["buy_edition"]`. */
+  fnNames: string[];
+  /** For a primary purchase, the `NftPurchase` row id this confirm call
+   *  claims to be completing — must match the `purchase_ref` baked into the
+   *  signed call, so one purchase's signature can't confirm another. */
+  purchaseRef?: string;
+};
+
+/**
+ * Verifies a client-supplied envelope really is the purchase it claims to be,
+ * before treasury signs a fee-bump for it.
+ *
+ * Without this the confirm endpoints hand `feeBumpAndSubmit` whatever XDR the
+ * client posts, and treasury pays the network fee for it — any transaction at
+ * all, not just a purchase, and not necessarily the caller's own. Since a
+ * fee-bump covers the inner transaction's declared resource fee, a crafted
+ * envelope can make each one arbitrarily expensive, so an authenticated user
+ * could drain treasury's XLM a transaction at a time.
+ *
+ * Structural rather than a byte-comparison against the XDR the server built:
+ * that would need the unsigned envelope persisted per purchase (a schema
+ * change), and would break on any legitimate re-simulation. Checking the call
+ * itself is enough — the envelope must invoke *this* collection contract, one
+ * of the functions this endpoint is for, on behalf of the account that is
+ * actually signed in.
+ */
+function assertIsExpectedPurchaseCall(
+  signedInnerTxXdr: string,
+  expect: ExpectedPurchaseCall,
+): void {
+  const tx = TransactionBuilder.fromXDR(signedInnerTxXdr, networkPassphrase);
+  if (!(tx instanceof Transaction)) {
+    throw new Error("Expected a transaction envelope, not a fee-bump envelope");
+  }
+
+  // Soroban permits exactly one operation per invocation, so anything else is
+  // already not a contract call this app produced.
+  if (tx.operations.length !== 1) {
+    throw new Error(`Expected exactly one operation, got ${tx.operations.length}`);
+  }
+  const op = tx.operations[0]!;
+  if (op.type !== "invokeHostFunction") {
+    throw new Error(`Expected a contract invocation, got "${op.type}"`);
+  }
+
+  const hostFn = op.func;
+  if (hostFn.switch() !== xdr.HostFunctionType.hostFunctionTypeInvokeContract()) {
+    throw new Error("Expected a contract invocation host function");
+  }
+  const invocation = hostFn.invokeContract();
+
+  const contractId = Address.fromScAddress(invocation.contractAddress()).toString();
+  const expectedContract = requireContractConstant(ART_NFT_CONTRACT_ID, "ART_NFT_CONTRACT_ID");
+  if (contractId !== expectedContract) {
+    throw new Error(`Refusing to fee-bump a call to ${contractId}`);
+  }
+
+  const fnName = invocation.functionName().toString();
+  if (!expect.fnNames.includes(fnName)) {
+    throw new Error(`Refusing to fee-bump "${fnName}" here`);
+  }
+
+  // Every buy entry point takes the buyer as its first argument.
+  const args = invocation.args();
+  const buyer = args[0] ? (scValToNative(args[0]) as unknown) : undefined;
+  if (typeof buyer !== "string" || buyer !== expect.buyerPubKey) {
+    throw new Error("Refusing to fee-bump a purchase for a different account");
+  }
+
+  // `purchase_ref` is `buy_edition`'s third argument (buyer, edition_ref,
+  // purchase_ref, ...) — pins this signature to the purchase being confirmed.
+  if (expect.purchaseRef !== undefined) {
+    const ref = args[2] ? (scValToNative(args[2]) as unknown) : undefined;
+    if (ref !== expect.purchaseRef) {
+      throw new Error("Signed purchase does not match the purchase being confirmed");
+    }
+  }
+}
+
 /**
  * The external-wallet second call: the client already signed the XDR
  * `buildBuyEditionXDR`/`buildBuyXDR`/`buildBuyBatchXDR` returned, using that
  * wallet's own sign-only function — this just wraps it in treasury's
  * fee-bump and submits.
+ *
+ * `expect` is mandatory: treasury pays the fee for whatever this submits, so
+ * the envelope has to be checked against the caller's session before it is
+ * signed. See `assertIsExpectedPurchaseCall`.
  */
-export async function submitFeeBumpedPurchase(signedInnerTxXdr: string): Promise<string> {
+export async function submitFeeBumpedPurchase(
+  signedInnerTxXdr: string,
+  expect: ExpectedPurchaseCall,
+): Promise<string> {
+  assertIsExpectedPurchaseCall(signedInnerTxXdr, expect);
   return feeBumpAndSubmit(signedInnerTxXdr);
 }
 
 // -----------------------------------------------------------------------------
 // Account activation / trustline — the preconditions a fee-bumped purchase
-// needs that a plain balance check doesn't cover. See the plan's Part D
-// (activation) and Part E (trustline) for the reasoning.
+// needs that a plain balance check doesn't cover.
 // -----------------------------------------------------------------------------
 
 /**
- * Whether `pubKey` is a real account on the ledger at all. A custodial
- * sign-up does *not* create one — that only happens through the existing
- * paid $2 flow (`ActivationModal`/`PayForActivation`,
- * `src/lib/stellar/auth/account-activation.ts`). A *direct* purchase (an
- * external wallet, or a custodial buyer paying in Platform Asset) must
- * never silently pay to create one on the buyer's behalf (see
- * `fundBuyerForCardPurchase`'s doc comment) — the caller is expected to
- * check this first and send an unactivated buyer to that existing flow
- * instead.
+ * Whether `pubKey` is a real account on the ledger at all. A *direct*
+ * purchase (an external wallet, or a custodial buyer paying in Platform
+ * Asset) must never silently pay to create one on the buyer's behalf —
+ * the caller is expected to check this first and send an unactivated
+ * buyer to the existing account-activation flow instead (see
+ * `ensureBuyerReady`).
  *
  * The one deliberate exception is a custodial buyer's card/USD purchase
  * (`buyEditionWithCard`/`buyBatchWithCard`): the server already holds
@@ -365,6 +476,54 @@ export async function hasPlatformAssetTrustline(pubKey: string): Promise<boolean
   }
 }
 
+// =============================================================================
+// Writes
+// =============================================================================
+
+/**
+ * Surfaces a failed Soroban simulation with its real contract error instead
+ * of letting it through silently. Without this, `AssembledTransaction` falls
+ * back to the *unprepared* transaction (no Soroban resource data attached)
+ * whenever simulation didn't succeed, and a caller that just calls `.toXDR()`
+ * hands that broken transaction on to be signed and submitted anyway —
+ * Stellar Core then rejects it with a generic, useless `txMalformed` instead
+ * of the actual reason (e.g. one of this contract's own `panic_with_error!`
+ * guards, like `buy_edition`'s "fee reimbursement exceeds the item's price"
+ * check). `simulationData` is the SDK's own accessor for this: touching it
+ * throws `SimulationFailed` with the real contract error text when
+ * simulation didn't succeed, so that's all this needs to do.
+ */
+function assertSimulated(tx: { simulationData: unknown }): void {
+  void tx.simulationData;
+}
+
+/**
+ * Buys `quantity` copies of an edition, minting them straight to the buyer.
+ *
+ * The *first* purchase of a given `editionRef` also registers the edition
+ * on-chain from the fields passed here — this is why creating a listing
+ * never asks the creator for a signature: the creator only signs nothing at
+ * all, ever, and the buyer's purchase is what puts the edition on-chain.
+ * Every later purchase of the same `editionRef` mints the next range against
+ * the already-registered edition and ignores these descriptive fields.
+ */
+/**
+ * Registers an edition on-chain ahead of its first sale, returning its
+ * on-chain edition id. Signed and submitted by the price authority alone —
+ * same shape as `updateEditionOnChain`/`unlockItemFor`, no buyer or creator
+ * signature involved.
+ *
+ * This must happen before the edition's first `buy_edition`, which no longer
+ * creates editions itself. That split is a security fix, not a refactor:
+ * creation used to happen inside `buy_edition` from caller-supplied data, so
+ * whoever called first for a given `edition_ref` — a value published in every
+ * listing URL — permanently defined that edition's creator, price, royalty
+ * and supply. See `register_edition`'s doc comment in
+ * `contracts/nft_oz/src/lib.rs`.
+ *
+ * Idempotent on the contract side, so a retried call for an already-
+ * registered ref safely returns the existing id rather than failing.
+ */
 /**
  * The one step treasury can't do for a wallet-connected buyer by itself:
  * only the account owner can authorize a new trustline. Builds a
@@ -499,7 +658,7 @@ export async function fundBuyerForCardPurchase({
  * This is the real, exact cost of activating a brand-new account that's
  * only ever going to hold the platform asset — not a padded estimate.
  */
-export const ACCOUNT_ACTIVATION_RESERVE_XLM = "1.5";
+export const ACCOUNT_ACTIVATION_RESERVE_XLM = "2.5"; // matches ACCOUNT_ACTIVATION_COST_XLM in constant.ts
 
 /**
  * Activates a custodial card buyer's Stellar account and establishes its
@@ -578,27 +737,7 @@ function rawPriceToDecimalString(raw: bigint): string {
   return `${whole}.${frac.toString().padStart(7, "0")}`;
 }
 
-// =============================================================================
-// Writes — buy_edition/buy/buy_batch/list/list_batch. `buy_edition`/`buy`/
-// `buy_batch` are the app's own primary purchase path now (see the
-// fee-bump section above) — every build here is deliberately *unsigned*
-// (no `.sign()`/`.signAndSend()` call), so the same builder serves both the
-// custodial fee-bump path (server signs afterward) and the external-wallet
-// path (the client signs the returned XDR itself).
-// =============================================================================
-
-/**
- * Buys `quantity` copies of an edition, minting them straight to the buyer.
- *
- * The *first* purchase of a given `editionRef` also registers the edition
- * on-chain from the fields passed here — this is why creating a listing
- * never asks the creator for a signature: the creator only signs nothing at
- * all, ever, and the buyer's purchase is what puts the edition on-chain.
- * Every later purchase of the same `editionRef` mints the next range against
- * the already-registered edition and ignores these descriptive fields.
- */
-export async function buildBuyEditionXDR({
-  buyerPubKey,
+export async function registerEditionOnChain({
   editionRef,
   title,
   description,
@@ -609,13 +748,7 @@ export async function buildBuyEditionXDR({
   royaltyBps,
   supply,
   prices,
-  purchaseRef,
-  paymentToken,
-  quantity,
-  inclusionFeeRaw,
-  networkFeeRaw,
 }: {
-  buyerPubKey: string;
   /** The `Nft` row id — lets `edition_by_ref` resolve the edition later. */
   editionRef: string;
   title: string;
@@ -628,20 +761,9 @@ export async function buildBuyEditionXDR({
   supply: number;
   /** The edition's full price grid, raw units per currency. */
   prices: { paymentToken: string; priceRaw: bigint }[];
-  /** The `NftPurchase` row id — lets `purchase_by_ref` resolve this specific
-   *  attempt's minted range afterwards, robust to concurrent purchases of
-   *  the same edition (see the contract's doc comment for why). */
-  purchaseRef: string;
-  paymentToken: string;
-  quantity: number;
-  /** Raw units, reimbursing treasury for fee-bumping this purchase — see
-   *  the fee-bump section above. `0n` for a call that isn't fee-bumped
-   *  (there isn't one in this app's own UI, but the contract itself allows
-   *  it for a self-sovereign caller paying their own gas). */
-  inclusionFeeRaw: bigint;
-  networkFeeRaw: bigint;
-}): Promise<string> {
-  const client = getClient(buyerPubKey);
+}): Promise<number> {
+  const keypair = Keypair.fromSecret(getPriceAuthoritySecret());
+  const client = getClient(keypair.publicKey());
   const edition: EditionInput = {
     title,
     description,
@@ -655,11 +777,98 @@ export async function buildBuyEditionXDR({
       (p): PriceEntry => ({ payment_token: p.paymentToken, price: p.priceRaw }),
     ),
   };
+  const tx = await client.register_edition(
+    { caller: keypair.publicKey(), edition_ref: editionRef, edition },
+    { fee: SOROBAN_INCLUSION_FEE },
+  );
+  assertSimulated(tx);
+
+  const sent = await tx.signAndSend({
+    signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,
+  });
+  requireSentTransactionSucceeded(sent);
+
+  // The submitted call's return value can't be decoded off a confirmed
+  // transaction with this repo's pinned SDK (see `pollTransactionSuccess`),
+  // so read the id back the same way every other post-submit lookup does.
+  const editionId = await pollUntilVisible(() => getEditionByRef(editionRef));
+  if (editionId === null) {
+    throw new Error(`register_edition succeeded but edition_by_ref(${editionRef}) is still empty`);
+  }
+  return editionId;
+}
+
+/**
+ * Signs treasury's authorization entry on an assembled purchase.
+ *
+ * `buy_edition`/`buy`/`buy_batch` require treasury's authorization as well as
+ * the buyer's, so that the `inclusion_fee`/`network_fee` arguments can only
+ * ever be the ones treasury agreed to — a buyer assembling their own envelope
+ * cannot zero them, because a Soroban authorization commits to the exact call
+ * *and its arguments* (see `require_treasury_auth` in the contract).
+ *
+ * This is a different signature from the fee-bump treasury already applies.
+ * That one says "treasury pays this transaction's network fee" and lives on
+ * the outer envelope; this one says "treasury approves this call" and lives
+ * inside it. Signing the outside proves nothing about the inside, which is
+ * exactly why the fee argument was forgeable before.
+ *
+ * Done at build time so the XDR handed to a wallet already carries it — the
+ * buyer then only ever signs their own half, and the client round-trip is
+ * unchanged.
+ */
+async function signPurchaseAsTreasury<T>(tx: AssembledTransaction<T>): Promise<void> {
+  const treasury = getTreasuryKeypair();
+  const pending = tx.needsNonInvokerSigningBy();
+  if (!pending.includes(treasury.publicKey())) {
+    // Simulation didn't ask for treasury — either the deployed contract
+    // predates `require_treasury_auth`, or something is wrong with how this
+    // call was assembled. Either way, signing nothing here would produce an
+    // envelope that fails at submission for no obvious reason.
+    throw new Error(
+      `Assembled purchase does not require treasury authorization (needs: ${pending.join(", ") || "none"}) — is the deployed contract older than v10?`,
+    );
+  }
+  // No `expiration` override. The SDK defaults an auth entry to ~8.3 minutes,
+  // and the transaction's own timebound is `DEFAULT_TIMEOUT` (5 minutes) — so
+  // the envelope always expires before the authorization does, and raising the
+  // authorization's lifetime buys nothing. If an external-wallet buyer ever
+  // needs longer to approve, the lever is the *transaction* timeout, not this.
+  await tx.signAuthEntries({
+    address: treasury.publicKey(),
+    signAuthEntry: basicNodeSigner(treasury, networkPassphrase).signAuthEntry,
+  });
+}
+
+export async function buildBuyEditionXDR({
+  buyerPubKey,
+  editionRef,
+  purchaseRef,
+  paymentToken,
+  quantity,
+  inclusionFeeRaw,
+  networkFeeRaw,
+}: {
+  buyerPubKey: string;
+  /** The `Nft` row id — must already be registered via
+   *  `registerEditionOnChain`; `buy_edition` only resolves it. */
+  editionRef: string;
+  /** The `NftPurchase` row id — lets `purchase_by_ref` resolve this specific
+   *  attempt's minted range afterwards, robust to concurrent purchases of
+   *  the same edition (see the contract's doc comment for why). */
+  purchaseRef: string;
+  paymentToken: string;
+  quantity: number;
+  /** Raw units, reimbursing treasury for fee-bumping this purchase — see
+   *  the fee-bump section above. */
+  inclusionFeeRaw: bigint;
+  networkFeeRaw: bigint;
+}): Promise<string> {
+  const client = getClient(buyerPubKey);
   const tx = await client.buy_edition(
     {
       buyer: buyerPubKey,
       edition_ref: editionRef,
-      edition,
       purchase_ref: purchaseRef,
       payment_token: paymentToken,
       quantity,
@@ -668,6 +877,8 @@ export async function buildBuyEditionXDR({
     },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
+  await signPurchaseAsTreasury(tx);
   return tx.toXDR();
 }
 
@@ -693,6 +904,7 @@ export async function buildListXDR({
     },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
   return tx.toXDR();
 }
 
@@ -722,6 +934,7 @@ export async function buildListBatchXDR({
     },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
   return tx.toXDR();
 }
 
@@ -737,6 +950,7 @@ export async function buildCancelListingXDR({
     { seller: sellerPubKey, token_id: tokenId },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
   return tx.toXDR();
 }
 
@@ -771,6 +985,8 @@ export async function buildBuyXDR({
     },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
+  await signPurchaseAsTreasury(tx);
   return tx.toXDR();
 }
 
@@ -779,7 +995,10 @@ export async function buildBuyXDR({
  * signature instead of one `buy` call per token. The common case: a buyer
  * taking N copies pooled across one or more resale listings for the same
  * edition. Listings can belong to different sellers; each settles exactly
- * as an individual `buy` would.
+ * as an individual `buy` would. `inclusionFeeRaw`/`networkFeeRaw` are
+ * charged once for the whole batch, not once per token — there's only one
+ * real transaction underneath regardless of how many tokens it settles
+ * (see `buy_batch`'s doc comment in `contracts/nft_oz/src/lib.rs`).
  */
 export async function buildBuyBatchXDR({
   buyerPubKey,
@@ -805,6 +1024,8 @@ export async function buildBuyBatchXDR({
     },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
+  await signPurchaseAsTreasury(tx);
   return tx.toXDR();
 }
 
@@ -822,6 +1043,7 @@ export async function buildTransferXDR({
     { from: fromPubKey, to: toPubKey, token_id: tokenId },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
   return tx.toXDR();
 }
 
@@ -839,6 +1061,7 @@ export async function buildSetPlatformFeeXDR({
     { fee_bps: feeBps, treasury },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
   return tx.toXDR();
 }
 
@@ -867,6 +1090,7 @@ export async function unlockItemFor({
     { caller: keypair.publicKey(), token_id: tokenId, media_index: mediaIndex },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
   const sent = await tx.signAndSend({
     signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,
   });
@@ -878,16 +1102,12 @@ export async function unlockItemFor({
  * signed and submitted in one step by the price authority, same shape as
  * `unlockItemFor`. No creator signature involved.
  *
- * Unlike every other write in this file, this one asserts the simulation
- * actually succeeded before submitting. Every other builder here is
- * deliberately unsigned XDR that a caller signs later (see this file's
- * module doc — a failed simulation there just produces a malformed
- * transaction that surfaces as an opaque `tx_malformed` at signing time,
- * which is fine when a human is about to look at a wallet prompt anyway).
- * This builder signs and submits itself with no human in the loop, so
- * `nft.update`'s caller needs the *real* on-chain rejection reason (e.g.
- * "supply can't go below what's already minted") surfaced as a thrown
- * error here, not several layers of opaque failure down.
+ * Unlike a builder that hands back unsigned XDR for later signing, this
+ * one signs and submits itself with no human in the loop, so it uses
+ * `requireSentTransactionSucceeded` (already defined above in this file)
+ * rather than returning a hash unconditionally — a transaction that gets
+ * included but fails on-chain must surface as a thrown error here, not be
+ * silently reported as success.
  */
 export async function updateEditionOnChain({
   priceAuthoritySecret,
@@ -925,10 +1145,6 @@ export async function updateEditionOnChain({
   );
 
   try {
-    // Accessing this getter is what forces the SDK to inspect the
-    // simulation result — it throws with the real panic reason
-    // (`AssembledTransaction.Errors.SimulationFailed`) if the call would
-    // fail on-chain, before this ever reaches `signAndSend`.
     void tx.simulationData;
   } catch (e) {
     throw new Error(
@@ -950,9 +1166,19 @@ export async function updateEditionOnChain({
  * `package/express-wadzzo`) so a long-dormant edition or token never
  * actually reaches Soroban's TTL/state-archival expiry — a copy that never
  * trades again would otherwise see no further transaction to trigger that
- * renewal on its own. `editionIds`/`tokenIds` must each stay at or under
- * the contract's `MAX_KEEP_ALIVE_IDS` (200) — the caller is responsible for
- * chunking a longer list across several calls.
+ * renewal on its own. Each list must stay at or under the contract's
+ * `MAX_KEEP_ALIVE_IDS` (200) — the caller is responsible for chunking longer
+ * lists across several calls, and note the caps apply *per list*, so one
+ * edition with many unlocked items can exceed `unlocked` on its own.
+ *
+ * Every key family has to be named explicitly; none can be derived on-chain
+ * from another, and reads don't renew anything (the contract's getters are
+ * plain reads, and this app reads them through simulation, which never
+ * persists a TTL extension). Anything left out of these lists expires:
+ * `editionRefs` losing its entry is the worst case — `buy_edition` then
+ * can't resolve the ref and `register_edition` would register a duplicate
+ * edition rather than find the original. `unlocked` losing one silently
+ * re-locks reward content a holder already earned.
  *
  * `force: true` on `signAndSend`, unlike its siblings: unlike
  * `update_edition`/`unlock_item_for` (which always write something),
@@ -962,19 +1188,188 @@ export async function updateEditionOnChain({
  * simulation reports as a footprint-free "read," which the SDK otherwise
  * refuses to sign and submit.
  */
-export async function keepAliveOnChain({
+/** Stellar closes a ledger about every 5 seconds. Mirrors `DAY_IN_LEDGERS`
+ *  in `contracts/nft_oz/src/lib.rs`. */
+const DAY_IN_LEDGERS = 17_280;
+
+/** How close to expiry the collection's soonest-expiring entry is. */
+export type TtlHealth = {
+  /** Days of life left on the worst entry checked. */
+  daysRemaining: number;
+  /** Which entry that was, e.g. `TokenEdition(84)`. */
+  worst: string;
+  /** How many entries were sampled. */
+  checked: number;
+  /** Entries the ledger no longer has — already expired, or never written. */
+  missing: string[];
+};
+
+/**
+ * Reads how much life the collection's storage has left.
+ *
+ * `keep_alive` failing is silent: nothing errors, entries just quietly age out
+ * months later. This is the check that isn't silent — it reads
+ * `liveUntilLedgerSeq` straight off the ledger, so it measures the thing that
+ * actually matters rather than whether a job reported success.
+ */
+export async function getTtlHealth({
   editionIds,
+  editionRefs,
   tokenIds,
 }: {
   editionIds: number[];
+  editionRefs: string[];
   tokenIds: number[];
+}): Promise<TtlHealth> {
+  const contractId = requireContractConstant(ART_NFT_CONTRACT_ID, "ART_NFT_CONTRACT_ID");
+  const server = new rpc.Server(SOROBAN_RPC_URL);
+
+  const entry = (label: string, key: xdr.ScVal) => ({
+    label,
+    key: xdr.LedgerKey.contractData(
+      new xdr.LedgerKeyContractData({
+        contract: new Address(contractId).toScAddress(),
+        key,
+        durability: xdr.ContractDataDurability.persistent(),
+      }),
+    ),
+  });
+  const variant = (name: string, arg: xdr.ScVal) => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(name), arg]);
+
+  const targets = [
+    ...editionIds.map((id) => entry(`Edition(${id})`, variant("Edition", xdr.ScVal.scvU32(id)))),
+    ...editionRefs.map((r) => entry(`EditionByRef(${r})`, variant("EditionByRef", xdr.ScVal.scvString(r)))),
+    ...tokenIds.map((id) => entry(`TokenEdition(${id})`, variant("TokenEdition", xdr.ScVal.scvU32(id)))),
+  ];
+  if (targets.length === 0) {
+    return { daysRemaining: Number.POSITIVE_INFINITY, worst: "nothing to check", checked: 0, missing: [] };
+  }
+
+  const latest = (await server.getLatestLedger()).sequence;
+  let worstLedger = Number.POSITIVE_INFINITY;
+  let worst = "";
+  const missing: string[] = [];
+
+  // The RPC caps how many keys one request may carry, so walk in batches.
+  const BATCH = 50;
+  for (let i = 0; i < targets.length; i += BATCH) {
+    const slice = targets.slice(i, i + BATCH);
+    const { entries } = await server.getLedgerEntries(...slice.map((t) => t.key));
+    const byXdr = new Map(entries.map((e) => [e.key.toXDR("base64"), e.liveUntilLedgerSeq]));
+    for (const t of slice) {
+      const liveUntil = byXdr.get(t.key.toXDR("base64"));
+      if (liveUntil === undefined) {
+        missing.push(t.label);
+        continue;
+      }
+      if (liveUntil < worstLedger) {
+        worstLedger = liveUntil;
+        worst = t.label;
+      }
+    }
+  }
+
+  return {
+    daysRemaining: worstLedger === Number.POSITIVE_INFINITY ? 0 : (worstLedger - latest) / DAY_IN_LEDGERS,
+    worst: worst || "every entry checked is missing",
+    checked: targets.length,
+    missing,
+  };
+}
+
+/**
+ * The single-kind counterparts to {@link keepAliveOnChain}, for an operator
+ * running a sweep by hand from the admin panel.
+ *
+ * Each renews one kind plus the contract instance, and each enforces its own
+ * cap on-chain — a token can touch four ledger entries where a ref touches
+ * one, so one blanket number would be wrong for both. Mixing kinds is what
+ * overflows a transaction's footprint; here it isn't expressible.
+ */
+export const KEEP_ALIVE_LIMITS = {
+  /** `MAX_TOKENS_PER_CALL` in the contract. */
+  tokens: 25,
+  /** `MAX_EDITIONS_PER_CALL`. */
+  editions: 40,
+  /** `MAX_REFS_PER_CALL`. */
+  refs: 80,
+  /** `MAX_UNLOCKED_PER_CALL`. */
+  unlocked: 80,
+} as const;
+
+async function sendAsTreasury(
+  build: (client: ArtNftClient) => Promise<AssembledTransaction<null>>,
+): Promise<string> {
+  const keypair = getTreasuryKeypair();
+  const tx = await build(getClient(keypair.publicKey()));
+  assertSimulated(tx);
+  const sent = await tx.signAndSend({
+    // `force`, same as `keepAliveOnChain`: these only write TTL metadata, no
+    // contract data, so simulation classifies them read-only and the SDK
+    // would refuse to submit.
+    force: true,
+    signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,
+  });
+  return requireSentTransactionSucceeded(sent);
+}
+
+/** Renews only the contract instance — the entry whose loss breaks everything. */
+export async function keepContractAliveOnChain(): Promise<string> {
+  return sendAsTreasury((c) => c.keep_contract_alive({ fee: SOROBAN_INCLUSION_FEE }));
+}
+
+export async function keepEditionsAliveOnChain(editionIds: number[]): Promise<string> {
+  return sendAsTreasury((c) =>
+    c.keep_editions_alive({ edition_ids: editionIds }, { fee: SOROBAN_INCLUSION_FEE }),
+  );
+}
+
+/** `Nft` row ids — the refs editions were registered under. */
+export async function keepEditionRefsAliveOnChain(editionRefs: string[]): Promise<string> {
+  return sendAsTreasury((c) =>
+    c.keep_edition_refs_alive({ edition_refs: editionRefs }, { fee: SOROBAN_INCLUSION_FEE }),
+  );
+}
+
+export async function keepTokensAliveOnChain(tokenIds: number[]): Promise<string> {
+  return sendAsTreasury((c) =>
+    c.keep_tokens_alive({ token_ids: tokenIds }, { fee: SOROBAN_INCLUSION_FEE }),
+  );
+}
+
+/** `[tokenId, mediaIndex]` pairs — `NftLockedMedia.chainIndex`, not its row id. */
+export async function keepUnlockedAliveOnChain(unlocked: [number, number][]): Promise<string> {
+  return sendAsTreasury((c) =>
+    c.keep_unlocked_alive({ unlocked }, { fee: SOROBAN_INCLUSION_FEE }),
+  );
+}
+
+export async function keepAliveOnChain({
+  editionIds,
+  editionRefs,
+  tokenIds,
+  unlocked,
+}: {
+  editionIds: number[];
+  /** `Nft` row ids — the `edition_ref` each edition was registered under. */
+  editionRefs: string[];
+  tokenIds: number[];
+  /** `[tokenId, mediaIndex]` pairs — `NftLockedMedia.chainIndex`, not its
+   *  database id (see `unlockItemFor`). */
+  unlocked: [number, number][];
 }): Promise<string> {
   const keypair = getTreasuryKeypair();
   const client = getClient(keypair.publicKey());
   const tx = await client.keep_alive(
-    { edition_ids: editionIds, token_ids: tokenIds },
+    {
+      edition_ids: editionIds,
+      edition_refs: editionRefs,
+      token_ids: tokenIds,
+      unlocked,
+    },
     { fee: SOROBAN_INCLUSION_FEE },
   );
+  assertSimulated(tx);
   const sent = await tx.signAndSend({
     force: true,
     signTransaction: basicNodeSigner(keypair, networkPassphrase).signTransaction,

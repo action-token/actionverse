@@ -33,6 +33,10 @@ export const env = createEnv({
 
     STORAGE_SECRET: z.string(),
     MOTHER_SECRET: z.string(),
+    // Shared secret sent as the `uid` query param to the stellar-accounts
+    // service's ruby_acc endpoint (see getAccSecretFromRubyApi) — was
+    // previously hardcoded in the public connect_wallet repo's source.
+    RUBY_ACCOUNTS_SECRET: z.string(),
     // The nft_oz contract's stored `Treasury` address needs its own signer
     // to fee-bump every direct/card ACTION purchase and to fund a card
     // buyer's account/trustline (see src/lib/stellar/oz/treasury.ts).
@@ -126,6 +130,7 @@ export const env = createEnv({
     NEXT_PUBLIC_HOME_DOMAIN: process.env.NEXT_PUBLIC_HOME_DOMAIN,
     NEXT_PUBLIC_URL: process.env.NEXT_PUBLIC_URL,
     MOTHER_SECRET: process.env.MOTHER_SECRET,
+    RUBY_ACCOUNTS_SECRET: process.env.RUBY_ACCOUNTS_SECRET,
     TREASURY_SECRET: process.env.TREASURY_SECRET,
     STORAGE_SECRET: process.env.STORAGE_SECRET,
     PINATA_JWT: process.env.PINATA_JWT,

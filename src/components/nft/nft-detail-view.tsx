@@ -1,4 +1,4 @@
-import { Info, Loader2, Lock, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
+import { Loader2, Lock, Minus, Pencil, Plus, ShoppingBag, Tag } from "lucide-react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
@@ -6,8 +6,10 @@ import { BlockchainInsights } from "~/components/nft/blockchain-insights";
 import { PlaceholderArt } from "~/components/nft/placeholder-art";
 import { priceTokenLabel } from "~/components/nft/nft-card";
 import { BuyNftWithCard } from "~/components/payment/buy-nft-with-card";
+import { GuestBuyNftWithCard } from "~/components/payment/guest-buy-nft-with-card";
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store";
 import { cn } from "~/lib/utils";
-import { DEFAULT_PLATFORM_FEE_BPS, LISTING_PRICE_FLOOR_MARGIN } from "~/lib/stellar/constant";
+import { DEFAULT_PLATFORM_FEE_BPS } from "~/lib/stellar/constant";
 import { Button } from "~/components/shadcn/ui/button";
 import { Input } from "~/components/shadcn/ui/input";
 import {
@@ -16,7 +18,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "~/components/shadcn/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/shadcn/ui/tooltip";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
 import { InsufficientAssetBalance } from "~/components/payment/insufficient-asset-balance";
 import { useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
@@ -133,6 +134,22 @@ function FeeUnavailableButton() {
         Couldn't fetch the current network fee — try again in a moment.
       </p>
     </div>
+  );
+}
+
+/** Small link shown alongside the guest checkout — for a visitor who'd
+ *  rather sign in with an existing account (wallet or custodial) than buy
+ *  as a guest. Card checkout itself never requires a session at all. */
+function GuestLogInInstead() {
+  const setLoginModalOpen = useLoginRequiredModalStore((s) => s.setIsOpen);
+  return (
+    <button
+      type="button"
+      onClick={() => setLoginModalOpen(true)}
+      className="w-full text-center text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+    >
+      Already have an account? Log in instead
+    </button>
   );
 }
 
@@ -390,14 +407,6 @@ export function ManagePriceCard({
   isSaving: boolean;
   network?: string;
 }) {
-  // Live floor for a resale listing's Platform Asset price — `buy`/
-  // `buy_batch` refuse any purchase where `inclusion_fee + network_fee >
-  // total` (see `contracts/nft_oz/src/lib.rs`'s `InvalidAmount` guard), same
-  // check as the primary-sale price form in `smart-contract/create.tsx`.
-  const feePreview = api.nft.getInclusionAndNetworkFeePreview.useQuery({ quantity: 1 });
-  const minPriceAsset = feePreview.data
-    ? (feePreview.data.inclusionFee + feePreview.data.networkFee) * LISTING_PRICE_FLOOR_MARGIN
-    : null;
 
   if (myTokens.length === 0) {
     return (
@@ -428,7 +437,6 @@ export function ManagePriceCard({
           tokens={unlisted}
           onListMultiple={onListMultiple}
           isSaving={isSaving}
-          minPriceAsset={minPriceAsset}
         />
       )}
 
@@ -439,7 +447,6 @@ export function ManagePriceCard({
           isSaving={isSaving}
           onList={(prices) => onListToken?.(token.tokenId, prices)}
           onCancel={() => onCancelListing?.(token.tokenId)}
-          minPriceAsset={minPriceAsset}
         />
       ))}
     </div>
@@ -456,11 +463,13 @@ export function ManagePriceCard({
  * "list N" still signs N transactions under the hood — `onListMultiple`
  * loops them sequentially — but the UI presents it as one action.
  */
+const MAX_PRICE_ASSET = 100_000_000;
+const MAX_PRICE_USD = 100_000;
+
 function HoldAndListCard({
   tokens,
   onListMultiple,
   isSaving,
-  minPriceAsset,
 }: {
   tokens: MyToken[];
   onListMultiple?: (
@@ -468,7 +477,6 @@ function HoldAndListCard({
     prices: { paymentToken: NftDisplayCurrency; price: number }[],
   ) => void | Promise<void>;
   isSaving: boolean;
-  minPriceAsset: number | null;
 }) {
   const heldCount = tokens.length;
   // Listing is capped at MAX_LIST_BATCH per action even if the seller holds
@@ -483,17 +491,10 @@ function HoldAndListCard({
   const [priceUsd, setPriceUsd] = useState("");
   const parsedAsset = Number(priceAsset) || 0;
   const parsedUsd = Number(priceUsd) || 0;
-  const belowFloor = minPriceAsset !== null && parsedAsset > 0 && parsedAsset < minPriceAsset;
-  const hasBothPrices = parsedAsset > 0 && parsedUsd > 0 && !belowFloor;
 
-  // Pre-fills with the live floor the moment it loads — this is a fresh
-  // listing, so there's no existing price to preserve yet.
-  useEffect(() => {
-    if (minPriceAsset !== null && priceAsset === "") {
-      setPriceAsset(minPriceAsset.toFixed(2));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minPriceAsset]);
+  const isAssetValid = parsedAsset > 0 && parsedAsset <= MAX_PRICE_ASSET;
+  const isUsdValid = parsedUsd > 0 && parsedUsd <= MAX_PRICE_USD;
+  const hasBothPrices = isAssetValid && isUsdValid;
 
   function submit() {
     onListMultiple?.(tokens.slice(0, count).map((t) => t.tokenId), [
@@ -540,25 +541,12 @@ function HoldAndListCard({
           : `You hold ${heldCount}`}
       </p>
 
-      <p className="mt-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Price per copy
-        {minPriceAsset !== null && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="h-3.5 w-3.5 cursor-help normal-case" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p>
-                  Minimum right now: {minPriceAsset.toFixed(2)} {priceTokenLabel("asset")} — below
-                  this, the network fee would cost more than the item itself and purchases would be
-                  rejected.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </p>
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Price per copy
+        </p>
+        <span className="text-[10px] text-muted-foreground">Max 100M / $100k</span>
+      </div>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Both currencies are required — buyers pick which to pay with.
       </p>
@@ -568,36 +556,45 @@ function HoldAndListCard({
             <span className="text-xs font-bold text-foreground">{priceTokenLabel("asset")}</span>
             <Input
               type="number"
-              min={minPriceAsset ?? 0}
+              min={0.0000001}
+              max={MAX_PRICE_ASSET}
               step="any"
               value={priceAsset}
               onChange={(e) => setPriceAsset(e.target.value)}
               placeholder="e.g. 5"
-              className="h-10 font-bold tabular-nums"
+              className={cn("h-10 font-bold tabular-nums", priceAsset && !isAssetValid && "border-destructive")}
             />
           </div>
-          {belowFloor && (
-            <p className="mt-1 text-xs text-destructive">Price is below the minimum.</p>
-          )}
+          {priceAsset && parsedAsset <= 0 ? (
+            <p className="mt-1 text-[11px] text-destructive">Must be &gt; 0.</p>
+          ) : priceAsset && parsedAsset > MAX_PRICE_ASSET ? (
+            <p className="mt-1 text-[11px] text-destructive">Max {MAX_PRICE_ASSET.toLocaleString()}</p>
+          ) : null}
         </div>
         <div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-bold text-foreground">USD</span>
             <Input
               type="number"
-              min={0}
-              step="any"
+              min={0.01}
+              max={MAX_PRICE_USD}
+              step="0.01"
               value={priceUsd}
               onChange={(e) => setPriceUsd(e.target.value)}
               placeholder="e.g. 10"
-              className="h-10 font-bold tabular-nums"
+              className={cn("h-10 font-bold tabular-nums", priceUsd && !isUsdValid && "border-destructive")}
             />
           </div>
-          {(parsedAsset <= 0 || parsedUsd <= 0) && (
-            <p className="mt-1 text-xs text-destructive">Set a price in both currencies.</p>
-          )}
+          {priceUsd && parsedUsd <= 0 ? (
+            <p className="mt-1 text-[11px] text-destructive">Must be &gt; 0.</p>
+          ) : priceUsd && parsedUsd > MAX_PRICE_USD ? (
+            <p className="mt-1 text-[11px] text-destructive">Max ${MAX_PRICE_USD.toLocaleString()}</p>
+          ) : null}
         </div>
       </div>
+      {(!priceAsset || !priceUsd) && (
+        <p className="mt-1 text-xs text-destructive">Set a price in both currencies.</p>
+      )}
 
       <ListButton
         isSaving={isSaving}
@@ -615,20 +612,17 @@ function TokenListingRow({
   isSaving,
   onList,
   onCancel,
-  minPriceAsset,
 }: {
   token: MyToken;
   isSaving: boolean;
   onList: (prices: { paymentToken: NftDisplayCurrency; price: number }[]) => void | Promise<void>;
   onCancel: () => void | Promise<void>;
-  minPriceAsset: number | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [priceAsset, setPriceAsset] = useState("1");
   const [priceUsd, setPriceUsd] = useState("");
   const parsedAsset = Number(priceAsset) || 0;
   const parsedUsd = Number(priceUsd) || 0;
-  const belowFloor = minPriceAsset !== null && parsedAsset > 0 && parsedAsset < minPriceAsset;
 
   function startEditing() {
     setPriceAsset(String(token.listingPrices.find((p) => p.paymentToken === "asset")?.price ?? 1));
@@ -663,55 +657,54 @@ function TokenListingRow({
               <div className="flex items-center gap-1.5">
                 <span className="flex items-center gap-1 text-xs font-bold text-foreground">
                   {priceTokenLabel("asset")}
-                  {minPriceAsset !== null && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 cursor-help font-normal text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p>
-                            Minimum right now: {minPriceAsset.toFixed(2)} {priceTokenLabel("asset")} —
-                            below this, the network fee would cost more than the item itself and
-                            purchases would be rejected.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
                 </span>
                 <Input
                   type="number"
-                  min={minPriceAsset ?? 0}
+                  min={0.0000001}
+                  max={MAX_PRICE_ASSET}
                   step="any"
                   autoFocus
                   value={priceAsset}
                   onChange={(e) => setPriceAsset(e.target.value)}
-                  className="h-10 font-bold tabular-nums"
+                  className={cn(
+                    "h-10 font-bold tabular-nums",
+                    priceAsset && (parsedAsset <= 0 || parsedAsset > MAX_PRICE_ASSET) && "border-destructive",
+                  )}
                 />
               </div>
-              {belowFloor && (
-                <p className="mt-1 text-xs text-destructive">Price is below the minimum.</p>
-              )}
+              {priceAsset && parsedAsset <= 0 ? (
+                <p className="mt-1 text-[11px] text-destructive">Must be &gt; 0.</p>
+              ) : priceAsset && parsedAsset > MAX_PRICE_ASSET ? (
+                <p className="mt-1 text-[11px] text-destructive">Max {MAX_PRICE_ASSET.toLocaleString()}</p>
+              ) : null}
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-bold text-foreground">USD</span>
                 <Input
                   type="number"
-                  min={0}
-                  step="any"
+                  min={0.01}
+                  max={MAX_PRICE_USD}
+                  step="0.01"
                   value={priceUsd}
                   onChange={(e) => setPriceUsd(e.target.value)}
                   placeholder="e.g. 10"
-                  className="h-10 font-bold tabular-nums"
+                  className={cn(
+                    "h-10 font-bold tabular-nums",
+                    priceUsd && (parsedUsd <= 0 || parsedUsd > MAX_PRICE_USD) && "border-destructive",
+                  )}
                 />
               </div>
-              {(parsedAsset <= 0 || parsedUsd <= 0) && (
-                <p className="mt-1 text-xs text-destructive">Set a price in both currencies.</p>
-              )}
+              {priceUsd && parsedUsd <= 0 ? (
+                <p className="mt-1 text-[11px] text-destructive">Must be &gt; 0.</p>
+              ) : priceUsd && parsedUsd > MAX_PRICE_USD ? (
+                <p className="mt-1 text-[11px] text-destructive">Max ${MAX_PRICE_USD.toLocaleString()}</p>
+              ) : null}
             </div>
           </div>
+          {(parsedAsset <= 0 || parsedUsd <= 0) && (
+            <p className="mt-1 text-xs text-destructive">Set a price in both currencies.</p>
+          )}
           <div className="mt-3 flex gap-2">
             <Button
               size="sm"
@@ -725,7 +718,7 @@ function TokenListingRow({
             <ListButton
               size="sm"
               isSaving={isSaving}
-              disabled={parsedAsset <= 0 || parsedUsd <= 0 || belowFloor}
+              disabled={parsedAsset <= 0 || parsedUsd <= 0 || parsedAsset > MAX_PRICE_ASSET || parsedUsd > MAX_PRICE_USD}
               onClick={async () => {
                 await submit();
                 setEditing(false);
@@ -800,6 +793,7 @@ export function ResaleBuyCard({
   onBuy,
   isBuying,
   onCardPurchaseSuccess,
+  onGuestCardPurchaseSuccess,
 }: {
   listings: ByIdNft["resaleListings"];
   viewerId?: string;
@@ -809,6 +803,9 @@ export function ResaleBuyCard({
    *  successful "Pay with card" purchase of the cheapest USD-priced
    *  resale listing (see below). */
   onCardPurchaseSuccess?: () => void | Promise<void>;
+  /** Guest (no-session) card checkout — called with the email the purchase
+   *  landed in, once `GuestBuyNftWithCard` below completes. */
+  onGuestCardPurchaseSuccess?: (email: string) => void | Promise<void>;
 }) {
   const { data: session } = useSession();
   const isCustodial = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
@@ -850,8 +847,9 @@ export function ResaleBuyCard({
   // before. `userChangedCurrency` stops this default from clobbering a
   // buyer's own tap on the currency switcher below — including the case
   // where `isCustodial` only resolves (from `useSession`) a moment after
-  // mount.
-  const preferredCurrency: "asset" | "usd" = isCustodial ? "usd" : "asset";
+  // mount. A logged-out guest defaults to "usd" too — the asset tab needs a
+  // connected wallet, which a guest doesn't have yet.
+  const preferredCurrency: "asset" | "usd" = isCustodial || !session?.user ? "usd" : "asset";
   const userChangedCurrency = useRef(false);
   useEffect(() => {
     if (userChangedCurrency.current) return;
@@ -1069,6 +1067,16 @@ export function ResaleBuyCard({
 
             {usdQuoteFailed ? (
               <FeeUnavailableButton />
+            ) : !session?.user ? (
+              <div className="mt-3 space-y-2">
+                <GuestBuyNftWithCard
+                  target={{ kind: "resale", tokenId: cheapestUsdListing.tokenId }}
+                  onSuccess={async (email) => {
+                    await onGuestCardPurchaseSuccess?.(email);
+                  }}
+                />
+                <GuestLogInInstead />
+              </div>
             ) : !isCustodial ? (
               <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
                 <Lock className="h-4 w-4 shrink-0" />
@@ -1110,6 +1118,7 @@ export function PrimaryBuyCard({
   onBuy,
   isBuying,
   onCardPurchaseSuccess,
+  onGuestCardPurchaseSuccess,
 }: {
   nft: ByIdNft;
   onChainInsights?: OnChainInsights;
@@ -1117,10 +1126,15 @@ export function PrimaryBuyCard({
   onBuy?: (args: { paymentToken: NftPaymentToken; quantity: number }) => void | Promise<void>;
   isBuying: boolean;
   /** Called after a successful "Pay with card" purchase (see
-   *  `BuyNftWithCard`) — the card mutation is self-contained, so this is
-   *  the hook for the page to invalidate/refetch, same effect `onBuy`'s
-   *  caller has after its own promise resolves. */
-  onCardPurchaseSuccess?: () => void | Promise<void>;
+   *  `BuyNftWithCard`), with the quantity actually bought — the card
+   *  mutation is self-contained, so this is the hook for the page to
+   *  invalidate/refetch and show a purchase-success confirmation, same
+   *  effect `onBuy`'s caller has after its own promise resolves. */
+  onCardPurchaseSuccess?: (quantity: number) => void | Promise<void>;
+  /** Guest (no-session) card checkout — called with the email the purchase
+   *  landed in and the quantity bought, once `GuestBuyNftWithCard` below
+   *  completes. */
+  onGuestCardPurchaseSuccess?: (email: string, quantity: number) => void | Promise<void>;
 }) {
   const { data: session } = useSession();
   const isCustodial = isRechargeAbleClient(session?.user.walletType ?? WalletType.none);
@@ -1155,7 +1169,9 @@ export function PrimaryBuyCard({
   // before. `userChangedCurrency` stops this default from clobbering a
   // buyer's own tap on the currency switcher — including the case where
   // `isCustodial` only resolves (from `useSession`) a moment after mount.
-  const preferredCurrency: "asset" | "usd" = isCustodial ? "usd" : "asset";
+  // A logged-out guest defaults to "usd" too — same reasoning as
+  // `ResaleBuyCard`.
+  const preferredCurrency: "asset" | "usd" = isCustodial || !session?.user ? "usd" : "asset";
   const userChangedCurrency = useRef(false);
   useEffect(() => {
     if (userChangedCurrency.current) return;
@@ -1393,6 +1409,16 @@ export function PrimaryBuyCard({
 
           {usdQuoteFailed ? (
             <FeeUnavailableButton />
+          ) : !session?.user ? (
+            <div className="mt-3 space-y-2">
+              <GuestBuyNftWithCard
+                target={{ kind: "edition", nftId: nft.id, quantity }}
+                onSuccess={async (email) => {
+                  await onGuestCardPurchaseSuccess?.(email, quantity);
+                }}
+              />
+              <GuestLogInInstead />
+            </div>
           ) : !isCustodial ? (
             <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
               <Lock className="h-4 w-4 shrink-0" />
@@ -1405,7 +1431,7 @@ export function PrimaryBuyCard({
               className="mt-3"
               target={{ kind: "edition", nftId: nft.id, quantity }}
               onSuccess={async () => {
-                await onCardPurchaseSuccess?.();
+                await onCardPurchaseSuccess?.(quantity);
               }}
             />
           )}

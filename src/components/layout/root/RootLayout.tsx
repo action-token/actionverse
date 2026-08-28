@@ -31,6 +31,12 @@ import Sidebar from "../Left-sidebar/sidebar";
 import ARLayout from "./ARLayout";
 import CreatorLayout from "./CreatorLayout";
 import { Toaster as Sonner } from "~/components/shadcn/ui/sonner"
+// Two more toast libraries are in use beyond the shadcn Toaster above:
+// sonner (below) and react-hot-toast (98 files, including every buy flow).
+// Each only renders its own toasts, so all three providers have to be
+// mounted — without this one, every react-hot-toast call is silently
+// dropped outside the one modal that happened to import its own Toaster.
+import { Toaster as HotToaster } from "react-hot-toast"
 import { api } from "~/utils/api";
 import { useCreatorStorageAcc, useUserStellarAcc } from "~/lib/state/wallete/stellar-balances";
 
@@ -65,9 +71,14 @@ export default function Layout({
     "/community",
     "/organization",
   ];
-  const isPublicRoute = publicRoutes.some(
-    (route) => router.pathname === route || router.pathname.startsWith(route + "/"),
-  );
+  const isPublicRoute =
+    publicRoutes.some(
+      (route) => router.pathname === route || router.pathname.startsWith(route + "/"),
+    ) ||
+    // Guest checkout: a logged-out visitor can browse/buy an item here.
+    // /smart-contract/manage/* stays gated — owner-only.
+    (router.pathname.startsWith("/smart-contract") &&
+      !router.pathname.startsWith("/smart-contract/manage"));
   const isAugmentedRealityRoute = router.pathname.startsWith("/action/ar");
 
   const isHomeRoute = router.pathname === "/";
@@ -197,6 +208,10 @@ export default function Layout({
           </div>
           <StemPlayer />
           <Sonner richColors closeButton />
+          <HotToaster
+            position="top-center"
+            toastOptions={{ duration: 4000, success: { duration: 5000 }, error: { duration: 6000 } }}
+          />
           {/* <FallingSnowflakes /> */}
         </BottomPlayerProvider>
       </MiniPlayerProvider>
