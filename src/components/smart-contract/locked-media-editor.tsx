@@ -121,11 +121,17 @@ export function LockedMediaEditor({
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label htmlFor={`locked-label-${i}`} className="text-xs text-muted-foreground">
-                                Label
-                            </Label>
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor={`locked-label-${i}`} className="text-xs text-muted-foreground">
+                                    Label
+                                </Label>
+                                <span className="text-[10px] text-muted-foreground tabular-nums">
+                                    {item.label.length}/80
+                                </span>
+                            </div>
                             <Input
                                 id={`locked-label-${i}`}
+                                maxLength={80}
                                 value={item.label}
                                 onChange={(e) => updateRow(i, { label: e.target.value })}
                                 placeholder={`e.g. "${LABEL_PLACEHOLDER[item.type]}"`}

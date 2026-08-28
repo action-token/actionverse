@@ -1,35 +1,21 @@
 #![no_std]
 //! Actionverse art NFT collection with a built-in marketplace.
 //!
-//! One shared collection contract that every creator's work lives in — there
-//! is no per-creator deploy. A creator's submission ("edition") is bounded
-//! artwork with a fixed `supply` (1 for a classic 1-of-1, N for a limited
-//! run); `Nft.collectionId` in the database groups pieces for display, and
-//! `EditionMeta.creator`/`royalty_bps` groups every token minted from one
-//! edition on-chain.
+//! One shared collection for every creator — no per-creator deploy. An
+//! "edition" is one artwork with a fixed `supply`.
 //!
-//! **Creation never touches this contract.** An edition's metadata and price
-//! grid are decided entirely off-chain (the storefront's create form writes a
-//! database row and nothing else) and only reach the chain the first time
-//! someone buys — [`Self::buy_edition`] both registers the edition (the first
-//! time its `edition_ref` is seen) and mints straight to the buyer in the
-//! same call, so the creator never signs a transaction and pays no gas to
-//! list. Every following purchase of the same edition just mints the next
-//! consecutive range of token ids to that buyer.
+//! **The creator never touches this contract.** The backend registers an
+//! edition under the price authority ([`Self::register_edition`]), and
+//! [`Self::buy_edition`] mints straight to the buyer — so the creator never
+//! signs and pays no gas to list.
 //!
-//! The marketplace lives *inside* the token contract on purpose. A standalone
-//! market contract would need the seller to `approve` it before listing (an
-//! extra signature and an extra failure mode); because settlement happens in
-//! the same contract that owns the ledger entries, both primary purchase and
-//! resale `buy` move the token via the low-level [`Consecutive::update`] and
-//! the party giving up the token never signs the purchase itself.
+//! The marketplace lives inside the token contract so settlement can move
+//! tokens via [`Consecutive::update`]. A standalone market would need the
+//! seller to `approve` it first — an extra signature and failure mode.
 //!
-//! Bulk minting uses OpenZeppelin's [`Consecutive`] extension rather than
-//! [`Base`]'s one-write-per-token `sequential_mint`: a purchase of `n` copies
-//! stores ownership once per bucket instead of once per token, which is what
-//! makes minting an entire edition run to one buyer in a single call
-//! affordable. Royalty/metadata storage (from [`Base`]) is independent of the
-//! ownership engine and stays in use unchanged alongside `Consecutive`.
+//! Minting uses [`Consecutive`], not [`Base`]'s `sequential_mint`: ownership
+//! is stored once per bucket, not once per token, which is what makes minting
+//! a whole edition run in one call affordable.
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error,
@@ -41,31 +27,53 @@ use stellar_contract_utils::{
     upgradeable::{self as upgradeable, Upgradeable},
 };
 use stellar_macros::{only_owner, when_not_paused};
-use stellar_tokens::non_fungible::{burnable::NonFungibleBurnable, consecutive::Consecutive, emit_transfer, Base, NonFungibleToken};
+use stellar_tokens::non_fungible::{
+    consecutive::{
+        storage::{IDS_IN_BUCKET, NFTConsecutiveStorageKey},
+        Consecutive,
+    },
+    emit_transfer, Base, NonFungibleToken,
+};
 
 mod test;
 
 const DAY_IN_LEDGERS: u32 = 17_280;
-const BUMP_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
-const BUMP_TO: u32 = 120 * DAY_IN_LEDGERS;
+/// Sized against mainnet's `minPersistentTtl` (120 days, what a new entry
+/// starts with) and `maxEntryTtl` (180 days, the extension ceiling).
+///
+/// `extend_ttl` fires only when remaining TTL is *below* the threshold. 150
+/// clears the 120-day floor outright, so a write lifts its own record to 175
+/// days and the sweep is a backstop, not the only thing keeping data alive.
+/// `BUMP_TO` stops short of 180 so an off-by-one can't start rejecting
+/// extensions. Two consecutive missed two-monthly sweeps still fit in 175
+/// days — a failed run is silent, so it must not be able to archive anything.
+const BUMP_THRESHOLD: u32 = 150 * DAY_IN_LEDGERS;
+const BUMP_TO: u32 = 175 * DAY_IN_LEDGERS;
 
 /// Bump this before building/deploying each new wasm so `version()` reflects
 /// what's actually running on-chain — paired with the `Upgradeable` impl
 /// below, this is how future changes ship without a redeploy (new address).
-const CONTRACT_VERSION: u32 = 9;
+///
+/// Reset to 1 for the mainnet collection deployed fresh rather than upgraded,
+/// so the number counts releases of *this* contract instance. The previous
+/// instance reached 9 and is not an ancestor of this one.
+const CONTRACT_VERSION: u32 = 1;
 
 /// Basis-points denominator for fee/royalty math (10_000 = 100%).
 const BPS_DENOM: i128 = 10_000;
-/// Hard ceiling on what the platform can ever charge, enforced in the
-/// constructor and in `set_platform_fee` so an admin key can't be used to
-/// silently take an unbounded cut of every sale.
+/// Hard ceiling, enforced in the constructor and `set_platform_fee` so an
+/// admin key can't take an unbounded cut.
 const MAX_PLATFORM_FEE_BPS: u32 = 1_000; // 10%
-const MAX_ROYALTY_BPS: u32 = 5_000; // 50%
+/// Not a policy number: `seller_amount = total - platform_fee - royalty`, so
+/// anything above `10_000 - MAX_PLATFORM_FEE_BPS` could go negative and panic
+/// settlement. 90% is the largest safe value at the 10% fee ceiling.
+const MAX_ROYALTY_BPS: u32 = 9_000; // 90%
 
 // Bounded string lengths so one entry can't bloat ledger storage unboundedly.
 const MAX_NAME_LEN: u32 = 128;
 const MAX_DESCRIPTION_LEN: u32 = 2_000;
-const MAX_URI_LEN: u32 = 500;
+/// 500 was too tight for a signed IPFS gateway URL with query parameters.
+const MAX_URI_LEN: u32 = 2_048;
 
 /// Sane ceiling on how many copies one edition can ever mint — a bound, not
 /// a target; most editions will be far smaller.
@@ -84,15 +92,27 @@ const MAX_QUANTITY_PER_BUY: u32 = 20;
 /// this just splits them across several calls.
 const MAX_KEEP_ALIVE_IDS: u32 = 200;
 
+/// Caps for the single-kind entry points below.
+///
+/// Sized against Soroban's per-transaction footprint (100 entries on mainnet)
+/// rather than against `MAX_KEEP_ALIVE_IDS`, which is one blanket number for
+/// four kinds that cost very different amounts. A token can touch four entries
+/// (`OwnershipBucket`, `Owner`, `TokenEdition`, `Listing`), an edition two, a
+/// ref or an unlocked item one — so each lands near 80 entries, leaving room
+/// under the limit. Measured, not guessed: 31 worst-case tokens already reach
+/// 102.
+const MAX_TOKENS_PER_CALL: u32 = 25;
+const MAX_EDITIONS_PER_CALL: u32 = 40;
+const MAX_REFS_PER_CALL: u32 = 80;
+const MAX_UNLOCKED_PER_CALL: u32 = 80;
+
 // =============================================================================
 // Data
 // =============================================================================
 
 /// Off-chain-media descriptor returned by [`ArtNft::art_meta`] for a single
 /// token — synthesized from that token's edition, not stored per-token.
-/// Royalty basis points are deliberately absent — [`ArtNft::royalty_info`]
-/// stays the single source of truth for any marketplace reading this
-/// collection.
+/// No royalty bps — [`ArtNft::royalty_info`] is the single source of truth.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtMeta {
@@ -134,10 +154,8 @@ pub struct EditionMeta {
     pub minted: u32,
 }
 
-/// Author-supplied fields for a new edition, grouped into one argument so
-/// `buy_edition` (which also needs `purchase_ref`, `payment_token` and
-/// `quantity`) stays under Soroban's 10-parameter-per-function cap
-/// (`SCSpecFunctionV0.inputs<10>`).
+/// Fields for a new edition. Grouped into one argument to stay under
+/// Soroban's 10-parameter-per-function cap.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EditionInput {
@@ -152,10 +170,8 @@ pub struct EditionInput {
     pub prices: Vec<PriceEntry>,
 }
 
-/// What a single `buy_edition` call minted, recorded so the caller can
-/// resolve exactly which token ids they were assigned after the fact — see
-/// the doc comment on [`ArtNft::buy_edition`] for why this exists instead of
-/// reading the call's return value back off a confirmed transaction.
+/// What one `buy_edition` call minted. Recorded because the return value
+/// can't be read back — see [`ArtNft::buy_edition`].
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PurchaseReceipt {
@@ -168,13 +184,9 @@ pub struct PurchaseReceipt {
     pub unit_price: i128,
 }
 
-/// At most one listing per token, since a specific minted copy has exactly
-/// one owner who could be selling it. Purely secondary-market: an edition's
-/// primary sale is priced via `EditionPrices`, not a `Listing`. A reseller
-/// prices their own copy independently of whatever currencies the creator
-/// originally offered — `prices` is the same shape as `EditionPrices`, just
-/// scoped to one token instead of a whole edition, so a buyer picks which
-/// currency to pay in exactly like a primary purchase does.
+/// At most one listing per token. Secondary market only — a primary sale is
+/// priced via `EditionPrices`. A reseller sets their own currencies, not
+/// whatever the creator originally offered.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Listing {
@@ -194,11 +206,10 @@ pub struct SaleBreakdown {
     pub seller_amount: i128,
 }
 
-/// Variant *names* are what land in the ledger for `#[contracttype]` enums, so
-/// these must not collide with OpenZeppelin's own storage keys (`Owner`,
-/// `Balance`, `Approval`, `OwnershipBucket`, `BurnedToken`,
-/// `TokenRoyalty`/`DefaultRoyalty`, `Metadata`) — a shared name silently
-/// aliases two different structs onto the same storage entry.
+/// Variant *names* land in the ledger, so these must not collide with
+/// OpenZeppelin's own keys (`Owner`, `Balance`, `Approval`,
+/// `OwnershipBucket`, `TokenRoyalty`, `Metadata`) — a shared name silently
+/// aliases two structs onto one storage entry.
 #[contracttype]
 pub enum DataKey {
     Edition(u32),
@@ -228,15 +239,10 @@ pub enum DataKey {
     /// only run at deploy), so `update_edition` must panic clearly rather
     /// than fall back to `owner` until `set_price_authority` is called.
     PriceAuthority,
-    /// (token_id, media_index) -> bool. Permanent once true — one specific
-    /// locked-content item on one specific minted token had its own unlock
-    /// rule completed off-chain, attested by the backend. Keyed per item,
-    /// not per token: a token can carry several independently-gated reward
-    /// items (e.g. a free item plus two separately-gated ones), each with
-    /// its own rule and its own unlock moment. `media_index` is a stable,
-    /// permanent identifier assigned to a locked-content item at creation
-    /// time (see the app's `NftLockedMedia.chainIndex`) — never reused for
-    /// a different item once assigned.
+    /// (token_id, media_index) -> bool, permanent once true. Keyed per item,
+    /// not per token: one token can carry several independently-gated items.
+    /// `media_index` is the app's `NftLockedMedia.chainIndex` — stable and
+    /// never reused.
     Unlocked(u32, u32),
 }
 
@@ -253,8 +259,8 @@ pub enum ArtError {
     ListingNotFound = 306,
     SelfPurchase = 307,
     NotSeller = 308,
-    /// The listing's seller no longer owns the token — it was transferred or
-    /// burned out from under the listing.
+    /// The listing's seller no longer owns the token — it was transferred
+    /// out from under the listing.
     ListingStale = 309,
     /// This `edition_ref` already registered an edition — guards against
     /// double-registering the same off-chain record.
@@ -280,10 +286,13 @@ pub enum ArtError {
     /// The caller of `unlock_item_for` isn't the registered unlock
     /// authority (or none has been set yet).
     NotUnlockAuthority = 323,
-    /// The caller of `update_edition` isn't the registered price
-    /// authority (or none has been set yet since the last upgrade —
-    /// `set_price_authority` must be called once after every upgrade that
-    /// introduces this key, since `__constructor` only runs at deploy).
+    /// The caller of `register_edition`/`update_edition` isn't the
+    /// registered price authority.
+    ///
+    /// Also raised when no authority is set at all, which since v11 can
+    /// only happen on a contract *upgraded* from a build predating the
+    /// key — `__constructor` sets it, but a constructor never runs on an
+    /// upgrade, so that one case still needs a `set_price_authority` call.
     NotPriceAuthority = 324,
     /// `keep_alive` was given more edition or token ids than
     /// `MAX_KEEP_ALIVE_IDS` in one call.
@@ -315,12 +324,9 @@ pub struct EditionMinted {
     pub quantity: u32,
     pub payment_token: Address,
     pub unit_price: i128,
-    /// Reimbursement collected from the buyer alongside `unit_price *
-    /// quantity`, covering treasury's real cost of fee-bumping this buyer's
-    /// transaction (see `src/lib/stellar/oz/nft.ts`). Folded into the same
-    /// transfer as `unit_price * quantity`'s platform-fee cut rather than a
-    /// separate `TokenClient` call — recorded here so the buyer's true
-    /// total is auditable from this one event.
+    /// Reimburses treasury for fee-bumping this purchase. Folded into the
+    /// platform-fee transfer, recorded here so the buyer's true total is
+    /// auditable from this one event.
     pub inclusion_fee_paid: i128,
     pub network_fee_paid: i128,
 }
@@ -345,14 +351,9 @@ pub struct Purchased {
     pub price: i128,
     pub royalty_paid: i128,
     pub platform_fee_paid: i128,
-    /// Reimbursement collected from the buyer on top of `price`, covering
-    /// treasury's real cost of fee-bumping this buyer's transaction (see
-    /// `src/lib/stellar/oz/nft.ts`). Folded into the same transfer as
-    /// `price`'s platform-fee cut rather than a separate `TokenClient` call
-    /// — recorded here so the buyer's true total is auditable from this one
-    /// event. Always 0 for a token settled via `buy_batch`'s per-token
-    /// `do_buy` call — that function charges the batch's fee once, in its
-    /// own aggregate transfer, not per token (see `Self::buy_batch`).
+    /// Reimburses treasury for fee-bumping this purchase, folded into the
+    /// platform-fee transfer. Always 0 under `buy_batch`, which charges the
+    /// batch's fee once in its own aggregate transfer.
     pub inclusion_fee_paid: i128,
     pub network_fee_paid: i128,
 }
@@ -419,6 +420,7 @@ impl ArtNft {
         symbol: String,
         base_uri: String,
         unlock_authority: Address,
+        price_authority: Address,
     ) {
         if platform_fee_bps > MAX_PLATFORM_FEE_BPS {
             panic_with_error!(e, ArtError::InvalidFee);
@@ -430,6 +432,15 @@ impl ArtNft {
         e.storage().instance().set(&DataKey::PlatformFeeBps, &platform_fee_bps);
         e.storage().instance().set(&DataKey::Treasury, &treasury);
         e.storage().instance().set(&DataKey::UnlockAuthority, &unlock_authority);
+        // Set here rather than left to a follow-up `set_price_authority`.
+        // `register_edition` is gated on this key and every purchase now goes
+        // through registration, so a deploy that omitted it left the whole
+        // collection unusable — with nothing on-chain to say why. A required
+        // constructor argument makes that state unreachable for a fresh
+        // deploy; an *upgrade* from a build predating this key still has to
+        // call `set_price_authority` once, since a constructor only ever runs
+        // at deploy (`scripts/upgrade-contracts.ts` does this).
+        e.storage().instance().set(&DataKey::PriceAuthority, &price_authority);
         e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
     }
 
@@ -441,36 +452,22 @@ impl ArtNft {
     /// Buys `quantity` copies of an edition, minting them straight to
     /// `buyer` in the same call that takes payment.
     ///
-    /// The *first* purchase of a given `edition_ref` also registers the
-    /// edition from `edition` — every later purchase of the same ref ignores
-    /// `edition` entirely and just mints the next range against the already-
-    /// registered data. This is why the creator never has to sign anything
-    /// to "list": `edition`'s fields are backend-supplied from the trusted
-    /// database row (the same trust model `mint_and_list` used to build its
-    /// XDR server-side under), and `EditionByRef` dedup means only that first
-    /// call can ever set them — nothing here requires the creator's
-    /// authorization, only the buyer's.
+    /// Only *resolves* `edition_ref` — never creates. Creation used to happen
+    /// here from a caller-supplied `EditionInput`, which let anyone front-run
+    /// an unsold item and define its terms; it now lives in
+    /// [`Self::register_edition`], behind the price authority.
     ///
-    /// `purchase_ref` is the caller's own identifier for this purchase
-    /// attempt (a fresh id per attempt, not per edition). It's recorded so
-    /// the minted range can be looked up afterwards with
-    /// [`Self::purchase_by_ref`] — this repo's pinned `stellar-sdk` cannot
-    /// decode protocol-27 transaction meta, so neither the return value nor
-    /// emitted events can be read back off a *confirmed* transaction (see
-    /// `contracts/nft_oz/README.md`/`src/lib/stellar/oz/nft.ts`). Re-deriving
-    /// "the last N minted" from `EditionMeta.minted` after the fact isn't
-    /// safe either — two buyers purchasing the same edition concurrently
-    /// would race for it — so instead each purchase gets a receipt keyed by
-    /// its own caller-chosen reference, the same idiom `art_ref`/
-    /// `token_by_ref` already used for single mints, generalized to a range.
-    /// Reusing a `purchase_ref` is rejected, which also makes a retried
-    /// purchase attempt safe to re-submit.
+    /// `purchase_ref` is a fresh caller id per attempt, recorded so the minted
+    /// range can be read back with [`Self::purchase_by_ref`]: the pinned
+    /// `stellar-sdk` can't decode protocol-27 meta, so neither the return
+    /// value nor events survive a confirmed transaction, and re-deriving
+    /// "the last N minted" would race concurrent buyers. Reuse is rejected,
+    /// which also makes a retried submission safe.
     #[when_not_paused]
     pub fn buy_edition(
         e: &Env,
         buyer: Address,
         edition_ref: String,
-        edition: EditionInput,
         purchase_ref: String,
         payment_token: Address,
         quantity: u32,
@@ -478,6 +475,7 @@ impl ArtNft {
         network_fee: i128,
     ) -> (u32, u32) {
         buyer.require_auth();
+        Self::require_treasury_auth(e);
 
         if quantity == 0 || quantity > MAX_QUANTITY_PER_BUY {
             panic_with_error!(e, ArtError::QuantityTooLarge);
@@ -492,7 +490,14 @@ impl ArtNft {
             panic_with_error!(e, ArtError::InvalidAmount);
         }
 
-        let edition_id = Self::resolve_or_create_edition(e, edition_ref, edition);
+        // Resolve only — never create. Edition creation is gated to the price
+        // authority via `register_edition`; see that function for why letting
+        // an arbitrary buyer define an edition's terms was exploitable.
+        let edition_id: u32 = e
+            .storage()
+            .persistent()
+            .get(&DataKey::EditionByRef(edition_ref))
+            .unwrap_or_else(|| panic_with_error!(e, ArtError::EditionNotFound));
         let mut meta: EditionMeta =
             e.storage().persistent().get(&DataKey::Edition(edition_id)).unwrap();
 
@@ -527,6 +532,10 @@ impl ArtNft {
             let key = DataKey::TokenEdition(id);
             e.storage().persistent().set(&key, &edition_id);
             e.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
+            // `batch_mint` above created these at OZ's 30 days. Lift them to
+            // `BUMP_TO` now so a token minted just after a keep-alive sweep
+            // isn't left to expire before the next one.
+            Self::extend_ownership_ttl(e, id);
         }
 
         meta.minted += quantity;
@@ -582,12 +591,7 @@ impl ArtNft {
         (first_id, last_id)
     }
 
-    fn resolve_or_create_edition(e: &Env, edition_ref: String, edition: EditionInput) -> u32 {
-        let ref_key = DataKey::EditionByRef(edition_ref.clone());
-        if let Some(id) = e.storage().persistent().get::<_, u32>(&ref_key) {
-            return id;
-        }
-
+    fn create_edition(e: &Env, edition_ref: String, edition: EditionInput) -> u32 {
         if edition_ref.len() == 0 || edition_ref.len() > MAX_NAME_LEN {
             panic_with_error!(e, ArtError::RefTooLong);
         }
@@ -646,12 +650,60 @@ impl ArtNft {
         e.storage().persistent().set(&prices_key, &prices);
         e.storage().persistent().extend_ttl(&prices_key, BUMP_THRESHOLD, BUMP_TO);
 
+        let ref_key = DataKey::EditionByRef(edition_ref);
         e.storage().persistent().set(&ref_key, &edition_id);
         e.storage().persistent().extend_ttl(&ref_key, BUMP_THRESHOLD, BUMP_TO);
 
         EditionCreated { edition_id, creator, royalty_bps, supply }.publish(e);
 
         edition_id
+    }
+
+    /// Requires the treasury account to have authorized this purchase.
+    ///
+    /// The buyer's signature proves who pays, not *how much*: `inclusion_fee`
+    /// and `network_fee` are plain arguments, so a buyer building their own
+    /// envelope can zero them, sign honestly, and have the backend fee-bump
+    /// it. Every other check still passes. Treasury then pays the real cost
+    /// and is reimbursed nothing.
+    ///
+    /// Consequence: a buyer acting alone can no longer assemble a purchase.
+    /// Every purchase routes through the platform.
+    fn require_treasury_auth(e: &Env) {
+        let treasury: Address = e.storage().instance().get(&DataKey::Treasury).unwrap();
+        treasury.require_auth();
+    }
+
+    /// Extends the OpenZeppelin `Consecutive` ownership entries covering
+    /// `token_id` to this contract's own `BUMP_TO`.
+    ///
+    /// `stellar-tokens` hardcodes 30 days (`OWNER_EXTEND_AMOUNT`,
+    /// `OWNERSHIP_EXTEND_AMOUNT`) as compile-time constants with no way to
+    /// configure them — four times shorter than everything else this contract
+    /// stores. Writing the same keys directly is the only way to lift it.
+    ///
+    /// Without it ownership dies 30 days after its last touch while every
+    /// other key lives 175, pinning the sweep to a monthly cadence. Harmless
+    /// alongside OZ's own calls, since `extend_ttl` never *shortens* — but OZ
+    /// still *creates* entries at 30 days, so this must run at mint time too,
+    /// or a token minted just after a sweep expires before the next one.
+    ///
+    /// Coupled to `stellar-tokens`' key layout by necessity;
+    /// `keep_alive_extends_ownership_past_the_oz_default` fails loudly if a
+    /// future version reorders them, which would silently target nothing.
+    fn extend_ownership_ttl(e: &Env, token_id: u32) {
+        let bucket_key =
+            NFTConsecutiveStorageKey::OwnershipBucket(token_id / IDS_IN_BUCKET as u32);
+        if e.storage().persistent().has(&bucket_key) {
+            e.storage().persistent().extend_ttl(&bucket_key, BUMP_THRESHOLD, BUMP_TO);
+        }
+
+        // Only some ids carry an explicit `Owner` entry — a batch mint writes
+        // one for the last id of the range and leaves the rest to bucket bits.
+        let owner_key = NFTConsecutiveStorageKey::Owner(token_id);
+        if e.storage().persistent().has(&owner_key) {
+            e.storage().persistent().extend_ttl(&owner_key, BUMP_THRESHOLD, BUMP_TO);
+        }
     }
 
     fn validate_prices(e: &Env, prices: &Vec<PriceEntry>) {
@@ -683,22 +735,52 @@ impl ArtNft {
     }
 
     // -------------------------------------------------------------------------
-    // Editing — a creator's post-first-sale correction, gated by
-    // PriceAuthority (a backend hot key, not the creator's own signature —
-    // see contracts/nft_oz/README.md). Before the first sale, none of this
-    // is called at all: the app writes its own database row directly and
-    // this contract has no idea the edition exists yet.
+    // Registration and editing — both gated by PriceAuthority (a backend hot
+    // key, not the creator's own signature — see contracts/nft_oz/README.md).
     // -------------------------------------------------------------------------
 
-    /// Rewrites an already-registered edition's title/description/
-    /// thumbnail/supply/prices. `media_url`, `media_type`, `creator`, and
-    /// `royalty_bps` are deliberately **not parameters** — they're read
-    /// from the existing `EditionMeta` and carried over untouched, so
-    /// there's no path, accidental or otherwise, that can alter them.
-    /// `supply` can only move down to `meta.minted` and never above the
-    /// edition's current `supply` — never diluting what existing holders
-    /// already bought into, never letting already-minted copies exceed
-    /// their own edition's cap.
+    /// Registers an edition ahead of its first sale, returning its id.
+    ///
+    /// Gated to the price authority. This used to happen lazily inside
+    /// `buy_edition`, so the first caller for an `edition_ref` — the app's own
+    /// row id, visible in every listing URL — permanently set that edition's
+    /// creator, prices, royalty and supply. Anyone could front-run an unsold
+    /// item: name themselves `creator` to redirect payments, or set
+    /// `supply: 1` and buy it to make the item unsellable.
+    ///
+    /// Idempotent — re-registering an existing ref returns its id, so a
+    /// retried call is safe.
+    #[when_not_paused]
+    pub fn register_edition(
+        e: &Env,
+        caller: Address,
+        edition_ref: String,
+        edition: EditionInput,
+    ) -> u32 {
+        caller.require_auth();
+        let authority: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::PriceAuthority)
+            .unwrap_or_else(|| panic_with_error!(e, ArtError::NotPriceAuthority));
+        if caller != authority {
+            panic_with_error!(e, ArtError::NotPriceAuthority);
+        }
+
+        if let Some(id) =
+            e.storage().persistent().get::<_, u32>(&DataKey::EditionByRef(edition_ref.clone()))
+        {
+            return id;
+        }
+        Self::create_edition(e, edition_ref, edition)
+    }
+
+    /// Rewrites title/description/thumbnail/supply/prices.
+    ///
+    /// `media_url`, `media_type`, `creator` and `royalty_bps` are **not
+    /// parameters** — carried over from the existing meta, so nothing can
+    /// alter them. `supply` may only move down to `meta.minted`: never
+    /// diluting existing holders, never letting minted copies exceed the cap.
     #[when_not_paused]
     pub fn update_edition(
         e: &Env,
@@ -864,8 +946,8 @@ impl ArtNft {
     /// Lists the caller's token for sale in one or more currencies, same
     /// shape as an edition's own price grid — a reseller isn't limited to
     /// whichever currencies the creator originally offered. Listing does not
-    /// escrow the token — the owner keeps it and can still transfer or burn
-    /// it, which is why `buy` re-checks ownership rather than trusting the
+    /// escrow the token — the owner keeps it and can still transfer it,
+    /// which is why `buy` re-checks ownership rather than trusting the
     /// stored seller.
     #[when_not_paused]
     pub fn list(e: &Env, seller: Address, token_id: u32, prices: Vec<PriceEntry>) {
@@ -949,6 +1031,7 @@ impl ArtNft {
         network_fee: i128,
     ) {
         buyer.require_auth();
+        Self::require_treasury_auth(e);
         Self::do_buy(e, &buyer, token_id, &payment_token, inclusion_fee, network_fee);
     }
 
@@ -974,6 +1057,7 @@ impl ArtNft {
         network_fee: i128,
     ) {
         buyer.require_auth();
+        Self::require_treasury_auth(e);
         if token_ids.len() == 0 || token_ids.len() > MAX_QUANTITY_PER_BUY {
             panic_with_error!(e, ArtError::QuantityTooLarge);
         }
@@ -1010,9 +1094,9 @@ impl ArtNft {
         if *buyer == listing.seller {
             panic_with_error!(e, ArtError::SelfPurchase);
         }
-        // The seller could have transferred or burned the token since listing;
-        // settling against a stale listing would pay them for something they
-        // no longer own.
+        // The seller could have transferred the token since listing; settling
+        // against a stale listing would pay them for something they no longer
+        // own.
         if Consecutive::owner_of(e, token_id) != listing.seller {
             panic_with_error!(e, ArtError::ListingStale);
         }
@@ -1197,27 +1281,41 @@ impl ArtNft {
     // needed.
     // -------------------------------------------------------------------------
 
-    /// Refreshes this contract's own TTL, plus the `Edition`/`EditionPrices`
-    /// entries for every id in `edition_ids` and the ownership data for
-    /// every id in `token_ids`. Permissionless (no `require_auth` at all) —
-    /// it only ever extends TTLs, never reads a balance, moves a token, or
-    /// touches payment, so there's nothing here for an untrusted caller to
-    /// abuse; anyone (typically a scheduled off-chain job) can pay to keep
-    /// the collection warm.
+    /// Refreshes this contract's own TTL plus every persistent entry the
+    /// caller names. Permissionless (no `require_auth` at all) — it only ever
+    /// extends TTLs, never reads a balance, moves a token, or touches
+    /// payment, so there's nothing here for an untrusted caller to abuse;
+    /// anyone (typically a scheduled off-chain job) can pay to keep the
+    /// collection warm.
     ///
-    /// An `edition_ids` entry that doesn't resolve to anything (never
-    /// registered, wrong id) is silently skipped. `token_ids` entries are
-    /// not — same as everywhere else `Consecutive::owner_of` is called in
-    /// this contract, an id that was never minted or was since burned
-    /// panics the whole call, so callers (the off-chain scheduler) should
-    /// only pass ids their own records show as actually minted.
-    pub fn keep_alive(e: &Env, edition_ids: Vec<u32>, token_ids: Vec<u32>) {
-        if edition_ids.len() > MAX_KEEP_ALIVE_IDS || token_ids.len() > MAX_KEEP_ALIVE_IDS {
-            panic_with_error!(e, ArtError::TooManyKeepAliveIds);
-        }
-
-        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
-
+    /// Every argument is a separate key family because they're keyed by
+    /// different things, and **each one has to be named explicitly** — none
+    /// of them can be derived on-chain from another. Reads don't help either:
+    /// the getters are plain `get`s, and even if they extended, an app
+    /// reading through simulation never persists the extension. So anything
+    /// missing from this list simply expires:
+    ///
+    /// - `edition_ids` → `Edition` + `EditionPrices`
+    /// - `edition_refs` → `EditionByRef`. The worst one to lose: without it
+    ///   `buy_edition` can't resolve the ref, and `register_edition` would
+    ///   register a *duplicate* edition rather than find the original.
+    /// - `token_ids` → ownership (via `Consecutive`), `TokenEdition`, and any
+    ///   `Listing`. `TokenEdition` matters as much as ownership — it's what
+    ///   `art_meta`/`royalty_info` resolve through, so keeping a token alive
+    ///   without it leaves a copy that's owned but has no metadata.
+    /// - `unlocked` → `Unlocked(token_id, media_index)` for each pair. Losing
+    ///   one silently re-locks reward content a holder already earned.
+    ///
+    /// `PurchaseByRef` is deliberately not covered: losing one costs only
+    /// lookup data, and replaying a purchase still needs the buyer's
+    /// signature and a fresh sequence number.
+    ///
+    /// Every id that resolves to nothing — never registered, wrong id, or
+    /// since burned — is silently skipped, `token_ids` included. A sweep must
+    /// not be brought down by one stale entry in the caller's list: the cost
+    /// of failing is not a retry but the silent archival of everything else
+    /// in that batch.
+    fn extend_editions(e: &Env, edition_ids: &Vec<u32>) {
         for i in 0..edition_ids.len() {
             let edition_id = edition_ids.get(i).unwrap();
 
@@ -1231,13 +1329,135 @@ impl ArtNft {
                 e.storage().persistent().extend_ttl(&prices_key, BUMP_THRESHOLD, BUMP_TO);
             }
         }
+    }
 
-        for i in 0..token_ids.len() {
-            // Extends the token's `Owner`/`OwnershipBucket` TTL as a side
-            // effect (see `stellar-tokens`' `Consecutive` storage) — the
-            // returned owner itself is irrelevant here.
-            let _ = Consecutive::owner_of(e, token_ids.get(i).unwrap());
+    fn extend_edition_refs(e: &Env, edition_refs: &Vec<String>) {
+        for i in 0..edition_refs.len() {
+            let ref_key = DataKey::EditionByRef(edition_refs.get(i).unwrap());
+            if e.storage().persistent().has(&ref_key) {
+                e.storage().persistent().extend_ttl(&ref_key, BUMP_THRESHOLD, BUMP_TO);
+            }
         }
+    }
+
+    fn extend_tokens(e: &Env, token_ids: &Vec<u32>) {
+        for i in 0..token_ids.len() {
+            let token_id = token_ids.get(i).unwrap();
+
+            // Deliberately no `owner_of` existence assertion first. It panics
+            // for a token never minted or since burned, and a Soroban panic
+            // reverts everything — so one stale id in the caller's list would
+            // renew *nothing* in the batch. The scheduler works from the app
+            // database, which can hold ids the chain does not: a burned token,
+            // a row from an earlier contract instance, a write that outlived
+            // its transaction.
+            //
+            // `extend_ownership_ttl` guards each key with `has`, so an unknown
+            // id simply extends nothing — matching every other kind here.
+            Self::extend_ownership_ttl(e, token_id);
+
+            let token_edition_key = DataKey::TokenEdition(token_id);
+            if e.storage().persistent().has(&token_edition_key) {
+                e.storage().persistent().extend_ttl(&token_edition_key, BUMP_THRESHOLD, BUMP_TO);
+            }
+
+            // Only listed tokens have one; an unlisted copy just skips.
+            let listing_key = DataKey::Listing(token_id);
+            if e.storage().persistent().has(&listing_key) {
+                e.storage().persistent().extend_ttl(&listing_key, BUMP_THRESHOLD, BUMP_TO);
+            }
+        }
+    }
+
+    fn extend_unlocked(e: &Env, unlocked: &Vec<(u32, u32)>) {
+        for i in 0..unlocked.len() {
+            let (token_id, media_index) = unlocked.get(i).unwrap();
+            let unlocked_key = DataKey::Unlocked(token_id, media_index);
+            if e.storage().persistent().has(&unlocked_key) {
+                e.storage().persistent().extend_ttl(&unlocked_key, BUMP_THRESHOLD, BUMP_TO);
+            }
+        }
+    }
+
+    pub fn keep_alive(
+        e: &Env,
+        edition_ids: Vec<u32>,
+        edition_refs: Vec<String>,
+        token_ids: Vec<u32>,
+        // `(token_id, media_index)` pairs — see `DataKey::Unlocked`.
+        unlocked: Vec<(u32, u32)>,
+    ) {
+        if edition_ids.len() > MAX_KEEP_ALIVE_IDS
+            || edition_refs.len() > MAX_KEEP_ALIVE_IDS
+            || token_ids.len() > MAX_KEEP_ALIVE_IDS
+            || unlocked.len() > MAX_KEEP_ALIVE_IDS
+        {
+            panic_with_error!(e, ArtError::TooManyKeepAliveIds);
+        }
+
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        Self::extend_editions(e, &edition_ids);
+        Self::extend_edition_refs(e, &edition_refs);
+        Self::extend_tokens(e, &token_ids);
+        Self::extend_unlocked(e, &unlocked);
+    }
+
+    /// Renews only this contract's own instance entry.
+    ///
+    /// The instance holds `Treasury`, `PriceAuthority`, `PlatformFeeBps`,
+    /// `NextEditionId` and the wasm reference — lose it and nothing works, so
+    /// this is the one worth being able to run on its own. Every other
+    /// `keep_*_alive` renews it too; this is the no-argument case.
+    pub fn keep_contract_alive(e: &Env) {
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+    }
+
+    /// Renews `Edition` and `EditionPrices` for each id.
+    ///
+    /// One of the single-kind entry points, for an operator running a sweep by
+    /// hand. They exist alongside [`Self::keep_alive`] because mixing kinds in
+    /// one call is what makes a batch overflow the transaction footprint —
+    /// here that is not expressible, and each cap is sized for its own kind.
+    pub fn keep_editions_alive(e: &Env, edition_ids: Vec<u32>) {
+        if edition_ids.len() > MAX_EDITIONS_PER_CALL {
+            panic_with_error!(e, ArtError::TooManyKeepAliveIds);
+        }
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        Self::extend_editions(e, &edition_ids);
+    }
+
+    /// Renews `EditionByRef` for each ref — the entry whose loss is worst,
+    /// since without it `buy_edition` cannot resolve a ref and
+    /// `register_edition` would create a duplicate edition instead of finding
+    /// the original.
+    pub fn keep_edition_refs_alive(e: &Env, edition_refs: Vec<String>) {
+        if edition_refs.len() > MAX_REFS_PER_CALL {
+            panic_with_error!(e, ArtError::TooManyKeepAliveIds);
+        }
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        Self::extend_edition_refs(e, &edition_refs);
+    }
+
+    /// Renews ownership, `TokenEdition` and any `Listing` for each token.
+    ///
+    /// The lowest cap of the four: a token can touch four ledger entries where
+    /// the other kinds touch one or two.
+    pub fn keep_tokens_alive(e: &Env, token_ids: Vec<u32>) {
+        if token_ids.len() > MAX_TOKENS_PER_CALL {
+            panic_with_error!(e, ArtError::TooManyKeepAliveIds);
+        }
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        Self::extend_tokens(e, &token_ids);
+    }
+
+    /// Renews `Unlocked(token_id, media_index)` for each pair. Losing one
+    /// silently re-locks reward content a holder already earned.
+    pub fn keep_unlocked_alive(e: &Env, unlocked: Vec<(u32, u32)>) {
+        if unlocked.len() > MAX_UNLOCKED_PER_CALL {
+            panic_with_error!(e, ArtError::TooManyKeepAliveIds);
+        }
+        e.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
+        Self::extend_unlocked(e, &unlocked);
     }
 }
 
@@ -1250,8 +1470,10 @@ impl NonFungibleToken for ArtNft {
     type ContractType = Consecutive;
 }
 
-#[contractimpl(contracttrait)]
-impl NonFungibleBurnable for ArtNft {}
+// Deliberately no `NonFungibleBurnable`. Nothing ever called it, and it was
+// the only way to reach a burned token with a live `Listing` — where `buy`
+// panics inside OZ's `owner_of` instead of returning `ListingStale`. Removing
+// it deletes the state rather than guarding it.
 
 #[contractimpl(contracttrait)]
 impl Ownable for ArtNft {}

@@ -5,17 +5,32 @@ import { db } from "~/server/db";
 import { keepAliveOnChain } from "~/lib/stellar/oz/nft";
 
 /**
- * Mirrors `stellar-tokens`' `Consecutive` bucket size (`IDS_IN_BUCKET` =
- * `ITEMS_IN_BUCKET`(100) * `IDS_IN_ITEM`(32) = 3,200 — see
- * `contracts/nft_oz`'s pinned `stellar-tokens` crate). Touching one token id
- * per bucket range renews every token whose id falls in that bucket, so
- * there's no need to list — or even know about — every single minted token
- * id, just one representative per 3,200-wide range.
+ * Ids per `keep_alive` call, by kind.
+ *
+ * The binding limit is Soroban's per-transaction footprint — 100 entries on
+ * mainnet — and it counts *every* entry the call touches, across all four
+ * lists at once. So a single per-list cap is not enough: 25 of each was
+ * measured at 153 entries, over the limit, even though no one list looked big.
+ *
+ * Each kind therefore gets its own cap, sized by how many ledger entries one
+ * id costs, and a call only ever carries **one** kind:
+ *
+ *   token     up to 4  — OwnershipBucket, Owner, TokenEdition, Listing
+ *   edition        2  — Edition, EditionPrices
+ *   ref            1  — EditionByRef
+ *   unlocked       1  — Unlocked(token, index)
+ *
+ * Every cap lands near 80 entries, leaving room under 100 for the instance
+ * entry and for a batch where every token is listed. Measured, not guessed —
+ * see `a_sweep_at_the_scheduler_batch_size_fits_one_transaction` in the
+ * contract tests, where 31 worst-case tokens already reach 102.
  */
-const TOKENS_PER_TTL_BUCKET = 3200;
-
-/** Must match nft_oz's `MAX_KEEP_ALIVE_IDS`. */
-const MAX_IDS_PER_CALL = 200;
+const LIMITS = {
+  tokens: 20,
+  editions: 40,
+  refs: 80,
+  unlocked: 80,
+} as const;
 
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -30,19 +45,14 @@ function chunk<T>(items: T[], size: number): T[][] {
  * toward Soroban's TTL/state-archival expiry for lack of any other
  * transaction to trigger a renewal. Called on a schedule by
  * `package/express-wadzzo`'s keep-alive cron — never by an end user, and
- * not itself scheduled from inside this app.
+ * not itself scheduled from inside this app (see that cron's own comment
+ * for why the trigger lives there).
  *
  * Authenticated with the same shared-secret convention
  * `package/express-wadzzo/src/middleware/auth.ts` already uses for the
  * reverse direction (`NEXTAUTH_SECRET`, sent as `X-Api-Key`) rather than a
  * new secret — this is a service-to-service call, not a user request, so
  * there's no session to check.
- *
- * Ported from the same feature in bandfan — this app and bandfan share the
- * exact same deployed nft_oz contract address (see `ART_NFT_CONTRACT_ID` in
- * `~/lib/common`), but each app has its own separate database of editions
- * and tokens, so each needs its own copy of this endpoint to keep its own
- * rows' on-chain data alive.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -57,6 +67,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const nfts = await db.nft.findMany({
     where: { onChainEditionId: { not: null } },
     select: {
+      // The `edition_ref` each edition was registered under — losing this
+      // entry is the worst case, since `buy_edition` then can't resolve the
+      // ref and `register_edition` would create a duplicate edition.
+      id: true,
       onChainEditionId: true,
       tokens: { select: { tokenId: true } },
     },
@@ -69,28 +83,78 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .filter((id) => Number.isFinite(id)),
     ),
   );
+  const editionRefs = nfts.map((n) => n.id);
 
-  // One token id per bucket is enough — see `TOKENS_PER_TTL_BUCKET`'s doc
-  // comment above.
-  const tokenIdByBucket = new Map<number, number>();
-  for (const nft of nfts) {
-    for (const t of nft.tokens) {
-      const tokenId = Number(t.tokenId);
-      if (!Number.isFinite(tokenId)) continue;
-      const bucket = Math.floor(tokenId / TOKENS_PER_TTL_BUCKET);
-      if (!tokenIdByBucket.has(bucket)) tokenIdByBucket.set(bucket, tokenId);
-    }
-  }
-  const tokenIds = Array.from(tokenIdByBucket.values());
+  // Every minted token, deliberately — this used to send one representative
+  // per 3,200-id `Consecutive` bucket, since touching one renews ownership
+  // for the whole bucket. That no longer suffices: `keep_alive` now also
+  // renews `TokenEdition` (what `art_meta`/`royalty_info` resolve through)
+  // and `Listing`, both keyed per token, so a bucket representative renews
+  // only its own. Thinning the list would leave every other token owned but
+  // metadata-less — the exact failure this endpoint exists to prevent. The
+  // trade is a higher per-run cost.
+  const tokenIds = Array.from(
+    new Set(
+      nfts
+        .flatMap((n) => n.tokens.map((t) => Number(t.tokenId)))
+        .filter((id) => Number.isFinite(id)),
+    ),
+  );
 
-  const editionChunks = chunk(editionIds, MAX_IDS_PER_CALL);
-  const tokenChunks = chunk(tokenIds, MAX_IDS_PER_CALL);
-  const rounds = Math.max(editionChunks.length, tokenChunks.length);
+  // Reward items already unlocked on-chain. Their `Unlocked(token, index)`
+  // entry is written once by `unlock_item_for` and never touched again, so
+  // without renewal it expires and silently re-locks content the holder has
+  // already earned. `chainIndex` is the item's permanent on-chain identity,
+  // not its database id.
+  const unlockedRows = await db.locationGroup.findMany({
+    where: {
+      onChainUnlockedAt: { not: null },
+      unlockForToken: { isNot: null },
+      unlockForLockedMedia: { isNot: null },
+    },
+    select: {
+      unlockForToken: { select: { tokenId: true } },
+      unlockForLockedMedia: { select: { chainIndex: true } },
+    },
+  });
+  const unlocked = unlockedRows
+    .map((r): [number, number] => [
+      Number(r.unlockForToken?.tokenId),
+      r.unlockForLockedMedia?.chainIndex ?? Number.NaN,
+    ])
+    .filter(([tokenId, index]) => Number.isFinite(tokenId) && Number.isFinite(index));
+
+  /**
+   * One kind per call. Mixing them is what blew the footprint before: the caps
+   * are per-list, but the transaction pays for all of them together.
+   */
+  const rounds: Array<{ kind: string; call: Parameters<typeof keepAliveOnChain>[0]; size: number }> = [
+    ...chunk(tokenIds, LIMITS.tokens).map((b) => ({
+      kind: "tokens",
+      call: { editionIds: [], editionRefs: [], tokenIds: b, unlocked: [] },
+      size: b.length,
+    })),
+    ...chunk(editionIds, LIMITS.editions).map((b) => ({
+      kind: "editions",
+      call: { editionIds: b, editionRefs: [], tokenIds: [], unlocked: [] },
+      size: b.length,
+    })),
+    ...chunk(editionRefs, LIMITS.refs).map((b) => ({
+      kind: "refs",
+      call: { editionIds: [], editionRefs: b, tokenIds: [], unlocked: [] },
+      size: b.length,
+    })),
+    ...chunk(unlocked, LIMITS.unlocked).map((b) => ({
+      kind: "unlocked",
+      call: { editionIds: [], editionRefs: [], tokenIds: [], unlocked: b },
+      size: b.length,
+    })),
+  ];
 
   const results: Array<{
     round: number;
-    editionCount: number;
-    tokenCount: number;
+    kind: string;
+    size: number;
     hash?: string;
     error?: string;
   }> = [];
@@ -98,20 +162,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Sequential, not parallel/Promise.all — every round is signed and
   // submitted by the same treasury source account, so concurrent
   // submissions would race for the same sequence number.
-  for (let i = 0; i < rounds; i++) {
-    const editionBatch = editionChunks[i] ?? [];
-    const tokenBatch = tokenChunks[i] ?? [];
+  //
+  // Every round also renews the contract instance, so even a collection with
+  // nothing else to sweep still keeps the contract itself alive.
+  for (const [i, round] of rounds.entries()) {
     try {
-      const hash = await keepAliveOnChain({
-        editionIds: editionBatch,
-        tokenIds: tokenBatch,
-      });
-      results.push({ round: i, editionCount: editionBatch.length, tokenCount: tokenBatch.length, hash });
+      const hash = await keepAliveOnChain(round.call);
+      results.push({ round: i, kind: round.kind, size: round.size, hash });
     } catch (e) {
       results.push({
         round: i,
-        editionCount: editionBatch.length,
-        tokenCount: tokenBatch.length,
+        kind: round.kind,
+        size: round.size,
         error: e instanceof Error ? e.message : String(e),
       });
     }
@@ -120,7 +182,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const failures = results.filter((r) => r.error);
   return res.status(failures.length > 0 ? 207 : 200).json({
     editionsTouched: editionIds.length,
+    editionRefsTouched: editionRefs.length,
     tokensTouched: tokenIds.length,
+    unlockedTouched: unlocked.length,
     rounds: results,
   });
 }

@@ -13,22 +13,22 @@ import { api } from "~/utils/api"
  * marketplace grid, since these have unlock rules/locked reward content
  * worth calling out up front. See VIP_TICKET_UNLOCK_PLAN.md.
  */
-export default function SmartContractTicketsPage() {
+export default function SmartContractItemsPage() {
   const { data, isLoading } = api.nft.listGated.useQuery({})
 
   return (
     <>
       <Head>
-        <title>Smart Contract Tickets — Actionverse</title>
+        <title>Smart Contract Items — Actionverse</title>
       </Head>
       <div className="mx-auto max-w-6xl p-4 md:p-6">
         <div className="mb-8 space-y-1">
           <h1 className="flex items-center gap-2 text-3xl font-bold text-foreground">
             <Sparkles className="h-6 w-6 text-primary" />
-            Smart Contract Tickets
+            Smart Contract Items
           </h1>
           <p className="text-muted-foreground">
-            VIP tickets with a locked reward — collect every required location with your own copy to unlock it.
+            VIP items with a locked reward — collect every required location with your own copy to unlock it.
           </p>
         </div>
 
@@ -41,7 +41,7 @@ export default function SmartContractTicketsPage() {
         ) : !data?.items.length ? (
           <Card>
             <CardContent className="p-8 text-center text-muted-foreground">
-              No gated tickets are on sale right now.
+              No gated items are on sale right now.
             </CardContent>
           </Card>
         ) : (
@@ -56,7 +56,7 @@ export default function SmartContractTicketsPage() {
                       <Image src={item.thumbnail} alt={item.name} fill className="object-cover" />
                       <Badge className="absolute left-3 top-3 gap-1 bg-black/70 text-white">
                         <Sparkles className="h-3 w-3" />
-                        VIP Ticket
+                        VIP Item
                       </Badge>
                     </div>
                     <CardContent className="space-y-2 p-4">

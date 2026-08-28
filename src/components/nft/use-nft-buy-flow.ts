@@ -3,6 +3,7 @@ import { useSession } from "next-auth/react";
 import { clientSignOnly, submitSignedXDRToServer } from "package/connect_wallet";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { fireConfetti } from "~/lib/ui/confetti";
 import { clientSelect } from "~/lib/stellar/fan/utils";
 import { type NftPaymentToken } from "~/lib/stellar/oz/nft";
 import { api } from "~/utils/api";
@@ -115,6 +116,7 @@ export function useNftBuyFlow() {
           await confirmBuyEdition.mutateAsync({ nftId, purchaseId: result.purchaseId, signedXdr });
         }
       });
+      fireConfetti();
       toast.success(successMessage);
       return true;
     } catch (e) {
@@ -135,6 +137,7 @@ export function useNftBuyFlow() {
           await confirmBuy.mutateAsync({ tokenId, signedXdr });
         }
       });
+      fireConfetti();
       toast.success("Purchase complete!");
       return true;
     } catch (e) {
@@ -156,6 +159,7 @@ export function useNftBuyFlow() {
           await confirmBuyBatch.mutateAsync({ tokenIds, signedXdr });
         }
       });
+      fireConfetti();
       toast.success(tokenIds.length > 1 ? `${tokenIds.length} copies purchased!` : "Purchase complete!");
       return true;
     } catch (e) {

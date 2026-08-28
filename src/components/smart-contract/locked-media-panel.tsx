@@ -10,11 +10,14 @@ import {
     Play,
     Footprints,
     Unlock,
+    ChevronDown,
+    ChevronUp,
 } from "lucide-react"
 import { Button } from "~/components/shadcn/ui/button"
 import { useBottomPlayer } from "~/components/player/context/bottom-player-context"
 import { NFTVideoPlayer } from "~/components/player/nft-video-player"
 import { ImageViewer } from "~/components/player/ar/image-viewer"
+import { cn } from "~/lib/utils"
 
 export type LockedMediaItem = {
     // Null only when `locked` is true for this item (a still-gated item's
@@ -35,6 +38,31 @@ const iconFor = (type: LockedMediaItem["type"]) => {
             return VideoIcon
         case "OTHER":
             return LinkIcon
+    }
+}
+
+const typeTheme = (type: LockedMediaItem["type"]) => {
+    switch (type) {
+        case "SONG":
+            return {
+                bg: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+                badge: "Song",
+            }
+        case "VIDEO":
+            return {
+                bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                badge: "Video",
+            }
+        case "IMAGE":
+            return {
+                bg: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+                badge: "Image",
+            }
+        case "OTHER":
+            return {
+                bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                badge: "Link",
+            }
     }
 }
 
@@ -66,12 +94,12 @@ const fallbackLabel = (type: LockedMediaItem["type"], index: number) => {
  */
 export function LockedMediaPanel({
     items,
-    ticketName,
-    ticketThumbnail,
+    itemName,
+    itemThumbnail,
 }: {
     items: LockedMediaItem[]
-    ticketName: string
-    ticketThumbnail?: string
+    itemName: string
+    itemThumbnail?: string
 }) {
     const { showPlayer } = useBottomPlayer()
     const [openVideo, setOpenVideo] = useState<{ url: string; label?: string | null } | null>(null)
@@ -101,7 +129,7 @@ export function LockedMediaPanel({
                     const url = item.url
                     const onOpen = () => {
                         if (item.type === "SONG") {
-                            showPlayer(label, ticketName, url, ticketThumbnail)
+                            showPlayer(label, itemName, url, itemThumbnail)
                         } else if (item.type === "VIDEO") {
                             setOpenVideo({ url, label: item.label })
                             setVideoMinimized(false)
@@ -212,7 +240,7 @@ export function UnlockRequirementNotice({
                     <p className="text-sm text-muted-foreground">
                         {allGated ? (
                             <>
-                                This ticket&apos;s rewards stay locked until you visit{" "}
+                                This item&apos;s rewards stay locked until you visit{" "}
                                 <span className="font-semibold text-foreground">
                                     {requiredLocations} location{requiredLocations === 1 ? "" : "s"}
                                 </span>{" "}
@@ -257,42 +285,88 @@ export function UnlockRequirementNotice({
  */
 export function LockedContentList({
     items,
+    maxVisible = 4,
 }: {
     items: {
         type: LockedMediaItem["type"]
         label: string | null
         unlockRule?: { points: unknown[] } | null
     }[]
+    maxVisible?: number
 }) {
+    const [isExpanded, setIsExpanded] = useState(false)
+
     if (items.length === 0) return null
 
+    const hasMore = items.length > maxVisible
+    const visibleItems = hasMore && !isExpanded ? items.slice(0, maxVisible) : items
+    const remainingCount = items.length - maxVisible
+
     return (
-        <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border">
-            {items.map((item, i) => {
-                const Icon = iconFor(item.type)
-                const pins = item.unlockRule?.points.length ?? 0
-                return (
-                    <li key={i} className="flex items-center gap-3 bg-muted/20 px-4 py-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground">
-                            <Icon className="h-4 w-4" />
+        <div className="space-y-1.5">
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {visibleItems.map((item, i) => {
+                    const Icon = iconFor(item.type)
+                    const theme = typeTheme(item.type)
+                    const pins = item.unlockRule?.points.length ?? 0
+                    const label = item.label ?? fallbackLabel(item.type, i)
+                    return (
+                        <div
+                            key={i}
+                            className="group flex items-center justify-between gap-2 rounded-lg border bg-muted/30 p-2 transition-all hover:border-foreground/20 hover:bg-muted/50"
+                        >
+                            <div className="flex min-w-0 items-center gap-2">
+                                <div
+                                    className={cn(
+                                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-transform group-hover:scale-105",
+                                        theme.bg,
+                                    )}
+                                >
+                                    <Icon className="h-3.5 w-3.5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-xs font-medium text-foreground" title={label}>
+                                        {label}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground">{theme.badge}</p>
+                                </div>
+                            </div>
+                            <div className="shrink-0">
+                                {pins > 0 ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                                        <Footprints className="h-2.5 w-2.5" />
+                                        {pins} pin{pins === 1 ? "" : "s"}
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                                        <Unlock className="h-2.5 w-2.5" />
+                                        Instant
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                            {item.label ?? fallbackLabel(item.type, i)}
-                        </span>
-                        {pins > 0 ? (
-                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-500">
-                                <Footprints className="h-3 w-3" />
-                                {pins} pin{pins === 1 ? "" : "s"}
-                            </span>
-                        ) : (
-                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-1 text-[11px] font-semibold text-green-700 dark:text-green-500">
-                                <Unlock className="h-3 w-3" />
-                                Instant
-                            </span>
-                        )}
-                    </li>
-                )
-            })}
-        </ul>
+                    )
+                })}
+            </div>
+            {hasMore && (
+                <button
+                    type="button"
+                    onClick={() => setIsExpanded((prev) => !prev)}
+                    className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-muted-foreground/40 hover:bg-muted/30 hover:text-foreground"
+                >
+                    {isExpanded ? (
+                        <>
+                            <ChevronUp className="h-3 w-3" />
+                            Show less
+                        </>
+                    ) : (
+                        <>
+                            <ChevronDown className="h-3 w-3" />
+                            and {remainingCount} more reward{remainingCount === 1 ? "" : "s"}
+                        </>
+                    )}
+                </button>
+            )}
+        </div>
     )
 }

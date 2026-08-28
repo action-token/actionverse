@@ -16,7 +16,7 @@ import {
     MapPin,
     Music,
     Play,
-    Ticket,
+    Package,
     Video as VideoIcon,
 } from "lucide-react"
 import { Card, CardContent } from "~/components/shadcn/ui/card"
@@ -42,7 +42,7 @@ type GatedMediaItem = {
 
 const MAX_DOTS = 8
 // Past this many held copies the dot strip stops being a position indicator
-// and turns into a dense row of targets — the "Ticket #N of M" label and the
+// and turns into a dense row of targets — the "Item #N of M" label and the
 // arrows carry position on their own from there.
 const MAX_COPY_DOTS = 10
 
@@ -54,26 +54,10 @@ const MAX_COPY_DOTS = 10
 function CollectionMeter({ collected, required }: { collected: number; required: number }) {
     const pct = Math.min(100, Math.round((collected / Math.max(required, 1)) * 100))
 
-    if (required <= MAX_DOTS) {
-        return (
-            <div className="flex items-center gap-1.5">
-                {Array.from({ length: required }).map((_, i) => (
-                    <span
-                        key={i}
-                        className={cn(
-                            "h-2.5 flex-1 rounded-full transition-colors",
-                            i < collected ? "bg-primary" : "bg-muted",
-                        )}
-                    />
-                ))}
-            </div>
-        )
-    }
-
     return (
-        <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
-                className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-500"
+                className="h-full rounded-full bg-primary transition-all duration-300"
                 style={{ width: `${pct}%` }}
             />
         </div>
@@ -86,6 +70,19 @@ const TYPE_TABS: { type: TokenItem["type"]; label: string; icon: typeof Music }[
     { type: "IMAGE", label: "Image", icon: ImageIcon },
     { type: "OTHER", label: "Link", icon: LinkIcon },
 ]
+
+const iconFor = (type: TokenItem["type"]) => {
+    switch (type) {
+        case "SONG":
+            return Music
+        case "IMAGE":
+            return ImageIcon
+        case "VIDEO":
+            return VideoIcon
+        case "OTHER":
+            return LinkIcon
+    }
+}
 
 function actionForType(type: TokenItem["type"]) {
     switch (type) {
@@ -110,9 +107,9 @@ function actionForType(type: TokenItem["type"]) {
  * Unlocked: an "Unlocked" badge plus the matching action button for its
  * type, which opens it via `onOpen` (a song into the bottom player, a
  * video/image into their fullscreen viewers, a link in a new tab — see
- * `TicketContentByType`).
+ * `ItemContentByType`).
  */
-function TicketItemRow({
+function RewardItemRow({
     item,
     points,
     defaultExpanded = false,
@@ -126,6 +123,7 @@ function TicketItemRow({
     const label = item.label ?? "Reward"
     const isLocked = item.requiresUnlock && !item.unlocked
     const [expanded, setExpanded] = useState(defaultExpanded)
+    const Icon = iconFor(item.type)
 
     if (isLocked) {
         const hasPoints = !!points && points.length > 0
@@ -135,16 +133,17 @@ function TicketItemRow({
                     type="button"
                     onClick={() => setExpanded((v) => !v)}
                     disabled={!hasPoints}
-                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-muted-foreground transition-colors hover:bg-muted/50 disabled:hover:bg-transparent"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-muted-foreground transition-colors hover:bg-muted/50 disabled:hover:bg-transparent"
                 >
-                    <Lock className="h-4 w-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
-                    <span className="shrink-0 text-xs font-medium tabular-nums">
-                        {item.collected}/{item.required}
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{label}</span>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                        <Lock className="h-2.5 w-2.5" />
+                        {item.collected}/{item.required} pins
                     </span>
                     {hasPoints && (
                         <ChevronDown
-                            className={cn("h-4 w-4 shrink-0 transition-transform", expanded && "rotate-180")}
+                            className={cn("h-3.5 w-3.5 shrink-0 transition-transform", expanded && "rotate-180")}
                         />
                     )}
                 </button>
@@ -157,8 +156,8 @@ function TicketItemRow({
                             exit={{ height: 0, opacity: 0 }}
                             transition={{ duration: 0.2, ease: "easeOut" }}
                         >
-                            <div className="space-y-2 border-t border-dashed border-muted-foreground/30 px-4 py-3">
-                                <p className="text-xs text-muted-foreground">
+                            <div className="space-y-1.5 border-t border-dashed border-muted-foreground/30 px-3 py-2">
+                                <p className="text-[11px] text-muted-foreground">
                                     Get within{" "}
                                     <span className="font-semibold text-foreground">50 meters</span> of each
                                     pin, in person, to collect it.
@@ -174,15 +173,18 @@ function TicketItemRow({
 
     const { label: actionLabel, icon: ActionIcon } = actionForType(item.type)
     return (
-        <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3.5">
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{label}</span>
-            <div className="flex shrink-0 items-center gap-2">
-                <Badge className="gap-1 border-0 bg-green-600 text-white hover:bg-green-600">
-                    <CheckCircle2 className="h-3 w-3" />
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2">
+                <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="min-w-0 truncate text-xs font-medium text-foreground">{label}</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+                <Badge className="gap-1 border-0 bg-green-600 px-1.5 py-0.5 text-[10px] text-white hover:bg-green-600">
+                    <CheckCircle2 className="h-2.5 w-2.5" />
                     Unlocked
                 </Badge>
-                <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={onOpen}>
-                    <ActionIcon className="h-3.5 w-3.5" />
+                <Button type="button" size="sm" variant="outline" className="h-6 gap-1 px-2 text-xs" onClick={onOpen}>
+                    <ActionIcon className="h-3 w-3" />
                     {actionLabel}
                 </Button>
             </div>
@@ -194,21 +196,21 @@ function TicketItemRow({
  * A ticket's reward items grouped into Video/Music/Image/Link pills — only
  * the types this ticket actually has get a pill, and the first one present
  * (in that order) is selected by default. Selecting a type swaps in that
- * type's items, each rendered by `TicketItemRow` locked or unlocked and
+ * type's items, each rendered by `RewardItemRow` locked or unlocked and
  * ordered unlocked-first; a song/video/image opened from here plays through
  * this same panel's players so only one thing is ever open at a time across
  * every type.
  */
-function TicketContentByType({
+function ItemContentByType({
     items,
     lockedMedia,
-    ticketName,
-    ticketThumbnail,
+    itemName,
+    itemThumbnail,
 }: {
     items: TokenItem[]
     lockedMedia: GatedMediaItem[]
-    ticketName: string
-    ticketThumbnail?: string
+    itemName: string
+    itemThumbnail?: string
 }) {
     const presentTypes = TYPE_TABS.filter(({ type }) => items.some((i) => i.type === type))
     const [activeType, setActiveType] = useState<TokenItem["type"] | undefined>(presentTypes[0]?.type)
@@ -219,10 +221,6 @@ function TicketContentByType({
 
     if (presentTypes.length === 0) return null
     const selected = presentTypes.some((t) => t.type === activeType) ? activeType : presentTypes[0]!.type
-    // Unlocked first: those are playable right now and are what an owner
-    // comes back to this page for, so they shouldn't sit below rewards that
-    // can't be opened yet. Stable within each group — `sort` keeps the
-    // server's order for items of the same lock state.
     const isItemLocked = (i: TokenItem) => i.requiresUnlock && !i.unlocked
     const itemsOfType = items
         .filter((i) => i.type === selected)
@@ -233,7 +231,7 @@ function TicketContentByType({
         if (!item.url) return
         const url = item.url
         if (item.type === "SONG") {
-            showPlayer(item.label ?? "Track", ticketName, url, ticketThumbnail)
+            showPlayer(item.label ?? "Track", itemName, url, itemThumbnail)
         } else if (item.type === "VIDEO") {
             setOpenVideo({ url, label: item.label })
             setVideoMinimized(false)
@@ -244,30 +242,67 @@ function TicketContentByType({
         }
     }
 
+    const revealedCount = items.filter((i) => i.unlocked).length
+    const totalCount = items.length
+
     return (
-        <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-                {presentTypes.map(({ type, label, icon: Icon }) => (
-                    <button
-                        key={type}
-                        type="button"
-                        onClick={() => setActiveType(type)}
-                        className={cn(
-                            "flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-medium transition-colors",
-                            selected === type
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border text-muted-foreground hover:bg-muted",
-                        )}
-                    >
-                        <Icon className="h-3.5 w-3.5" />
-                        {label}
-                    </button>
-                ))}
+        <div className="space-y-2.5">
+            <div className="flex items-center justify-between border-b border-border/60 pb-1">
+                {presentTypes.length > 1 ? (
+                    <div className="flex items-center gap-4">
+                        {presentTypes.map(({ type, label, icon: Icon }) => {
+                            const count = items.filter((i) => i.type === type).length
+                            const isSelected = selected === type
+                            return (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => setActiveType(type)}
+                                    className={cn(
+                                        "group relative flex items-center gap-1.5 pb-1 text-xs font-medium transition-colors cursor-pointer",
+                                        isSelected
+                                            ? "text-foreground font-semibold"
+                                            : "text-muted-foreground hover:text-foreground",
+                                    )}
+                                >
+                                    <Icon
+                                        className={cn(
+                                            "h-3.5 w-3.5 transition-colors",
+                                            isSelected ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
+                                        )}
+                                    />
+                                    <span>{label}</span>
+                                    <span
+                                        className={cn(
+                                            "rounded-full px-1.5 py-0.2 text-[10px]",
+                                            isSelected
+                                                ? "bg-primary/15 text-primary font-semibold"
+                                                : "bg-muted text-muted-foreground",
+                                        )}
+                                    >
+                                        {count}
+                                    </span>
+                                    {isSelected && (
+                                        <span className="absolute -bottom-1.5 left-0 right-0 h-0.5 rounded-full bg-primary" />
+                                    )}
+                                </button>
+                            )
+                        })}
+                    </div>
+                ) : (
+                    <div />
+                )}
+
+                <div className="shrink-0 pb-1">
+                    <span className="rounded bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground tabular-nums">
+                        {revealedCount}/{totalCount} revealed
+                    </span>
+                </div>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
                 {itemsOfType.map((item) => (
-                    <TicketItemRow
+                    <RewardItemRow
                         key={item.lockedMediaId}
                         item={item}
                         points={lockedMedia.find((m) => m.id === item.lockedMediaId)?.unlockRule?.points}
@@ -299,52 +334,42 @@ function TicketContentByType({
 /**
  * The manage page's main panel: everything about the copies you own, in one
  * card. Replaces the old split of `LockedContentPreview` (rewards, first
- * copy only) plus `UnlockProgressList` (per-copy progress) — those two
- * each carried their own ticket switcher and their own copy of the
- * "how this works" explainer, so an owner saw the same controls and the
- * same instructions twice. Here one selector drives both: pick a copy, and
- * its progress *and* its rewards below are that copy's.
+ * copy only) plus `UnlockProgressList` (per-copy progress).
  */
-export function TicketVault({
+export function ItemVault({
     nftId,
-    ticketName,
-    ticketThumbnail,
+    itemName,
+    itemThumbnail,
     lockedMedia = [],
 }: {
     nftId: string
-    ticketName: string
-    ticketThumbnail?: string
+    itemName: string
+    itemThumbnail?: string
     lockedMedia?: GatedMediaItem[]
 }) {
     const { data, isLoading } = api.nft.unlockStatus.useQuery({ nftId })
     const [selectedIndex, setSelectedIndex] = useState(0)
     const [showHow, setShowHow] = useState(false)
-    // Which way the copies just moved, so the swap animates *toward* the
-    // arrow that was pressed. Copies otherwise look identical (same artwork,
-    // often the same rewards), so without the slide a press can read as
-    // "nothing happened" — the direction is the feedback.
     const [direction, setDirection] = useState(0)
 
     if (isLoading) {
         return (
             <Card>
-                <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                        <Skeleton className="h-9 w-9 rounded-full" />
-                        <div className="space-y-1.5">
-                            <Skeleton className="h-4 w-24" />
-                            <Skeleton className="h-3 w-16" />
+                <div className="flex items-center justify-between border-b bg-muted/30 px-3.5 py-2">
+                    <div className="flex items-center gap-2">
+                        <Skeleton className="h-7 w-7 rounded-lg" />
+                        <div className="space-y-1">
+                            <Skeleton className="h-3.5 w-20" />
                         </div>
                     </div>
-                    <Skeleton className="h-6 w-24 rounded-full" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
                 </div>
-                <CardContent className="space-y-4 p-4">
-                    <Skeleton className="h-2.5 w-full rounded-full" />
-                    <div className="flex gap-2">
-                        <Skeleton className="h-8 w-20 rounded-full" />
-                        <Skeleton className="h-8 w-20 rounded-full" />
+                <CardContent className="space-y-3 p-3">
+                    <div className="flex gap-1.5">
+                        <Skeleton className="h-6 w-14 rounded-full" />
+                        <Skeleton className="h-6 w-14 rounded-full" />
                     </div>
-                    <Skeleton className="h-14 w-full rounded-lg" />
+                    <Skeleton className="h-10 w-full rounded-lg" />
                 </CardContent>
             </Card>
         )
@@ -352,18 +377,15 @@ export function TicketVault({
 
     if (!data?.gated) return null
 
-    // Bound once so `goTo` below can read it — TypeScript drops the
-    // `data?.gated` narrowing inside a nested function, but keeps it on a
-    // plain const captured from the narrowed scope.
     const tokens = data.tokens
 
     if (tokens.length === 0) {
         return (
             <Card className="border-primary/30 bg-primary/5">
-                <CardContent className="flex items-center gap-3 p-4">
-                    <MapPin className="h-5 w-5 shrink-0 text-primary" />
-                    <p className="text-sm text-muted-foreground">
-                        Buy this ticket to start unlocking its rewards — some may reveal immediately,
+                <CardContent className="flex items-center gap-2.5 p-3">
+                    <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                    <p className="text-xs text-muted-foreground">
+                        Buy this item to start unlocking its rewards — some may reveal immediately,
                         others once you visit the locations they require.
                     </p>
                 </CardContent>
@@ -377,8 +399,6 @@ export function TicketVault({
     const revealedCount = token.items.filter((item) => item.unlocked).length
     const lockedItems = token.items.filter((item) => item.requiresUnlock && !item.unlocked)
     const hasLockedItems = lockedItems.length > 0
-    // Pins across every still-locked item on *this* copy, summed into one
-    // bar — the per-item breakdown lives in each locked row's own expansion.
     const pinsCollected = lockedItems.reduce((sum, item) => sum + item.collected, 0)
     const pinsRequired = lockedItems.reduce((sum, item) => sum + item.required, 0)
     const unlockedTokenCount = tokens.filter((t) => t.items.every((i) => i.unlocked)).length
@@ -392,177 +412,155 @@ export function TicketVault({
     }
 
     return (
-        <section className="space-y-2">
-            <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-foreground">Your rewards</h3>
-                {tokens.length > 1 && (
-                    <span className="text-xs font-medium text-muted-foreground">
-                        {unlockedTokenCount} of {tokens.length} copies fully unlocked
-                    </span>
-                )}
-            </div>
+        <Card
+            className={cn("overflow-hidden", fullyUnlocked ? "border-green-500/40" : "border-border")}
+        >
+            <CardContent className="space-y-2.5 p-3">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Your rewards</h3>
+                    {tokens.length > 1 && (
+                        <span className="text-xs text-muted-foreground">
+                            {unlockedTokenCount} of {tokens.length} copies unlocked
+                        </span>
+                    )}
+                </div>
 
-            <Card
-                className={cn("overflow-hidden", fullyUnlocked ? "border-green-500/40" : "border-border")}
-            >
                 <div
                     className={cn(
-                        "flex items-center justify-between gap-3 border-b px-4 py-3",
-                        fullyUnlocked ? "bg-green-500/5" : "bg-muted/30",
+                        "flex items-center justify-between gap-2.5 rounded-lg border px-3 py-2",
+                        fullyUnlocked ? "bg-green-500/5 border-green-500/20" : "bg-muted/40 border-border/60",
                     )}
                 >
-                    <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="flex min-w-0 items-center gap-2">
                         <div
                             className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
                                 fullyUnlocked ? "bg-green-500/15 text-green-600" : "bg-primary/10 text-primary",
                             )}
                         >
-                            <Ticket className="h-4 w-4" />
+                            <Package className="h-3.5 w-3.5" />
                         </div>
                         <div className="min-w-0">
-                            <p className="text-sm font-semibold leading-none text-foreground">
-                                Ticket #{index + 1}
-                                {tokens.length > 1 && (
-                                    <span className="font-normal text-muted-foreground">
-                                        {" "}
-                                        of {tokens.length}
-                                    </span>
-                                )}
-                            </p>
-                            <p className="mt-1 truncate text-xs text-muted-foreground">
-                                #{token.onChainTokenId}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-semibold text-foreground">
+                                    Item #{index + 1}
+                                    {tokens.length > 1 && (
+                                        <span className="font-normal text-muted-foreground"> of {tokens.length}</span>
+                                    )}
+                                </p>
+                                <span className="rounded border bg-background/80 px-1.5 py-0.2 font-mono text-[10px] text-muted-foreground">
+                                    #{token.onChainTokenId}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1.5">
                         {fullyUnlocked ? (
-                            <Badge className="gap-1 border-0 bg-green-600 text-white hover:bg-green-600">
-                                <CheckCircle2 className="h-3 w-3" />
+                            <Badge className="gap-1 border-0 bg-green-600 px-1.5 py-0.5 text-[10px] text-white hover:bg-green-600">
+                                <CheckCircle2 className="h-2.5 w-2.5" />
                                 Unlocked
                             </Badge>
+                        ) : pinsRequired > 0 ? (
+                            <div className="flex items-center gap-2 rounded-full border bg-muted/40 px-2.5 py-1 text-xs">
+                                <div className="h-2 w-20 sm:w-28 overflow-hidden rounded-full bg-muted-foreground/20">
+                                    <div
+                                        className="h-full rounded-full bg-primary transition-all duration-300"
+                                        style={{
+                                            width: `${Math.round((pinsCollected / Math.max(pinsRequired, 1)) * 100)}%`,
+                                        }}
+                                    />
+                                </div>
+                                <span className="font-semibold tabular-nums text-foreground">
+                                    {pinsCollected}/{pinsRequired} pins
+                                </span>
+                            </div>
                         ) : (
-                            <Badge variant="secondary" className="tabular-nums">
+                            <Badge variant="secondary" className="px-2 py-0.5 text-xs tabular-nums">
                                 {revealedCount}/{token.items.length} revealed
                             </Badge>
                         )}
                         {multiCopy && (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-0.5">
                                 <Button
                                     type="button"
-                                    variant="outline"
+                                    variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7"
+                                    className="h-6 w-6 rounded-md"
                                     onClick={() => goTo(index - 1)}
                                     disabled={index === 0}
                                 >
-                                    <ChevronLeft className="h-4 w-4" />
-                                    <span className="sr-only">Previous ticket</span>
+                                    <ChevronLeft className="h-3.5 w-3.5" />
+                                    <span className="sr-only">Previous item</span>
                                 </Button>
                                 <Button
                                     type="button"
-                                    variant="outline"
+                                    variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7"
+                                    className="h-6 w-6 rounded-md"
                                     onClick={() => goTo(index + 1)}
                                     disabled={index === tokens.length - 1}
                                 >
-                                    <ChevronRight className="h-4 w-4" />
-                                    <span className="sr-only">Next ticket</span>
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                    <span className="sr-only">Next item</span>
                                 </Button>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {multiCopy && tokens.length <= MAX_COPY_DOTS && (
-                    <div className="flex items-center justify-center gap-1.5 border-b bg-muted/10 py-2">
-                        {tokens.map((t, i) => (
-                            <button
-                                key={t.nftTokenId}
-                                type="button"
-                                onClick={() => goTo(i)}
-                                aria-current={i === index}
-                                className={cn(
-                                    "h-1.5 rounded-full transition-all duration-200",
-                                    i === index
-                                        ? "w-5 bg-primary"
-                                        : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60",
-                                )}
-                            >
-                                <span className="sr-only">Ticket {i + 1}</span>
-                            </button>
-                        ))}
+                <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                        key={token.nftTokenId}
+                        initial={{ opacity: 0, x: direction >= 0 ? 28 : -28 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: direction >= 0 ? -28 : 28 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="space-y-3"
+                    >
+                        <ItemContentByType
+                            items={token.items}
+                            lockedMedia={lockedMedia}
+                            itemName={itemName}
+                            itemThumbnail={itemThumbnail}
+                        />
+                    </motion.div>
+                </AnimatePresence>
+
+                {hasLockedItems && (
+                    <div className="space-y-1.5 border-t border-border/60 pt-2.5">
+                        <Link href="/action/home" className="block">
+                            <Button className="h-8 w-full gap-1.5 text-xs">
+                                <MapPin className="h-3.5 w-3.5" />
+                                Go collect pins
+                            </Button>
+                        </Link>
+                        <button
+                            type="button"
+                            onClick={() => setShowHow((v) => !v)}
+                            className="flex w-full items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                        >
+                            <Info className="h-3 w-3" />
+                            How unlocking works
+                            <ChevronDown
+                                className={cn("h-3 w-3 transition-transform", showHow && "rotate-180")}
+                            />
+                        </button>
+                        {showHow && (
+                            <ol className="list-decimal space-y-1 rounded-lg bg-muted/40 py-2.5 pl-7 pr-3 text-[11px] text-muted-foreground">
+                                <li>
+                                    Go to the pin&apos;s location — get within{" "}
+                                    <span className="font-semibold text-foreground">50 meters</span>, in
+                                    person, with this device.
+                                </li>
+                                <li>Open the AR camera once you&apos;re in range.</li>
+                                <li>Collect the pin — the reward unlocks automatically from there.</li>
+                            </ol>
+                        )}
                     </div>
                 )}
-
-                <CardContent className="space-y-4 p-4">
-                    <AnimatePresence mode="wait" initial={false}>
-                        <motion.div
-                            key={token.nftTokenId}
-                            initial={{ opacity: 0, x: direction >= 0 ? 28 : -28 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: direction >= 0 ? -28 : 28 }}
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                            className="space-y-4"
-                        >
-                            {hasLockedItems && (
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                        <span>Pins collected</span>
-                                        <span className="font-medium text-foreground">
-                                            {pinsCollected} of {pinsRequired}
-                                        </span>
-                                    </div>
-                                    <CollectionMeter collected={pinsCollected} required={pinsRequired} />
-                                </div>
-                            )}
-
-                            <TicketContentByType
-                                items={token.items}
-                                lockedMedia={lockedMedia}
-                                ticketName={ticketName}
-                                ticketThumbnail={ticketThumbnail}
-                            />
-                        </motion.div>
-                    </AnimatePresence>
-
-                    {hasLockedItems && (
-                        <div className="space-y-2 border-t border-border/60 pt-4">
-                            <Link href="/action/home" className="block">
-                                <Button className="w-full gap-2">
-                                    <MapPin className="h-4 w-4" />
-                                    Go collect pins
-                                </Button>
-                            </Link>
-                            <button
-                                type="button"
-                                onClick={() => setShowHow((v) => !v)}
-                                className="flex w-full items-center justify-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-                            >
-                                <Info className="h-3.5 w-3.5" />
-                                How unlocking works
-                                <ChevronDown
-                                    className={cn("h-3.5 w-3.5 transition-transform", showHow && "rotate-180")}
-                                />
-                            </button>
-                            {showHow && (
-                                <ol className="list-decimal space-y-1 rounded-lg bg-muted/40 py-3 pl-8 pr-4 text-xs text-muted-foreground">
-                                    <li>
-                                        Go to the pin&apos;s location — get within{" "}
-                                        <span className="font-semibold text-foreground">50 meters</span>, in
-                                        person, with this device.
-                                    </li>
-                                    <li>Open the AR camera once you&apos;re in range.</li>
-                                    <li>Collect the pin — the reward unlocks automatically from there.</li>
-                                </ol>
-                            )}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-        </section>
+            </CardContent>
+        </Card>
     )
 }
 

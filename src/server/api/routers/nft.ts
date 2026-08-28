@@ -36,6 +36,7 @@ import {
   NFT_PAYMENT_TOKENS,
   paymentTokenAddress,
   pollUntilVisible,
+  registerEditionOnChain,
   signArtXdr,
   submitFeeBumpedPurchase,
   updateEditionOnChain,
@@ -58,6 +59,7 @@ import { SignUser } from "~/lib/stellar/utils";
 import { env } from "~/env";
 import { getAccSecretFromRubyApi } from "package/connect_wallet/src/lib/stellar/get-acc-secret";
 import { isRechargeAbleClient } from "~/utils/recharge/is-rechargeable-client";
+import { lookupExistingCustodialPubkey, resolveOrCreateCustodialAccount } from "~/server/auth";
 import { WalletType } from "~/types/wallet/wallet-types";
 
 // Same Square client shape as `src/server/api/routers/marketplace/pay.ts`
@@ -125,10 +127,45 @@ async function ensureBuyerReady(auth: BuyerAuth, buyerId: string): Promise<void>
  * or an already-active account.
  */
 async function activationCostUsdForSession(session: { user?: { id: string; walletType: WalletType } } | null): Promise<number> {
+  return (await accountActiveForSession(session)) ? 0 : getAccountActivationCostInUsd();
+}
+
+/**
+ * Whether this session's buyer already has a live Stellar account.
+ *
+ * Drives which fee table a quote uses — an inactive buyer's purchase bundles
+ * create-account and change-trust into the same transaction, so it costs more
+ * to include (0.04/0.09 rather than 0.03/0.07). Treated as active for anyone
+ * who cannot reach card checkout anyway: a logged-out viewer, or an
+ * external-wallet buyer, who is sent to activate separately instead.
+ */
+async function accountActiveForSession(session: { user?: { id: string; walletType: WalletType } } | null): Promise<boolean> {
   const user = session?.user;
-  if (!user || !isRechargeAbleClient(user.walletType)) return 0;
-  const active = await isStellarAccountActivated(user.id);
-  return active ? 0 : getAccountActivationCostInUsd();
+  if (!user || !isRechargeAbleClient(user.walletType)) return true;
+  return isStellarAccountActivated(user.id);
+}
+
+/**
+ * Guest counterpart to `activationCostUsdForSession` — same idea, keyed by
+ * an email typed at checkout instead of a session.
+ */
+async function activationCostUsdForEmail(email: string | undefined): Promise<number> {
+  return (await accountActiveForEmail(email)) ? 0 : getAccountActivationCostInUsd();
+}
+
+/**
+ * Guest counterpart to `accountActiveForSession`. Deliberately the inverse
+ * default of that function when there's nothing to look up yet: a
+ * logged-out session defaults to "active" (0 cost) because it can't reach
+ * card checkout at all, but a guest quote with no email typed *is* the
+ * checkout — defaulting to "inactive" here shows the safe, higher price
+ * until a real email resolves it down. Never calls
+ * `resolveOrCreateCustodialAccount`: a quote must never create an account.
+ */
+async function accountActiveForEmail(email: string | undefined): Promise<boolean> {
+  if (!email) return false;
+  const pubkey = await lookupExistingCustodialPubkey(email);
+  return pubkey ? isStellarAccountActivated(pubkey) : false;
 }
 
 // User ids are Stellar public keys (56-char strkeys) — never a valid match,
@@ -150,7 +187,7 @@ const DisplayCurrencySchema = z.enum([...NFT_DISPLAY_CURRENCIES]);
 // Both currencies are mandatory now — a creator/reseller can no longer
 // offer just one. Buyers always get to choose ACTION or USD/card.
 const DisplayPricesSchema = z
-  .array(z.object({ paymentToken: DisplayCurrencySchema, price: z.number().positive() }))
+  .array(z.object({ paymentToken: DisplayCurrencySchema, price: z.number().positive().max(100_000_000) }))
   .min(2)
   .max(5)
   .refine(
@@ -214,6 +251,60 @@ async function refreshListingAggregates(
  * post-sale it must never be touched (that's the frozen `media_url`
  * guarantee), so the post-sale call site must pass `false`.
  */
+/**
+ * The edition must exist on-chain before `buy_edition` will mint it —
+ * `register_edition` is gated to the price authority and no longer happens
+ * lazily inside a purchase (that was the edition-squatting hole: the first
+ * buyer used to define the edition's creator/royalty/prices). Registers on
+ * the first sale, from the trusted database row; every later purchase of
+ * the same edition is a no-op here and mints against what is already
+ * on-chain.
+ */
+async function ensureEditionRegistered(
+  db: PrismaClient,
+  nft: {
+    id: string;
+    name: string;
+    description: string;
+    thumbnail: string;
+    contentUrl: string;
+    mediaType: string;
+    creatorId: string;
+    royaltyBps: number;
+    supply: number;
+    onChainEditionId: string | null;
+    prices: { paymentToken: string; price: number }[];
+  },
+): Promise<number> {
+  if (nft.onChainEditionId !== null) return Number(nft.onChainEditionId);
+
+  const editionId = await registerEditionOnChain({
+    editionRef: nft.id,
+    title: nft.name,
+    description: nft.description,
+    thumbnailUrl: nft.thumbnail,
+    mediaUrl: nft.contentUrl,
+    mediaType: nft.mediaType,
+    creatorPubKey: nft.creatorId,
+    royaltyBps: nft.royaltyBps,
+    supply: nft.supply,
+    // Only "asset" entries become on-chain `PriceEntry`s — "usd" is a
+    // creator sticker price with no on-chain representation.
+    prices: nft.prices
+      .filter((p) => p.paymentToken !== "usd")
+      .map((p) => ({
+        paymentToken: paymentTokenAddress(p.paymentToken as NftPaymentToken),
+        priceRaw: humanPriceToRaw(p.price),
+      })),
+  });
+
+  await db.nft.update({
+    where: { id: nft.id },
+    data: { onChainEditionId: String(editionId) },
+  });
+  return editionId;
+}
+
 async function writeEditionFields(
   db: PrismaClient,
   nftId: string,
@@ -482,7 +573,6 @@ export async function deliverCardFundedEditionPurchase(
     where: { id: purchase.nftId },
     include: { prices: true },
   });
-  const onChainPrices = nft.prices.filter((p) => p.paymentToken !== "usd");
   const assetRow = nft.prices.find((p) => p.paymentToken === "asset");
   if (!assetRow) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "This item has no on-chain price to settle with" });
@@ -522,28 +612,22 @@ export async function deliverCardFundedEditionPurchase(
       });
     }
 
+    await ensureEditionRegistered(db, nft);
+
     const xdr = await buildBuyEditionXDR({
       buyerPubKey: purchase.buyerId,
       editionRef: nft.id,
-      title: nft.name,
-      description: nft.description,
-      thumbnailUrl: nft.thumbnail,
-      mediaUrl: nft.contentUrl,
-      mediaType: nft.mediaType,
-      creatorPubKey: nft.creatorId,
-      royaltyBps: nft.royaltyBps,
-      supply: nft.supply,
-      prices: onChainPrices.map((p) => ({
-        paymentToken: paymentTokenAddress(p.paymentToken as NftPaymentToken),
-        priceRaw: humanPriceToRaw(p.price),
-      })),
       purchaseRef: purchase.id,
       paymentToken: paymentTokenAddress("asset"),
       quantity: purchase.quantity,
       inclusionFeeRaw,
       networkFeeRaw,
     });
-    txHash = await feeBumpAsCustodialBuyer({ xdr, signWith: { email: buyerEmail } });
+    txHash = await feeBumpAsCustodialBuyer({
+      xdr,
+      signWith: { email: buyerEmail },
+      expect: { buyerPubKey: purchase.buyerId, fnNames: ["buy_edition"], purchaseRef: purchase.id },
+    });
   } catch (e) {
     // Square already charged the card — every failure from here on is
     // "money received, delivery owed" with no automatic retry (removed for
@@ -874,24 +958,12 @@ export const nftRouter = createTRPCRouter({
       const contractAddress = ART_NFT_CONTRACT_ID;
       await ctx.db.nft.update({ where: { id: nft.id }, data: { contractAddress } });
 
+      await ensureEditionRegistered(ctx.db, nft);
+
       const liveFees = await getInclusionAndNetworkFee(input.quantity);
       const xdr = await buildBuyEditionXDR({
         buyerPubKey: buyerId,
         editionRef: nft.id,
-        title: nft.name,
-        description: nft.description,
-        thumbnailUrl: nft.thumbnail,
-        mediaUrl: nft.contentUrl,
-        mediaType: nft.mediaType,
-        creatorPubKey: nft.creatorId,
-        royaltyBps: nft.royaltyBps,
-        supply: nft.supply,
-        prices: nft.prices
-          .filter((p) => p.paymentToken !== "usd")
-          .map((p) => ({
-            paymentToken: paymentTokenAddress(p.paymentToken as NftPaymentToken),
-            priceRaw: humanPriceToRaw(p.price),
-          })),
         purchaseRef: purchase.id,
         paymentToken: paymentTokenAddress(input.paymentToken),
         quantity: input.quantity,
@@ -900,7 +972,11 @@ export const nftRouter = createTRPCRouter({
       });
 
       if (auth.kind === "custodial") {
-        const txHash = await feeBumpAsCustodialBuyer({ xdr, signWith: auth.signWith });
+        const txHash = await feeBumpAsCustodialBuyer({
+          xdr,
+          signWith: auth.signWith,
+          expect: { buyerPubKey: buyerId, fnNames: ["buy_edition"], purchaseRef: purchase.id },
+        });
         const nftResult = await finalizeEditionPurchase(ctx.db, purchase, txHash);
         return { submitted: true as const, txHash, contractAddress, purchaseId: purchase.id, nft: nftResult };
       }
@@ -934,7 +1010,11 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "CONFLICT", message: "Already confirmed" });
       }
 
-      const txHash = await submitFeeBumpedPurchase(input.signedXdr);
+      const txHash = await submitFeeBumpedPurchase(input.signedXdr, {
+        buyerPubKey: ctx.session.user.id,
+        fnNames: ["buy_edition"],
+        purchaseRef: input.purchaseId,
+      });
       return finalizeEditionPurchase(ctx.db, purchase, txHash);
     }),
 
@@ -993,7 +1073,7 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "This item has no on-chain price to settle with" });
       }
 
-      const usdFees = await getInclusionAndNetworkFeeInUsd(input.quantity);
+      const usdFees = await getInclusionAndNetworkFeeInUsd(input.quantity, accountActive);
       const activationCostUsd = accountActive ? 0 : await getAccountActivationCostInUsd();
       const totalUsd =
         usdRow.price * input.quantity + usdFees.inclusionFee + usdFees.networkFee + activationCostUsd;
@@ -1026,6 +1106,93 @@ export const nftRouter = createTRPCRouter({
       });
 
       return deliverCardFundedEditionPurchase(ctx.db, purchase, email);
+    }),
+
+  // Guest counterpart to `buyEditionWithCard` — no session at all, just an
+  // email typed at checkout. Pricing/activation-status is resolved from the
+  // *local* DB only (`lookupExistingCustodialPubkey`) before the charge, so
+  // a mere price quote can never trigger the external key service's
+  // side-effecting account-activation path. The real custodial account
+  // (existing or brand new) is only resolved-or-created by
+  // `resolveOrCreateCustodialAccount` after Square has actually been
+  // charged — a guest attempt that fails to charge never creates an
+  // account and never even creates an `NftPurchase` row (unlike the
+  // logged-in path, which can record a `FAILED` row under a real buyerId —
+  // there's no buyerId yet to record one under here). The buyer is never
+  // signed into the resulting account.
+  buyEditionWithCardAsGuest: publicProcedure
+    .input(
+      z.object({
+        nftId: z.string(),
+        quantity: z.number().int().min(1).max(MAX_QUANTITY_PER_BUY).default(1),
+        sourceId: z.string().min(1),
+        email: z.string().email(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existingPubkey = await lookupExistingCustodialPubkey(input.email);
+      const accountActive = existingPubkey ? await isStellarAccountActivated(existingPubkey) : false;
+
+      const nft = await ctx.db.nft.findUnique({
+        where: { id: input.nftId },
+        include: { prices: true },
+      });
+      if (!nft) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const remaining = nft.supply - nft.mintedCount;
+      if (input.quantity > remaining) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `Only ${remaining} cop${remaining === 1 ? "y" : "ies"} left`,
+        });
+      }
+      const usdRow = nft.prices.find((p) => p.paymentToken === "usd");
+      if (!usdRow) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This item isn't priced in USD" });
+      }
+      if (!nft.prices.some((p) => p.paymentToken === "asset")) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This item has no on-chain price to settle with" });
+      }
+
+      const usdFees = await getInclusionAndNetworkFeeInUsd(input.quantity, accountActive);
+      const activationCostUsd = accountActive ? 0 : await getAccountActivationCostInUsd();
+      const totalUsd =
+        usdRow.price * input.quantity + usdFees.inclusionFee + usdFees.networkFee + activationCostUsd;
+
+      // This Square SDK version throws (an `ApiError`, not a resolved
+      // `result.errors`) for a declined/rejected charge — unlike
+      // `buyEditionWithCard`'s existing `result.errors` check, which is
+      // dead code for that case. Caught here so a guest sees "Card payment
+      // failed" instead of the raw SDK error message.
+      let result;
+      try {
+        ({ result } = await squarePaymentsApi.createPayment({
+          idempotencyKey: randomUUID(),
+          sourceId: input.sourceId,
+          amountMoney: { currency: "USD", amount: BigInt(Math.round(totalUsd * 100)) },
+        }));
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
+      }
+      if (result.errors || result.payment?.status !== "COMPLETED") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
+      }
+
+      const { pubkey: buyerId } = await resolveOrCreateCustodialAccount(input.email);
+
+      const purchase = await ctx.db.nftPurchase.create({
+        data: {
+          nftId: nft.id,
+          buyerId,
+          quantity: input.quantity,
+          paymentToken: "asset",
+          unitPrice: usdRow.price,
+          status: "STEP1_CONFIRMED",
+          step1TxHash: result.payment.id,
+        },
+      });
+
+      return deliverCardFundedEditionPurchase(ctx.db, purchase, input.email);
     }),
 
   // -------------------------------------------------------------------------
@@ -1075,7 +1242,7 @@ export const nftRouter = createTRPCRouter({
   // no ground truth to mirror; it's trusted from the caller the same way
   // `create`'s own USD price already is.
   confirmListing: protectedProcedure
-    .input(z.object({ tokenId: z.string(), txHash: z.string().min(1), usdPrice: z.number().positive() }))
+    .input(z.object({ tokenId: z.string(), txHash: z.string().min(1), usdPrice: z.number().positive().max(100_000) }))
     .mutation(async ({ ctx, input }) => {
       const token = await requireOwnedToken(ctx.db, input.tokenId, ctx.session.user.id);
 
@@ -1172,7 +1339,7 @@ export const nftRouter = createTRPCRouter({
       z.object({
         tokenIds: z.array(z.string()).min(1).max(MAX_QUANTITY_PER_BUY),
         txHash: z.string().min(1),
-        usdPrice: z.number().positive(),
+        usdPrice: z.number().positive().max(100_000),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -1353,19 +1520,29 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "This listing has no on-chain price to settle with" });
       }
 
-      const usdFees = await getInclusionAndNetworkFeeInUsd(1);
+      const usdFees = await getInclusionAndNetworkFeeInUsd(1, accountActive);
       const activationCostUsd = accountActive ? 0 : await getAccountActivationCostInUsd();
       const totalUsd = usdRow.price + usdFees.inclusionFee + usdFees.networkFee + activationCostUsd;
-      const { result } = await squarePaymentsApi.createPayment({
-        idempotencyKey: randomUUID(),
-        sourceId: input.sourceId,
-        amountMoney: { currency: "USD", amount: BigInt(Math.round(totalUsd * 100)) },
-      });
+      // This Square SDK version throws (an `ApiError`, not a resolved
+      // `result.errors`) for a declined/rejected charge — unlike
+      // `buyEditionWithCard`'s existing `result.errors` check, which is
+      // dead code for that case. Caught here so a guest sees "Card payment
+      // failed" instead of the raw SDK error message.
+      let result;
+      try {
+        ({ result } = await squarePaymentsApi.createPayment({
+          idempotencyKey: randomUUID(),
+          sourceId: input.sourceId,
+          amountMoney: { currency: "USD", amount: BigInt(Math.round(totalUsd * 100)) },
+        }));
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
+      }
       if (result.errors || result.payment?.status !== "COMPLETED") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
       }
 
-      const liveFees = await getInclusionAndNetworkFee(1);
+      const liveFees = await getInclusionAndNetworkFee(1, accountActive);
       const inclusionFeeRaw = humanPriceToRaw(liveFees.inclusionFee);
       const networkFeeRaw = humanPriceToRaw(liveFees.networkFee);
 
@@ -1392,12 +1569,112 @@ export const nftRouter = createTRPCRouter({
           inclusionFeeRaw,
           networkFeeRaw,
         });
-        await feeBumpAsCustodialBuyer({ xdr, signWith: { email } });
+        // No `purchaseRef` — `buy`'s third argument is `payment_token`, not a
+        // ref; only `buy_edition` carries one.
+        await feeBumpAsCustodialBuyer({
+          xdr,
+          signWith: { email },
+          expect: { buyerPubKey: buyerId, fnNames: ["buy"] },
+        });
       } catch (e) {
         // Square already charged the card — resale has no `NftPurchase`-
         // equivalent row to key an automatic retry off of yet (same known
         // gap `deliverCardFundedEditionPurchase`'s doc comment flags for
         // primary purchases), so this surfaces directly instead.
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Card charged, but delivery failed — please contact support.",
+          cause: e,
+        });
+      }
+
+      return finalizeResalePurchase(ctx.db, listing, buyerId);
+    }),
+
+  // Guest counterpart to `buyResaleWithCard` — see `buyEditionWithCardAsGuest`'s
+  // doc comment for the account-resolution timing/safety reasoning. Resale
+  // has no `NftPurchase`-equivalent row to checkpoint against even for the
+  // logged-in path, so a delivery failure here surfaces directly, same as
+  // the logged-in flow already does.
+  buyResaleWithCardAsGuest: publicProcedure
+    .input(z.object({ tokenId: z.string(), sourceId: z.string().min(1), email: z.string().email() }))
+    .mutation(async ({ ctx, input }) => {
+      const existingPubkey = await lookupExistingCustodialPubkey(input.email);
+      const accountActive = existingPubkey ? await isStellarAccountActivated(existingPubkey) : false;
+
+      const listing = await ctx.db.nftListing.findUnique({
+        where: { tokenId: input.tokenId },
+        include: { prices: true },
+      });
+      if (!listing?.isActive) throw new TRPCError({ code: "NOT_FOUND" });
+      if (existingPubkey && listing.sellerId === existingPubkey) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "You can't buy your own listing" });
+      }
+      const usdRow = listing.prices.find((p) => p.paymentToken === "usd");
+      if (!usdRow) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This listing isn't priced in USD" });
+      }
+      if (!listing.prices.some((p) => p.paymentToken === "asset")) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This listing has no on-chain price to settle with" });
+      }
+
+      const usdFees = await getInclusionAndNetworkFeeInUsd(1, accountActive);
+      const activationCostUsd = accountActive ? 0 : await getAccountActivationCostInUsd();
+      const totalUsd = usdRow.price + usdFees.inclusionFee + usdFees.networkFee + activationCostUsd;
+      // This Square SDK version throws (an `ApiError`, not a resolved
+      // `result.errors`) for a declined/rejected charge — unlike
+      // `buyEditionWithCard`'s existing `result.errors` check, which is
+      // dead code for that case. Caught here so a guest sees "Card payment
+      // failed" instead of the raw SDK error message.
+      let result;
+      try {
+        ({ result } = await squarePaymentsApi.createPayment({
+          idempotencyKey: randomUUID(),
+          sourceId: input.sourceId,
+          amountMoney: { currency: "USD", amount: BigInt(Math.round(totalUsd * 100)) },
+        }));
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
+      }
+      if (result.errors || result.payment?.status !== "COMPLETED") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Card payment failed" });
+      }
+
+      const { pubkey: buyerId } = await resolveOrCreateCustodialAccount(input.email);
+
+      const liveFees = await getInclusionAndNetworkFee(1, accountActive);
+      const inclusionFeeRaw = humanPriceToRaw(liveFees.inclusionFee);
+      const networkFeeRaw = humanPriceToRaw(liveFees.networkFee);
+
+      try {
+        const breakdown = await getSaleBreakdown(Number(input.tokenId), paymentTokenAddress("asset"));
+        if (!breakdown) {
+          throw new Error("Listing isn't priced in ACTION");
+        }
+        const totalAssetRaw = breakdown.total + inclusionFeeRaw + networkFeeRaw;
+
+        const buyerSecret = await getAccSecretFromRubyApi(input.email);
+        if (!accountActive) {
+          await ensureBuyerActivatedAndTrustedForCardPurchase({ buyerPubKey: buyerId, buyerSecret });
+        }
+        const currentBalanceRaw = humanPriceToRaw(await getOnChainBalance(buyerId));
+        if (currentBalanceRaw < totalAssetRaw) {
+          await fundBuyerForCardPurchase({ buyerPubKey: buyerId, buyerSecret, assetAmountRaw: totalAssetRaw });
+        }
+
+        const xdr = await buildBuyXDR({
+          buyerPubKey: buyerId,
+          tokenId: Number(input.tokenId),
+          paymentToken: paymentTokenAddress("asset"),
+          inclusionFeeRaw,
+          networkFeeRaw,
+        });
+        await feeBumpAsCustodialBuyer({
+          xdr,
+          signWith: { email: input.email },
+          expect: { buyerPubKey: buyerId, fnNames: ["buy"] },
+        });
+      } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Card charged, but delivery failed — please contact support.",
@@ -1440,7 +1717,11 @@ export const nftRouter = createTRPCRouter({
       });
 
       if (auth.kind === "custodial") {
-        const txHash = await feeBumpAsCustodialBuyer({ xdr, signWith: auth.signWith });
+        const txHash = await feeBumpAsCustodialBuyer({
+          xdr,
+          signWith: auth.signWith,
+          expect: { buyerPubKey: buyerId, fnNames: ["buy"] },
+        });
         const nft = await finalizeResalePurchase(ctx.db, listing, buyerId);
         return { submitted: true as const, txHash, nft };
       }
@@ -1455,7 +1736,10 @@ export const nftRouter = createTRPCRouter({
       const listing = await ctx.db.nftListing.findUnique({ where: { tokenId: input.tokenId } });
       if (!listing) throw new TRPCError({ code: "NOT_FOUND" });
 
-      await submitFeeBumpedPurchase(input.signedXdr);
+      await submitFeeBumpedPurchase(input.signedXdr, {
+        buyerPubKey: ctx.session.user.id,
+        fnNames: ["buy"],
+      });
       return finalizeResalePurchase(ctx.db, listing, ctx.session.user.id);
     }),
 
@@ -1506,7 +1790,11 @@ export const nftRouter = createTRPCRouter({
       });
 
       if (auth.kind === "custodial") {
-        const txHash = await feeBumpAsCustodialBuyer({ xdr, signWith: auth.signWith });
+        const txHash = await feeBumpAsCustodialBuyer({
+          xdr,
+          signWith: auth.signWith,
+          expect: { buyerPubKey: buyerId, fnNames: ["buy_batch"] },
+        });
         const count = await finalizeBatchResalePurchase(ctx.db, listings, buyerId);
         return { submitted: true as const, txHash, count };
       }
@@ -1528,7 +1816,10 @@ export const nftRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
-      await submitFeeBumpedPurchase(input.signedXdr);
+      await submitFeeBumpedPurchase(input.signedXdr, {
+        buyerPubKey: ctx.session.user.id,
+        fnNames: ["buy_batch"],
+      });
       const count = await finalizeBatchResalePurchase(ctx.db, listings, ctx.session.user.id);
       return { count };
     }),
@@ -1564,9 +1855,26 @@ export const nftRouter = createTRPCRouter({
   getInclusionAndNetworkFeeInUsdPreview: publicProcedure
     .input(z.object({ quantity: z.number().int().min(1).max(MAX_QUANTITY_PER_BUY) }))
     .query(async ({ ctx, input }) => {
+      const active = await accountActiveForSession(ctx.session);
       const [fees, activationCost] = await Promise.all([
-        getInclusionAndNetworkFeeInUsd(input.quantity),
+        getInclusionAndNetworkFeeInUsd(input.quantity, active),
         activationCostUsdForSession(ctx.session),
+      ]);
+      return { ...fees, activationCost };
+    }),
+
+  // Guest counterpart to `getInclusionAndNetworkFeeInUsdPreview` — same
+  // shape, keyed by an optional email instead of a session, for the
+  // logged-out card-checkout UI (both `PrimaryBuyCard` and `ResaleBuyCard`
+  // already combine this with the item's own price client-side, same as the
+  // session-based preview does). Read-only: never creates an account.
+  guestCheckoutQuote: publicProcedure
+    .input(z.object({ quantity: z.number().int().min(1).max(MAX_QUANTITY_PER_BUY), email: z.string().email().optional() }))
+    .query(async ({ input }) => {
+      const active = await accountActiveForEmail(input.email);
+      const [fees, activationCost] = await Promise.all([
+        getInclusionAndNetworkFeeInUsd(input.quantity, active),
+        activationCostUsdForEmail(input.email),
       ]);
       return { ...fees, activationCost };
     }),

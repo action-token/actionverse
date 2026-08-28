@@ -7,7 +7,7 @@ import toast from "react-hot-toast"
 import Head from "next/head"
 import Link from "next/link"
 import Image from "next/image"
-import { ChevronLeft, MapPin, Pencil, Sparkles, Ticket } from "lucide-react"
+import { ChevronLeft, MapPin, Package, Pencil, Sparkles } from "lucide-react"
 import { Badge } from "~/components/shadcn/ui/badge"
 import { Skeleton } from "~/components/shadcn/ui/skeleton"
 import useNeedSign from "~/lib/hook"
@@ -17,7 +17,8 @@ import { api } from "~/utils/api"
 import { LikeButton } from "~/components/nft/like-button"
 import { ManagePriceCard } from "~/components/nft/nft-detail-view"
 import { BlockchainInsights } from "~/components/nft/blockchain-insights"
-import { TicketVault } from "~/components/smart-contract/unlock-progress-list"
+import { ItemVault } from "~/components/smart-contract/unlock-progress-list"
+import { Card, CardContent } from "~/components/shadcn/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/shadcn/ui/tabs"
 
 /**
@@ -52,14 +53,8 @@ export default function SmartContractManagePage() {
   const getCancelListingXDR = api.nft.getCancelListingXDR.useMutation()
   const confirmCancelListing = api.nft.confirmCancelListing.useMutation()
   const [isSavingListing, setIsSavingListing] = useState(false)
-  // Which of the Your Tokens / On-Chain tabs is active — defaults to Your
-  // Tokens, the primary action on this page. There is deliberately no
-  // Locations tab: a ticket's items each carry their own unlock rule, so
-  // pooling every item's pins into one page-level list couldn't say which
-  // places unlock which reward. Locations now live inside each locked item
-  // in `TicketVault`, and the "N locations to visit" chip below scrolls
-  // there rather than switching tabs.
-  const [infoTab, setInfoTab] = useState<"tokens" | "onchain">("tokens")
+  // Which of the Your Tokens / Description / On-Chain tabs is active
+  const [infoTab, setInfoTab] = useState<"tokens" | "description" | "onchain">("tokens")
   const vaultRef = useRef<HTMLDivElement>(null)
 
   const myEntry = myOwned?.find((o) => o.nft.id === id)
@@ -163,11 +158,17 @@ export default function SmartContractManagePage() {
 
   if (isLoading || !nft) {
     return (
-      <div className="mx-auto max-w-6xl p-4 md:p-6">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          <Skeleton className="aspect-square rounded-2xl" />
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-2/3" />
+      <div className="mx-auto max-w-6xl p-4 md:px-6 md:pt-4 md:pb-2 lg:h-[calc(100vh-11vh)] lg:overflow-hidden">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12 lg:h-full">
+          <div className="flex flex-col gap-3 lg:h-full lg:overflow-hidden">
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="aspect-square rounded-2xl lg:aspect-auto lg:flex-1 lg:min-h-0" />
+          </div>
+          <div className="space-y-4 lg:h-full lg:overflow-y-auto lg:pr-2 lg:pb-3">
+            <div className="flex items-center justify-between gap-4">
+              <Skeleton className="h-8 w-2/3" />
+              <Skeleton className="h-8 w-16 rounded-full" />
+            </div>
             <Skeleton className="h-24 w-full rounded-xl" />
             <Skeleton className="h-40 w-full rounded-xl" />
           </div>
@@ -192,92 +193,97 @@ export default function SmartContractManagePage() {
       <Head>
         <title>{`Manage ${nft.name} — Actionverse`}</title>
       </Head>
-      <div className="mx-auto max-w-6xl p-4 md:p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <Link
-            href="/my-collection"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            My Collection
-          </Link>
-          <div className="flex items-center gap-3">
-            {session?.user?.id === nft.creatorId && (
-              <Link
-                href={`/organization/smart-contract/edit/${nft.id}`}
-                className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Edit
-              </Link>
-            )}
-            <LikeButton isLiked={nft.isLiked} likeCount={nft.likeCount} onToggle={handleLike} variant="pill" />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
-          <div className="lg:sticky lg:top-6 lg:self-start">
-            <div className="relative aspect-square overflow-hidden rounded-2xl bg-muted shadow-lg">
+      <div className="mx-auto max-w-6xl p-4 md:px-6 md:pt-4 md:pb-2 lg:h-[calc(100vh-11vh)] lg:overflow-hidden">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12 lg:h-full">
+          <div className="flex flex-col gap-3 lg:h-full lg:overflow-hidden">
+            <Link
+              href="/my-collection"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              My Collection
+            </Link>
+            <div className="relative aspect-square lg:aspect-auto lg:flex-1 lg:min-h-0 overflow-hidden rounded-2xl bg-muted shadow-lg">
               <Image src={nft.thumbnail} alt={nft.name} fill className="object-cover" />
               {isGated && (
                 <div className="absolute left-4 top-4">
                   <Badge className="gap-1 bg-black/70 text-white">
                     <Sparkles className="h-3 w-3" />
-                    VIP Ticket
+                    VIP Item
                   </Badge>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="space-y-5">
-            <div>
-              <h1 className="text-3xl font-bold leading-tight text-foreground">{nft.name}</h1>
-              {nft.description && (
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{nft.description}</p>
-              )}
-            </div>
+          <div className="space-y-3 lg:h-full lg:overflow-y-auto lg:pr-2 lg:pb-3">
+            <div className="sticky top-0 z-10 space-y-1.5 bg-background/95 pb-2 backdrop-blur">
+              <div className="flex items-center justify-between gap-4">
+                <h1 className="text-xl font-bold leading-tight text-foreground md:text-2xl">{nft.name}</h1>
+                <div className="flex shrink-0 items-center gap-2">
+                  {session?.user?.id === nft.creatorId && (
+                    <Link
+                      href={`/organization/smart-contract/edit/${nft.id}`}
+                      className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      <span>Edit</span>
+                    </Link>
+                  )}
+                  <LikeButton isLiked={nft.isLiked} likeCount={nft.likeCount} onToggle={handleLike} variant="pill" />
+                </div>
+              </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                <Ticket className="h-3.5 w-3.5 text-primary" />
-                {myTokens.length} cop{myTokens.length === 1 ? "y" : "ies"} owned
-              </span>
-              {requiredLocations > 0 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    vaultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                >
-                  <MapPin className="h-3.5 w-3.5 text-primary" />
-                  {requiredLocations} location{requiredLocations === 1 ? "" : "s"} to visit
-                </button>
-              )}
-              {isGated && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  {nft.lockedMedia.length} reward{nft.lockedMedia.length === 1 ? "" : "s"}
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                  <Package className="h-3.5 w-3.5 text-primary" />
+                  {myTokens.length} {myTokens.length === 1 ? "copy" : "copies"} owned
                 </span>
-              )}
+                {isGated && (
+                  <>
+                    <span className="text-muted-foreground/40">•</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                      {nft.lockedMedia.length} reward{nft.lockedMedia.length === 1 ? "" : "s"}
+                    </span>
+                  </>
+                )}
+                {requiredLocations > 0 && (
+                  <>
+                    <span className="text-muted-foreground/40">•</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        vaultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                      }
+                      className="inline-flex items-center gap-1 text-amber-600 transition-colors hover:underline dark:text-amber-400"
+                    >
+                      <MapPin className="h-3.5 w-3.5" />
+                      {requiredLocations} location{requiredLocations === 1 ? "" : "s"} to visit
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {isGated && (
               <div ref={vaultRef}>
-                <TicketVault
+                <ItemVault
                   nftId={nft.id}
-                  ticketName={nft.name}
-                  ticketThumbnail={nft.thumbnail}
+                  itemName={nft.name}
+                  itemThumbnail={nft.thumbnail}
                   lockedMedia={gatedMedia}
                 />
               </div>
             )}
 
-            <Tabs value={infoTab} onValueChange={(v) => setInfoTab(v as "tokens" | "onchain")}>
+            <Tabs value={infoTab} onValueChange={(v) => setInfoTab(v as "tokens" | "description" | "onchain")}>
               <TabsList className="w-full">
                 <TabsTrigger value="tokens" className="flex-1">
                   Your tokens ({myTokens.length})
+                </TabsTrigger>
+                <TabsTrigger value="description" className="flex-1">
+                  Description
                 </TabsTrigger>
                 <TabsTrigger value="onchain" className="flex-1">
                   On-Chain
@@ -293,6 +299,20 @@ export default function SmartContractManagePage() {
                   isSaving={isSavingListing}
                   network={onChainInsights?.network}
                 />
+              </TabsContent>
+
+              <TabsContent value="description" className="mt-3">
+                <Card>
+                  <CardContent className="p-4">
+                    {nft.description ? (
+                      <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                        {nft.description}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No description provided.</p>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="onchain" className="mt-3">

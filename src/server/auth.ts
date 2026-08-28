@@ -20,6 +20,7 @@ import {
   appleTokenToUser,
   verifyIdToken,
 } from "package/connect_wallet/src/lib/firebase/admin/auth";
+import { initAdmin } from "package/connect_wallet/src/lib/firebase/admin/config";
 import { auth } from "package/connect_wallet/src/lib/firebase/firebase-auth";
 import { getPublicKeyAPISchema } from "package/connect_wallet/src/lib/stellar/wallet_clients/type";
 import { z } from "zod";
@@ -253,7 +254,7 @@ export const getServerAuthSession = (ctx: {
   return getServerSession(ctx.req, ctx.res, authOptions);
 };
 
-async function dbUser(
+export async function dbUser(
   pubkey: string,
   fromAppSign?: string,
   email?: string,
@@ -315,4 +316,43 @@ async function getUserPublicKey({
     },
   );
   return res.data;
+}
+
+/**
+ * Find-or-create the custodial account for a guest card checkout, entirely
+ * server-side — no session, no password. Mirrors what a normal email/social
+ * sign-in already does via `getUserPublicKey`/`dbUser` above, just resolving
+ * the Firebase user by email instead of via an authenticated sign-in.
+ */
+export async function resolveOrCreateCustodialAccount(
+  email: string,
+): Promise<{ pubkey: string; isNewAccount: boolean }> {
+  const adminAuth = initAdmin().auth();
+  let uid: string;
+  let isNewAccount: boolean;
+  try {
+    uid = (await adminAuth.getUserByEmail(email)).uid;
+    isNewAccount = false;
+  } catch (e) {
+    if ((e as { code?: string }).code !== "auth/user-not-found") throw e;
+    uid = (await adminAuth.createUser({ email })).uid;
+    isNewAccount = true;
+  }
+  const { publicKey } = await getUserPublicKey({ uid, email, fromAppSign: undefined });
+  await dbUser(publicKey, undefined, email, WalletType.emailPass);
+  return { pubkey: publicKey, isNewAccount };
+}
+
+/**
+ * Read-only counterpart to `resolveOrCreateCustodialAccount` — for pricing a
+ * guest quote or checking activation status before any charge happens.
+ * Deliberately a local DB read only, never Firebase or `getUserPublicKey`:
+ * the external key service can silently activate/fund an inactive account
+ * as a side effect of merely resolving its pubkey, which must never happen
+ * before a real charge. `null` means "no local record yet," priced as
+ * new/inactive.
+ */
+export async function lookupExistingCustodialPubkey(email: string): Promise<string | null> {
+  const user = await db.user.findFirst({ where: { email } });
+  return user?.id ?? null;
 }

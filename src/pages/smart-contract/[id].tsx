@@ -16,6 +16,8 @@ import { api } from "~/utils/api"
 import { LikeButton } from "~/components/nft/like-button"
 import { PrimaryBuyCard, ResaleBuyCard } from "~/components/nft/nft-detail-view"
 import { BlockchainInsights } from "~/components/nft/blockchain-insights"
+import { PurchaseSuccessModal } from "~/components/nft/purchase-success-modal"
+import { useLoginRequiredModalStore } from "~/components/store/login-required-modal-store"
 import {
   LockedContentList,
   lockedMediaSummary,
@@ -33,7 +35,7 @@ import { cn } from "~/lib/utils"
  * route rather than folded in here, so this page's job stays one thing.
  * Replaces `src/pages/nft/[id].tsx`. See VIP_TICKET_UNLOCK_PLAN.md.
  */
-export default function SmartContractTicketPage() {
+export default function SmartContractItemPage() {
   const router = useRouter()
   const id = typeof router.query.id === "string" ? router.query.id : undefined
   // Set when the viewer arrived from a resale card in the feed (see
@@ -60,12 +62,16 @@ export default function SmartContractTicketPage() {
   const toggleLike = api.nft.toggleLike.useMutation({
     onSuccess: () => void utils.nft.byId.invalidate({ id }),
   })
-  // Which of the Locations / On-Chain tabs is active — defaults to
-  // Locations, since for a gated ticket "where do I have to go?" is the
-  // question that decides the purchase. The travel notice and the
-  // "N locations to visit" chip both force it back here and scroll it in.
-  const [infoTab, setInfoTab] = useState<"location" | "onchain">("location")
+  // Which of the Locations / Description / On-Chain tabs is active — defaults to
+  // Locations for gated tickets, or Description when not gated.
+  const [infoTab, setInfoTab] = useState<"location" | "description" | "onchain">("location")
   const infoTabsRef = useRef<HTMLDivElement>(null)
+  // Shown instead of redirecting straight to the manage page: a buyer who
+  // has just paid gets confirmation and a list of what they now own, and
+  // chooses when to go in. `guestEmail` set only for a guest purchase — see
+  // `PurchaseSuccessModal`'s doc comment.
+  const [purchased, setPurchased] = useState<{ quantity: number; guestEmail?: string } | null>(null)
+  const setLoginModalOpen = useLoginRequiredModalStore((s) => s.setIsOpen)
 
   function handleLike() {
     if (!session?.user) {
@@ -87,7 +93,9 @@ export default function SmartContractTicketPage() {
 
   async function handleBuyPrimary({ paymentToken, quantity }: { paymentToken: NftPaymentToken; quantity: number }) {
     if (!session?.user || !nft) {
-      toast.error("Connect your wallet first")
+      // Wallet/asset purchase needs a real session to sign with — a guest
+      // buys with card instead (see `PrimaryBuyCard`'s guest branch).
+      setLoginModalOpen(true)
       return
     }
     const bought = await buyEdition(
@@ -95,38 +103,51 @@ export default function SmartContractTicketPage() {
       { paymentToken, quantity },
       gatedItemCount > 0
         ? quantity > 1
-          ? `${quantity} tickets purchased! Each one has its own pin sets to collect for ${gatedItemCount} reward item${gatedItemCount === 1 ? "" : "s"}.`
-          : "Ticket purchased! Go collect its pins to unlock the reward."
+          ? `${quantity} copies purchased! Each one has its own pin sets to collect for ${gatedItemCount} reward item${gatedItemCount === 1 ? "" : "s"}.`
+          : "Purchased! Go collect its pins to unlock the reward."
         : quantity > 1
           ? `${quantity} copies purchased!`
           : "Purchase complete!",
     )
     await invalidateAfterPurchase()
-    if (bought) await router.push(`/smart-contract/manage/${nft.id}`)
+    if (bought) setPurchased({ quantity })
   }
 
   async function handleBuyResaleBatch(tokenIds: string[], paymentToken: NftPaymentToken) {
     if (!session?.user || !nft || tokenIds.length === 0) {
-      toast.error("Connect your wallet first")
+      setLoginModalOpen(true)
       return
     }
     const bought = await buyResaleBatch(tokenIds, paymentToken)
     await invalidateAfterPurchase()
-    if (bought) await router.push(`/smart-contract/manage/${nft.id}`)
+    if (bought) setPurchased({ quantity: tokenIds.length })
   }
 
-  async function handleCardPurchaseSuccess() {
+  // `quantity` defaults to 1 for `ResaleBuyCard`'s call sites, which never
+  // pass one — a resale card purchase is always a single token.
+  async function handleCardPurchaseSuccess(quantity = 1) {
     await invalidateAfterPurchase()
-    await router.push(`/smart-contract/manage/${nft!.id}`)
+    setPurchased({ quantity })
+  }
+
+  async function handleGuestCardPurchaseSuccess(email: string, quantity = 1) {
+    await invalidateAfterPurchase()
+    setPurchased({ quantity, guestEmail: email })
   }
 
   if (isLoading || !nft) {
     return (
-      <div className="mx-auto max-w-6xl p-4 md:p-6">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          <Skeleton className="aspect-square rounded-2xl" />
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-2/3" />
+      <div className="mx-auto max-w-6xl p-4 md:px-6 md:pt-4 md:pb-2 lg:h-[calc(100vh-11vh)] lg:overflow-hidden">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12 lg:h-full">
+          <div className="flex flex-col gap-3 lg:h-full lg:overflow-hidden">
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="aspect-square rounded-2xl lg:aspect-auto lg:flex-1 lg:min-h-0" />
+          </div>
+          <div className="space-y-4 lg:h-full lg:overflow-y-auto lg:pr-2 lg:pb-3">
+            <div className="flex items-center justify-between gap-4">
+              <Skeleton className="h-8 w-2/3" />
+              <Skeleton className="h-8 w-16 rounded-full" />
+            </div>
             <Skeleton className="h-24 w-full rounded-xl" />
             <Skeleton className="h-40 w-full rounded-xl" />
           </div>
@@ -182,27 +203,36 @@ export default function SmartContractTicketPage() {
         <title>{`${nft.name} — Actionverse`}</title>
       </Head>
       <ActivationModal dialogOpen={needsActivation} setDialogOpen={setNeedsActivation} />
-      <div className="mx-auto max-w-6xl p-4 md:p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <Link
-            href="/marketplace"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Marketplace
-          </Link>
-          <LikeButton isLiked={nft.isLiked} likeCount={nft.likeCount} onToggle={handleLike} variant="pill" />
-        </div>
-
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
-          <div className="lg:sticky lg:top-6 lg:self-start">
-            <div className="relative aspect-square overflow-hidden rounded-2xl bg-muted shadow-lg">
+      <PurchaseSuccessModal
+        open={purchased !== null}
+        onClose={() => setPurchased(null)}
+        onViewItem={() => {
+          setPurchased(null)
+          void router.push(`/smart-contract/manage/${nft.id}`)
+        }}
+        itemName={nft.name}
+        thumbnail={nft.thumbnail}
+        quantity={purchased?.quantity ?? 1}
+        rewards={nft.lockedMedia}
+        guestEmail={purchased?.guestEmail}
+      />
+      <div className="mx-auto max-w-6xl p-4 md:px-6 md:pt-4 md:pb-2 lg:h-[calc(100vh-11vh)] lg:overflow-hidden">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12 lg:h-full">
+          <div className="flex flex-col gap-3 lg:h-full lg:overflow-hidden">
+            <Link
+              href="/marketplace"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Marketplace
+            </Link>
+            <div className="relative aspect-square lg:aspect-auto lg:flex-1 lg:min-h-0 overflow-hidden rounded-2xl bg-muted shadow-lg">
               <Image src={nft.thumbnail} alt={nft.name} fill className="object-cover" />
               {isGated && (
                 <div className="absolute left-4 top-4 flex flex-wrap gap-2">
                   <Badge className="gap-1 bg-black/70 text-white">
                     <Sparkles className="h-3 w-3" />
-                    VIP Ticket
+                    VIP Item
                   </Badge>
                   {requiredLocations > 0 && (
                     <Badge className="gap-1 bg-amber-500 text-white hover:bg-amber-500">
@@ -215,35 +245,40 @@ export default function SmartContractTicketPage() {
             </div>
           </div>
 
-          <div className="space-y-5">
-            <div>
-              <h1 className="text-3xl font-bold leading-tight text-foreground">{nft.name}</h1>
-              {nft.description && (
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{nft.description}</p>
+          <div className="space-y-3 lg:h-full lg:overflow-y-auto lg:pr-2 lg:pb-3">
+            <div className="sticky top-0 z-10 space-y-1.5 bg-background/95 pb-2 backdrop-blur">
+              <div className="flex items-center justify-between gap-4">
+                <h1 className="text-xl font-bold leading-tight text-foreground md:text-2xl">{nft.name}</h1>
+                <div className="shrink-0">
+                  <LikeButton isLiked={nft.isLiked} likeCount={nft.likeCount} onToggle={handleLike} variant="pill" />
+                </div>
+              </div>
+
+              {isGated && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    {nft.lockedMedia.length} reward{nft.lockedMedia.length === 1 ? "" : "s"}
+                  </span>
+                  {requiredLocations > 0 && (
+                    <>
+                      <span className="text-muted-foreground/40">•</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInfoTab("location")
+                          infoTabsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+                        }}
+                        className="inline-flex items-center gap-1 text-amber-600 transition-colors hover:underline dark:text-amber-400"
+                      >
+                        <MapPin className="h-3.5 w-3.5" />
+                        {requiredLocations} location{requiredLocations === 1 ? "" : "s"} to visit
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
-
-            {isGated && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  {nft.lockedMedia.length} reward{nft.lockedMedia.length === 1 ? "" : "s"}
-                </span>
-                {requiredLocations > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setInfoTab("location")
-                      infoTabsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                  >
-                    <MapPin className="h-3.5 w-3.5 text-primary" />
-                    {requiredLocations} location{requiredLocations === 1 ? "" : "s"} to visit
-                  </button>
-                )}
-              </div>
-            )}
 
             {isGated && (
               <UnlockRequirementNotice
@@ -262,15 +297,17 @@ export default function SmartContractTicketPage() {
             )}
 
             {isGated && (
-              <div className="space-y-2">
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">What you get</h3>
-                  <span className="text-xs text-muted-foreground">
-                    {lockedMediaSummary(mediaCounts)}
-                  </span>
-                </div>
-                <LockedContentList items={nft.lockedMedia} />
-              </div>
+              <Card>
+                <CardContent className="space-y-2.5 p-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">What you get</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {lockedMediaSummary(mediaCounts)}
+                    </span>
+                  </div>
+                  <LockedContentList items={nft.lockedMedia} />
+                </CardContent>
+              </Card>
             )}
 
             {showResale ? (
@@ -280,6 +317,7 @@ export default function SmartContractTicketPage() {
                 onBuy={handleBuyResaleBatch}
                 isBuying={isBuyingResale}
                 onCardPurchaseSuccess={handleCardPurchaseSuccess}
+                onGuestCardPurchaseSuccess={handleGuestCardPurchaseSuccess}
               />
             ) : (
               <PrimaryBuyCard
@@ -289,15 +327,19 @@ export default function SmartContractTicketPage() {
                 onBuy={handleBuyPrimary}
                 isBuying={isBuyingPrimary}
                 onCardPurchaseSuccess={handleCardPurchaseSuccess}
+                onGuestCardPurchaseSuccess={handleGuestCardPurchaseSuccess}
               />
             )}
 
             {isGated ? (
               <div ref={infoTabsRef}>
-                <Tabs value={infoTab} onValueChange={(v) => setInfoTab(v as "location" | "onchain")}>
+                <Tabs value={infoTab} onValueChange={(v) => setInfoTab(v as "location" | "description" | "onchain")}>
                   <TabsList className="w-full">
                     <TabsTrigger value="location" className="flex-1">
                       Locations
+                    </TabsTrigger>
+                    <TabsTrigger value="description" className="flex-1">
+                      Description
                     </TabsTrigger>
                     <TabsTrigger value="onchain" className="flex-1">
                       On-Chain
@@ -344,6 +386,20 @@ export default function SmartContractTicketPage() {
                     </Card>
                   </TabsContent>
 
+                  <TabsContent value="description" className="mt-3">
+                    <Card>
+                      <CardContent className="p-4">
+                        {nft.description ? (
+                          <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                            {nft.description}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground italic">No description provided.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
                   <TabsContent value="onchain" className="mt-3">
                     <BlockchainInsights
                       insights={onChainInsights}
@@ -355,15 +411,37 @@ export default function SmartContractTicketPage() {
                 </Tabs>
               </div>
             ) : (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-foreground">On-chain details</h3>
-                <BlockchainInsights
-                  insights={onChainInsights}
-                  isLoading={isLoadingOnChainInsights}
-                  nftName={nft.name}
-                  nftThumbnail={nft.thumbnail}
-                />
-              </div>
+              <Tabs defaultValue="description">
+                <TabsList className="w-full">
+                  <TabsTrigger value="description" className="flex-1">
+                    Description
+                  </TabsTrigger>
+                  <TabsTrigger value="onchain" className="flex-1">
+                    On-Chain
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="description" className="mt-3">
+                  <Card>
+                    <CardContent className="p-4">
+                      {nft.description ? (
+                        <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                          {nft.description}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">No description provided.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                <TabsContent value="onchain" className="mt-3">
+                  <BlockchainInsights
+                    insights={onChainInsights}
+                    isLoading={isLoadingOnChainInsights}
+                    nftName={nft.name}
+                    nftThumbnail={nft.thumbnail}
+                  />
+                </TabsContent>
+              </Tabs>
             )}
           </div>
         </div>

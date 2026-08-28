@@ -160,6 +160,7 @@ async function main() {
       // been deployed to so far — see `getTreasurySecret` in
       // `src/lib/stellar/oz/treasury.ts`.
       unlock_authority: TREASURY,
+      price_authority: TREASURY,
     },
     {
       wasmHash: nftWasmHash,
