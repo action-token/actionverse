@@ -10,8 +10,6 @@ export default {
 		"./app/**/*.{ts,tsx}",
 		"./src/**/*.{ts,tsx}",
 		"./package/**/*.{jsx,tsx}",
-		"node_modules/daisyui/dist/**/*.js",
-		"node_modules/react-daisyui/dist/**/*.js",
 	],
 
 	theme: {
